@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>豆瓣自动转存 - 登录</title>
+<style>
+:root {
+  --bg:#000; --card:rgba(255,255,255,.04); --border:rgba(255,255,255,.06);
+  --text:#fff; --text2:rgba(255,255,255,.65); --text3:rgba(255,255,255,.35);
+  --accent:#0a84ff; --red:#ff453a;
+  --radius:18px; --radius-sm:12px;
+  --blur:saturate(180%) blur(24px);
+  --font:-apple-system,BlinkMacSystemFont,'SF Pro Display','SF Pro Text','Helvetica Neue',sans-serif;
+}
+[data-theme="light"] {
+  --bg:#f2f2f7; --card:rgba(255,255,255,.82);
+  --border:rgba(0,0,0,.06);
+  --text:#1c1c1e; --text2:rgba(0,0,0,.55); --text3:rgba(0,0,0,.3);
+  --accent:#007aff; --red:#ff3b30;
+}
+*{margin:0;padding:0;box-sizing:border-box}
+body{
+  font-family:var(--font);background:var(--bg);color:var(--text);
+  min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;
+  -webkit-font-smoothing:antialiased;
+}
+body::before{
+  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
+  background:radial-gradient(ellipse at 20% 0%,rgba(10,132,255,.12) 0%,transparent 50%),
+             radial-gradient(ellipse at 80% 100%,rgba(191,90,242,.08) 0%,transparent 50%);
+}
+.login-card{
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+  padding:36px 32px;width:380px;max-width:92%;position:relative;z-index:1;
+  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+}
+.login-card h1{
+  font-size:28px;font-weight:700;letter-spacing:2px;text-align:center;margin-bottom:28px;
+  background:linear-gradient(135deg,rgba(255,255,255,.9) 0%,rgba(120,190,255,.8) 50%,rgba(200,150,255,.7) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+[data-theme="light"] .login-card h1{
+  background:linear-gradient(135deg,rgba(60,60,70,.85) 0%,rgba(0,122,255,.7) 50%,rgba(175,82,222,.6) 100%);
+  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+}
+.theme-btn{
+  position:absolute;top:16px;right:16px;
+  width:34px;height:34px;border-radius:50%;border:1px solid var(--border);
+  background:var(--card);color:var(--text2);cursor:pointer;font-size:16px;
+  display:flex;align-items:center;justify-content:center;
+}
+.theme-btn:hover{background:rgba(10,132,255,.12);border-color:var(--accent);color:var(--accent)}
+.form-group{margin-bottom:16px}
+.form-group label{display:block;font-size:13px;color:var(--text2);margin-bottom:4px;font-weight:500}
+.form-group input{
+  width:100%;padding:12px;border-radius:var(--radius-sm);
+  border:1px solid var(--border);background:rgba(255,255,255,.04);
+  color:var(--text);font-size:15px;font-family:var(--font);
+}
+[data-theme="light"] .form-group input{background:rgba(0,0,0,.03)}
+.form-group input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.15)}
+.btn{
+  width:100%;padding:12px;border-radius:var(--radius-sm);border:none;
+  background:var(--accent);color:#fff;font-size:15px;font-weight:600;
+  cursor:pointer;margin-top:8px;font-family:var(--font);transition:all .15s ease;
+}
+.btn:hover{filter:brightness(1.1)}
+.btn:active{transform:scale(.97)}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.error{color:var(--red);font-size:13px;text-align:center;margin-top:12px;display:none}
+.error.show{display:block}
+</style>
+</head>
+<body>
+<div class="login-card">
+  <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="切换主题">🌙</button>
+  <h1>豆瓣自动转存</h1>
+  <div class="form-group">
+    <label>用户名</label>
+    <input type="text" id="user" placeholder="root" onkeydown="if(event.key==='Enter')login()">
+  </div>
+  <div class="form-group">
+    <label>密码</label>
+    <input type="password" id="pass" placeholder="密码" onkeydown="if(event.key==='Enter')login()">
+  </div>
+  <button class="btn" id="btn" onclick="login()">登录</button>
+  <div class="error" id="error"></div>
+</div>
+<script>
+function initTheme(){
+  var t = localStorage.getItem('theme')||'dark';
+  document.documentElement.setAttribute('data-theme',t);
+  document.getElementById('themeBtn').textContent = t==='dark'?'🌙':'☀️';
+}
+function toggleTheme(){
+  var cur = document.documentElement.getAttribute('data-theme');
+  var next = cur==='dark'?'light':'dark';
+  document.documentElement.setAttribute('data-theme',next);
+  localStorage.setItem('theme',next);
+  document.getElementById('themeBtn').textContent = next==='dark'?'🌙':'☀️';
+}
+initTheme();
+
+if(localStorage.getItem('auth_token')){
+  var tok = localStorage.getItem('auth_token');
+  fetch('/api/categories',{headers:{'X-Auth-Token':tok}}).then(function(r){
+    if(r.ok)location.href='/';
+    else localStorage.removeItem('auth_token');
+  });
+}
+
+async function login(){
+  var user = document.getElementById('user').value.trim();
+  var pass = document.getElementById('pass').value;
+  var btn = document.getElementById('btn');
+  var err = document.getElementById('error');
+  if(!user){err.textContent='请输入用户名';err.classList.add('show');return}
+  btn.disabled = true; btn.textContent = '登录中...';
+  try{
+    var r = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:user,password:pass})});
+    var d = await r.json();
+    if(d.success){
+      localStorage.setItem('auth_token',d.token);
+      location.href = '/';
+    }else{
+      err.textContent = d.message||'登录失败';
+      err.classList.add('show');
+    }
+  }catch(e){
+    err.textContent = '网络错误';
+    err.classList.add('show');
+  }
+  btn.disabled = false; btn.textContent = '登录';
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.bak
+*.ps1
+app.py
+app_b64.txt
+app_from_container.py
+app_new_clean.py
+check.js
+check.py
+douban-app-v3.py
+test_api.*
+*.tmp
+.DS_Store
