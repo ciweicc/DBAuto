@@ -2,7 +2,7 @@ __pycache__/
 *.pyc
 *.bak
 *.ps1
-app.py
+/app.py
 app_b64.txt
 app_from_container.py
 app_new_clean.py
