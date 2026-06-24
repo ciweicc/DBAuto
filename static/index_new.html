@@ -243,12 +243,13 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
     <div id="dashNext" style="color:var(--text2)">加载中...</div>
   </div>
   <div class="dcard">
-    <div class="num" id="dashTotal">-</div>
-    <div class="lbl">总执行次数</div>
+    <div class="num" id="dashLastStatus" style="font-size:20px">-</div>
+    <div class="lbl" id="dashLastTime">上次转存</div>
   </div>
-  <div class="dcard">
-    <div class="num" id="dashFail">-</div>
-    <div class="lbl">失败率</div>
+  <div class="dcard" style="font-size:12px;line-height:1.8">
+    <div style="color:var(--text2);margin-bottom:4px">近 7 天</div>
+    <div><span style="color:var(--accent)" id="dash7OK">0</span> 成功 / <span style="color:var(--text2)" id="dash7Fail">0</span> 失败</div>
+    <div style="color:var(--text2);font-size:11px;margin-top:2px">共 <span id="dash7Total">0</span> 次执行</div>
   </div>
 </div>
 
@@ -845,24 +846,62 @@ async function loadDashboard(){
     var s = await apiGet('/api/schedule');
     if(s._status){
       var ss=s._status, h='<div style=\"display:grid;grid-template-columns:60px 1fr;gap:2px 8px\">';
-      if(ss.transfer_next) h+='<span>📋 转存</span><span style=\"text-align:right\">'+ss.transfer_next.slice(5)+'</span>';
-      if(ss.expired_check_next) h+='<span>🔍 检测</span><span style=\"text-align:right\">'+ss.expired_check_next.slice(5)+'</span>';
-      if(ss.dir_cleanup_next) h+='<span>🗑 清理</span><span style=\"text-align:right\">'+ss.dir_cleanup_next.slice(5)+'</span>';
+      if(ss.transfer_next) h+='<span>📋 转存</span><span style=\"text-align:right;color:var(--text2)\">'+ss.transfer_next.slice(5)+'</span>';
+      if(ss.expired_check_next) h+='<span>🔍 检测</span><span style=\"text-align:right;color:var(--text2)\">'+ss.expired_check_next.slice(5)+'</span>';
+      if(ss.dir_cleanup_next) h+='<span>🗑  清理</span><span style=\"text-align:right;color:var(--text2)\">'+ss.dir_cleanup_next.slice(5)+'</span>';
       h+='</div>';
       document.getElementById('dashNext').innerHTML = h||'暂无调度';
     }
-    var h = await apiGet('/api/exec_history?limit=500');
-    var today = new Date().toISOString().slice(0,10);
-    var todayCount = 0, failCount = 0;
-    for(var i=0;i<h.length;i++){
-      if(h[i].time&&h[i].time.slice(0,10)===today) todayCount++;
-      if(h[i].status==='error'||h[i].detail.indexOf('0/')>=0) failCount++;
+    var hist = await apiGet('/api/exec_history?limit=500');
+    var items = hist.items || hist;
+    var today = new Date();
+    today.setHours(0,0,0,0);
+    var todayStr = today.toISOString().slice(0,10);
+    var todayCount = 0;
+    var lastTransfer = null;
+    var days7OK = 0, days7Fail = 0, days7Total = 0;
+    var sevenDaysAgo = new Date(today.getTime() - 7*24*60*60*1000);
+    for(var i=0;i<items.length;i++){
+      var item = items[i];
+      if(!item.time) continue;
+      var itemDate = new Date(item.time);
+      var isTransfer = item.type === 'transfer';
+      if(item.time.slice(0,10)===todayStr && isTransfer) todayCount++;
+      if(itemDate >= sevenDaysAgo && isTransfer){
+        days7Total++;
+        if(item.status === 'ok' || item.status === 'success' || item.status === 'empty') days7OK++;
+        else days7Fail++;
+      }
+      if(isTransfer && !lastTransfer){
+        lastTransfer = item;
+      }
     }
     document.getElementById('dashToday').textContent = todayCount||'-';
-    document.getElementById('dashTotal').textContent = h.length||'-';
-    var rate = h.length>0 ? Math.round(failCount/h.length*100) : 0;
-    document.getElementById('dashFail').textContent = rate+'%';
-    document.getElementById('dashFail').className = 'num'+(rate>30?' red':'');
+    if(lastTransfer){
+      var statusEl = document.getElementById('dashLastStatus');
+      var timeEl = document.getElementById('dashLastTime');
+      var isOK = lastTransfer.status === 'ok' || lastTransfer.status === 'success' || lastTransfer.status === 'empty';
+      if(lastTransfer.status === 'empty'){
+        statusEl.textContent = '📭 无新增';
+        statusEl.className = 'num';
+      }else if(isOK){
+        statusEl.textContent = '✅ 成功';
+        statusEl.className = 'num';
+      }else{
+        statusEl.textContent = '❌ 失败';
+        statusEl.className = 'num red';
+      }
+      statusEl.style.cssText = 'font-size:15px;font-weight:400;text-align:center;line-height:1.2;margin-top:20px;transform:translateX(-3px)';
+      timeEl.textContent = lastTransfer.time.slice(5, 16);
+    }else{
+      var dashStatusEl = document.getElementById('dashLastStatus');
+      dashStatusEl.textContent = '-';
+      dashStatusEl.style.cssText = 'font-size:15px;font-weight:400;margin-top:20px;transform:translateX(-3px)';
+      document.getElementById('dashLastTime').textContent = '上次转存';
+    }
+    document.getElementById('dash7OK').textContent = days7OK;
+    document.getElementById('dash7Fail').textContent = days7Fail;
+    document.getElementById('dash7Total').textContent = days7Total;
   }catch(e){}
 }
 
@@ -886,6 +925,25 @@ async function init(){
   catch(e){showToast('认证失败，请重新登录',false);setTimeout(function(){location.href='/login.html'},1500);return}
   parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
   checkRunningStatus(); loadDashboard();
+  initSSE();
+}
+
+function initSSE(){
+  if(!window.EventSource) return;
+  var es = new EventSource('/api/sse');
+  es.addEventListener('schedule_update', function(){
+    loadSchedule(); loadDashboard();
+  });
+  es.addEventListener('config_update', function(){
+    loadConfig();
+  });
+  es.addEventListener('history_update', function(){
+    loadExecHistory();
+  });
+  es.onerror = function(){
+    es.close();
+    setTimeout(initSSE, 5000);
+  };
 }
 init();
 </script>

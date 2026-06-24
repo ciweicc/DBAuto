@@ -8,28 +8,36 @@
 - 📺 **电视剧/综艺**：热门剧集 7 个分类 + 热门综艺 3 个分类
 - 🔍 **资源搜索**：集成 PanSou 搜索，一键转存到指定目录，支持链接有效性验证
 - ⏰ **定时调度**：支持每日/每周/每月定时转存、失效检测、目录清理
-- 📊 **仪表盘**：今日转存量、下次调度时间、总执行次数、失败率一目了然
-- 🔐 **Token 认证**：登录保护，设置页面管理所有外部 API 配置
+- 📊 **仪表盘**：今日转存量、上次执行状态、近 7 天统计、下次调度时间一目了然
+- 🔐 **安全认证**：PBKDF2 密码哈希、Token 登录保护、登录频率限制
 - 🎨 **Apple 风格 UI**：深色/浅色主题切换、毛玻璃卡片、iOS 风格组件
 - 🐳 **Docker 部署**：容器化运行，数据目录绑定持久化
+- ⚡ **高性能**：HTTP 连接池、搜索并发、Cron 缓存、gzip 压缩等多项优化
 
 ## 项目结构
 
 ```
-app_modules/          # 后端 Python 模块
-├── app.py            # 入口
-├── config.py         # 环境变量、配置持久化
-├── auth.py           # 登录、Token 管理、频率限制
-├── utils.py          # HTTP 工具、日志、SSE 广播
-├── storage.py        # JSON 文件读写（历史记录、执行历史）
-├── douban.py         # 豆瓣榜单（直接调用豆瓣移动端 API）
-├── transfer.py       # 转存执行、PanSou 搜索、QAS 交互、失效检测
-├── scheduler.py      # 定时任务调度、Cron 解析
-├── routes.py         # 所有 API 路由 + 静态文件 + SSE
-└── server.py         # ThreadedHTTPServer
-static/               # 前端
-├── index_new.html    # 主页面（单文件内联 CSS + JS）
-└── login_new.html    # 登录页
+main.py                      # 入口文件
+app_modules/                 # 后端 Python 模块
+├── main.py                  # 启动逻辑（start() 函数）
+├── config.py                # 配置管理（ConfigManager 单例）
+├── auth.py                  # 认证模块（PBKDF2 密码哈希、登录频率限制）
+├── utils.py                 # HTTP 连接池、TTLCache、原子写、SSE 广播
+├── storage.py               # SQLite 存储（历史记录、执行历史）
+├── douban.py                # 豆瓣榜单（带 1 小时缓存）
+├── transfer.py              # 转存执行（搜索并发、失效检测并发）
+├── scheduler.py             # 定时调度（Cron 解析缓存、精确睡眠）
+├── routes_base.py           # 基础路由处理类
+├── routes_static.py         # 静态文件路由（gzip 压缩）
+├── routes_auth.py           # 认证相关路由
+├── routes_transfer.py       # 转存相关路由
+├── routes_history.py        # 历史记录路由
+├── routes_config.py         # 配置 & 调度路由
+├── routes.py                # 路由组合（Mixin 多继承）
+└── server.py                # ThreadedHTTPServer
+static/                      # 前端
+├── index_new.html           # 主页面（单文件内联 CSS + JS）
+└── login_new.html           # 登录页
 ```
 
 ## 依赖服务
@@ -37,7 +45,7 @@ static/               # 前端
 | 服务 | 用途 | 端口 |
 |------|------|------|
 | [PanSou](https://github.com/fish2018/pansou) | 网盘资源搜索 | 8080 |
-| QAS (夸克自动转存) | 转存任务执行 | 5005 |
+| [QAS (夸克自动转存)](https://github.com/Cp0204/quark-auto-save) | 转存任务执行 | 5005 |
 | [OpenList](https://github.com/openlistteam/openlist) | 网盘文件管理 | 5244 |
 
 以上服务通过设置页面（⚙️）或环境变量配置地址和 Token。

@@ -16,12 +16,12 @@ def _shutdown(sig=None, frame=None):
     if _shutdown_server:
         _shutdown_server.shutdown()
 
-signal.signal(signal.SIGTERM, _shutdown)
-signal.signal(signal.SIGINT, _shutdown)
-atexit.register(lambda: log("已停止"))
+def start():
+    global _shutdown_server
+    signal.signal(signal.SIGTERM, _shutdown)
+    signal.signal(signal.SIGINT, _shutdown)
+    atexit.register(lambda: log("已停止"))
 
-if __name__ == "__main__":
-    os.chdir(os.path.dirname(os.path.abspath(__file__)))
     log("=== douban-transfer 启动 ===")
     log("端口: {}".format(PORT))
     load_config()
@@ -36,3 +36,7 @@ if __name__ == "__main__":
         pass
     finally:
         server.server_close()
+
+if __name__ == "__main__":
+    os.chdir(os.path.dirname(os.path.abspath(__file__)))
+    start()

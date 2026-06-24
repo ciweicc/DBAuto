@@ -2,9 +2,9 @@
 import time, traceback
 from datetime import datetime, timedelta, timezone
 from threading import Thread, Lock
-from config import load_settings
+from config import load_settings, OPENLIST_URL, OPENLIST_TOKEN
 from douban import get_douban_list
-from transfer import run_transfer, check_expired_tasks, is_in_qas
+from transfer import run_transfer, check_expired_tasks, is_in_qas, build_transfer_tasks
 from storage import add_exec_record
 from utils import log, http_post
 
@@ -13,41 +13,97 @@ schedule_status = {"transfer_next": None, "expired_check_next": None, "dir_clean
                    "last_transfer": None, "last_expired_check": None, "last_dir_cleanup": None}
 schedule_lock = Lock()
 
+_cron_cache = {}
+_cron_cache_lock = Lock()
+
 def _now_local():
     return datetime.now(TZ)
+
+def _parse_cron_field(field, min_val, max_val):
+    if field == "*":
+        return set(range(min_val, max_val + 1))
+    result = set()
+    for part in field.split(","):
+        if "/" in part:
+            base, step = part.split("/", 1)
+            step = int(step)
+            if base == "*":
+                start = min_val
+            elif "-" in base:
+                s, e = base.split("-", 1)
+                start, end = int(s), int(e)
+                result.update(range(start, end + 1, step))
+                continue
+            else:
+                start = int(base)
+            result.update(range(start, max_val + 1, step))
+        elif "-" in part:
+            s, e = part.split("-", 1)
+            result.update(range(int(s), int(e) + 1))
+        else:
+            result.add(int(part))
+    return {v for v in result if min_val <= v <= max_val}
+
+def _get_cron_fields(cron_str):
+    with _cron_cache_lock:
+        if cron_str in _cron_cache:
+            return _cron_cache[cron_str]
+    parts = cron_str.strip().split()
+    if len(parts) != 5:
+        return None
+    try:
+        sm, sh, sdom, smo, sdow = parts
+        minutes = _parse_cron_field(sm, 0, 59)
+        hours = _parse_cron_field(sh, 0, 23)
+        days_of_month = _parse_cron_field(sdom, 1, 31)
+        months = _parse_cron_field(smo, 1, 12)
+        days_of_week = _parse_cron_field(sdow, 0, 6)
+        result = (minutes, hours, days_of_month, months, days_of_week)
+        with _cron_cache_lock:
+            _cron_cache[cron_str] = result
+        return result
+    except Exception:
+        return None
+
+def invalidate_cron_cache():
+    with _cron_cache_lock:
+        _cron_cache.clear()
 
 def _next_cron_time(cron_str, now_dt=None):
     if not cron_str:
         return None
     if now_dt is None:
         now_dt = _now_local()
-    parts = cron_str.strip().split()
-    if len(parts) != 5:
+    fields = _get_cron_fields(cron_str)
+    if not fields:
         return None
-    try:
-        sm, sh, sdom, smo, sdow = parts
-        dt = now_dt.replace(second=0, microsecond=0) + timedelta(minutes=1)
-        for _ in range(525600):
-            if sm != "*" and dt.minute != int(sm):
-                dt += timedelta(minutes=1); continue
-            if sh != "*" and dt.hour != int(sh):
-                dt = dt.replace(hour=int(sh), minute=0); continue
-            if sdom != "*" and dt.day != int(sdom):
-                dt += timedelta(days=1); dt = dt.replace(hour=0, minute=0); continue
-            if smo != "*" and dt.month != int(smo):
-                dt = dt.replace(year=dt.year + 1 if dt.month >= int(smo) else dt.year,
-                                month=int(smo), day=1, hour=0, minute=0); continue
-            if sdow != "*":
-                target_wday = int(sdow)
-                if dt.weekday() != target_wday:
-                    days_ahead = (target_wday - dt.weekday()) % 7
-                    if days_ahead == 0: days_ahead = 7
-                    dt += timedelta(days=days_ahead)
-                    dt = dt.replace(hour=0, minute=0); continue
-            return dt
-        return None
-    except Exception:
-        return None
+    minutes, hours, days_of_month, months, days_of_week = fields
+    dt = now_dt.replace(second=0, microsecond=0) + timedelta(minutes=1)
+    for _ in range(366 * 24 * 60):
+        if dt.month not in months:
+            if dt.month >= 12:
+                dt = dt.replace(year=dt.year + 1, month=1, day=1, hour=0, minute=0)
+            else:
+                dt = dt.replace(month=dt.month + 1, day=1, hour=0, minute=0)
+            continue
+        if dt.day not in days_of_month or dt.weekday() not in days_of_week:
+            dt += timedelta(days=1)
+            dt = dt.replace(hour=0, minute=0)
+            continue
+        if dt.hour not in hours:
+            if dt.hour >= 23:
+                dt += timedelta(days=1)
+                dt = dt.replace(hour=0, minute=0)
+            else:
+                dt = dt.replace(hour=dt.hour + 1, minute=0)
+            continue
+        if dt.minute not in minutes:
+            dt += timedelta(minutes=1)
+            if dt.minute == 0:
+                continue
+            continue
+        return dt
+    return None
 
 def _next_fire_time(time_str, cron_str):
     if cron_str:
@@ -61,8 +117,23 @@ def _next_fire_time(time_str, cron_str):
         return target
     return None
 
+_douban_warmed_up_for = None
+
+def _warmup_douban(tasks):
+    global _douban_warmed_up_for
+    task_key = tuple(sorted((t.get("path", ""), t.get("type", "")) for t in tasks))
+    if _douban_warmed_up_for == task_key:
+        return
+    log("预热豆瓣数据...")
+    for tk in tasks:
+        try:
+            get_douban_list(tk.get("path", ""), tk.get("type", ""), 20)
+        except Exception as e:
+            log("豆瓣预热失败 {}: {}".format(tk.get("path", ""), e))
+    _douban_warmed_up_for = task_key
+    log("豆瓣数据预热完成")
+
 def _run_scheduled_transfer():
-    from config import OPENLIST_URL, OPENLIST_TOKEN
     settings = load_settings()
     t = settings.get("transfer", {})
     if not t.get("enabled"): return
@@ -70,20 +141,7 @@ def _run_scheduled_transfer():
     limit = t.get("limit", 5)
     if not tasks: return
     log("定时转存开始")
-    all_t = []
-    for tk in tasks:
-        try:
-            items = get_douban_list(tk["path"], tk["type"], 20)
-            for i in items:
-                all_t.append({"title": i["title"], "savepath": tk["savepath"],
-                              "category": tk.get("category", "movie")})
-        except Exception as e:
-            log("获取错误: {}".format(e))
-    seen = set()
-    uniq = []
-    for ti in all_t:
-        if ti["title"] not in seen:
-            seen.add(ti["title"]); uniq.append(ti)
+    uniq = build_transfer_tasks(tasks)
     log("定时转存: {} 条".format(len(uniq)))
     with schedule_lock:
         schedule_status["last_transfer"] = _now_local().strftime("%Y-%m-%d %H:%M:%S")
@@ -103,7 +161,6 @@ def _run_scheduled_expired_check():
         add_exec_record("expired_check", "all ok", "ok")
 
 def _run_scheduled_dir_cleanup():
-    from config import OPENLIST_URL, OPENLIST_TOKEN
     settings = load_settings()
     if not settings.get("dir_cleanup", {}).get("enabled"): return
     dirs = settings["dir_cleanup"].get("directories", [])
@@ -127,7 +184,8 @@ def _run_scheduled_dir_cleanup():
                         http_post("{}/api/fs/remove".format(OPENLIST_URL),
                                   {"names": ["{}/{}".format(d, item["name"])], "dir": d, "token": OPENLIST_TOKEN}, timeout=20)
                         removed += 1
-                    except Exception: pass
+                    except Exception as e:
+                        log("删除目录失败 {}/{}: {}".format(d, item["name"], e))
             time.sleep(1)
         except Exception as e:
             log("目录清理错误: {}".format(e))
@@ -136,10 +194,27 @@ def _run_scheduled_dir_cleanup():
     with schedule_lock:
         schedule_status["last_dir_cleanup"] = _now_local().strftime("%Y-%m-%d %H:%M:%S")
 
+_settings_mtime = None
+_settings_cache = None
+
+def _load_settings_cached():
+    global _settings_mtime, _settings_cache
+    from config import SETTINGS_FILE
+    import os
+    try:
+        mtime = os.path.getmtime(SETTINGS_FILE)
+    except OSError:
+        mtime = 0
+    if _settings_cache is not None and _settings_mtime == mtime:
+        return _settings_cache
+    _settings_cache = load_settings()
+    _settings_mtime = mtime
+    return _settings_cache
+
 def scheduler_loop():
     while True:
         try:
-            settings = load_settings()
+            settings = _load_settings_cached()
             t = settings.get("transfer", {})
             e = settings.get("expired_check", {})
             d = settings.get("dir_cleanup", {})
@@ -156,16 +231,32 @@ def scheduler_loop():
             if e.get("enabled") and e_next: upcoming.append(("expired_check", e_next))
             if d.get("enabled") and d_next: upcoming.append(("dir_cleanup", d_next))
             if not upcoming:
-                time.sleep(30); continue
+                time.sleep(60)
+                continue
             upcoming.sort(key=lambda x: x[1])
             name, target = upcoming[0]
             wait = max(0, (target - now).total_seconds())
-            if wait > 60:
-                time.sleep(min(wait, 30)); continue
+            if wait > 120:
+                if name == "transfer" and wait < 180:
+                    tasks = t.get("tasks", [])
+                    if tasks:
+                        Thread(target=_warmup_douban, args=(tasks,), daemon=True).start()
+                time.sleep(min(wait - 60, 60))
+                continue
+            elif wait > 5:
+                if name == "transfer":
+                    tasks = t.get("tasks", [])
+                    if tasks:
+                        Thread(target=_warmup_douban, args=(tasks,), daemon=True).start()
+                time.sleep(wait - 2)
+                continue
             time.sleep(max(0, wait))
-            if name == "transfer": _run_scheduled_transfer()
-            elif name == "expired_check": _run_scheduled_expired_check()
-            elif name == "dir_cleanup": _run_scheduled_dir_cleanup()
+            if name == "transfer":
+                _run_scheduled_transfer()
+            elif name == "expired_check":
+                _run_scheduled_expired_check()
+            elif name == "dir_cleanup":
+                _run_scheduled_dir_cleanup()
             time.sleep(5)
         except Exception as e:
             log("调度错误: {}".format(e))

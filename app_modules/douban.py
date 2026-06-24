@@ -26,7 +26,16 @@ _TV_TYPE_MAP = {
 
 _douban_cache = {}
 _douban_lock = Lock()
-_DOUBAN_TTL = 300
+_DOUBAN_TTL = 3600
+_DOUBAN_CACHE_MAX = 100
+
+def _prune_cache():
+    if len(_douban_cache) <= _DOUBAN_CACHE_MAX:
+        return
+    sorted_keys = sorted(_douban_cache.keys(), key=lambda k: _douban_cache[k][0])
+    to_remove = len(_douban_cache) - _DOUBAN_CACHE_MAX
+    for k in sorted_keys[:to_remove]:
+        del _douban_cache[k]
 
 def get_douban_list(path, sub_type, limit=20):
     """直接调用豆瓣移动端 API 获取榜单"""
@@ -62,12 +71,13 @@ def get_douban_list(path, sub_type, limit=20):
     url = "{}/subject/recent_hot/{}?{}".format(DOUBAN_BASE, api_type, encoded)
 
     try:
-        data = http_get(url, timeout=15)
+        data = http_get(url, timeout=15, referer="https://m.douban.com/")
         items = data.get("items") or data.get("subjects") or []
         result = [{"title": i.get("title", ""), "rating": i.get("rating", {}).get("value", 0)}
                   for i in items if i.get("title")]
         with _douban_lock:
             _douban_cache[cache_key] = (now, result)
+            _prune_cache()
         log("douban: {}/{} → {} 条".format(path, sub_type, len(result)))
         return result
     except Exception as e:
