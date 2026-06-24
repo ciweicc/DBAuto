@@ -12,3 +12,8 @@ douban-app-v3.py
 test_api.*
 *.tmp
 .DS_Store
+static/*.container
+static/app.js
+static/app_new.js
+static/index.html
+static/login.html
