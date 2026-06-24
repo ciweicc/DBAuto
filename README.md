@@ -1,4 +1,4 @@
-# 豆瓣自动转存 (douban-transfer)
+# 豆瓣自动转存 (DBAuto)
 
 基于豆瓣移动端 API 的影视资源自动转存工具，通过 PanSou 搜索夸克网盘资源，调用 QAS 自动转存到网盘。
 
