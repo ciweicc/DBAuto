@@ -34,7 +34,7 @@ class AuthRouteMixin:
                 self._send_json({"success": False, "message": "username: {}".format(msg)}, 400)
                 return True
 
-            ok, msg = validate_string(password, min_len=1, max_len=500, allow_empty=False)
+            ok, msg = validate_string(password, min_len=0, max_len=500, allow_empty=True)
             if not ok:
                 self._send_json({"success": False, "message": "password: {}".format(msg)}, 400)
                 return True

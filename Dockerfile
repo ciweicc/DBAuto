@@ -1,4 +1,4 @@
-FROM registry.cn-hangzhou.aliyuncs.com/library/python:3.11-slim
+FROM registry.aliyuncs.com/python:3.11-slim
 
 RUN echo 'deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main non-free-firmware\n\
 deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main non-free-firmware\n\
@@ -11,18 +11,15 @@ deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-backports main non
 
 WORKDIR /app
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    gcc \
-    && rm -rf /var/lib/apt/lists/*
-
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+COPY main.py ./
 COPY app_modules/ ./app_modules/
 COPY static/ ./static/
 COPY docker-entrypoint.sh ./
 
-RUN chmod +x docker-entrypoint.sh
+RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
 
 ENV DATA_DIR=/data/douban-history
 ENV PORT=3001

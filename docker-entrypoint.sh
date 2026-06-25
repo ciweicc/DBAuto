@@ -3,4 +3,4 @@ set -e
 
 mkdir -p "$DATA_DIR"
 
-exec python app_modules/main.py
+exec python main.py

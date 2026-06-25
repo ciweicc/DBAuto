@@ -1,17 +1,17 @@
 version: '3.8'
 
 services:
-  douban-transfer:
+  dbauto:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: douban-transfer
+    container_name: dbauto
     ports:
       - "3001:3001"
     volumes:
-      - ./data:/data/douban-history
+      - ./data:/opt/dbauto-data
     environment:
-      - DATA_DIR=/data/douban-history
+      - DATA_DIR=/opt/dbauto-data
       - PORT=3001
       - TZ=Asia/Shanghai
     restart: unless-stopped
