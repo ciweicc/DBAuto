@@ -60,28 +60,47 @@ tests/                       # 单元测试
 
 ### Docker Compose 部署（推荐）
 
+从 GitHub 克隆代码后直接构建部署：
+
 ```bash
-# 创建数据目录
+# 1. 克隆代码
+git clone https://github.com/ciweicc/DBAuto.git
+cd DBAuto
+
+# 2. 创建数据目录
 mkdir -p ./data
 
-# 构建并启动
+# 3. 构建并启动
 docker-compose up -d --build
 
-# 查看状态
+# 4. 查看状态（健康检查）
 docker-compose ps
 
-# 查看日志
+# 5. 查看日志
 docker-compose logs -f
+
+# 6. 停止服务
+docker-compose down
 ```
+
+服务启动后访问：`http://服务器IP:3001`
 
 ### Docker 命令部署
 
 ```bash
+# 1. 克隆代码
+git clone https://github.com/ciweicc/DBAuto.git
+cd DBAuto
+
+# 2. 构建镜像
+docker build -t douban-transfer:latest .
+
+# 3. 运行容器
 docker run -d \
   --name douban-transfer \
   --restart unless-stopped \
   -p 3001:3001 \
-  -v /opt/douban-history:/data/douban-history \
+  -v $(pwd)/data:/data/douban-history \
   -e DATA_DIR=/data/douban-history \
   -e PORT=3001 \
   -e TZ=Asia/Shanghai \
@@ -90,7 +109,25 @@ docker run -d \
   -e QAS_TOKEN=your_token \
   -e AUTH_USER=root \
   -e AUTH_PASS=your_password \
-  your-image-name
+  douban-transfer:latest
+```
+
+### 使用 Docker Hub 镜像（可选）
+
+如果你已将镜像推送到 Docker Hub：
+
+```bash
+# 拉取镜像
+docker pull your-username/douban-transfer:latest
+
+# 运行
+docker run -d \
+  --name douban-transfer \
+  --restart unless-stopped \
+  -p 3001:3001 \
+  -v /opt/douban-history:/data/douban-history \
+  -e TZ=Asia/Shanghai \
+  your-username/douban-transfer:latest
 ```
 
 ### 环境变量

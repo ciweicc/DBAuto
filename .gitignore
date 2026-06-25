@@ -17,3 +17,10 @@ static/app.js
 static/app_new.js
 static/index.html
 static/login.html
+
+# 临时测试文件
+run_test.bat
+test_all.py
+test_output.py
+test_simple.py
+test_result.txt
