@@ -1,4 +1,13 @@
-FROM python:3.11-slim
+FROM registry.cn-hangzhou.aliyuncs.com/library/python:3.11-slim
+
+RUN echo 'deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main non-free-firmware\n\
+deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main non-free-firmware\n\
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main non-free-firmware\n\
+deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-updates main non-free-firmware\n\
+deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-backports main non-free-firmware\n\
+deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-backports main non-free-firmware' > /etc/apt/sources.list && \
+    rm -f /etc/apt/sources.list.d/*.sources && \
+    apt-get update && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 

@@ -9,7 +9,7 @@
 - 🔍 **资源搜索**：集成 PanSou 搜索，一键转存到指定目录，支持链接有效性验证
 - ⏰ **定时调度**：支持每日/每周/每月定时转存、失效检测、目录清理
 - 📊 **仪表盘**：今日转存量、上次执行状态、近 7 天统计、下次调度时间一目了然
-- 🔐 **安全认证**：PBKDF2 密码哈希、Token 登录保护、登录频率限制
+- 🔐 **安全认证**：PBKDF2 密码哈希、Fernet (AES-128-CBC) Token 加密、登录频率限制
 - 🎨 **Apple 风格 UI**：深色/浅色主题切换、毛玻璃卡片、iOS 风格组件
 - 🐳 **Docker 部署**：容器化运行，数据目录绑定持久化
 - ⚡ **高性能**：HTTP 连接池、搜索并发、TTLCache、gzip 压缩等多项优化
@@ -58,6 +58,22 @@ tests/                       # 单元测试
 
 ## 快速开始
 
+### Python 环境部署
+
+```bash
+# 1. 克隆代码
+git clone https://github.com/ciweicc/DBAuto.git
+cd DBAuto
+
+# 2. 安装依赖
+pip install -r requirements.txt
+
+# 3. 启动服务
+python main.py
+```
+
+> **依赖说明**：`cryptography` 用于敏感信息加密（Token），`croniter` 用于 Cron 表达式解析，`pytest` 用于单元测试。
+
 ### Docker Compose 部署（推荐）
 
 从 GitHub 克隆代码后直接构建部署：
@@ -92,16 +108,19 @@ docker-compose down
 git clone https://github.com/ciweicc/DBAuto.git
 cd DBAuto
 
-# 2. 构建镜像
-docker build -t douban-transfer:latest .
+# 2. 安装依赖
+pip install -r requirements.txt
 
-# 3. 运行容器
+# 3. 构建镜像
+docker build -t dbauto .
+
+# 4. 运行容器
 docker run -d \
-  --name douban-transfer \
+  --name dbauto \
   --restart unless-stopped \
   -p 3001:3001 \
-  -v $(pwd)/data:/data/douban-history \
-  -e DATA_DIR=/data/douban-history \
+  -v $(pwd)/data:/opt/dbauto-data \
+  -e DATA_DIR=/opt/dbauto-data \
   -e PORT=3001 \
   -e TZ=Asia/Shanghai \
   -e PANSOU=http://192.168.1.1:8080 \
@@ -109,7 +128,7 @@ docker run -d \
   -e QAS_TOKEN=your_token \
   -e AUTH_USER=root \
   -e AUTH_PASS=your_password \
-  douban-transfer:latest
+  dbauto
 ```
 
 ### 使用 Docker Hub 镜像（可选）
@@ -118,16 +137,16 @@ docker run -d \
 
 ```bash
 # 拉取镜像
-docker pull your-username/douban-transfer:latest
+docker pull your-username/dbaauto:latest
 
 # 运行
 docker run -d \
-  --name douban-transfer \
+  --name dbauto \
   --restart unless-stopped \
   -p 3001:3001 \
-  -v /opt/douban-history:/data/douban-history \
+  -v /opt/dbauto-data:/opt/dbauto-data \
   -e TZ=Asia/Shanghai \
-  your-username/douban-transfer:latest
+  your-username/dbaauto:latest
 ```
 
 ### 环境变量
