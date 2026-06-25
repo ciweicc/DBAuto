@@ -20,4 +20,3 @@ venv/
 docs/
 tests/
 docker-compose.yml
-docker-entrypoint.sh
