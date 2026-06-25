@@ -18,8 +18,9 @@ def _shutdown(sig=None, frame=None):
 
 def start():
     global _shutdown_server
-    signal.signal(signal.SIGTERM, _shutdown)
     signal.signal(signal.SIGINT, _shutdown)
+    if hasattr(signal, "SIGTERM"):
+        signal.signal(signal.SIGTERM, _shutdown)
     atexit.register(lambda: log("已停止"))
 
     log("=== douban-transfer 启动 ===")

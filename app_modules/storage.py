@@ -134,7 +134,11 @@ def save_history(h):
         _history_cache = dict(h)
         with _db_lock:
             conn = _get_db()
-            conn.execute("DELETE FROM transfer_history")
+            existing_titles = set(row["title"] for row in conn.execute("SELECT title FROM transfer_history").fetchall())
+            new_titles = set(h.keys())
+            to_delete = existing_titles - new_titles
+            for title in to_delete:
+                conn.execute("DELETE FROM transfer_history WHERE title = ?", (title,))
             for title, info in h.items():
                 conn.execute(
                     "INSERT OR REPLACE INTO transfer_history (title, date, status, category) VALUES (?, ?, ?, ?)",
@@ -174,7 +178,11 @@ def save_exec_history(data):
         _exec_cache = trimmed
         with _db_lock:
             conn = _get_db()
-            conn.execute("DELETE FROM exec_history")
+            existing_ids = set(row["id"] for row in conn.execute("SELECT id FROM exec_history").fetchall())
+            new_ids = {item.get("id", "") for item in trimmed if item.get("id")}
+            to_delete = existing_ids - new_ids
+            for item_id in to_delete:
+                conn.execute("DELETE FROM exec_history WHERE id = ?", (item_id,))
             for item in trimmed:
                 conn.execute(
                     "INSERT OR REPLACE INTO exec_history (id, type, detail, status, time) VALUES (?, ?, ?, ?, ?)",

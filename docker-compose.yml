@@ -1,0 +1,28 @@
+version: '3.8'
+
+services:
+  douban-transfer:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: douban-transfer
+    ports:
+      - "3001:3001"
+    volumes:
+      - ./data:/data/douban-history
+    environment:
+      - DATA_DIR=/data/douban-history
+      - PORT=3001
+      - TZ=Asia/Shanghai
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:3001/health').read()"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"

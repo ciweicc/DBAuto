@@ -2,7 +2,7 @@
 import os, json, time
 from threading import Lock
 
-DATA_DIR = "/data/douban-history"
+DATA_DIR = os.environ.get("DATA_DIR", "/data/douban-history")
 HISTORY_FILE = os.path.join(DATA_DIR, "transfer_history.json")
 EXEC_HISTORY_FILE = os.path.join(DATA_DIR, "exec_history.json")
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")

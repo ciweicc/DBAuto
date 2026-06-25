@@ -3,8 +3,8 @@ import json, time, re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from threading import Lock, get_ident, enumerate as enumerate_threads
-from config import PANSOU, QAS, QAS_TOKEN, OPENLIST_URL, OPENLIST_TOKEN
-from utils import http_get, http_post, log
+from config import ConfigManager
+from utils import http_get, http_post, log, TTLCache
 from storage import load_history, save_history
 from douban import get_douban_list
 
@@ -20,26 +20,26 @@ transfer_status = {"running": False, "summary": None,
                    "thread_id": None}
 transfer_lock = Lock()
 
-_pansou_cache = {}
-_pansou_lock = Lock()
-_PANSOU_TTL = 600
-_PANSOU_CACHE_MAX = 200
-
-def _prune_pansou_cache():
-    if len(_pansou_cache) <= _PANSOU_CACHE_MAX:
-        return
-    sorted_keys = sorted(_pansou_cache.keys(), key=lambda k: _pansou_cache[k][0])
-    to_remove = len(_pansou_cache) - _PANSOU_CACHE_MAX
-    for k in sorted_keys[:to_remove]:
-        del _pansou_cache[k]
+_pansou_cache = TTLCache(ttl=600, max_size=200)
 
 _qas_cache = set()
 _qas_cache_lock = Lock()
 
+def _get_pansou_client():
+    cfg = ConfigManager.get_instance()
+    from api_client import PanSouClient
+    return PanSouClient(cfg.pansou, timeout=20)
+
+def _get_qas_client():
+    cfg = ConfigManager.get_instance()
+    from api_client import QASClient
+    return QASClient(cfg.qas, cfg.qas_token, timeout=20)
+
 def init_qas_cache():
     for attempt in range(3):
         try:
-            data = http_get("{}://data?token={}".format(QAS, QAS_TOKEN), timeout=15)
+            client = _get_qas_client()
+            data = client.get_data()
             tasks = data.get("data", {}).get("tasklist", [])
             with _qas_cache_lock:
                 _qas_cache.clear()
@@ -62,19 +62,15 @@ def add_to_qas(name):
         _qas_cache.add(name)
 
 def search_pansou(keyword):
-    now = time.time()
-    with _pansou_lock:
-        if keyword in _pansou_cache:
-            ct, cd = _pansou_cache[keyword]
-            if now - ct < _PANSOU_TTL:
-                return cd
+    cached = _pansou_cache.get(keyword)
+    if cached is not None:
+        return cached
     for attempt in range(2):
         try:
-            data = http_post("{}/api/search".format(PANSOU), {"kw": keyword, "cloud_types": ["quark"], "res": "merge"}, timeout=20)
+            client = _get_pansou_client()
+            data = client.search(keyword)
             result = data.get("data", {}).get("merged_by_type", {}).get("quark", [])
-            with _pansou_lock:
-                _pansou_cache[keyword] = (now, result)
-                _prune_pansou_cache()
+            _pansou_cache.set(keyword, result)
             return result
         except Exception as e:
             if attempt == 0:
@@ -85,14 +81,11 @@ def search_pansou(keyword):
                 return []
 
 def check_pansou_links(urls):
-    """通过 PanSou 链接检测 API 验证链接有效性，返回有效 URL 集合"""
     if not urls:
         return set()
-    items = [{"disk_type": "quark", "url": u} for u in urls if u]
-    if not items:
-        return set()
     try:
-        data = http_post("{}/api/check/links".format(PANSOU), {"items": items}, timeout=30)
+        client = _get_pansou_client()
+        data = client.check_links(urls)
         valid = set()
         for r in data.get("results", []):
             if r.get("state") == "ok":
@@ -100,31 +93,28 @@ def check_pansou_links(urls):
         return valid
     except Exception as e:
         log("PanSou 链接检查错误: {}".format(e))
-        return set(urls)  # 检查失败时信任所有链接
+        return set(urls)
 
 def validate_share_link(url):
     try:
-        r = http_post("{}/get_share_detail?token={}".format(QAS, QAS_TOKEN), {"shareurl": url}, timeout=10)
+        client = _get_qas_client()
+        r = client.get_share_detail(url)
         return r.get("success", False), r.get("message", "")
     except Exception as e:
         return False, str(e)
 
 def add_and_run(title, shareurl, savepath, pattern="", replace=""):
-    payload = {"taskname": title, "shareurl": shareurl, "savepath": savepath}
-    if pattern:
-        payload["pattern"] = pattern
-    if replace:
-        payload["replace"] = replace
-    add_res = http_post("{}/api/add_task?token={}".format(QAS, QAS_TOKEN), payload, timeout=20)
+    client = _get_qas_client()
+    add_res = client.add_task(title, shareurl, savepath, pattern, replace)
     if not add_res.get("success"):
         return {"status": "error", "msg": add_res.get("message", "fail")}
     add_to_qas(title)
-    url = "{}/run_script_now?token={}".format(QAS, QAS_TOKEN)
+    url = "{}/run_script_now?token={}".format(client.base_url, client.token)
     from utils import _get_http_session
     session = _get_http_session()
     lines = []
     try:
-        with session.post(url, json={"tasklist": [payload]}, timeout=120, stream=True) as resp:
+        with session.post(url, json={"tasklist": [{"taskname": title, "shareurl": shareurl, "savepath": savepath}]}, timeout=120, stream=True) as resp:
             resp.raise_for_status()
             for raw in resp.iter_lines(decode_unicode=True):
                 line = raw.strip() if raw else ""
@@ -146,7 +136,8 @@ EXPIRED_CHECK_CONCURRENCY = 5
 def _check_single_expired(task):
     url = task.get("shareurl", "")
     try:
-        result = http_post("{}/get_share_detail?token={}".format(QAS, QAS_TOKEN), {"shareurl": url}, timeout=10)
+        client = _get_qas_client()
+        result = client.get_share_detail(url)
         if not result.get("success"):
             return task, True
         return task, False
@@ -156,7 +147,8 @@ def _check_single_expired(task):
 
 def check_expired_tasks():
     try:
-        data = http_get("{}/data?token={}".format(QAS, QAS_TOKEN), timeout=15).get("data", {})
+        client = _get_qas_client()
+        data = client.get_data().get("data", {})
         tasks = data.get("tasklist", [])
         to_check = [t for t in tasks if t.get("shareurl", "") and "quark.cn" in t.get("shareurl", "")]
         if not to_check:
@@ -182,7 +174,8 @@ def check_expired_tasks():
 
 def update_expired_task(task, new_url):
     try:
-        data = http_get("{}/data?token={}".format(QAS, QAS_TOKEN), timeout=15).get("data", {})
+        client = _get_qas_client()
+        data = client.get_data().get("data", {})
         tasks = data.get("tasklist", [])
         old_url = task.get("shareurl", "")
         updated = False
@@ -193,7 +186,7 @@ def update_expired_task(task, new_url):
                 break
         if updated:
             data["tasklist"] = tasks
-            result = http_post("{}/update?token={}".format(QAS, QAS_TOKEN), data, timeout=15)
+            result = client.update(data)
             return result.get("success", False)
         return False
     except Exception as e:
@@ -203,8 +196,10 @@ def update_expired_task(task, new_url):
 def _find_in_history(title, history):
     if title in history:
         return True
+    title_clean = re.sub(r'[^\u4e00-\u9fff0-9a-zA-Z]', '', title).lower()
     for k in history:
-        if title in k or k in title:
+        k_clean = re.sub(r'[^\u4e00-\u9fff0-9a-zA-Z]', '', k).lower()
+        if title_clean == k_clean or (len(title_clean) >= 4 and title_clean in k_clean) or (len(k_clean) >= 4 and k_clean in title_clean):
             return True
     return False
 
@@ -244,7 +239,6 @@ def is_transfer_running():
         return False
 
 def _search_single_task(task):
-    """单个任务的搜索工作函数（用于线程池并发）"""
     title = task["title"]
     try:
         log("搜索: {}".format(title))

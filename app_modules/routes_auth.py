@@ -1,6 +1,7 @@
 # routes_auth.py — 认证相关路由 Mixin
 from auth import _do_login, _login_rate_check, _check_auth, _client_ip
 from utils import log, sse_broadcast
+from validator import validate_string
 
 
 class AuthRouteMixin:
@@ -24,8 +25,20 @@ class AuthRouteMixin:
             if not ok:
                 self._send_json({"success": False, "message": "too many attempts", "wait": wait}, 429)
                 return True
+
             username = body.get("username", "")
             password = body.get("password", "")
+
+            ok, msg = validate_string(username, min_len=1, max_len=100, allow_empty=False)
+            if not ok:
+                self._send_json({"success": False, "message": "username: {}".format(msg)}, 400)
+                return True
+
+            ok, msg = validate_string(password, min_len=1, max_len=500, allow_empty=False)
+            if not ok:
+                self._send_json({"success": False, "message": "password: {}".format(msg)}, 400)
+                return True
+
             token = _do_login(username, password)
             if token:
                 self._send_json({"success": True, "token": token})

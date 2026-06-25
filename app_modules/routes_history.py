@@ -1,6 +1,7 @@
 # routes_history.py — 历史记录管理路由 Mixin
 from storage import load_history, save_history, load_exec_history, add_exec_record
 from utils import log, sse_broadcast
+from validator import validate_string, validate_list
 
 
 class HistoryRouteMixin:
@@ -50,11 +51,21 @@ class HistoryRouteMixin:
     def _handle_history_post(self, route, body):
         if route == "/api/history/manage":
             action = body.get("action", "")
+
+            ok, msg = validate_string(action, min_len=1, max_len=50, allow_empty=False)
+            if not ok:
+                self._send_json({"success": False, "message": "action: {}".format(msg)}, 400)
+                return True
+
             history = load_history()
             changed = False
 
             if action == "delete":
                 titles = body.get("titles", [])
+                ok, msg = validate_list(titles, max_len=100)
+                if not ok:
+                    self._send_json({"success": False, "message": "titles: {}".format(msg)}, 400)
+                    return True
                 for t in titles:
                     if t in history:
                         del history[t]
@@ -70,23 +81,61 @@ class HistoryRouteMixin:
                 title = body.get("title", "").strip()
                 shareurl = body.get("shareurl", "").strip()
                 category = body.get("category", "movie")
-                if title and shareurl:
-                    history[title] = {
-                        "shareurl": shareurl,
-                        "category": category,
-                        "date": body.get("date", ""),
-                    }
-                    changed = True
-                    log("添加历史记录: {}".format(title))
+
+                ok, msg = validate_string(title, min_len=1, max_len=200, allow_empty=False)
+                if not ok:
+                    self._send_json({"success": False, "message": "title: {}".format(msg)}, 400)
+                    return True
+
+                ok, msg = validate_string(shareurl, min_len=1, max_len=500, allow_empty=False)
+                if not ok:
+                    self._send_json({"success": False, "message": "shareurl: {}".format(msg)}, 400)
+                    return True
+
+                ok, msg = validate_string(category, min_len=1, max_len=50)
+                if not ok:
+                    self._send_json({"success": False, "message": "category: {}".format(msg)}, 400)
+                    return True
+
+                history[title] = {
+                    "shareurl": shareurl,
+                    "category": category,
+                    "date": body.get("date", ""),
+                }
+                changed = True
+                log("添加历史记录: {}".format(title))
 
             elif action == "update":
                 title = body.get("title", "")
-                if title in history:
-                    for k in ("shareurl", "category", "date"):
-                        if k in body:
-                            history[title][k] = body[k]
-                    changed = True
-                    log("更新历史记录: {}".format(title))
+
+                ok, msg = validate_string(title, min_len=1, max_len=200, allow_empty=False)
+                if not ok:
+                    self._send_json({"success": False, "message": "title: {}".format(msg)}, 400)
+                    return True
+
+                if title not in history:
+                    self._send_json({"success": False, "message": "title not found"}, 404)
+                    return True
+
+                for k in ("shareurl", "category", "date"):
+                    if k in body:
+                        if k == "shareurl":
+                            ok, msg = validate_string(body[k], min_len=1, max_len=500)
+                            if not ok:
+                                self._send_json({"success": False, "message": "shareurl: {}".format(msg)}, 400)
+                                return True
+                        elif k == "category":
+                            ok, msg = validate_string(body[k], min_len=1, max_len=50)
+                            if not ok:
+                                self._send_json({"success": False, "message": "category: {}".format(msg)}, 400)
+                                return True
+                        history[title][k] = body[k]
+                changed = True
+                log("更新历史记录: {}".format(title))
+
+            else:
+                self._send_json({"success": False, "message": "unknown action: {}".format(action)}, 400)
+                return True
 
             if changed:
                 save_history(history)

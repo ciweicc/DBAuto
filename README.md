@@ -12,7 +12,7 @@
 - 🔐 **安全认证**：PBKDF2 密码哈希、Token 登录保护、登录频率限制
 - 🎨 **Apple 风格 UI**：深色/浅色主题切换、毛玻璃卡片、iOS 风格组件
 - 🐳 **Docker 部署**：容器化运行，数据目录绑定持久化
-- ⚡ **高性能**：HTTP 连接池、搜索并发、Cron 缓存、gzip 压缩等多项优化
+- ⚡ **高性能**：HTTP 连接池、搜索并发、TTLCache、gzip 压缩等多项优化
 
 ## 项目结构
 
@@ -20,24 +20,30 @@
 main.py                      # 入口文件
 app_modules/                 # 后端 Python 模块
 ├── main.py                  # 启动逻辑（start() 函数）
-├── config.py                # 配置管理（ConfigManager 单例）
+├── config.py                # 配置管理（ConfigManager 单例，支持环境变量）
 ├── auth.py                  # 认证模块（PBKDF2 密码哈希、登录频率限制）
 ├── utils.py                 # HTTP 连接池、TTLCache、原子写、SSE 广播
-├── storage.py               # SQLite 存储（历史记录、执行历史）
+├── validator.py             # 输入验证（字符串、URL、端口、Cron、时间等）
+├── api_client.py            # API 客户端封装（PanSouClient、QASClient、OpenListClient）
+├── storage.py               # SQLite 存储（历史记录、执行历史，自动迁移 JSON）
 ├── douban.py                # 豆瓣榜单（带 1 小时缓存）
-├── transfer.py              # 转存执行（搜索并发、失效检测并发）
-├── scheduler.py             # 定时调度（Cron 解析缓存、精确睡眠）
+├── transfer.py              # 转存执行（搜索并发、失效检测并发、模糊匹配优化）
+├── scheduler.py             # 定时调度（croniter 库、事件驱动配置更新）
 ├── routes_base.py           # 基础路由处理类
-├── routes_static.py         # 静态文件路由（gzip 压缩）
-├── routes_auth.py           # 认证相关路由
-├── routes_transfer.py       # 转存相关路由
-├── routes_history.py        # 历史记录路由
-├── routes_config.py         # 配置 & 调度路由
+├── routes_static.py         # 静态文件路由（gzip 压缩、健康检查）
+├── routes_auth.py           # 认证相关路由（输入验证）
+├── routes_transfer.py       # 转存相关路由（输入验证）
+├── routes_history.py        # 历史记录路由（输入验证）
+├── routes_config.py         # 配置 & 调度路由（输入验证）
 ├── routes.py                # 路由组合（Mixin 多继承）
 └── server.py                # ThreadedHTTPServer
 static/                      # 前端
 ├── index_new.html           # 主页面（单文件内联 CSS + JS）
 └── login_new.html           # 登录页
+tests/                       # 单元测试
+├── test_validator.py        # 验证器测试
+├── test_utils.py            # TTLCache 测试
+└── test_transfer.py         # 历史匹配测试
 ```
 
 ## 依赖服务
@@ -52,7 +58,23 @@ static/                      # 前端
 
 ## 快速开始
 
-### Docker 部署
+### Docker Compose 部署（推荐）
+
+```bash
+# 创建数据目录
+mkdir -p ./data
+
+# 构建并启动
+docker-compose up -d --build
+
+# 查看状态
+docker-compose ps
+
+# 查看日志
+docker-compose logs -f
+```
+
+### Docker 命令部署
 
 ```bash
 docker run -d \
@@ -60,6 +82,9 @@ docker run -d \
   --restart unless-stopped \
   -p 3001:3001 \
   -v /opt/douban-history:/data/douban-history \
+  -e DATA_DIR=/data/douban-history \
+  -e PORT=3001 \
+  -e TZ=Asia/Shanghai \
   -e PANSOU=http://192.168.1.1:8080 \
   -e QAS=http://192.168.1.1:5005 \
   -e QAS_TOKEN=your_token \
@@ -72,11 +97,13 @@ docker run -d \
 
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
+| `DATA_DIR` | `/data/douban-history` | 数据存储目录 |
 | `PORT` | `3001` | 服务端口 |
-| `PANSOU` | — | PanSou 搜索服务地址 |
-| `QAS` | — | QAS 转存服务地址 |
+| `TZ` | `Asia/Shanghai` | 时区设置 |
+| `PANSOU` | `http://192.168.1.1:8080` | PanSou 搜索服务地址 |
+| `QAS` | `http://192.168.1.1:5005` | QAS 转存服务地址 |
 | `QAS_TOKEN` | — | QAS API Token |
-| `OPENLIST_URL` | — | OpenList 服务地址 |
+| `OPENLIST_URL` | `http://192.168.1.1:5244` | OpenList 服务地址 |
 | `OPENLIST_TOKEN` | — | OpenList API Token |
 | `OPENLIST_BASE_PATH` | — | 转存目标基础路径 |
 | `AUTH_USER` | `root` | 登录用户名 |
@@ -88,10 +115,11 @@ docker run -d \
 
 | 文件 | 说明 |
 |------|------|
+| `app.db` | SQLite 数据库（历史记录、执行历史） |
 | `config.json` | 系统配置（API 地址、Token） |
 | `settings.json` | 定时任务设置 |
-| `transfer_history.json` | 转存历史记录 |
-| `exec_history.json` | 定时任务执行历史 |
+
+> **注意**：旧版的 `transfer_history.json` 和 `exec_history.json` 会自动迁移到 SQLite。
 
 ## API 接口
 
@@ -135,6 +163,7 @@ docker run -d \
 | GET | `/api/config` | 获取系统配置 |
 | POST | `/api/config` | 保存系统配置 |
 | GET | `/api/search` | PanSou 资源搜索 |
+| GET | `/health` | 健康检查 |
 
 ---
 

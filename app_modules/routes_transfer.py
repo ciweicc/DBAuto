@@ -10,6 +10,7 @@ from transfer import (
 )
 from storage import load_history, save_history, add_exec_record
 from utils import log, sse_broadcast
+from validator import validate_string, validate_positive_int, validate_list, validate_task
 
 
 class TransferRouteMixin:
@@ -29,9 +30,17 @@ class TransferRouteMixin:
             params = self._get_query_params()
             keyword = params.get("keyword", "").strip()
             category = params.get("category", "movie")
-            if not keyword:
-                self._send_json([])
+
+            ok, msg = validate_string(keyword, min_len=1, max_len=200, allow_empty=False)
+            if not ok:
+                self._send_json({"error": "keyword: {}".format(msg)}, 400)
                 return True
+
+            ok, msg = validate_string(category, min_len=1, max_len=50)
+            if not ok:
+                self._send_json({"error": "category: {}".format(msg)}, 400)
+                return True
+
             try:
                 results = search_pansou(keyword, category)
                 self._send_json(results)
@@ -42,9 +51,15 @@ class TransferRouteMixin:
 
         if route == "/api/check_expired":
             params = self._get_query_params()
-            limit = int(params.get("limit", 20))
+            limit = params.get("limit", 20)
+
+            ok, msg = validate_positive_int(limit, min_val=1, max_val=500)
+            if not ok:
+                self._send_json({"error": "limit: {}".format(msg)}, 400)
+                return True
+
             try:
-                results = check_expired_tasks(limit)
+                results = check_expired_tasks(int(limit))
                 self._send_json({"total": len(results), "items": results})
             except Exception as e:
                 log("失效检测失败: {}".format(e))
@@ -58,11 +73,20 @@ class TransferRouteMixin:
             if is_transfer_running():
                 self._send_json({"success": False, "message": "busy", "conflict": True})
                 return True
+
             tasks_input = body.get("tasks", [])
             limit = body.get("limit", 5)
-            if not tasks_input:
-                self._send_json({"success": False, "message": "no tasks"})
+
+            ok, msg = validate_list(tasks_input, min_len=1, max_len=100, item_validator=validate_task)
+            if not ok:
+                self._send_json({"success": False, "message": "tasks: {}".format(msg)}, 400)
                 return True
+
+            ok, msg = validate_positive_int(limit, min_val=1, max_val=100)
+            if not ok:
+                self._send_json({"success": False, "message": "limit: {}".format(msg)}, 400)
+                return True
+
             uniq = build_transfer_tasks(tasks_input)
             Thread(target=run_transfer, args=(uniq, limit), daemon=True).start()
             self._send_json({"success": True, "message": "started {}".format(len(uniq))})
@@ -79,10 +103,27 @@ class TransferRouteMixin:
             savepath = body.get("savepath", "").strip()
             category = body.get("category", "movie")
             shareurl = body.get("shareurl", "")
-            if not title:
-                self._send_json({"success": False, "message": "title required"})
+
+            ok, msg = validate_string(title, min_len=1, max_len=200, allow_empty=False)
+            if not ok:
+                self._send_json({"success": False, "message": "title: {}".format(msg)}, 400)
                 return True
+
+            ok, msg = validate_string(savepath, min_len=1, max_len=500, allow_empty=False)
+            if not ok:
+                self._send_json({"success": False, "message": "savepath: {}".format(msg)}, 400)
+                return True
+
+            ok, msg = validate_string(category, min_len=1, max_len=50)
+            if not ok:
+                self._send_json({"success": False, "message": "category: {}".format(msg)}, 400)
+                return True
+
             if shareurl:
+                ok, msg = validate_string(shareurl, min_len=1, max_len=500)
+                if not ok:
+                    self._send_json({"success": False, "message": "shareurl: {}".format(msg)}, 400)
+                    return True
                 pattern = body.get("pattern", "")
                 replace = body.get("replace", "")
                 Thread(target=add_and_run, args=(title, shareurl, savepath, pattern, replace), daemon=True).start()
@@ -95,13 +136,22 @@ class TransferRouteMixin:
         if route == "/api/search_replace":
             title = body.get("title", "").strip()
             shareurl = body.get("shareurl", "").strip()
-            if not title or not shareurl:
-                self._send_json({"success": False, "message": "title and shareurl required"})
+
+            ok, msg = validate_string(title, min_len=1, max_len=200, allow_empty=False)
+            if not ok:
+                self._send_json({"success": False, "message": "title: {}".format(msg)}, 400)
                 return True
+
+            ok, msg = validate_string(shareurl, min_len=1, max_len=500, allow_empty=False)
+            if not ok:
+                self._send_json({"success": False, "message": "shareurl: {}".format(msg)}, 400)
+                return True
+
             valid = validate_share_link(shareurl)
             if not valid:
                 self._send_json({"success": False, "message": "invalid share link"})
                 return True
+
             history = load_history()
             updated = False
             if title in history:
@@ -116,6 +166,12 @@ class TransferRouteMixin:
 
         if route == "/api/update_expired":
             items = body.get("items", [])
+
+            ok, msg = validate_list(items, max_len=100)
+            if not ok:
+                self._send_json({"success": False, "message": "items: {}".format(msg)}, 400)
+                return True
+
             history = load_history()
             count = 0
             for item in items:
