@@ -932,7 +932,7 @@ function initSSE(){
   if(!window.EventSource) return;
   var es = new EventSource('/api/sse');
   es.addEventListener('schedule_update', function(){
-    loadSchedule(); loadDashboard();
+    loadDashboard(); // 只更新仪表盘，不重新渲染目录列表（避免输入框丢失焦点）
   });
   es.addEventListener('config_update', function(){
     loadConfig();
