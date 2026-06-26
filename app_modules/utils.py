@@ -283,10 +283,9 @@ SSE_TIMEOUT = 300
 
 def _prune_sse_clients():
     now = time.time()
-    with sse_lock:
-        expired = [cid for cid, info in sse_clients.items() if now - info["time"] > SSE_TIMEOUT]
-        for cid in expired:
-            del sse_clients[cid]
+    expired = [cid for cid, info in sse_clients.items() if now - info["time"] > SSE_TIMEOUT]
+    for cid in expired:
+        del sse_clients[cid]
 
 def clear_progress():
     log_progress.clear()
@@ -308,21 +307,29 @@ def log(msg):
     log_progress.append(line)
     sse_broadcast("log", {"line": msg})
 
+_in_sse_broadcast = False
+
 def sse_broadcast(evt, data):
-    payload = "event: {}\ndata: {}\n\n".format(evt, json.dumps(data, ensure_ascii=False))
-    now = time.time()
-    with sse_lock:
-        dead = []
-        for cid, info in sse_clients.items():
-            try:
-                info["queue"].put(payload)
-                info["time"] = now
-            except Exception as e:
-                log("SSE 客户端 {} 发送失败: {}".format(cid, e))
-                dead.append(cid)
-        for cid in dead:
-            del sse_clients[cid]
-        _prune_sse_clients()
+    global _in_sse_broadcast
+    if _in_sse_broadcast:
+        return
+    _in_sse_broadcast = True
+    try:
+        payload = "event: {}\ndata: {}\n\n".format(evt, json.dumps(data, ensure_ascii=False))
+        now = time.time()
+        with sse_lock:
+            dead = []
+            for cid, info in sse_clients.items():
+                try:
+                    info["queue"].put(payload)
+                    info["time"] = now
+                except Exception:
+                    dead.append(cid)
+            for cid in dead:
+                del sse_clients[cid]
+            _prune_sse_clients()
+    finally:
+        _in_sse_broadcast = False
 
 _http_session = None
 _http_session_lock = Lock()
