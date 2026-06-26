@@ -10,7 +10,7 @@ from transfer import reset_qas_client
 from utils import log, sse_broadcast
 from storage import add_exec_record
 from threading import Thread
-from validator import validate_string, validate_url, validate_cron, validate_time, validate_positive_int
+from validator import validate_string, validate_url, validate_cron, validate_time, validate_positive_int, validate_list
 
 
 class ConfigRouteMixin:
@@ -131,6 +131,12 @@ class ConfigRouteMixin:
                             ok, msg = validate_positive_int(section_data["limit"], min_val=1, max_val=100)
                             if not ok:
                                 self._send_json({"success": False, "message": "transfer limit: {}".format(msg)}, 400)
+                                return True
+
+                        if "directories" in section_data:
+                            ok, msg = validate_list(section_data["directories"], max_len=100)
+                            if not ok:
+                                self._send_json({"success": False, "message": "{} directories: {}".format(section, msg)}, 400)
                                 return True
 
                         settings[section].update(section_data)

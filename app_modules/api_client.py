@@ -1,5 +1,5 @@
 import urllib.parse
-from utils import http_get, http_post, log
+from utils import http_get, http_post, http_post_stream, log
 
 
 class APIClient:

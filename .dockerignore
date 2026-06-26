@@ -18,5 +18,3 @@ data/
 .venv/
 venv/
 docs/
-tests/
-docker-compose.yml
