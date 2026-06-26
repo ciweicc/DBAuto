@@ -61,8 +61,8 @@ def add_to_qas(name):
     with _qas_cache_lock:
         _qas_cache.add(name)
 
-def search_pansou(keyword):
-    cached = _pansou_cache.get(keyword)
+def search_pansou(keyword, category="movie"):
+    cached = _pansou_cache.get("{}:{}".format(category, keyword))
     if cached is not None:
         return cached
     for attempt in range(2):
@@ -70,7 +70,7 @@ def search_pansou(keyword):
             client = _get_pansou_client()
             data = client.search(keyword)
             result = data.get("data", {}).get("merged_by_type", {}).get("quark", [])
-            _pansou_cache.set(keyword, result)
+            _pansou_cache.set("{}:{}".format(category, keyword), result)
             return result
         except Exception as e:
             if attempt == 0:
@@ -109,12 +109,9 @@ def add_and_run(title, shareurl, savepath, pattern="", replace=""):
     if not add_res.get("success"):
         return {"status": "error", "msg": add_res.get("message", "fail")}
     add_to_qas(title)
-    url = "{}/run_script_now?token={}".format(client.base_url, client.token)
-    from utils import _get_http_session
-    session = _get_http_session()
     lines = []
     try:
-        with session.post(url, json={"tasklist": [{"taskname": title, "shareurl": shareurl, "savepath": savepath}]}, timeout=120, stream=True) as resp:
+        with client.run_script_now_stream([{"taskname": title, "shareurl": shareurl, "savepath": savepath}]) as resp:
             resp.raise_for_status()
             for raw in resp.iter_lines(decode_unicode=True):
                 line = raw.strip() if raw else ""
@@ -145,12 +142,14 @@ def _check_single_expired(task):
         log("检测分享链接失败 {}: {}".format(url, e))
         return task, True
 
-def check_expired_tasks():
+def check_expired_tasks(limit=None):
     try:
         client = _get_qas_client()
         data = client.get_data().get("data", {})
         tasks = data.get("tasklist", [])
         to_check = [t for t in tasks if t.get("shareurl", "") and "quark.cn" in t.get("shareurl", "")]
+        if limit:
+            to_check = to_check[:limit]
         if not to_check:
             return []
         log("检测失效链接: {} 个，并发数: {}".format(len(to_check), EXPIRED_CHECK_CONCURRENCY))

@@ -149,9 +149,9 @@ class TransferRouteMixin:
                 self._send_json({"success": False, "message": "shareurl: {}".format(msg)}, 400)
                 return True
 
-            valid = validate_share_link(shareurl)
+            valid, msg = validate_share_link(shareurl)
             if not valid:
-                self._send_json({"success": False, "message": "invalid share link"})
+                self._send_json({"success": False, "message": msg or "invalid share link"})
                 return True
 
             history = load_history()

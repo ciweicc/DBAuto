@@ -26,6 +26,10 @@ class APIClient:
         url = self._build_url(path)
         return http_post(url, data or {}, timeout=self.timeout)
 
+    def post_stream(self, path, data=None, timeout=120):
+        url = self._build_url(path)
+        return http_post_stream(url, data or {}, timeout=timeout)
+
 
 class PanSouClient(APIClient):
     def search(self, keyword):
@@ -55,6 +59,9 @@ class QASClient(APIClient):
 
     def run_script_now(self, tasklist):
         return self.post("/run_script_now", {"tasklist": tasklist, "token": self.token})
+
+    def run_script_now_stream(self, tasklist):
+        return self.post_stream("/run_script_now", {"tasklist": tasklist, "token": self.token})
 
     def update(self, data):
         data["token"] = self.token

@@ -159,6 +159,9 @@ def sse_broadcast(evt, data):
 
 _http_session = None
 _http_session_lock = Lock()
+HTTP_TIMEOUT_GET = 30
+HTTP_TIMEOUT_POST = 15
+HTTP_TIMEOUT_STREAM = 120
 
 def _get_http_session():
     global _http_session
@@ -178,20 +181,43 @@ def _get_http_session():
             _http_session.mount("https://", adapter)
         return _http_session
 
-def http_get(url, timeout=60, referer=None):
+def http_get(url, timeout=None, referer=None):
     session = _get_http_session()
     headers = {}
     if referer:
         headers["Referer"] = referer
-    resp = session.get(url, timeout=timeout, headers=headers)
-    resp.raise_for_status()
-    return resp.json()
+    t = timeout or HTTP_TIMEOUT_GET
+    for attempt in range(3):
+        try:
+            resp = session.get(url, timeout=t, headers=headers)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.RequestException as e:
+            if attempt < 2:
+                log("HTTP GET 重试 {}: {}".format(attempt + 1, e))
+                time.sleep(2)
+            else:
+                raise
 
-def http_post(url, data, timeout=15):
+def http_post(url, data, timeout=None):
     session = _get_http_session()
-    resp = session.post(url, json=data, timeout=timeout)
-    resp.raise_for_status()
-    return resp.json()
+    t = timeout or HTTP_TIMEOUT_POST
+    for attempt in range(3):
+        try:
+            resp = session.post(url, json=data, timeout=t)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.RequestException as e:
+            if attempt < 2:
+                log("HTTP POST 重试 {}: {}".format(attempt + 1, e))
+                time.sleep(2)
+            else:
+                raise
+
+def http_post_stream(url, data, timeout=None):
+    session = _get_http_session()
+    t = timeout or HTTP_TIMEOUT_STREAM
+    return session.post(url, json=data, timeout=t, stream=True)
 
 def atomic_write_json(filepath, data):
     dirname = os.path.dirname(filepath)
