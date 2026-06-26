@@ -634,28 +634,14 @@ function togglePause(){
 
 function startLogPoll(){
   if(logPollTimer)clearInterval(logPollTimer);
-  var last=0;
   logPollTimer = setInterval(async function(){
     if(document.getElementById('logCard').style.display==='none')return;
     try{
       var d = await apiGet('/api/transfer/status');
-      if(d.running)document.getElementById('stopBtn').style.display='inline-block';
-      if(d.stats){
-        document.getElementById('stSearched').textContent=d.stats.searched||0;
-        document.getElementById('stOK').textContent=d.stats.ok||0;
-        document.getElementById('stSkip').textContent=d.stats.skipped||0;
-        document.getElementById('stFail').textContent=d.stats.failed||0;
-        document.getElementById('stTotal').textContent=d.stats.total||0;
-        updateProgress(d.stats);
-      }
-      if(d.progress&&d.progress.length>last){
-        for(var i=last;i<d.progress.length;i++)addLog(d.progress[i]);
-        last = d.progress.length;
-      }
-      if(!d.running&&last>0){clearInterval(logPollTimer);logPollTimer=null;
+      if(!d.running&&logPollTimer){clearInterval(logPollTimer);logPollTimer=null;
         document.getElementById('stopBtn').style.display='none';addLog('全部完成');}
     }catch(e){}
-  },1500);
+  },3000);
 }
 function updateProgress(stats){
   var total=(stats.total||0), done=(stats.ok||0)+(stats.skipped||0)+(stats.failed||0);
@@ -936,13 +922,29 @@ function initSSE(){
   if(!window.EventSource) return;
   var es = new EventSource('/api/sse');
   es.addEventListener('schedule_update', function(){
-    loadDashboard(); // 只更新仪表盘，不重新渲染目录列表（避免输入框丢失焦点）
+    loadDashboard();
   });
   es.addEventListener('config_update', function(){
     loadConfig();
   });
   es.addEventListener('history_update', function(){
     loadExecHistory();
+  });
+  es.addEventListener('transfer_progress', function(e){
+    var d=JSON.parse(e.data);
+    if(d.stats){
+      document.getElementById('stSearched').textContent=d.stats.searched||0;
+      document.getElementById('stOK').textContent=d.stats.ok||0;
+      document.getElementById('stSkip').textContent=d.stats.skipped||0;
+      document.getElementById('stFail').textContent=d.stats.failed||0;
+      document.getElementById('stTotal').textContent=d.stats.total||0;
+      updateProgress(d.stats);
+    }
+    if(d.running)document.getElementById('stopBtn').style.display='inline-block';
+  });
+  es.addEventListener('log', function(e){
+    var d=JSON.parse(e.data);
+    if(d.line)addLog(d.line);
   });
   es.onerror = function(){
     es.close();

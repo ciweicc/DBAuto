@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from threading import Lock, get_ident, enumerate as enumerate_threads
 from config import ConfigManager
-from utils import http_get, http_post, log, TTLCache, clear_progress
+from utils import http_get, http_post, log, TTLCache, clear_progress, sse_broadcast
 from storage import load_history, save_history
 from douban import get_douban_list
 
@@ -192,12 +192,35 @@ def update_expired_task(task, new_url):
         log("更新失效出错: {}".format(e))
         return False
 
-def _find_in_history(title, history):
+def _clean_title(title):
+    return re.sub(r'[^\u4e00-\u9fff0-9a-zA-Z]', '', title).lower()
+
+def _build_history_index(history):
+    index = {
+        "exact": set(history.keys()),
+        "clean": set()
+    }
+    for k in history:
+        index["clean"].add(_clean_title(k))
+    index["items"] = [(k, _clean_title(k)) for k in history]
+    return index
+
+def _find_in_history(title, history, index=None):
     if title in history:
         return True
-    title_clean = re.sub(r'[^\u4e00-\u9fff0-9a-zA-Z]', '', title).lower()
+    if index:
+        if title in index["exact"]:
+            return True
+        title_clean = _clean_title(title)
+        if title_clean in index["clean"]:
+            return True
+        for k, k_clean in index["items"]:
+            if title_clean == k_clean or (len(title_clean) >= 4 and title_clean in k_clean) or (len(k_clean) >= 4 and k_clean in title_clean):
+                return True
+        return False
+    title_clean = _clean_title(title)
     for k in history:
-        k_clean = re.sub(r'[^\u4e00-\u9fff0-9a-zA-Z]', '', k).lower()
+        k_clean = _clean_title(k)
         if title_clean == k_clean or (len(title_clean) >= 4 and title_clean in k_clean) or (len(k_clean) >= 4 and k_clean in title_clean):
             return True
     return False
@@ -258,6 +281,7 @@ def run_transfer(task_list, limit):
     clear_progress()
     log("开始转存，上限{}".format(limit))
     history = load_history()
+    history_index = _build_history_index(history)
     transferred = 0
     results = []
     error_msg = None
@@ -266,11 +290,12 @@ def run_transfer(task_list, limit):
         pending_tasks = []
         for task in task_list:
             title = task["title"]
-            if _find_in_history(title, history):
+            if _find_in_history(title, history, history_index):
                 log("已跳过: {}".format(title))
                 results.append({"title": title, "status": "skipped", "msg": "skip"})
                 with transfer_lock:
                     transfer_status["stats"]["skipped"] += 1
+                    sse_broadcast("transfer_progress", dict(transfer_status))
                 continue
             pending_tasks.append(task)
 
@@ -290,12 +315,14 @@ def run_transfer(task_list, limit):
                     search_results[task["title"]] = sr
                     with transfer_lock:
                         transfer_status["stats"]["searched"] += 1
+                        sse_broadcast("transfer_progress", dict(transfer_status))
                 except Exception as e:
                     task = future_map[future]
                     log("搜索任务异常 {}: {}".format(task["title"], e))
                     search_results[task["title"]] = []
                     with transfer_lock:
                         transfer_status["stats"]["searched"] += 1
+                        sse_broadcast("transfer_progress", dict(transfer_status))
 
         log("搜索完成，开始转存...")
 
@@ -315,6 +342,7 @@ def run_transfer(task_list, limit):
                 results.append({"title": title, "status": "not_found", "msg": "not_found"})
                 with transfer_lock:
                     transfer_status["stats"]["failed"] += 1
+                    sse_broadcast("transfer_progress", dict(transfer_status))
                 continue
 
             chosen = sr[0]
@@ -330,12 +358,15 @@ def run_transfer(task_list, limit):
                 transferred += 1
                 with transfer_lock:
                     transfer_status["stats"]["ok"] += 1
+                    sse_broadcast("transfer_progress", dict(transfer_status))
             elif res["status"] == "exists":
                 with transfer_lock:
                     transfer_status["stats"]["skipped"] += 1
+                    sse_broadcast("transfer_progress", dict(transfer_status))
             else:
                 with transfer_lock:
                     transfer_status["stats"]["failed"] += 1
+                    sse_broadcast("transfer_progress", dict(transfer_status))
             time.sleep(3)
     except Exception as e:
         error_msg = str(e)

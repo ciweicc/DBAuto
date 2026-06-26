@@ -39,7 +39,7 @@ def _get_static_file(relpath):
     with _static_cache_lock:
         cached = _static_cache.get(fp)
         if cached and cached[0] == mtime:
-            return cached[1], fp
+            return cached[1], fp, mtime
     ext = os.path.splitext(fp)[1].lower()
     ctype = MIME.get(ext, "application/octet-stream")
     try:
@@ -54,17 +54,26 @@ def _get_static_file(relpath):
     with _static_cache_lock:
         _static_cache[fp] = (mtime, data)
         _prune_static_cache()
-    return data, fp
+    return data, fp, mtime
 
 
 class StaticRouteMixin:
     """静态文件 & SSE 路由"""
 
-    def _send_static_file(self, data, cache_control=None):
+    def _send_static_file(self, data, cache_control=None, mtime=None):
         ctype, body, gzipped = data
         accept_encoding = self.headers.get("Accept-Encoding", "")
         use_gzip = gzipped is not None and "gzip" in accept_encoding
         resp_body = gzipped if use_gzip else body
+        
+        if mtime:
+            etag = '"{}"'.format(int(mtime))
+            if_none_match = self.headers.get("If-None-Match", "")
+            if if_none_match == etag:
+                self.send_response(304)
+                self.end_headers()
+                return
+        
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(resp_body)))
@@ -72,22 +81,25 @@ class StaticRouteMixin:
             self.send_header("Content-Encoding", "gzip")
         if cache_control:
             self.send_header("Cache-Control", cache_control)
+        if mtime:
+            self.send_header("ETag", etag)
+            self.send_header("Last-Modified", time.strftime("%a, %d %b %Y %H:%M:%S GMT", time.gmtime(mtime)))
         self.end_headers()
         self.wfile.write(resp_body)
 
     def _handle_static_get(self, route):
         if route == "/" or route == "/index.html":
-            data, _ = _get_static_file("index_new.html")
+            data, _, mtime = _get_static_file("index_new.html")
             if data:
-                self._send_static_file(data)
+                self._send_static_file(data, mtime=mtime)
                 return True
             self._send_json({"error": "not found"}, 404)
             return True
 
         if route == "/login.html":
-            data, _ = _get_static_file("login_new.html")
+            data, _, mtime = _get_static_file("login_new.html")
             if data:
-                self._send_static_file(data)
+                self._send_static_file(data, mtime=mtime)
                 return True
             self._send_json({"error": "not found"}, 404)
             return True
@@ -97,9 +109,9 @@ class StaticRouteMixin:
             if ".." in rel or rel.startswith("/"):
                 self._send_json({"error": "invalid path"}, 400)
                 return True
-            data, _ = _get_static_file(rel)
+            data, _, mtime = _get_static_file(rel)
             if data:
-                self._send_static_file(data, cache_control="public, max-age=86400")
+                self._send_static_file(data, cache_control="public, max-age=86400", mtime=mtime)
             else:
                 self._send_json({"error": "not found"}, 404)
             return True

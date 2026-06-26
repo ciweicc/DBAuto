@@ -50,6 +50,8 @@ def _init_db():
         )
     """)
     conn.execute("CREATE INDEX IF NOT EXISTS idx_exec_time ON exec_history(time DESC)")
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA synchronous=NORMAL")
     conn.commit()
 
 
