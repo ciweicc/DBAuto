@@ -108,6 +108,18 @@ class StaticRouteMixin:
             self._send_json({"status": "ok", "time": time.time()})
             return True
 
+        if route == "/version":
+            version = "1.0.0"
+            version_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
+            if os.path.isfile(version_path):
+                try:
+                    with open(version_path, "r") as f:
+                        version = f.read().strip()
+                except Exception:
+                    pass
+            self._send_json({"version": version})
+            return True
+
         return False
 
     def _handle_sse(self):

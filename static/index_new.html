@@ -251,6 +251,10 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
     <div><span style="color:var(--accent)" id="dash7OK">0</span> 成功 / <span style="color:var(--text2)" id="dash7Fail">0</span> 失败</div>
     <div style="color:var(--text2);font-size:11px;margin-top:2px">共 <span id="dash7Total">0</span> 次执行</div>
   </div>
+  <div class="dcard" style="font-size:12px">
+    <div style="color:var(--text3)">版本</div>
+    <div class="num" id="dashVersion" style="font-size:14px;color:var(--text2)">-</div>
+  </div>
 </div>
 
 <!-- Tabs -->
@@ -568,12 +572,15 @@ async function startTransfer(){
   var tasks = getSelectedTasks('tabManual');
   if(!tasks.length){showToast('请至少选择一个榜单',false);return}
   var limit = parseInt(document.getElementById('limit').value)||5;
-  document.getElementById('logCard').style.display='block';
-  document.getElementById('stopBtn').style.display='inline-block';
-  logBefore=[]; document.getElementById('log').innerHTML='';
   try{
     var d = await apiPost('/api/transfer',{tasks:tasks,limit:limit});
-    if(d.success){addLog('[开始转存]');startLogPoll()}
+    if(d.success){
+      document.getElementById('logCard').style.display='block';
+      document.getElementById('stopBtn').style.display='inline-block';
+      logBefore=[]; document.getElementById('log').innerHTML='';
+      addLog('[开始转存]');
+      startLogPoll();
+    }
     else{
       document.getElementById('stopBtn').style.display='none';
       if(d.conflict){addLog('已有任务在运行，恢复监控...');checkRunningStatus()}
@@ -902,6 +909,7 @@ async function loadDashboard(){
     document.getElementById('dash7OK').textContent = days7OK;
     document.getElementById('dash7Fail').textContent = days7Fail;
     document.getElementById('dash7Total').textContent = days7Total;
+    try{var v=await apiGet('/version');if(v.version)document.getElementById('dashVersion').textContent=v.version}catch(e){}
   }catch(e){}
 }
 

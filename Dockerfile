@@ -17,6 +17,7 @@ RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r re
 COPY main.py ./
 COPY app_modules/ ./app_modules/
 COPY static/ ./static/
+COPY VERSION ./
 COPY docker-entrypoint.sh ./
 
 RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
