@@ -225,7 +225,7 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
 
 <!-- Header -->
 <div class="header">
-  <h1>豆瓣自动转存</h1>
+  <h1>豆瓣自动转存 <span id="headerVersion" style="font-size:12px;font-weight:400;color:var(--text3);margin-left:6px">v1.0.0</span></h1>
   <div class="header-btns">
     <button class="icon-btn" onclick="openSearch()" title="搜索">🔍</button>
     <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="切换主题">🌙</button>
@@ -250,10 +250,6 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
     <div style="color:var(--text2);margin-bottom:4px">近 7 天</div>
     <div><span style="color:var(--accent)" id="dash7OK">0</span> 成功 / <span style="color:var(--text2)" id="dash7Fail">0</span> 失败</div>
     <div style="color:var(--text2);font-size:11px;margin-top:2px">共 <span id="dash7Total">0</span> 次执行</div>
-  </div>
-  <div class="dcard" style="font-size:12px">
-    <div style="color:var(--text3)">版本</div>
-    <div class="num" id="dashVersion" style="font-size:14px;color:var(--text2)">-</div>
   </div>
 </div>
 
@@ -909,7 +905,7 @@ async function loadDashboard(){
     document.getElementById('dash7OK').textContent = days7OK;
     document.getElementById('dash7Fail').textContent = days7Fail;
     document.getElementById('dash7Total').textContent = days7Total;
-    try{var v=await apiGet('/version');if(v.version)document.getElementById('dashVersion').textContent=v.version}catch(e){}
+    try{var v=await apiGet('/version');if(v.version)document.getElementById('headerVersion').textContent='v'+v.version}catch(e){}
   }catch(e){}
 }
 
