@@ -180,6 +180,12 @@ def check_expired_tasks(limit=None):
         with ThreadPoolExecutor(max_workers=EXPIRED_CHECK_CONCURRENCY) as executor:
             future_map = {executor.submit(_check_single_expired, t): t for t in to_check}
             for future in as_completed(future_map):
+                # 检查停止标志
+                if transfer_status.get("stop"):
+                    for f in future_map:
+                        f.cancel()
+                    log("检测已被用户终止")
+                    break
                 try:
                     task, is_expired = future.result()
                     if is_expired:
@@ -236,6 +242,10 @@ def fix_expired_tasks():
         results = []
         
         for task in expired:
+            # 检查停止标志
+            if transfer_status.get("stop"):
+                log("修复已被用户终止")
+                break
             taskname = task.get("taskname", "")
             log("搜索替换: {}".format(taskname))
             
