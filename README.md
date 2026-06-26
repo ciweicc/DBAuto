@@ -74,33 +74,6 @@ python main.py
 
 > **依赖说明**：`cryptography` 用于敏感信息加密（Token），`croniter` 用于 Cron 表达式解析，`pytest` 用于单元测试。
 
-### Docker Compose 部署（推荐）
-
-从 GitHub 克隆代码后直接构建部署：
-
-```bash
-# 1. 克隆代码
-git clone https://github.com/ciweicc/DBAuto.git
-cd DBAuto
-
-# 2. 创建数据目录
-mkdir -p ./data
-
-# 3. 构建并启动
-docker-compose up -d --build
-
-# 4. 查看状态（健康检查）
-docker-compose ps
-
-# 5. 查看日志
-docker-compose logs -f
-
-# 6. 停止服务
-docker-compose down
-```
-
-服务启动后访问：`http://服务器IP:3001`
-
 ### 使用 GitHub Container Registry 镜像（推荐）
 
 镜像已自动构建，支持 **x86_64** 和 **ARM64** 架构，无需本地构建：
@@ -123,20 +96,44 @@ docker run -d \
 
 > **架构说明**：镜像自动识别主机架构，无论是 x86_64（Intel/AMD）还是 ARM64（树莓派、Apple Silicon）均可直接运行，无需指定额外参数。
 
-### Docker 命令部署（本地构建）
+### 本地构建部署
+
+如果你需要修改代码或自定义构建，可以选择以下两种方式：
+
+#### Docker Compose（推荐）
 
 ```bash
 # 1. 克隆代码
 git clone https://github.com/ciweicc/DBAuto.git
 cd DBAuto
 
-# 2. 安装依赖
-pip install -r requirements.txt
+# 2. 创建数据目录
+mkdir -p ./data
 
-# 3. 构建镜像
+# 3. 构建并启动
+docker-compose up -d --build
+
+# 4. 查看状态（健康检查）
+docker-compose ps
+
+# 5. 查看日志
+docker-compose logs -f
+
+# 6. 停止服务
+docker-compose down
+```
+
+#### Docker 命令
+
+```bash
+# 1. 克隆代码
+git clone https://github.com/ciweicc/DBAuto.git
+cd DBAuto
+
+# 2. 构建镜像
 docker build -t dbauto .
 
-# 4. 运行容器
+# 3. 运行容器
 docker run -d \
   --name dbauto \
   --restart unless-stopped \
@@ -152,6 +149,8 @@ docker run -d \
   -e AUTH_PASS=your_password \
   dbauto
 ```
+
+服务启动后访问：`http://服务器IP:3001`
 
 ### 环境变量
 
