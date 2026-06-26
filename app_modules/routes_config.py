@@ -6,6 +6,7 @@ from scheduler import (
     _run_scheduled_transfer, _run_scheduled_expired_check, _run_scheduled_dir_cleanup,
     notify_settings_changed,
 )
+from transfer import reset_qas_client
 from utils import log, sse_broadcast
 from storage import add_exec_record
 from threading import Thread
@@ -96,6 +97,7 @@ class ConfigRouteMixin:
                     cfg[k] = v
 
             save_config(cfg)
+            reset_qas_client()
             log("配置已更新")
             add_exec_record("config", "update config")
             sse_broadcast("config_update", {})

@@ -30,11 +30,24 @@ def _get_pansou_client():
     from api_client import PanSouClient
     return PanSouClient(cfg.pansou, timeout=20)
 
+_qas_client = None
+_qas_client_lock = Lock()
+
 def _get_qas_client():
-    cfg = ConfigManager.get_instance()
-    from api_client import QASClient
-    log("QAS Client 创建，token 长度: {}".format(len(cfg.qas_token or "")))
-    return QASClient(cfg.qas, cfg.qas_token, timeout=20)
+    global _qas_client
+    with _qas_client_lock:
+        if _qas_client is None:
+            cfg = ConfigManager.get_instance()
+            from api_client import QASClient
+            _qas_client = QASClient(cfg.qas, cfg.qas_token, timeout=20)
+            log("QAS Client 创建，token 长度: {}".format(len(cfg.qas_token or "")))
+        return _qas_client
+
+def reset_qas_client():
+    global _qas_client
+    with _qas_client_lock:
+        _qas_client = None
+        init_qas_cache()
 
 def init_qas_cache():
     for attempt in range(3):

@@ -43,29 +43,36 @@ class PanSouClient(APIClient):
 
 
 class QASClient(APIClient):
+    def _add_token(self, params=None):
+        """将 token 添加到查询参数中"""
+        if self.token:
+            p = dict(params) if params else {}
+            p["token"] = self.token
+            return p
+        return params
+
     def get_data(self):
-        return self.get("/data", {"token": self.token})
+        return self.get("/data", self._add_token())
 
     def get_share_detail(self, shareurl):
-        return self.post("/get_share_detail", {"shareurl": shareurl, "token": self.token})
+        return self.post("/get_share_detail?token={}".format(self.token), {"shareurl": shareurl})
 
     def add_task(self, taskname, shareurl, savepath, pattern="", replace=""):
-        payload = {"taskname": taskname, "shareurl": shareurl, "savepath": savepath, "token": self.token}
+        payload = {"taskname": taskname, "shareurl": shareurl, "savepath": savepath}
         if pattern:
             payload["pattern"] = pattern
         if replace:
             payload["replace"] = replace
-        return self.post("/api/add_task", payload)
+        return self.post("/api/add_task?token={}".format(self.token), payload)
 
     def run_script_now(self, tasklist):
-        return self.post("/run_script_now", {"tasklist": tasklist, "token": self.token})
+        return self.post("/run_script_now?token={}".format(self.token), {"tasklist": tasklist})
 
     def run_script_now_stream(self, tasklist):
-        return self.post_stream("/run_script_now", {"tasklist": tasklist, "token": self.token})
+        return self.post_stream("/run_script_now?token={}".format(self.token), {"tasklist": tasklist})
 
     def update(self, data):
-        data["token"] = self.token
-        return self.post("/update", data)
+        return self.post("/update?token={}".format(self.token), data)
 
 
 class OpenListClient(APIClient):
