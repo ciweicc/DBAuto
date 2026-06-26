@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 from threading import Thread, Lock, Event
 from config import load_settings, ConfigManager
 from douban import get_douban_list
-from transfer import run_transfer, check_expired_tasks, is_in_qas, build_transfer_tasks
+from transfer import run_transfer, check_expired_tasks, is_in_qas, build_transfer_tasks, is_transfer_running
 from storage import add_exec_record
 from utils import log, http_post
 
@@ -70,6 +70,9 @@ def _run_scheduled_transfer():
         tasks = t.get("tasks", [])
         limit = t.get("limit", 5)
         if not tasks: return
+        if is_transfer_running():
+            log("定时转存跳过：已有转存任务正在运行")
+            return
         log("定时转存开始")
         uniq = build_transfer_tasks(tasks)
         log("定时转存: {} 条".format(len(uniq)))

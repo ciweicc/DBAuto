@@ -111,6 +111,9 @@ class TransferRouteMixin:
             return True
 
         if route == "/api/transfer_one":
+            if is_transfer_running():
+                self._send_json({"success": False, "message": "busy", "conflict": True})
+                return True
             title = body.get("title", "").strip()
             savepath = body.get("savepath", "").strip()
             category = body.get("category", "movie")

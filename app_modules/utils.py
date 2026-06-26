@@ -279,6 +279,14 @@ log_progress = deque(maxlen=LOG_PROGRESS_MAX)
 sse_clients = {}
 sse_lock = Lock()
 SSE_MAX = 20
+SSE_TIMEOUT = 300
+
+def _prune_sse_clients():
+    now = time.time()
+    with sse_lock:
+        expired = [cid for cid, info in sse_clients.items() if now - info["time"] > SSE_TIMEOUT]
+        for cid in expired:
+            del sse_clients[cid]
 
 def clear_progress():
     log_progress.clear()
@@ -302,16 +310,19 @@ def log(msg):
 
 def sse_broadcast(evt, data):
     payload = "event: {}\ndata: {}\n\n".format(evt, json.dumps(data, ensure_ascii=False))
+    now = time.time()
     with sse_lock:
         dead = []
-        for cid, q in sse_clients.items():
+        for cid, info in sse_clients.items():
             try:
-                q.put(payload)
+                info["queue"].put(payload)
+                info["time"] = now
             except Exception as e:
                 log("SSE 客户端 {} 发送失败: {}".format(cid, e))
                 dead.append(cid)
         for cid in dead:
             del sse_clients[cid]
+        _prune_sse_clients()
 
 _http_session = None
 _http_session_lock = Lock()

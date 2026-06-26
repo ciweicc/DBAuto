@@ -2,7 +2,7 @@
 import json, time, re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
-from threading import Lock, get_ident, enumerate as enumerate_threads
+from threading import Lock, get_ident, enumerate as enumerate_threads, local
 from config import ConfigManager, load_settings
 from utils import http_get, http_post, log, TTLCache, clear_progress, sse_broadcast
 from storage import load_history, save_history
@@ -30,24 +30,22 @@ def _get_pansou_client():
     from api_client import PanSouClient
     return PanSouClient(cfg.pansou, timeout=20)
 
-_qas_client = None
+_qas_thread_local = local()
 _qas_client_lock = Lock()
 
 def _get_qas_client():
-    global _qas_client
-    with _qas_client_lock:
-        if _qas_client is None:
-            cfg = ConfigManager.get_instance()
-            from api_client import QASClient
-            _qas_client = QASClient(cfg.qas, cfg.qas_token, timeout=20)
+    cfg = ConfigManager.get_instance()
+    if not hasattr(_qas_thread_local, "client"):
+        from api_client import QASClient
+        _qas_thread_local.client = QASClient(cfg.qas, cfg.qas_token, timeout=20)
+        with _qas_client_lock:
             log("QAS Client 创建，token 长度: {}".format(len(cfg.qas_token or "")))
-        return _qas_client
+    return _qas_thread_local.client
 
 def reset_qas_client():
-    global _qas_client
-    with _qas_client_lock:
-        _qas_client = None
-        init_qas_cache()
+    if hasattr(_qas_thread_local, "client"):
+        delattr(_qas_thread_local, "client")
+    init_qas_cache()
 
 def init_qas_cache():
     for attempt in range(3):

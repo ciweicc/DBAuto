@@ -143,13 +143,19 @@ class StaticRouteMixin:
         cid = uuid.uuid4().hex[:8]
         q = queue.Queue(maxsize=100)
         with sse_lock:
-            sse_clients[cid] = q
+            if len(sse_clients) >= SSE_MAX:
+                oldest = sorted(sse_clients.keys(), key=lambda k: sse_clients[k]["time"])[0]
+                del sse_clients[oldest]
+            sse_clients[cid] = {"queue": q, "time": time.time()}
         try:
             while True:
                 try:
                     msg = q.get(timeout=30)
                     self.wfile.write(msg.encode())
                     self.wfile.flush()
+                    with sse_lock:
+                        if cid in sse_clients:
+                            sse_clients[cid]["time"] = time.time()
                 except queue.Empty:
                     self.wfile.write(b": keepalive\n\n")
                     self.wfile.flush()

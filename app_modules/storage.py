@@ -139,13 +139,15 @@ def save_history(h):
             existing_titles = set(row["title"] for row in conn.execute("SELECT title FROM transfer_history").fetchall())
             new_titles = set(h.keys())
             to_delete = existing_titles - new_titles
-            for title in to_delete:
-                conn.execute("DELETE FROM transfer_history WHERE title = ?", (title,))
-            for title, info in h.items():
-                conn.execute(
-                    "INSERT OR REPLACE INTO transfer_history (title, date, status, category) VALUES (?, ?, ?, ?)",
-                    (title, info.get("date", ""), info.get("status", ""), info.get("category", ""))
-                )
+            if to_delete:
+                placeholders = ",".join("?" * len(to_delete))
+                conn.execute("DELETE FROM transfer_history WHERE title IN ({})".format(placeholders), tuple(to_delete))
+            rows = [(title, info.get("date", ""), info.get("status", ""), info.get("category", ""))
+                    for title, info in h.items()]
+            conn.executemany(
+                "INSERT OR REPLACE INTO transfer_history (title, date, status, category) VALUES (?, ?, ?, ?)",
+                rows
+            )
             conn.commit()
 
 

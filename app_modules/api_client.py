@@ -4,7 +4,7 @@ from utils import http_get, http_post, http_post_stream, log
 
 class APIClient:
     def __init__(self, base_url, token=None, timeout=15):
-        self.base_url = base_url.rstrip("/")
+        self.base_url = base_url.rstrip("/") + "/"
         self.token = token
         self.timeout = timeout
 
