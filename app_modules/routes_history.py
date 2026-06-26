@@ -1,5 +1,5 @@
 # routes_history.py — 历史记录管理路由 Mixin
-from storage import load_history, save_history, load_exec_history, add_exec_record
+from storage import load_history, save_history, load_exec_history, add_exec_record, clear_exec_history
 from utils import log, sse_broadcast
 from validator import validate_string, validate_list
 
@@ -43,7 +43,23 @@ class HistoryRouteMixin:
 
         if route == "/api/exec_history":
             data = load_exec_history()
-            self._send_json({"total": len(data), "items": data})
+            params = self._get_query_params()
+            try:
+                limit = int(params.get("limit", 50))
+            except (ValueError, TypeError):
+                limit = 50
+            try:
+                page = int(params.get("page", 1))
+            except (ValueError, TypeError):
+                page = 1
+            if limit < 1:
+                limit = 50
+            if page < 1:
+                page = 1
+            start = (page - 1) * limit
+            end = start + limit
+            items = data[start:end]
+            self._send_json({"total": len(data), "items": items})
             return True
 
         return False
@@ -143,6 +159,23 @@ class HistoryRouteMixin:
                 sse_broadcast("history_update", {"action": action})
 
             self._send_json({"success": changed})
+            return True
+
+        if route == "/api/exec_history/manage":
+            action = body.get("action", "")
+            ok, msg = validate_string(action, min_len=1, max_len=50, allow_empty=False)
+            if not ok:
+                self._send_json({"success": False, "message": "action: {}".format(msg)}, 400)
+                return True
+
+            if action == "clear":
+                clear_exec_history()
+                log("清空执行历史")
+                sse_broadcast("exec_history_update", {"action": "clear"})
+                self._send_json({"success": True})
+                return True
+
+            self._send_json({"success": False, "message": "unknown action: {}".format(action)}, 400)
             return True
 
         return False

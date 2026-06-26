@@ -220,3 +220,13 @@ def add_exec_record(typ, detail, status="ok"):
             _exec_cache.insert(0, record)
             if len(_exec_cache) > _exec_limit:
                 _exec_cache = _exec_cache[:_exec_limit]
+
+
+def clear_exec_history():
+    global _exec_cache
+    with _exec_lock:
+        with _db_lock:
+            conn = _get_db()
+            conn.execute("DELETE FROM exec_history")
+            conn.commit()
+        _exec_cache = []

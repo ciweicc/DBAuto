@@ -369,7 +369,7 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
 <!-- ===== 执行历史 ===== -->
 <div class="tab-content" id="tabHistory">
   <div class="card">
-    <div class="card-title" style="justify-content:space-between">执行历史 <button class="btn btn-sm btn-outline" onclick="exportHistory()">导出</button></div>
+    <div class="card-title" style="justify-content:space-between">执行历史 <div><button class="btn btn-sm btn-outline" onclick="clearExecHistory()" style="margin-right:6px">清除</button><button class="btn btn-sm btn-outline" onclick="exportHistory()">导出</button></div></div>
     <div class="filter-tabs">
       <span class="filter-tab active" onclick="filterHist('all',this)">全部</span>
       <span class="filter-tab" onclick="filterHist('transfer',this)">转存</span>
@@ -748,12 +748,15 @@ async function manualCleanup(){if(!confirm('确定要立即执行目录清理吗
 var histPage=0, histMore=true;
 async function loadExecHistory(){
   histPage=1;histMore=true;
-  execHistoryData = await apiGet('/api/exec_history?limit=50');
+  var data = await apiGet('/api/exec_history?limit=50');
+  execHistoryData = data.items || data || [];
+  if(execHistoryData.length < 50) histMore=false;
   renderExecHistory();
 }
 async function loadMoreHistory(){
   if(!histMore)return; histPage++;
-  var more = await apiGet('/api/exec_history?limit=50&page='+histPage);
+  var data = await apiGet('/api/exec_history?limit=50&page='+histPage);
+  var more = data.items || data || [];
   if(more.length===0){histMore=false;return}
   execHistoryData = execHistoryData.concat(more);
   if(more.length<50)histMore=false;
@@ -782,6 +785,16 @@ async function exportHistory(){
   try{var r=await fetch('/api/history/export',{headers:authHeaders()});var blob=await r.blob();
     var a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='exec_history.json';a.click()}
   catch(e){showToast('导出失败',false)}
+}
+async function clearExecHistory(){
+  if(!confirm('确定要清空所有执行历史吗？此操作不可撤销。'))return;
+  try{
+    var d=await apiPost('/api/exec_history/manage',{action:'clear'});
+    if(d.success){
+      execHistoryData=[];histMore=false;renderExecHistory();
+      showToast('已清空执行历史',true);
+    }else showToast(d.message||'清空失败',false);
+  }catch(e){showToast('清空失败',false)}
 }
 
 // ============ Settings ============
