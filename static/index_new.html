@@ -387,7 +387,7 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
     <div class="form-group"><label>PanSou 地址</label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"></div>
     <div class="section-title">📦 转存服务</div>
     <div class="form-group"><label>QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
-    <div class="form-group"><label>QAS Token</label><input type="password" id="cfg_qas_token" placeholder="留空不修改"></div>
+    <div class="form-group"><label>QAS Token</label><input type="password" id="cfg_qas_token" placeholder="留空不修改" onchange="autoSaveConfig()"></div>
     <div class="section-title">📂 网盘服务</div>
     <div class="form-group"><label>OpenList 地址</label><input type="text" id="cfg_openlist_url" placeholder="http://192.168.1.1:5244"></div>
     <div class="form-group"><label>OpenList Token</label><input type="password" id="cfg_openlist_token" placeholder="留空不修改"></div>
@@ -397,7 +397,7 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
     <div class="form-group"><label>密码</label><input type="password" id="cfg_auth_pass" placeholder="留空不修改"></div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
       <button class="btn btn-outline btn-sm" onclick="closeSettings()">取消</button>
-      <button class="btn btn-primary btn-sm" onclick="saveConfig()">保存</button>
+      <button class="btn btn-primary btn-sm" onclick="saveConfig(false)">保存</button>
     </div>
   </div>
 </div>
@@ -784,7 +784,7 @@ async function loadConfig(){
     document.getElementById('cfg_auth_pass').value='';
   }catch(e){}
 }
-async function saveConfig(){
+async function saveConfig(silent=false){
   var cfg={pansou:document.getElementById('cfg_pansou').value.trim(),
            qas:document.getElementById('cfg_qas').value.trim(),
            qas_token:document.getElementById('cfg_qas_token').value,
@@ -793,9 +793,11 @@ async function saveConfig(){
            openlist_base_path:document.getElementById('cfg_openlist_base_path').value.trim(),
            auth_user:document.getElementById('cfg_auth_user').value.trim(),
            auth_pass:document.getElementById('cfg_auth_pass').value};
-  try{var d=await apiPost('/api/config',cfg);if(d.success){showToast('设置已保存',true);closeSettings()}else showToast(d.message||'保存失败',false)}
+  try{var d=await apiPost('/api/config',cfg);if(d.success){if(!silent)showToast('设置已保存',true);if(!silent)closeSettings()}else showToast(d.message||'保存失败',false)}
   catch(e){showToast('保存失败',false)}
 }
+var configSaveTimer=null;
+function autoSaveConfig(){clearTimeout(configSaveTimer);configSaveTimer=setTimeout(saveConfig,800)}
 
 // ============ Search ============
 function openSearch(){document.getElementById('searchModal').classList.add('show');document.getElementById('searchInput').focus();
