@@ -4,7 +4,7 @@ from config import CATEGORIES
 from douban import get_douban_list
 from transfer import (
     transfer_status, transfer_lock, search_pansou, check_pansou_links,
-    check_expired_tasks, update_expired_task, validate_share_link,
+    check_expired_tasks, update_expired_task, validate_share_link, fix_expired_tasks,
     run_transfer, add_and_run, VIDEO_SUB, TV_REPLACE, build_transfer_tasks,
     is_transfer_running,
 )
@@ -66,6 +66,16 @@ class TransferRouteMixin:
             except Exception as e:
                 log("失效检测失败: {}".format(e))
                 self._send_json({"error": str(e)}, 500)
+            return True
+
+        if route == "/api/fix_expired":
+            if is_transfer_running():
+                self._send_json({"success": False, "message": "busy", "conflict": True})
+                return True
+            t = Thread(target=fix_expired_tasks)
+            t.daemon = True
+            t.start()
+            self._send_json({"success": True, "message": "已启动失效链接修复"})
             return True
 
         return False

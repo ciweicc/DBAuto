@@ -668,6 +668,9 @@ async function checkExpired(){
     if(d.expired&&d.expired.length>0){
       addLog('发现 '+d.expired.length+' 个失效链接');
       for(var i=0;i<d.expired.length;i++)addLog('  '+d.expired[i].taskname);
+      addLog('开始搜索并替换失效链接...');
+      var fd = await apiGet('/api/fix_expired');
+      if(!fd.success)addLog('启动修复失败: '+fd.message);
     }else addLog('所有链接正常');
   }catch(e){addLog('检测失败: '+e.message)}
 }
