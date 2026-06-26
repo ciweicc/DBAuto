@@ -101,7 +101,29 @@ docker-compose down
 
 服务启动后访问：`http://服务器IP:3001`
 
-### Docker 命令部署
+### 使用 GitHub Container Registry 镜像（推荐）
+
+镜像已自动构建，支持 **x86_64** 和 **ARM64** 架构，无需本地构建：
+
+```bash
+# 拉取镜像（自动匹配主机架构）
+docker pull ghcr.io/ciweicc/dbauto:latest
+
+# 运行容器（x86_64 / ARM64 通用）
+docker run -d \
+  --name dbauto \
+  --restart unless-stopped \
+  -p 3001:3001 \
+  -v /opt/dbauto-data:/opt/dbauto-data \
+  -e DATA_DIR=/opt/dbauto-data \
+  -e PORT=3001 \
+  -e TZ=Asia/Shanghai \
+  ghcr.io/ciweicc/dbauto:latest
+```
+
+> **架构说明**：镜像自动识别主机架构，无论是 x86_64（Intel/AMD）还是 ARM64（树莓派、Apple Silicon）均可直接运行，无需指定额外参数。
+
+### Docker 命令部署（本地构建）
 
 ```bash
 # 1. 克隆代码
