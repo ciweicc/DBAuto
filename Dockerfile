@@ -1,4 +1,4 @@
-FROM registry.aliyuncs.com/python:3.11-slim
+FROM python:3.11-slim
 
 RUN echo 'deb https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main non-free-firmware\n\
 deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm main non-free-firmware\n\
@@ -12,7 +12,7 @@ deb-src https://mirrors.tuna.tsinghua.edu.cn/debian/ bookworm-backports main non
 WORKDIR /app
 
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir -i https://pypi.tuna.tsinghua.edu.cn/simple -r requirements.txt
 
 COPY main.py ./
 COPY app_modules/ ./app_modules/
