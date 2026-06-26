@@ -46,9 +46,14 @@ def _init_db():
             type TEXT,
             detail TEXT,
             status TEXT,
-            time TEXT
+            time TEXT,
+            data TEXT
         )
     """)
+    try:
+        conn.execute("ALTER TABLE exec_history ADD COLUMN data TEXT")
+    except sqlite3.OperationalError:
+        pass
     conn.execute("CREATE INDEX IF NOT EXISTS idx_exec_time ON exec_history(time DESC)")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -159,18 +164,26 @@ def load_exec_history():
         with _db_lock:
             conn = _get_db()
             rows = conn.execute(
-                "SELECT id, type, detail, status, time FROM exec_history ORDER BY time DESC LIMIT ?",
+                "SELECT id, type, detail, status, time, data FROM exec_history ORDER BY time DESC LIMIT ?",
                 (_exec_limit,)
             ).fetchall()
             result = []
             for row in rows:
-                result.append({
+                item = {
                     "id": row["id"],
                     "type": row["type"],
                     "detail": row["detail"],
                     "status": row["status"],
                     "time": row["time"]
-                })
+                }
+                if row["data"]:
+                    try:
+                        item["data"] = json.loads(row["data"])
+                    except (json.JSONDecodeError, ValueError):
+                        item["data"] = None
+                else:
+                    item["data"] = None
+                result.append(item)
             _exec_cache = result
             return _exec_cache
 
@@ -199,27 +212,66 @@ def save_exec_history(data):
             conn.commit()
 
 
-def add_exec_record(typ, detail, status="ok"):
+def add_exec_record(typ, detail, status="ok", data=None):
     global _exec_cache
     record = {
         "id": uuid.uuid4().hex[:8],
         "type": typ,
         "detail": detail,
         "status": status,
-        "time": datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
+        "time": datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"),
+        "data": data
     }
     with _exec_lock:
         with _db_lock:
             conn = _get_db()
             conn.execute(
-                "INSERT INTO exec_history (id, type, detail, status, time) VALUES (?, ?, ?, ?, ?)",
-                (record["id"], record["type"], record["detail"], record["status"], record["time"])
+                "INSERT INTO exec_history (id, type, detail, status, time, data) VALUES (?, ?, ?, ?, ?, ?)",
+                (record["id"], record["type"], record["detail"], record["status"], record["time"],
+                 json.dumps(data, ensure_ascii=False) if data is not None else None)
             )
             conn.commit()
         if _exec_cache is not None:
             _exec_cache.insert(0, record)
             if len(_exec_cache) > _exec_limit:
                 _exec_cache = _exec_cache[:_exec_limit]
+    return record
+
+
+def update_exec_record(record_id, detail=None, status=None, data=None):
+    global _exec_cache
+    with _exec_lock:
+        with _db_lock:
+            conn = _get_db()
+            updates = []
+            params = []
+            if detail is not None:
+                updates.append("detail = ?")
+                params.append(detail)
+            if status is not None:
+                updates.append("status = ?")
+                params.append(status)
+            if data is not None:
+                updates.append("data = ?")
+                params.append(json.dumps(data, ensure_ascii=False))
+            if not updates:
+                return
+            params.append(record_id)
+            conn.execute(
+                "UPDATE exec_history SET {} WHERE id = ?".format(", ".join(updates)),
+                tuple(params)
+            )
+            conn.commit()
+        if _exec_cache is not None:
+            for item in _exec_cache:
+                if item["id"] == record_id:
+                    if detail is not None:
+                        item["detail"] = detail
+                    if status is not None:
+                        item["status"] = status
+                    if data is not None:
+                        item["data"] = data
+                    break
 
 
 def clear_exec_history():

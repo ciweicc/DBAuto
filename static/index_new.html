@@ -469,8 +469,9 @@ function showToast(msg,ok){
 // ============ Tab ============
 function switchTab(tab){
   currentTab = tab;
+  var idx = tab==='manual'?0:tab==='schedule'?1:2;
   document.querySelectorAll('.tab-btn').forEach(function(b,i){
-    b.classList.toggle('active', i=== (tab==='manual'?0:tab==='schedule'?1:2));
+    b.classList.toggle('active', i===idx);
   });
   document.getElementById('tabManual').classList.toggle('active', tab==='manual');
   document.getElementById('tabSchedule').classList.toggle('active', tab==='schedule');
@@ -771,9 +772,69 @@ function renderExecHistory(){
     var icon='📋',cls='transfer',tn='转存';
     if(h.type==='expired_check'){icon='🔍';cls='expired';tn='检测'}
     if(h.type==='dir_cleanup'){icon='🗑';cls='cleanup';tn='清理'}
-    return '<div class=\"hist-item\"><div class=\"hist-icon '+cls+'\">'+icon+'</div><div class=\"hist-info\"><div class=\"hist-title\">'+esc(h.detail)+'</div><div class=\"hist-meta\">'+tn+'</div></div><div class=\"hist-time\">'+h.time+'</div></div>';
+    var hasDetail = h.data && (h.data.results || h.data.expired);
+    var cursor = hasDetail ? 'cursor:pointer' : '';
+    return '<div class=\"hist-item\" style=\"'+cursor+'\" onclick=\"toggleHistDetail(\''+h.id+'\')\" id=\"hist_'+h.id+'\">'+
+      '<div class=\"hist-icon '+cls+'\">'+icon+'</div>'+
+      '<div class=\"hist-info\">'+
+        '<div class=\"hist-title\">'+esc(h.detail)+'</div>'+
+        '<div class=\"hist-meta\">'+tn+(hasDetail?' · 点击查看详情':'')+'</div>'+
+      '</div>'+
+      '<div class=\"hist-time\">'+h.time+'</div>'+
+      '</div>'+
+      '<div class=\"hist-detail\" id=\"hist_detail_'+h.id+'\" style=\"display:none;padding:0 16px 16px 60px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)\">'+
+        renderHistDetailContent(h)+
+      '</div>';
   }).join('');
   if(histMore)el.innerHTML+='<div style=\"text-align:center;padding:12px;margin-top:6px\"><button class=\"btn btn-outline btn-sm\" onclick=\"loadMoreHistory()\">加载更多</button></div>';
+}
+function renderHistDetailContent(h){
+  if(!h.data) return '<div style=\"color:var(--text3);font-size:13px\">无详情</div>';
+  if(h.type==='transfer' && h.data.results){
+    var items = h.data.results;
+    if(!items || !items.length) return '<div style=\"color:var(--text3);font-size:13px\">无数据</div>';
+    return '<div style=\"max-height:300px;overflow-y:auto\">'+
+      items.map(function(r){
+        var st = r.status;
+        var stText='未知', stClr='var(--text2)';
+        if(st==='ok'||st==='done'){stText='成功';stClr='#30d158'}
+        else if(st==='skipped'||st==='exists'){stText='跳过';stClr='var(--text3)'}
+        else if(st==='not_found'){stText='未找到';stClr='#ff9f0a'}
+        else if(st==='error'||st==='fail'){stText='失败';stClr='#ff453a'}
+        var cat = r.category ? '<span style=\"padding:1px 6px;border-radius:4px;background:rgba(10,132,255,.1);color:var(--accent);font-size:10px;margin-right:6px\">'+esc(r.category)+'</span>' : '';
+        return '<div style=\"padding:6px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px\">'+
+          '<div style=\"flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px\">'+cat+esc(r.title)+'</div>'+
+          '<span style=\"font-size:12px;color:'+stClr+';flex-shrink:0\">'+stText+'</span>'+
+          '</div>';
+      }).join('')+
+      '</div>';
+  }
+  if(h.type==='expired_check' && h.data.expired){
+    var items = h.data.expired;
+    if(!items || !items.length) return '<div style=\"color:#30d158;font-size:13px\">所有链接正常</div>';
+    return '<div style=\"max-height:300px;overflow-y:auto\">'+
+      items.map(function(r){
+        return '<div style=\"padding:6px 0;border-bottom:1px solid var(--border);font-size:13px\">'+
+          '<div style=\"color:#ff453a\">'+esc(r.title||'未知')+'</div>'+
+          '<div style=\"color:var(--text3);font-size:12px;margin-top:2px\">'+esc(r.path||'')+'</div>'+
+          (r.msg?'<div style=\"color:var(--text2);font-size:12px;margin-top:2px\">'+esc(r.msg)+'</div>':'')+
+          '</div>';
+      }).join('')+
+      '</div>';
+  }
+  return '<div style=\"color:var(--text3);font-size:13px\">无详情</div>';
+}
+function toggleHistDetail(id){
+  var detailEl = document.getElementById('hist_detail_'+id);
+  if(!detailEl) return;
+  var itemEl = document.getElementById('hist_'+id);
+  if(detailEl.style.display === 'none'){
+    detailEl.style.display = 'block';
+    if(itemEl) itemEl.style.borderBottom = 'none';
+  }else{
+    detailEl.style.display = 'none';
+    if(itemEl) itemEl.style.borderBottom = '';
+  }
 }
 function filterHist(type,btn){
   execHistoryFilter=type;

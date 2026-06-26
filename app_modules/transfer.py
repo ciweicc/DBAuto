@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from threading import Lock, get_ident, enumerate as enumerate_threads, local
 from config import ConfigManager, load_settings
 from utils import http_get, http_post, log, TTLCache, clear_progress, sse_broadcast
-from storage import load_history, save_history
+from storage import load_history, save_history, add_exec_record, update_exec_record
 from douban import get_douban_list
 
 SEARCH_CONCURRENCY = 3
@@ -374,6 +374,12 @@ def _search_single_task(task):
 def run_transfer(task_list, limit):
     global transfer_status
     tid = get_ident()
+    exec_record_id = None
+    try:
+        rec = add_exec_record("transfer", "开始转存 ({} 条)".format(len(task_list)), "running")
+        exec_record_id = rec["id"]
+    except Exception:
+        pass
     with transfer_lock:
         transfer_status.update({"running": True, "summary": None,
                                 "start_time": datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"),
@@ -393,7 +399,7 @@ def run_transfer(task_list, limit):
             title = task["title"]
             if _find_in_history(title, history, history_index):
                 log("已跳过: {}".format(title))
-                results.append({"title": title, "status": "skipped", "msg": "skip"})
+                results.append({"title": title, "status": "skipped", "msg": "skip", "category": task.get("category", "")})
                 with transfer_lock:
                     transfer_status["stats"]["skipped"] += 1
                     sse_broadcast("transfer_progress", dict(transfer_status))
@@ -440,7 +446,7 @@ def run_transfer(task_list, limit):
             sr = search_results.get(title, [])
             if not sr:
                 log("未找到: {}".format(title))
-                results.append({"title": title, "status": "not_found", "msg": "not_found"})
+                results.append({"title": title, "status": "not_found", "msg": "not_found", "category": category})
                 with transfer_lock:
                     transfer_status["stats"]["failed"] += 1
                     sse_broadcast("transfer_progress", dict(transfer_status))
@@ -454,7 +460,7 @@ def run_transfer(task_list, limit):
             log("  {}".format(res["msg"]))
             history[title] = {"date": datetime.now(TZ).strftime("%Y-%m-%d"),
                               "status": res["status"], "category": category}
-            results.append({"title": title, "status": res["status"], "msg": res["msg"]})
+            results.append({"title": title, "status": res["status"], "msg": res["msg"], "category": category})
             if res["status"] in ("ok", "done"):
                 transferred += 1
                 with transfer_lock:
@@ -485,3 +491,13 @@ def run_transfer(task_list, limit):
                 "error": error_msg,
             }
         log("转存完成: {} 条".format(transferred))
+        if exec_record_id:
+            ok_count = sum(1 for r in results if r.get("status") in ("ok", "done"))
+            fail_count = sum(1 for r in results if r.get("status") not in ("ok", "done", "skipped", "exists"))
+            skip_count = sum(1 for r in results if r.get("status") in ("skipped", "exists"))
+            final_status = "fail" if error_msg or fail_count > 0 else "ok"
+            detail = "转存完成 成功{} 失败{} 跳过{}".format(ok_count, fail_count, skip_count)
+            try:
+                update_exec_record(exec_record_id, detail=detail, status=final_status, data={"results": results})
+            except Exception:
+                pass

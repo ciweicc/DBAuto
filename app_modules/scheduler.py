@@ -79,7 +79,6 @@ def _run_scheduled_transfer():
         with schedule_lock:
             schedule_status["last_transfer"] = _now_local().strftime("%Y-%m-%d %H:%M:%S")
         Thread(target=run_transfer, args=(uniq, limit), daemon=True).start()
-        add_exec_record("transfer", "transfer {} items".format(len(uniq)))
     except Exception as e:
         log("定时转存执行错误: {}".format(e))
         traceback.print_exc()
@@ -93,9 +92,10 @@ def _run_scheduled_expired_check():
         with schedule_lock:
             schedule_status["last_expired_check"] = _now_local().strftime("%Y-%m-%d %H:%M:%S")
         if expired:
-            add_exec_record("expired_check", "found {} expired".format(len(expired)))
+            add_exec_record("expired_check", "found {} expired".format(len(expired)), "fail",
+                            data={"expired": [{"title": e.get("title", ""), "path": e.get("path", ""), "msg": e.get("msg", "")} for e in expired]})
         else:
-            add_exec_record("expired_check", "all ok", "ok")
+            add_exec_record("expired_check", "all ok", "ok", data={"expired": []})
     except Exception as e:
         log("定时检测失效链接错误: {}".format(e))
         traceback.print_exc()
