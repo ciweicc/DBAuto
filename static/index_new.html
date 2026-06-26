@@ -348,6 +348,8 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
       <span style="color:var(--text3)">:</span>
       <select id="schedEMin" onchange="autoSaveSchedule()" style="padding:7px 8px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:14px"></select>
     </div>
+    <div id="expiredDirList" style="margin-top:10px"></div>
+    <button class="btn btn-outline btn-sm" style="margin-top:8px;border-style:dashed" onclick="addExpiredDir()">+ 添加目录</button>
   </div>
   <div class="card">
     <div class="card-title" style="justify-content:space-between">目录清理 <button class="btn btn-sm btn-outline" onclick="manualCleanup()">立即清理</button></div>
@@ -454,7 +456,7 @@ function toggleTheme(){
 
 // ============ Global ============
 var C = {}, currentTab = 'manual', execHistoryData = [], execHistoryFilter = 'all';
-var dirEntries = [], autoSaveTimer = null, logPollTimer = null;
+var dirEntries = [], expiredDirEntries = [], autoSaveTimer = null, logPollTimer = null;
 var logBefore = [], logFilter = 'all', logPaused = false;
 
 // ============ Toast ============
@@ -696,7 +698,8 @@ async function loadSchedule(){
     if(d.expired_check){document.getElementById('schedEOn').checked=!!d.expired_check.enabled;
       if(d.expired_check.time){var e2=d.expired_check.time.split(':');
         document.getElementById('schedEHour').value=parseInt(e2[0])||0;
-        document.getElementById('schedEMin').value=parseInt(e2[1])||0;}}
+        document.getElementById('schedEMin').value=parseInt(e2[1])||0;}
+      expiredDirEntries=(d.expired_check.directories&&d.expired_check.directories.length>0)?[...d.expired_check.directories]:[''];renderExpiredDirs();}
     if(d.dir_cleanup){document.getElementById('schedDOn').checked=!!d.dir_cleanup.enabled;
       if(d.dir_cleanup.time){var d2=d.dir_cleanup.time.split(':');
         document.getElementById('schedDHour').value=parseInt(d2[0])||0;
@@ -709,12 +712,14 @@ function autoSaveSchedule(){clearTimeout(autoSaveTimer);autoSaveTimer=setTimeout
 async function saveSchedule(){
   var tasks = getSelectedTasks('tabSchedule');
   var dirs = dirEntries.map(function(d){return d.trim()}).filter(function(d){return d});
+  var expiredDirs = expiredDirEntries.map(function(d){return d.trim()}).filter(function(d){return d});
   var body = {
     transfer:{enabled:document.getElementById('schedTOn').checked,
               time:pad2(document.getElementById('schedTHour').value)+':'+pad2(document.getElementById('schedTMin').value),
               limit:parseInt(document.getElementById('schedLimit').value)||5,tasks:tasks},
     expired_check:{enabled:document.getElementById('schedEOn').checked,
-                   time:pad2(document.getElementById('schedEHour').value)+':'+pad2(document.getElementById('schedEMin').value)},
+                   time:pad2(document.getElementById('schedEHour').value)+':'+pad2(document.getElementById('schedEMin').value),
+                   directories:expiredDirs},
     dir_cleanup:{enabled:document.getElementById('schedDOn').checked,
                  time:pad2(document.getElementById('schedDHour').value)+':'+pad2(document.getElementById('schedDMin').value),directories:dirs}
   };
@@ -729,6 +734,13 @@ function renderDirs(){
 }
 function addDir(){dirEntries.push('');renderDirs();autoSaveSchedule()}
 function removeDir(i){dirEntries.splice(i,1);if(!dirEntries.length)dirEntries=[''];renderDirs();autoSaveSchedule()}
+function renderExpiredDirs(){
+  var el=document.getElementById('expiredDirList'),h='';
+  expiredDirEntries.forEach(function(d,i){h+='<div class="dir-item"><input type="text" value="'+d.replace(/"/g,'&quot;')+'" placeholder="/影视/电视剧" onchange="expiredDirEntries['+i+']=this.value;autoSaveSchedule()"><span class="dir-del" onclick="removeExpiredDir('+i+')">×</span></div>'});
+  el.innerHTML=h;
+}
+function addExpiredDir(){expiredDirEntries.push('');renderExpiredDirs();autoSaveSchedule()}
+function removeExpiredDir(i){expiredDirEntries.splice(i,1);if(!expiredDirEntries.length)expiredDirEntries=[''];renderExpiredDirs();autoSaveSchedule()}
 async function manualCleanup(){if(!confirm('确定要立即执行目录清理吗？'))return;
   try{var d=await apiGet('/api/dir_cleanup');showToast(d.message||'已启动',true)}catch(e){showToast('请求失败',false)}}
 

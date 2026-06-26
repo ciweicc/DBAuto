@@ -3,7 +3,7 @@ import json, time, re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from threading import Lock, get_ident, enumerate as enumerate_threads
-from config import ConfigManager
+from config import ConfigManager, load_settings
 from utils import http_get, http_post, log, TTLCache, clear_progress, sse_broadcast
 from storage import load_history, save_history
 from douban import get_douban_list
@@ -161,10 +161,19 @@ def check_expired_tasks(limit=None):
         client = _get_qas_client()
         data = client.get_data().get("data", {})
         tasks = data.get("tasklist", [])
+        # 获取失效检测的目录配置
+        settings = load_settings()
+        expired_dirs = settings.get("expired_check", {}).get("directories", [])
+        # 过滤夸克链接
         to_check = [t for t in tasks if t.get("shareurl", "") and "quark.cn" in t.get("shareurl", "")]
+        # 如果配置了目录，只检测指定目录范围内的任务
+        if expired_dirs:
+            to_check = [t for t in to_check if t.get("savepath", "") and any(d in t.get("savepath", "") for d in expired_dirs)]
+            log("失效检测目录范围: {}".format(expired_dirs))
         if limit:
             to_check = to_check[:limit]
         if not to_check:
+            log("失效检测: 无符合条件的任务")
             return []
         log("检测失效链接: {} 个，并发数: {}".format(len(to_check), EXPIRED_CHECK_CONCURRENCY))
         expired = []

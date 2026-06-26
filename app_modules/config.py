@@ -55,7 +55,7 @@ DEFAULT_CONFIG = {
 
 DEFAULT_SETTINGS = {
     "transfer": {"enabled": False, "time": "02:00", "cron": "", "limit": 5, "tasks": []},
-    "expired_check": {"enabled": False, "time": "03:00", "cron": ""},
+    "expired_check": {"enabled": False, "time": "03:00", "cron": "", "directories": []},
     "dir_cleanup": {"enabled": False, "time": "06:00", "cron": "", "directories": []},
 }
 
