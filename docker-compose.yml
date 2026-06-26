@@ -9,9 +9,9 @@ services:
     ports:
       - "3001:3001"
     volumes:
-      - ./data:/opt/dbauto-data
+      - ./data:/data/douban-history
     environment:
-      - DATA_DIR=/opt/dbauto-data
+      - DATA_DIR=/data/douban-history
       - PORT=3001
       - TZ=Asia/Shanghai
     restart: unless-stopped

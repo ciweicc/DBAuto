@@ -194,61 +194,74 @@ def update_expired_task(task, new_url):
         return False
 
 def fix_expired_tasks():
-    expired = check_expired_tasks()
-    if not expired:
-        log("没有失效链接，无需修复")
-        return {"total": 0, "fixed": 0, "failed": 0, "results": []}
-    
-    log("开始修复 {} 个失效链接".format(len(expired)))
-    fixed = 0
-    failed = 0
-    results = []
-    
-    for task in expired:
-        taskname = task.get("taskname", "")
-        log("搜索替换: {}".format(taskname))
+    global transfer_status
+    tid = get_ident()
+    with transfer_lock:
+        transfer_status.update({
+            "running": True,
+            "thread_id": tid,
+            "summary": "fix_expired"
+        })
+    try:
+        expired = check_expired_tasks()
+        if not expired:
+            log("没有失效链接，无需修复")
+            return {"total": 0, "fixed": 0, "failed": 0, "results": []}
         
-        try:
-            sr = search_pansou(taskname)
-            if not sr:
-                log("  未找到替代资源")
-                failed += 1
-                results.append({"taskname": taskname, "status": "not_found", "msg": "未找到替代资源"})
-                continue
+        log("开始修复 {} 个失效链接".format(len(expired)))
+        fixed = 0
+        failed = 0
+        results = []
+        
+        for task in expired:
+            taskname = task.get("taskname", "")
+            log("搜索替换: {}".format(taskname))
             
-            chosen = sr[0]
-            new_url = chosen.get("url", "")
-            if not new_url:
-                log("  资源无有效链接")
+            try:
+                sr = search_pansou(taskname)
+                if not sr:
+                    log("  未找到替代资源")
+                    failed += 1
+                    results.append({"taskname": taskname, "status": "not_found", "msg": "未找到替代资源"})
+                    continue
+                
+                chosen = sr[0]
+                new_url = chosen.get("url", "")
+                if not new_url:
+                    log("  资源无有效链接")
+                    failed += 1
+                    results.append({"taskname": taskname, "status": "no_url", "msg": "资源无有效链接"})
+                    continue
+                
+                valid, msg = validate_share_link(new_url)
+                if not valid:
+                    log("  新链接无效: {}".format(msg))
+                    failed += 1
+                    results.append({"taskname": taskname, "status": "invalid", "msg": msg})
+                    continue
+                
+                success = update_expired_task(task, new_url)
+                if success:
+                    log("  ✅ 替换成功: {}".format(chosen.get("note", "")))
+                    fixed += 1
+                    results.append({"taskname": taskname, "status": "fixed", "msg": chosen.get("note", "")})
+                else:
+                    log("  ❌ 更新失败")
+                    failed += 1
+                    results.append({"taskname": taskname, "status": "update_fail", "msg": "更新失败"})
+                
+                time.sleep(2)
+            except Exception as e:
+                log("  ❌ 异常: {}".format(e))
                 failed += 1
-                results.append({"taskname": taskname, "status": "no_url", "msg": "资源无有效链接"})
-                continue
-            
-            valid, msg = validate_share_link(new_url)
-            if not valid:
-                log("  新链接无效: {}".format(msg))
-                failed += 1
-                results.append({"taskname": taskname, "status": "invalid", "msg": msg})
-                continue
-            
-            success = update_expired_task(task, new_url)
-            if success:
-                log("  ✅ 替换成功: {}".format(chosen.get("note", "")))
-                fixed += 1
-                results.append({"taskname": taskname, "status": "fixed", "msg": chosen.get("note", "")})
-            else:
-                log("  ❌ 更新失败")
-                failed += 1
-                results.append({"taskname": taskname, "status": "update_fail", "msg": "更新失败"})
-            
-            time.sleep(2)
-        except Exception as e:
-            log("  ❌ 异常: {}".format(e))
-            failed += 1
-            results.append({"taskname": taskname, "status": "error", "msg": str(e)})
-    
-    log("修复完成: 成功 {} / 失败 {}".format(fixed, failed))
-    return {"total": len(expired), "fixed": fixed, "failed": failed, "results": results}
+                results.append({"taskname": taskname, "status": "error", "msg": str(e)})
+        
+        log("修复完成: 成功 {} / 失败 {}".format(fixed, failed))
+        return {"total": len(expired), "fixed": fixed, "failed": failed, "results": results}
+    finally:
+        with transfer_lock:
+            transfer_status["running"] = False
+            transfer_status["thread_id"] = None
 
 def _clean_title(title):
     return re.sub(r'[^\u4e00-\u9fff0-9a-zA-Z]', '', title).lower()
