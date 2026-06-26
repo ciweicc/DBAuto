@@ -1,7 +1,7 @@
 # routes_static.py — 静态文件 & SSE 路由 Mixin
 import os, time, uuid, queue, gzip
 from threading import Lock as ThreadLock
-from utils import sse_clients, sse_lock
+from utils import sse_clients, sse_lock, SSE_MAX
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
 MIME = {".html": "text/html; charset=utf-8", ".js": "application/javascript", ".css": "text/css"}

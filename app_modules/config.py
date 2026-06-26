@@ -242,13 +242,11 @@ class _ConfigProxy:
         raise AttributeError(name)
 
 
-_config_proxy = _ConfigProxy()
-
-PANSOU = _config_proxy
-QAS = _config_proxy
-QAS_TOKEN = _config_proxy
-OPENLIST_URL = _config_proxy
-OPENLIST_TOKEN = _config_proxy
-OPENLIST_BASE_PATH = _config_proxy
-AUTH_USER = _config_proxy
-AUTH_PASS = _config_proxy
+PANSOU = DEFAULT_CONFIG["pansou"]
+QAS = DEFAULT_CONFIG["qas"]
+QAS_TOKEN = DEFAULT_CONFIG["qas_token"]
+OPENLIST_URL = DEFAULT_CONFIG["openlist_url"]
+OPENLIST_TOKEN = DEFAULT_CONFIG["openlist_token"]
+OPENLIST_BASE_PATH = DEFAULT_CONFIG["openlist_base_path"]
+AUTH_USER = DEFAULT_CONFIG["auth_user"]
+AUTH_PASS = DEFAULT_CONFIG["auth_pass"]
