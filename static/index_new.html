@@ -638,7 +638,7 @@ function startLogPoll(){
   logPollTimer = setInterval(async function(){
     if(document.getElementById('logCard').style.display==='none')return;
     try{
-      var d = await apiGet('/api/status');
+      var d = await apiGet('/api/transfer/status');
       if(d.running)document.getElementById('stopBtn').style.display='inline-block';
       if(d.stats){
         document.getElementById('stSearched').textContent=d.stats.searched||0;
@@ -665,7 +665,7 @@ function updateProgress(stats){
 
 async function checkRunningStatus(){
   try{
-    var d = await apiGet('/api/status');
+    var d = await apiGet('/api/transfer/status');
     if(d.running){
       document.getElementById('logCard').style.display='block';
       document.getElementById('stopBtn').style.display='inline-block';

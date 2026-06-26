@@ -9,7 +9,7 @@ from transfer import (
     is_transfer_running,
 )
 from storage import load_history, save_history, add_exec_record
-from utils import log, sse_broadcast
+from utils import log, sse_broadcast, log_progress
 from validator import validate_string, validate_positive_int, validate_list, validate_task
 
 
@@ -23,7 +23,9 @@ class TransferRouteMixin:
 
         if route == "/api/transfer/status":
             with transfer_lock:
-                self._send_json(dict(transfer_status))
+                status = dict(transfer_status)
+                status["progress"] = list(log_progress)
+                self._send_json(status)
             return True
 
         if route == "/api/search":
@@ -60,7 +62,7 @@ class TransferRouteMixin:
 
             try:
                 results = check_expired_tasks(int(limit))
-                self._send_json({"total": len(results), "items": results})
+                self._send_json({"expired": results})
             except Exception as e:
                 log("失效检测失败: {}".format(e))
                 self._send_json({"error": str(e)}, 500)

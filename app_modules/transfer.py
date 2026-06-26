@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from threading import Lock, get_ident, enumerate as enumerate_threads
 from config import ConfigManager
-from utils import http_get, http_post, log, TTLCache
+from utils import http_get, http_post, log, TTLCache, clear_progress
 from storage import load_history, save_history
 from douban import get_douban_list
 
@@ -256,6 +256,7 @@ def run_transfer(task_list, limit):
                                 "start_time": datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"),
                                 "stats": {"searched": 0, "ok": 0, "skipped": 0, "failed": 0, "total": len(task_list)},
                                 "thread_id": tid, "stop": False})
+    clear_progress()
     log("开始转存，上限{}".format(limit))
     history = load_history()
     transferred = 0
