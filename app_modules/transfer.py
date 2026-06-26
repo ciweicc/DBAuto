@@ -33,6 +33,7 @@ def _get_pansou_client():
 def _get_qas_client():
     cfg = ConfigManager.get_instance()
     from api_client import QASClient
+    log("QAS Client 创建，token 长度: {}".format(len(cfg.qas_token or "")))
     return QASClient(cfg.qas, cfg.qas_token, timeout=20)
 
 def init_qas_cache():
