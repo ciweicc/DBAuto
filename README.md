@@ -153,24 +153,6 @@ docker run -d \
   dbauto
 ```
 
-### 使用 Docker Hub 镜像（可选）
-
-如果你已将镜像推送到 Docker Hub：
-
-```bash
-# 拉取镜像
-docker pull your-username/dbaauto:latest
-
-# 运行
-docker run -d \
-  --name dbauto \
-  --restart unless-stopped \
-  -p 3001:3001 \
-  -v /opt/dbauto-data:/opt/dbauto-data \
-  -e TZ=Asia/Shanghai \
-  your-username/dbaauto:latest
-```
-
 ### 环境变量
 
 | 变量 | 默认值 | 说明 |
