@@ -93,7 +93,7 @@ def _run_scheduled_expired_check():
             schedule_status["last_expired_check"] = _now_local().strftime("%Y-%m-%d %H:%M:%S")
         if expired:
             add_exec_record("expired_check", "found {} expired".format(len(expired)), "fail",
-                            data={"expired": [{"title": e.get("taskname", ""), "path": e.get("savepath", ""), "msg": e.get("msg", "")} for e in expired]})
+                            data={"expired": [{"title": e.get("taskname", ""), "path": e.get("savepath", "")} for e in expired]})
         else:
             add_exec_record("expired_check", "all ok", "ok", data={"expired": []})
     except Exception as e:

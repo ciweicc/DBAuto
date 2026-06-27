@@ -202,12 +202,13 @@ def save_exec_history(data):
                 conn.execute("DELETE FROM exec_history WHERE id = ?", (item_id,))
             for item in trimmed:
                 conn.execute(
-                    "INSERT OR REPLACE INTO exec_history (id, type, detail, status, time) VALUES (?, ?, ?, ?, ?)",
+                    "INSERT OR REPLACE INTO exec_history (id, type, detail, status, time, data) VALUES (?, ?, ?, ?, ?, ?)",
                     (item.get("id", uuid.uuid4().hex[:8]),
                      item.get("type", ""),
                      item.get("detail", ""),
                      item.get("status", "ok"),
-                     item.get("time", ""))
+                     item.get("time", ""),
+                     json.dumps(item.get("data"), ensure_ascii=False) if item.get("data") is not None else None)
                 )
             conn.commit()
 

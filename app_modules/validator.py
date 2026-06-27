@@ -19,7 +19,9 @@ def validate_string(value: Any, min_len: int = 0, max_len: int = 500, allow_empt
 
 def validate_url(value: Any, required: bool = True) -> Tuple[bool, str]:
     if not value:
-        return not required, "url is required" if required else (True, "")
+        if required:
+            return False, "url is required"
+        return True, ""
     if not isinstance(value, str):
         return False, "url must be string"
     if not _URL_REGEX.match(value):
@@ -27,19 +29,26 @@ def validate_url(value: Any, required: bool = True) -> Tuple[bool, str]:
     return True, ""
 
 def validate_port(value: Any) -> Tuple[bool, str]:
-    if not value:
+    if value is None:
         return False, "port is required"
     if isinstance(value, int):
-        return 1 <= value <= 65535, "port must be between 1-65535"
+        if 1 <= value <= 65535:
+            return True, ""
+        return False, "port must be between 1-65535"
     if isinstance(value, str):
         if not _PORT_REGEX.match(value):
             return False, "invalid port format"
-        return 1 <= int(value) <= 65535, "port must be between 1-65535"
+        v = int(value)
+        if 1 <= v <= 65535:
+            return True, ""
+        return False, "port must be between 1-65535"
     return False, "port must be number"
 
 def validate_cron(value: Any, required: bool = False) -> Tuple[bool, str]:
     if not value:
-        return not required, "cron is required" if required else (True, "")
+        if required:
+            return False, "cron is required"
+        return True, ""
     if not isinstance(value, str):
         return False, "cron must be string"
     parts = value.strip().split()
@@ -49,15 +58,19 @@ def validate_cron(value: Any, required: bool = False) -> Tuple[bool, str]:
 
 def validate_time(value: Any, required: bool = False) -> Tuple[bool, str]:
     if not value:
-        return not required, "time is required" if required else (True, "")
+        if required:
+            return False, "time is required"
+        return True, ""
     if not isinstance(value, str):
         return False, "time must be string"
     parts = value.split(":")
-    if len(parts) != 2:
+    if len(parts) != 2 or len(parts[0]) != 2 or len(parts[1]) != 2:
         return False, "time must be HH:MM format"
     try:
         h, m = int(parts[0]), int(parts[1])
-        return 0 <= h <= 23 and 0 <= m <= 59, "invalid time (HH:MM)"
+        if 0 <= h <= 23 and 0 <= m <= 59:
+            return True, ""
+        return False, "invalid time (HH:MM)"
     except ValueError:
         return False, "invalid time format"
 

@@ -316,13 +316,13 @@ def _find_in_history(title, history, index=None):
         if title_clean in index["clean"]:
             return True
         for k, k_clean in index["items"]:
-            if title_clean == k_clean or (len(title_clean) >= 4 and title_clean in k_clean) or (len(k_clean) >= 4 and k_clean in title_clean):
+            if title_clean == k_clean or (len(title_clean) >= 3 and title_clean in k_clean) or (len(k_clean) >= 3 and k_clean in title_clean):
                 return True
         return False
     title_clean = _clean_title(title)
     for k in history:
         k_clean = _clean_title(k)
-        if title_clean == k_clean or (len(title_clean) >= 4 and title_clean in k_clean) or (len(k_clean) >= 4 and k_clean in title_clean):
+        if title_clean == k_clean or (len(title_clean) >= 3 and title_clean in k_clean) or (len(k_clean) >= 3 and k_clean in title_clean):
             return True
     return False
 
