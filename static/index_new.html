@@ -936,7 +936,7 @@ async function loadDashboard(){
     var items = hist.items || hist;
     var today = new Date();
     today.setHours(0,0,0,0);
-    var todayStr = today.toISOString().slice(0,10);
+    var todayStr = today.getFullYear()+'-'+String(today.getMonth()+1).padStart(2,'0')+'-'+String(today.getDate()).padStart(2,'0');
     var todayCount = 0;
     var lastTransfer = null;
     var days7OK = 0, days7Fail = 0, days7Total = 0;
@@ -944,7 +944,7 @@ async function loadDashboard(){
     for(var i=0;i<items.length;i++){
       var item = items[i];
       if(!item.time) continue;
-      var itemDate = new Date(item.time);
+      var itemDate = new Date(item.time.replace(/-/g,'/'));
       var isTransfer = item.type === 'transfer';
       if(item.time.slice(0,10)===todayStr && isTransfer) todayCount++;
       if(itemDate >= sevenDaysAgo && isTransfer){
@@ -968,8 +968,19 @@ async function loadDashboard(){
         statusEl.textContent = '✅ 成功';
         statusEl.className = 'num';
       }else{
-        statusEl.textContent = '❌ 失败';
-        statusEl.className = 'num red';
+        if(lastTransfer.data && lastTransfer.data.results){
+          var okCnt = lastTransfer.data.results.filter(function(r){return r.status==='ok'||r.status==='done'}).length;
+          if(okCnt > 0){
+            statusEl.textContent = '⚡ 部分成功';
+            statusEl.className = 'num';
+          }else{
+            statusEl.textContent = '❌ 失败';
+            statusEl.className = 'num red';
+          }
+        }else{
+          statusEl.textContent = '❌ 失败';
+          statusEl.className = 'num red';
+        }
       }
       statusEl.style.cssText = 'font-size:15px;font-weight:400;text-align:center;line-height:1.2;margin-top:20px;transform:translateX(-3px)';
       timeEl.textContent = lastTransfer.time.slice(5, 16);
