@@ -251,7 +251,6 @@ def _derive_key(purpose=b"secret"):
 def _get_fernet_key():
     from cryptography.fernet import Fernet
     dk = _derive_key(b"fernet_key")
-    import base64
     return base64.urlsafe_b64encode(dk[:32])
 
 def encrypt_secret(plaintext):

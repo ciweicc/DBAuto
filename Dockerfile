@@ -1,6 +1,14 @@
-FROM python:3.11-slim
+FROM registry.aliyuncs.com/python:3.11-slim
 
 WORKDIR /app
+
+# 配置 apt 清华镜像源
+RUN sed -i 's/deb.debian.org/mirrors.tuna.tsinghua.edu.cn/g' /etc/apt/sources.list && \
+    apt-get update && \
+    rm -rf /var/lib/apt/lists/*
+
+# 配置 pip 清华镜像源
+RUN pip config set global.index-url https://pypi.tuna.tsinghua.edu.cn/simple
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
