@@ -7,7 +7,7 @@
 - 🎬 **豆瓣榜单抓取**：热门电影、最新电影、豆瓣高分、冷门佳片，涵盖 30 个子榜单
 - 📺 **电视剧/综艺**：热门剧集 7 个分类 + 热门综艺 3 个分类
 - 🔍 **资源搜索**：集成 PanSou 搜索，一键转存到指定目录，支持链接有效性验证
-- ⏰ **定时调度**：支持每日/每周/每月定时转存、失效检测、目录清理
+- ⏰ **定时调度**：支持每日/每周/每月定时转存、失效检测
 - 📊 **仪表盘**：今日转存量、上次执行状态、近 7 天统计、下次调度时间一目了然
 - 🔐 **安全认证**：PBKDF2 密码哈希、Token 登录保护、登录频率限制
 - 🎨 **Apple 风格 UI**：深色/浅色主题切换、毛玻璃卡片、iOS 风格组件
@@ -46,7 +46,6 @@ static/                      # 前端
 |------|------|------|
 | [PanSou](https://github.com/fish2018/pansou) | 网盘资源搜索 | 8080 |
 | [QAS (夸克自动转存)](https://github.com/Cp0204/quark-auto-save) | 转存任务执行 | 5005 |
-| [OpenList](https://github.com/openlistteam/openlist) | 网盘文件管理 | 5244 |
 
 以上服务通过设置页面（⚙️）或环境变量配置地址和 Token。
 
@@ -76,9 +75,6 @@ docker run -d \
 | `PANSOU` | — | PanSou 搜索服务地址 |
 | `QAS` | — | QAS 转存服务地址 |
 | `QAS_TOKEN` | — | QAS API Token |
-| `OPENLIST_URL` | — | OpenList 服务地址 |
-| `OPENLIST_TOKEN` | — | OpenList API Token |
-| `OPENLIST_BASE_PATH` | — | 转存目标基础路径 |
 | `AUTH_USER` | `root` | 登录用户名 |
 | `AUTH_PASS` | — | 登录密码 |
 
@@ -118,7 +114,6 @@ docker run -d \
 | GET | `/api/schedule` | 获取定时设置 |
 | POST | `/api/schedule` | 保存定时设置 |
 | GET | `/api/check_expired` | 检测失效链接 |
-| GET | `/api/dir_cleanup` | 执行目录清理 |
 
 ### 历史记录
 

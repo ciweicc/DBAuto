@@ -3,7 +3,7 @@ from config import load_config, save_config, load_settings, save_settings
 from auth import hash_auth_password
 from scheduler import (
     schedule_status, schedule_lock, _next_fire_time, _now_local,
-    _run_scheduled_transfer, _run_scheduled_expired_check, _run_scheduled_dir_cleanup,
+    _run_scheduled_transfer, _run_scheduled_expired_check,
     notify_settings_changed,
 )
 from transfer import reset_qas_client
@@ -21,7 +21,7 @@ class ConfigRouteMixin:
             cfg = load_config()
             masked = {}
             for k, v in cfg.items():
-                if k in ("qas_token", "openlist_token", "auth_pass"):
+                if k in ("qas_token", "auth_pass"):
                     masked[k] = "***" if v else ""
                 else:
                     masked[k] = v
@@ -34,25 +34,13 @@ class ConfigRouteMixin:
                 status = dict(schedule_status)
             t = settings.get("transfer", {})
             e = settings.get("expired_check", {})
-            d = settings.get("dir_cleanup", {})
             result = dict(settings)
             result["_status"] = status
             result["_next_runs"] = {
                 "transfer": _format_next(t.get("time"), t.get("cron")) if t.get("enabled") else None,
                 "expired_check": _format_next(e.get("time"), e.get("cron")) if e.get("enabled") else None,
-                "dir_cleanup": _format_next(d.get("time"), d.get("cron")) if d.get("enabled") else None,
             }
             self._send_json(result)
-            return True
-
-        if route == "/api/dir_cleanup":
-            params = self._get_query_params()
-            manual = params.get("manual", "0") == "1"
-            if manual:
-                Thread(target=_run_scheduled_dir_cleanup, daemon=True).start()
-                self._send_json({"success": True, "message": "started"})
-            else:
-                self._send_json({"success": True, "status": "ok"})
             return True
 
         return False
@@ -73,14 +61,14 @@ class ConfigRouteMixin:
                             self._send_json({"success": False, "message": "auth_pass: {}".format(msg)}, 400)
                             return True
                         cfg[k] = hash_auth_password(v)
-                elif k in ("qas_token", "openlist_token"):
+                elif k == "qas_token":
                     if v and v != "***":
                         ok, msg = validate_string(v, min_len=1, max_len=500)
                         if not ok:
                             self._send_json({"success": False, "message": "{}: {}".format(k, msg)}, 400)
                             return True
                         cfg[k] = v
-                elif k in ("pansou", "qas", "openlist_url"):
+                elif k in ("pansou", "qas"):
                     if v:
                         ok, msg = validate_url(v, required=False)
                         if not ok:
@@ -109,7 +97,7 @@ class ConfigRouteMixin:
             action = body.get("action", "save")
 
             if action == "save":
-                for section in ("transfer", "expired_check", "dir_cleanup"):
+                for section in ("transfer", "expired_check"):
                     if section in body:
                         section_data = body[section]
                         if section not in settings:
@@ -190,10 +178,6 @@ class ConfigRouteMixin:
                 elif section == "expired_check":
                     Thread(target=_run_scheduled_expired_check, daemon=True).start()
                     self._send_json({"success": True, "message": "expired_check started"})
-                    return True
-                elif section == "dir_cleanup":
-                    Thread(target=_run_scheduled_dir_cleanup, daemon=True).start()
-                    self._send_json({"success": True, "message": "dir_cleanup started"})
                     return True
 
                 self._send_json({"success": False, "message": "unknown section: {}".format(section)})

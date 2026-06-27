@@ -352,19 +352,7 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
     <button class="btn btn-outline btn-sm" style="margin-top:8px;border-style:dashed" onclick="addExpiredDir()">+ 添加目录</button>
   </div>
   <div class="card">
-    <div class="card-title" style="justify-content:space-between">目录清理 <button class="btn btn-sm btn-outline" onclick="manualCleanup()">立即清理</button></div>
-    <div class="sched-row">
-      <label class="toggle"><input type="checkbox" id="schedDOn" onchange="autoSaveSchedule()"><span class="slider"></span></label>
-      <span style="color:var(--text2)">启用</span>
-      <span style="color:var(--text2);margin-left:8px">时间</span>
-      <select id="schedDHour" onchange="autoSaveSchedule()" style="padding:7px 8px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:14px"></select>
-      <span style="color:var(--text3)">:</span>
-      <select id="schedDMin" onchange="autoSaveSchedule()" style="padding:7px 8px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:14px"></select>
-    </div>
-    <div id="dirList" style="margin-top:10px"></div>
-    <button class="btn btn-outline btn-sm" style="margin-top:8px;border-style:dashed" onclick="addDir()">+ 添加目录</button>
-  </div>
-</div>
+    <div class="card-title">失效检测 <button class="btn btn-sm btn-outline" onclick="manualCheck()">立即检测</button></div>
 
 <!-- ===== 执行历史 ===== -->
 <div class="tab-content" id="tabHistory">
@@ -374,7 +362,6 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
       <span class="filter-tab active" onclick="filterHist('all',this)">全部</span>
       <span class="filter-tab" onclick="filterHist('transfer',this)">转存</span>
       <span class="filter-tab" onclick="filterHist('expired_check',this)">检测</span>
-      <span class="filter-tab" onclick="filterHist('dir_cleanup',this)">清理</span>
     </div>
     <div id="execHistoryList"><div style="text-align:center;padding:40px;color:var(--text3)">加载中...</div></div>
   </div>
@@ -390,10 +377,6 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
     <div class="section-title">📦 转存服务</div>
     <div class="form-group"><label>QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
     <div class="form-group"><label>QAS Token</label><input type="password" id="cfg_qas_token" placeholder="留空不修改" onchange="autoSaveConfig()"></div>
-    <div class="section-title">📂 网盘服务</div>
-    <div class="form-group"><label>OpenList 地址</label><input type="text" id="cfg_openlist_url" placeholder="http://192.168.1.1:5244"></div>
-    <div class="form-group"><label>OpenList Token</label><input type="password" id="cfg_openlist_token" placeholder="留空不修改"></div>
-    <div class="form-group"><label>转存基础路径</label><input type="text" id="cfg_openlist_base_path" placeholder="/批量转存"></div>
     <div class="section-title">🔐 管理认证</div>
     <div class="form-group"><label>用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
     <div class="form-group"><label>密码</label><input type="password" id="cfg_auth_pass" placeholder="留空不修改"></div>
@@ -456,7 +439,7 @@ function toggleTheme(){
 
 // ============ Global ============
 var C = {}, currentTab = 'manual', execHistoryData = [], execHistoryFilter = 'all';
-var dirEntries = [], expiredDirEntries = [], autoSaveTimer = null, logPollTimer = null;
+var expiredDirEntries = [], autoSaveTimer = null, logPollTimer = null;
 var logBefore = [], logFilter = 'all', logPaused = false;
 
 // ============ Toast ============
@@ -701,18 +684,12 @@ async function loadSchedule(){
         document.getElementById('schedEHour').value=parseInt(e2[0])||0;
         document.getElementById('schedEMin').value=parseInt(e2[1])||0;}
       expiredDirEntries=(d.expired_check.directories&&d.expired_check.directories.length>0)?[...d.expired_check.directories]:[''];renderExpiredDirs();}
-    if(d.dir_cleanup){document.getElementById('schedDOn').checked=!!d.dir_cleanup.enabled;
-      if(d.dir_cleanup.time){var d2=d.dir_cleanup.time.split(':');
-        document.getElementById('schedDHour').value=parseInt(d2[0])||0;
-        document.getElementById('schedDMin').value=parseInt(d2[1])||0;}
-      dirEntries=(d.dir_cleanup.directories&&d.dir_cleanup.directories.length>0)?[...d.dir_cleanup.directories]:[''];renderDirs();}
   }catch(e){showToast('加载调度失败',false)}
 }
 
 function autoSaveSchedule(){clearTimeout(autoSaveTimer);autoSaveTimer=setTimeout(saveSchedule,600)}
 async function saveSchedule(){
   var tasks = getSelectedTasks('tabSchedule');
-  var dirs = dirEntries.map(function(d){return d.trim()}).filter(function(d){return d});
   var expiredDirs = expiredDirEntries.map(function(d){return d.trim()}).filter(function(d){return d});
   var body = {
     transfer:{enabled:document.getElementById('schedTOn').checked,
@@ -720,21 +697,12 @@ async function saveSchedule(){
               limit:parseInt(document.getElementById('schedLimit').value)||5,tasks:tasks},
     expired_check:{enabled:document.getElementById('schedEOn').checked,
                    time:pad2(document.getElementById('schedEHour').value)+':'+pad2(document.getElementById('schedEMin').value),
-                   directories:expiredDirs},
-    dir_cleanup:{enabled:document.getElementById('schedDOn').checked,
-                 time:pad2(document.getElementById('schedDHour').value)+':'+pad2(document.getElementById('schedDMin').value),directories:dirs}
+                   directories:expiredDirs}
   };
   try{var d=await apiPost('/api/schedule',body);if(d.success){showToast('已保存',true)}}
   catch(e){showToast('保存失败',false)}
 }
 function pad2(n){return String(n).padStart(2,'0')}
-function renderDirs(){
-  var el=document.getElementById('dirList'),h='';
-  dirEntries.forEach(function(d,i){h+='<div class=\"dir-item\"><input type=\"text\" value=\"'+d.replace(/\"/g,'&quot;')+'\" placeholder=\"/影视/电视剧\" onchange=\"dirEntries['+i+']=this.value;autoSaveSchedule()\"><span class=\"dir-del\" onclick=\"removeDir('+i+')\">×</span></div>'});
-  el.innerHTML=h;
-}
-function addDir(){dirEntries.push('');renderDirs();autoSaveSchedule()}
-function removeDir(i){dirEntries.splice(i,1);if(!dirEntries.length)dirEntries=[''];renderDirs();autoSaveSchedule()}
 function renderExpiredDirs(){
   var el=document.getElementById('expiredDirList'),h='';
   expiredDirEntries.forEach(function(d,i){h+='<div class="dir-item"><input type="text" value="'+d.replace(/"/g,'&quot;')+'" placeholder="/影视/电视剧" onchange="expiredDirEntries['+i+']=this.value;autoSaveSchedule()"><span class="dir-del" onclick="removeExpiredDir('+i+')">×</span></div>'});
@@ -742,8 +710,6 @@ function renderExpiredDirs(){
 }
 function addExpiredDir(){expiredDirEntries.push('');renderExpiredDirs();autoSaveSchedule()}
 function removeExpiredDir(i){expiredDirEntries.splice(i,1);if(!expiredDirEntries.length)expiredDirEntries=[''];renderExpiredDirs();autoSaveSchedule()}
-async function manualCleanup(){if(!confirm('确定要立即执行目录清理吗？'))return;
-  try{var d=await apiGet('/api/dir_cleanup');showToast(d.message||'已启动',true)}catch(e){showToast('请求失败',false)}}
 
 // ============ Exec History ============
 var histPage=0, histMore=true;
@@ -771,7 +737,6 @@ function renderExecHistory(){
   el.innerHTML = filtered.reverse().map(function(h){
     var icon='📋',cls='transfer',tn='转存';
     if(h.type==='expired_check'){icon='🔍';cls='expired';tn='检测'}
-    if(h.type==='dir_cleanup'){icon='🗑';cls='cleanup';tn='清理'}
     var hasDetail = h.data && (h.data.results || h.data.expired);
     var cursor = hasDetail ? 'cursor:pointer' : '';
     return '<div class=\"hist-item\" style=\"'+cursor+'\" onclick=\"toggleHistDetail(\''+h.id+'\')\" id=\"hist_'+h.id+'\">'+
@@ -866,9 +831,6 @@ async function loadConfig(){
     document.getElementById('cfg_pansou').value=cfg.pansou||'';
     document.getElementById('cfg_qas').value=cfg.qas||'';
     document.getElementById('cfg_qas_token').value='';
-    document.getElementById('cfg_openlist_url').value=cfg.openlist_url||'';
-    document.getElementById('cfg_openlist_token').value='';
-    document.getElementById('cfg_openlist_base_path').value=cfg.openlist_base_path||'';
     document.getElementById('cfg_auth_user').value=cfg.auth_user||'';
     document.getElementById('cfg_auth_pass').value='';
   }catch(e){}
@@ -877,9 +839,6 @@ async function saveConfig(silent=false){
   var cfg={pansou:document.getElementById('cfg_pansou').value.trim(),
            qas:document.getElementById('cfg_qas').value.trim(),
            qas_token:document.getElementById('cfg_qas_token').value,
-           openlist_url:document.getElementById('cfg_openlist_url').value.trim(),
-           openlist_token:document.getElementById('cfg_openlist_token').value,
-           openlist_base_path:document.getElementById('cfg_openlist_base_path').value.trim(),
            auth_user:document.getElementById('cfg_auth_user').value.trim(),
            auth_pass:document.getElementById('cfg_auth_pass').value};
   try{var d=await apiPost('/api/config',cfg);if(d.success){if(!silent)showToast('设置已保存',true);if(!silent)closeSettings()}else showToast(d.message||'保存失败',false)}
@@ -928,7 +887,6 @@ async function loadDashboard(){
       var ss=s._status, h='<div style=\"display:grid;grid-template-columns:60px 1fr;gap:2px 8px\">';
       if(ss.transfer_next) h+='<span>📋 转存</span><span style=\"text-align:right;color:var(--text2)\">'+ss.transfer_next.slice(5)+'</span>';
       if(ss.expired_check_next) h+='<span>🔍 检测</span><span style=\"text-align:right;color:var(--text2)\">'+ss.expired_check_next.slice(5)+'</span>';
-      if(ss.dir_cleanup_next) h+='<span>🗑  清理</span><span style=\"text-align:right;color:var(--text2)\">'+ss.dir_cleanup_next.slice(5)+'</span>';
       h+='</div>';
       document.getElementById('dashNext').innerHTML = h||'暂无调度';
     }

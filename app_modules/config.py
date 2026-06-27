@@ -9,7 +9,7 @@ SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 PORT = int(os.environ.get("PORT", "3001"))
 
-_SENSITIVE_FIELDS = {"qas_token", "openlist_token", "auth_pass"}
+_SENSITIVE_FIELDS = {"qas_token", "auth_pass"}
 
 
 def _is_encrypted(val):
@@ -46,9 +46,6 @@ DEFAULT_CONFIG = {
     "pansou": os.environ.get("PANSOU", "http://192.168.1.1:8080"),
     "qas": os.environ.get("QAS", "http://192.168.1.1:5005"),
     "qas_token": os.environ.get("QAS_TOKEN", ""),
-    "openlist_url": os.environ.get("OPENLIST_URL", "http://192.168.1.1:5244"),
-    "openlist_token": os.environ.get("OPENLIST_TOKEN", ""),
-    "openlist_base_path": os.environ.get("OPENLIST_BASE_PATH", ""),
     "auth_user": os.environ.get("AUTH_USER", "root"),
     "auth_pass": os.environ.get("AUTH_PASS", ""),
 }
@@ -56,7 +53,6 @@ DEFAULT_CONFIG = {
 DEFAULT_SETTINGS = {
     "transfer": {"enabled": False, "time": "02:00", "cron": "", "limit": 5, "tasks": []},
     "expired_check": {"enabled": False, "time": "03:00", "cron": "", "directories": []},
-    "dir_cleanup": {"enabled": False, "time": "06:00", "cron": "", "directories": []},
 }
 
 CATEGORIES = {
@@ -110,18 +106,6 @@ class ConfigManager:
     @property
     def qas_token(self):
         return self.get_config().get("qas_token", DEFAULT_CONFIG["qas_token"])
-
-    @property
-    def openlist_url(self):
-        return self.get_config().get("openlist_url", DEFAULT_CONFIG["openlist_url"])
-
-    @property
-    def openlist_token(self):
-        return self.get_config().get("openlist_token", DEFAULT_CONFIG["openlist_token"])
-
-    @property
-    def openlist_base_path(self):
-        return self.get_config().get("openlist_base_path", DEFAULT_CONFIG["openlist_base_path"])
 
     @property
     def auth_user(self):
@@ -234,12 +218,6 @@ class _ConfigProxy:
             return _get_config_manager().qas
         if name in ("QAS_TOKEN", "qas_token"):
             return _get_config_manager().qas_token
-        if name in ("OPENLIST_URL", "openlist_url"):
-            return _get_config_manager().openlist_url
-        if name in ("OPENLIST_TOKEN", "openlist_token"):
-            return _get_config_manager().openlist_token
-        if name in ("OPENLIST_BASE_PATH", "openlist_base_path"):
-            return _get_config_manager().openlist_base_path
         if name in ("AUTH_USER", "auth_user"):
             return _get_config_manager().auth_user
         if name in ("AUTH_PASS", "auth_pass"):
@@ -250,8 +228,5 @@ class _ConfigProxy:
 PANSOU = DEFAULT_CONFIG["pansou"]
 QAS = DEFAULT_CONFIG["qas"]
 QAS_TOKEN = DEFAULT_CONFIG["qas_token"]
-OPENLIST_URL = DEFAULT_CONFIG["openlist_url"]
-OPENLIST_TOKEN = DEFAULT_CONFIG["openlist_token"]
-OPENLIST_BASE_PATH = DEFAULT_CONFIG["openlist_base_path"]
 AUTH_USER = DEFAULT_CONFIG["auth_user"]
 AUTH_PASS = DEFAULT_CONFIG["auth_pass"]

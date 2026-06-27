@@ -14,8 +14,8 @@ except ImportError:
     _has_croniter = False
 
 TZ = timezone(timedelta(hours=8))
-schedule_status = {"transfer_next": None, "expired_check_next": None, "dir_cleanup_next": None,
-                   "last_transfer": None, "last_expired_check": None, "last_dir_cleanup": None}
+schedule_status = {"transfer_next": None, "expired_check_next": None,
+                   "last_transfer": None, "last_expired_check": None}
 schedule_lock = Lock()
 _settings_changed = Event()
 
@@ -100,49 +100,6 @@ def _run_scheduled_expired_check():
         log("定时检测失效链接错误: {}".format(e))
         traceback.print_exc()
 
-def _run_scheduled_dir_cleanup():
-    try:
-        settings = load_settings()
-        if not settings.get("dir_cleanup", {}).get("enabled"): return
-        dirs = settings["dir_cleanup"].get("directories", [])
-        if not dirs: return
-        log("定时目录清理开始")
-        removed, total = 0, 0
-
-        from api_client import OpenListClient
-        cfg = ConfigManager.get_instance()
-        client = OpenListClient(cfg.openlist_url, cfg.openlist_token, timeout=20)
-
-        for d in dirs:
-            d = d.strip()
-            if not d: continue
-            try:
-                data = client.list_files(d)
-                if data.get("code") != 200:
-                    log("目录列表获取失败 {}: {}".format(d, data.get("message", "unknown")))
-                    continue
-                content = data.get("data", {}).get("content", [])
-                if not content: continue
-                total += len(content)
-                for item in content:
-                    if item.get("is_dir") and not is_in_qas(item.get("name", "")):
-                        try:
-                            client.remove_files(["{}/{}".format(d, item["name"])], d)
-                            removed += 1
-                        except Exception as e:
-                            log("删除目录失败 {}/{}: {}".format(d, item["name"], e))
-                time.sleep(1)
-            except Exception as e:
-                log("目录清理错误 {}: {}".format(d, e))
-
-        log("目录清理: {}/{} 已删除".format(removed, total))
-        add_exec_record("dir_cleanup", "removed {}/{}".format(removed, total), "ok")
-        with schedule_lock:
-            schedule_status["last_dir_cleanup"] = _now_local().strftime("%Y-%m-%d %H:%M:%S")
-    except Exception as e:
-        log("定时目录清理执行错误: {}".format(e))
-        traceback.print_exc()
-
 _settings_mtime = None
 _settings_cache = None
 
@@ -169,19 +126,15 @@ def scheduler_loop():
             settings = _load_settings_cached()
             t = settings.get("transfer", {})
             e = settings.get("expired_check", {})
-            d = settings.get("dir_cleanup", {})
             t_next = _next_fire_time(t.get("time"), t.get("cron"))
             e_next = _next_fire_time(e.get("time"), e.get("cron"))
-            d_next = _next_fire_time(d.get("time"), d.get("cron"))
             now = _now_local()
             with schedule_lock:
                 schedule_status["transfer_next"] = t_next.strftime("%Y-%m-%d %H:%M") if t_next else None
                 schedule_status["expired_check_next"] = e_next.strftime("%Y-%m-%d %H:%M") if e_next else None
-                schedule_status["dir_cleanup_next"] = d_next.strftime("%Y-%m-%d %H:%M") if d_next else None
             upcoming = []
             if t.get("enabled") and t_next: upcoming.append(("transfer", t_next))
             if e.get("enabled") and e_next: upcoming.append(("expired_check", e_next))
-            if d.get("enabled") and d_next: upcoming.append(("dir_cleanup", d_next))
             if not upcoming:
                 _settings_changed.wait(timeout=60)
                 _settings_changed.clear()
@@ -214,8 +167,6 @@ def scheduler_loop():
                     _run_scheduled_transfer()
                 elif name == "expired_check":
                     _run_scheduled_expired_check()
-                elif name == "dir_cleanup":
-                    _run_scheduled_dir_cleanup()
                 time.sleep(5)
         except Exception as e:
             log("调度错误: {}".format(e))

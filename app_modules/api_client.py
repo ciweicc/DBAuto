@@ -71,22 +71,3 @@ class QASClient(APIClient):
 
     def update(self, data):
         return self.post(self._add_token_to_url("/update"), data)
-
-
-class OpenListClient(APIClient):
-    def list_files(self, path, page=1, per_page=5000):
-        return self.post("/api/fs/list", {
-            "path": path,
-            "password": "",
-            "page": page,
-            "per_page": per_page,
-            "refresh": False,
-            "token": self.token
-        })
-
-    def remove_files(self, names, dir_path):
-        return self.post("/api/fs/remove", {
-            "names": names,
-            "dir": dir_path,
-            "token": self.token
-        })
