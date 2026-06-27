@@ -147,6 +147,8 @@ class ConfigManager:
                 self._config = cfg
             else:
                 self._config = dict(DEFAULT_CONFIG)
+            if not os.path.exists(CONFIG_FILE):
+                self.set_config(self._config)
             return self._config
 
     def set_config(self, cfg):
@@ -172,6 +174,9 @@ class ConfigManager:
             for k, v in DEFAULT_SETTINGS.items():
                 if k not in self._settings:
                     self._settings[k] = dict(v)
+            if not os.path.exists(SETTINGS_FILE):
+                from utils import atomic_write_json
+                atomic_write_json(SETTINGS_FILE, self._settings)
             return self._settings
 
     def set_settings(self, settings):
