@@ -351,8 +351,7 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
     <div id="expiredDirList" style="margin-top:10px"></div>
     <button class="btn btn-outline btn-sm" style="margin-top:8px;border-style:dashed" onclick="addExpiredDir()">+ 添加目录</button>
   </div>
-  <div class="card">
-    <div class="card-title">失效检测 <button class="btn btn-sm btn-outline" onclick="manualCheck()">立即检测</button></div>
+</div>
 
 <!-- ===== 执行历史 ===== -->
 <div class="tab-content" id="tabHistory">
@@ -957,8 +956,8 @@ async function loadDashboard(){
 
 // ============ Init ============
 function initTimeSelects(){
-  var hours=['schedTHour','schedEHour','schedDHour'];
-  var mins=['schedTMin','schedEMin','schedDMin'];
+  var hours=['schedTHour','schedEHour'];
+  var mins=['schedTMin','schedEMin'];
   for(var h=0;h<hours.length;h++){
     var sel=document.getElementById(hours[h]);
     if(sel)for(var i=0;i<24;i++){var o=document.createElement('option');o.value=i;o.textContent=String(i).padStart(2,'0');sel.appendChild(o)}
