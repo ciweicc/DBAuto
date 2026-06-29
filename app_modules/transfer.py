@@ -326,11 +326,18 @@ def _find_in_history(title, history, index=None):
             return True
     return False
 
-def build_transfer_tasks(tasks_config):
+def build_transfer_tasks(tasks_config, filters=None):
+    filters = filters or {}
     all_t = []
     for tk in tasks_config:
         try:
-            items = get_douban_list(tk["path"], tk["type"], 20)
+            items = get_douban_list(
+                tk["path"], tk["type"], 20,
+                min_rating=filters.get("min_rating", 0),
+                sort_by=filters.get("sort_by", "rating"),
+                year_from=filters.get("year_from", 0),
+                year_to=filters.get("year_to", 0)
+            )
             for i in items:
                 all_t.append({"title": i["title"], "savepath": tk["savepath"],
                               "category": tk.get("category", "movie")})

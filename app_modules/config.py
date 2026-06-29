@@ -51,7 +51,8 @@ DEFAULT_CONFIG = {
 }
 
 DEFAULT_SETTINGS = {
-    "transfer": {"enabled": False, "time": "02:00", "cron": "", "limit": 5, "tasks": []},
+    "transfer": {"enabled": False, "time": "02:00", "cron": "", "limit": 5, "tasks": [],
+                 "filters": {"min_rating": 0, "sort_by": "rating", "year_from": 0, "year_to": 0}},
     "expired_check": {"enabled": False, "time": "03:00", "cron": "", "directories": []},
 }
 

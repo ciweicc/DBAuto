@@ -88,6 +88,7 @@ class TransferRouteMixin:
 
             tasks_input = body.get("tasks", [])
             limit = body.get("limit", 5)
+            filters = body.get("filters", {})
 
             ok, msg = validate_list(tasks_input, min_len=1, max_len=100, item_validator=validate_task)
             if not ok:
@@ -99,7 +100,7 @@ class TransferRouteMixin:
                 self._send_json({"success": False, "message": "limit: {}".format(msg)}, 400)
                 return True
 
-            uniq = build_transfer_tasks(tasks_input)
+            uniq = build_transfer_tasks(tasks_input, filters)
             Thread(target=run_transfer, args=(uniq, limit), daemon=True).start()
             self._send_json({"success": True, "message": "started {}".format(len(uniq))})
             return True

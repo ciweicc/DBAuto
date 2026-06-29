@@ -337,6 +337,24 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
       <span style="color:var(--text3)">:</span>
       <select id="schedTMin" onchange="autoSaveSchedule()" style="padding:7px 8px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:14px"></select>
     </div>
+    <div class="sched-row" style="margin-top:8px">
+      <span style="color:var(--text2)">最低评分</span>
+      <input type="range" id="filterRating" min="0" max="10" step="0.5" value="0" onchange="updateFilterRating(); autoSaveSchedule()">
+      <span id="filterRatingVal" style="width:30px;text-align:right;color:var(--accent)">0</span>
+    </div>
+    <div class="sched-row">
+      <span style="color:var(--text2)">排序方式</span>
+      <select id="filterSort" onchange="autoSaveSchedule()" style="padding:7px 8px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:14px">
+        <option value="rating">按评分</option>
+        <option value="year">按年份</option>
+      </select>
+    </div>
+    <div class="sched-row">
+      <span style="color:var(--text2)">年份范围</span>
+      <input type="number" id="filterYearFrom" placeholder="起始" min="1900" max="2100" onchange="autoSaveSchedule()" style="width:70px;padding:7px 8px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:14px">
+      <span style="color:var(--text3)">-</span>
+      <input type="number" id="filterYearTo" placeholder="结束" min="1900" max="2100" onchange="autoSaveSchedule()" style="width:70px;padding:7px 8px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:14px">
+    </div>
   </div>
   <div class="card">
     <div class="card-title">失效检测</div>
@@ -677,6 +695,14 @@ async function loadSchedule(){
           if(savedPaths.has(el.dataset.path+'/'+el.dataset.type))el.classList.add('on');
         });
       }
+      if(d.transfer.filters){
+        var f = d.transfer.filters;
+        document.getElementById('filterRating').value = f.min_rating||0;
+        document.getElementById('filterRatingVal').textContent = f.min_rating||0;
+        document.getElementById('filterSort').value = f.sort_by||'rating';
+        if(f.year_from)document.getElementById('filterYearFrom').value = f.year_from;
+        if(f.year_to)document.getElementById('filterYearTo').value = f.year_to;
+      }
     }
     if(d.expired_check){document.getElementById('schedEOn').checked=!!d.expired_check.enabled;
       if(d.expired_check.time){var e2=d.expired_check.time.split(':');
@@ -693,7 +719,11 @@ async function saveSchedule(){
   var body = {
     transfer:{enabled:document.getElementById('schedTOn').checked,
               time:pad2(document.getElementById('schedTHour').value)+':'+pad2(document.getElementById('schedTMin').value),
-              limit:parseInt(document.getElementById('schedLimit').value)||5,tasks:tasks},
+              limit:parseInt(document.getElementById('schedLimit').value)||5,tasks:tasks,
+              filters:{min_rating:parseFloat(document.getElementById('filterRating').value)||0,
+                       sort_by:document.getElementById('filterSort').value,
+                       year_from:parseInt(document.getElementById('filterYearFrom').value)||0,
+                       year_to:parseInt(document.getElementById('filterYearTo').value)||0}},
     expired_check:{enabled:document.getElementById('schedEOn').checked,
                    time:pad2(document.getElementById('schedEHour').value)+':'+pad2(document.getElementById('schedEMin').value),
                    directories:expiredDirs}
@@ -702,6 +732,9 @@ async function saveSchedule(){
   catch(e){showToast('保存失败',false)}
 }
 function pad2(n){return String(n).padStart(2,'0')}
+function updateFilterRating(){
+  document.getElementById('filterRatingVal').textContent = document.getElementById('filterRating').value;
+}
 function renderExpiredDirs(){
   var el=document.getElementById('expiredDirList'),h='';
   expiredDirEntries.forEach(function(d,i){h+='<div class="dir-item"><input type="text" value="'+d.replace(/"/g,'&quot;')+'" placeholder="/影视/电视剧" onchange="expiredDirEntries['+i+']=this.value;autoSaveSchedule()"><span class="dir-del" onclick="removeExpiredDir('+i+')">×</span></div>'});

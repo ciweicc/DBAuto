@@ -69,12 +69,13 @@ def _run_scheduled_transfer():
         if not t.get("enabled"): return
         tasks = t.get("tasks", [])
         limit = t.get("limit", 5)
+        filters = t.get("filters", {})
         if not tasks: return
         if is_transfer_running():
             log("定时转存跳过：已有转存任务正在运行")
             return
         log("定时转存开始")
-        uniq = build_transfer_tasks(tasks)
+        uniq = build_transfer_tasks(tasks, filters)
         log("定时转存: {} 条".format(len(uniq)))
         with schedule_lock:
             schedule_status["last_transfer"] = _now_local().strftime("%Y-%m-%d %H:%M:%S")
