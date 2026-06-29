@@ -283,6 +283,24 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
       <button class="btn btn-outline btn-sm" onclick="checkExpired()">检测失效链接</button>
       <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="syncToSchedule()">同步到定时任务</button>
     </div>
+    <div class="sched-row" style="margin-top:10px">
+      <span style="color:var(--text2)">最低评分</span>
+      <input type="range" id="manualFilterRating" min="0" max="10" step="0.5" value="0" onchange="updateManualFilterRating()">
+      <span id="manualFilterRatingVal" style="width:30px;text-align:right;color:var(--accent)">0</span>
+    </div>
+    <div class="sched-row">
+      <span style="color:var(--text2)">排序方式</span>
+      <select id="manualFilterSort" style="padding:7px 8px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:14px">
+        <option value="rating">按评分</option>
+        <option value="year">按年份</option>
+      </select>
+    </div>
+    <div class="sched-row">
+      <span style="color:var(--text2)">年份范围</span>
+      <input type="number" id="manualFilterYearFrom" placeholder="起始" min="1900" max="2100" style="width:70px;padding:7px 8px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:14px">
+      <span style="color:var(--text3)">-</span>
+      <input type="number" id="manualFilterYearTo" placeholder="结束" min="1900" max="2100" style="width:70px;padding:7px 8px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:14px">
+    </div>
   </div>
   <div class="card" id="logCard" style="display:none">
     <div class="card-title" style="justify-content:space-between">
@@ -571,8 +589,14 @@ async function startTransfer(){
   var tasks = getSelectedTasks('tabManual');
   if(!tasks.length){showToast('请至少选择一个榜单',false);return}
   var limit = parseInt(document.getElementById('limit').value)||5;
+  var filters = {
+    min_rating: parseFloat(document.getElementById('manualFilterRating').value)||0,
+    sort_by: document.getElementById('manualFilterSort').value,
+    year_from: parseInt(document.getElementById('manualFilterYearFrom').value)||0,
+    year_to: parseInt(document.getElementById('manualFilterYearTo').value)||0
+  };
   try{
-    var d = await apiPost('/api/transfer',{tasks:tasks,limit:limit});
+    var d = await apiPost('/api/transfer',{tasks:tasks,limit:limit,filters:filters});
     if(d.success){
       document.getElementById('logCard').style.display='block';
       document.getElementById('stopBtn').style.display='inline-block';
@@ -734,6 +758,9 @@ async function saveSchedule(){
 function pad2(n){return String(n).padStart(2,'0')}
 function updateFilterRating(){
   document.getElementById('filterRatingVal').textContent = document.getElementById('filterRating').value;
+}
+function updateManualFilterRating(){
+  document.getElementById('manualFilterRatingVal').textContent = document.getElementById('manualFilterRating').value;
 }
 function renderExpiredDirs(){
   var el=document.getElementById('expiredDirList'),h='';
