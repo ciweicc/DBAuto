@@ -296,7 +296,7 @@ def fix_expired_tasks():
 def _clean_title(title):
     return re.sub(r'[^\u4e00-\u9fff0-9a-zA-Z]', '', title).lower()
 
-def _build_history_index(history):
+def _build_history_index(history, qas_cache=None):
     index = {
         "exact": set(history.keys()),
         "clean": set()
@@ -304,6 +304,14 @@ def _build_history_index(history):
     for k in history:
         index["clean"].add(_clean_title(k))
     index["items"] = [(k, _clean_title(k)) for k in history]
+    if qas_cache:
+        index["qas_clean"] = set()
+        for name in qas_cache:
+            index["qas_clean"].add(_clean_title(name))
+        index["qas_items"] = [(name, _clean_title(name)) for name in qas_cache]
+    else:
+        index["qas_clean"] = set()
+        index["qas_items"] = []
     return index
 
 def _find_in_history(title, history, index=None):
@@ -317,6 +325,9 @@ def _find_in_history(title, history, index=None):
             return True
         for k, k_clean in index["items"]:
             if title_clean == k_clean or (len(title_clean) >= 3 and title_clean in k_clean) or (len(k_clean) >= 3 and k_clean in title_clean):
+                return True
+        for name, name_clean in index["qas_items"]:
+            if title_clean == name_clean or (len(title_clean) >= 3 and title_clean in name_clean) or (len(name_clean) >= 3 and name_clean in title_clean):
                 return True
         return False
     title_clean = _clean_title(title)
@@ -395,7 +406,9 @@ def run_transfer(task_list, limit):
     clear_progress()
     log("开始转存，上限{}".format(limit))
     history = load_history()
-    history_index = _build_history_index(history)
+    with _qas_cache_lock:
+        qas_cache_data = list(_qas_cache) if _qas_cache else []
+    history_index = _build_history_index(history, qas_cache_data)
     transferred = 0
     results = []
     error_msg = None
