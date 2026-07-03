@@ -1187,7 +1187,54 @@ async function loadConfig(){
     if(d.pansou_url)document.getElementById('cfg_pansou').value=d.pansou_url;
     if(d.qas_url)document.getElementById('cfg_qas').value=d.qas_url;
     if(d.auth_user)document.getElementById('cfg_auth_user').value=d.auth_user;
+    document.getElementById('cfg_qas_token').value='';
+    document.getElementById('cfg_auth_pass').value='';
   }catch(e){}
+}
+
+function openSettings(){document.getElementById('settingsModal').classList.add('show');loadConfig()}
+function closeSettings(){document.getElementById('settingsModal').classList.remove('show')}
+var configSaveTimer=null;
+function autoSaveConfig(){clearTimeout(configSaveTimer);configSaveTimer=setTimeout(saveConfig,800)}
+async function saveConfig(silent=false){
+  var cfg={pansou:document.getElementById('cfg_pansou').value.trim(),
+           qas:document.getElementById('cfg_qas').value.trim(),
+           qas_token:document.getElementById('cfg_qas_token').value,
+           auth_user:document.getElementById('cfg_auth_user').value.trim(),
+           auth_pass:document.getElementById('cfg_auth_pass').value};
+  try{var d=await apiPost('/api/config',cfg);if(d.success){if(!silent)showToast('设置已保存',true);if(!silent)closeSettings()}else showToast(d.message||'保存失败',false)}
+  catch(e){showToast('保存失败',false)}
+}
+
+// ============ Search ============
+function openSearch(){document.getElementById('searchModal').classList.add('show');document.getElementById('searchInput').focus();
+  var sp=document.getElementById('searchPath');sp.value=localStorage.getItem('search_path')||sp.value;
+  document.getElementById('searchValidate').checked = localStorage.getItem('search_validate')==='1'}
+function closeSearch(){document.getElementById('searchModal').classList.remove('show')}
+var searchTimer=null;
+function onSearchInput(){clearTimeout(searchTimer);var q=document.getElementById('searchInput').value.trim();
+  if(!q){document.getElementById('searchResults').innerHTML='';return}
+  searchTimer=setTimeout(doSearch,500)}
+async function doSearch(){
+  var q=document.getElementById('searchInput').value.trim();
+  var el=document.getElementById('searchResults');
+  el.innerHTML='<div style=\"text-align:center;padding:20px;color:var(--text3)\">搜索中...</div>';
+  try{var validate = document.getElementById('searchValidate').checked?'&validate=1':'';
+    var d=await apiGet('/api/search?q='+encodeURIComponent(q)+validate);
+    if(!d.success||!d.results||!d.results.length){el.innerHTML='<div style=\"text-align:center;padding:20px;color:var(--text3)\">未找到资源</div>';return}
+    el.innerHTML=d.results.map(function(r){return '<div style=\"display:flex;align-items:center;justify-content:space-between;padding:10px;border-radius:var(--radius-sm);background:rgba(255,255,255,.02);margin-bottom:6px\"><div style=\"flex:1;min-width:0\"><div style=\"font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\">'+esc(r.title)+'</div><div style=\"font-size:12px;color:var(--text3)\">'+esc(r.source||'夸克网盘')+'</div></div><button class=\"btn btn-sm btn-primary\" onclick=\"transferOne(this)\" data-title=\"'+esc(r.title)+'\" data-url=\"'+esc(r.url)+'\">转存</button></div>'}).join('')}
+  catch(e){el.innerHTML='<div style=\"text-align:center;padding:20px;color:var(--red)\">搜索失败</div>'}}
+async function transferOne(btn){
+  var title = btn.dataset.title;
+  var url = btn.dataset.url;
+  var savepath = (document.getElementById('searchPath').value||'').trim()||'/批量转存/手动搜索存';
+  localStorage.setItem('search_path',savepath);
+  btn.disabled=true; btn.textContent='转存中...';
+  try{
+    var r = await apiPost('/api/transfer_one',{title:title, url:url, savepath:savepath});
+    if(r.success){showToast('已提交转存: '+title,true); btn.textContent='已转存'; btn.className='btn btn-sm btn-outline'}
+    else{showToast(r.message||'失败',false); btn.disabled=false; btn.textContent='转存'}
+  }catch(e){showToast('请求失败',false); btn.disabled=false; btn.textContent='转存'}
 }
 
 function initSSE(){
