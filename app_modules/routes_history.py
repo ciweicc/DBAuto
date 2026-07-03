@@ -1,4 +1,5 @@
 # routes_history.py — 历史记录管理路由 Mixin
+import time
 from storage import load_history, save_history, load_exec_history, add_exec_record, clear_exec_history
 from utils import log, sse_broadcast
 from validator import validate_string, validate_list
@@ -8,6 +9,59 @@ class HistoryRouteMixin:
     """历史记录相关路由"""
 
     def _handle_history_get(self, route):
+        if route == "/api/dashboard/stats":
+            data = load_exec_history()
+            today_str = time.strftime("%Y-%m-%d")
+            week_ago = time.time() - 7 * 86400
+            today_count = 0
+            ok7 = 0
+            fail7 = 0
+            total7 = 0
+            last_transfer = None
+            last_status = "-"
+            for h in data:
+                h_time = h.get("time", "")
+                h_type = h.get("type", "")
+                if h_time.startswith(today_str) and h_type != "expired_check":
+                    today_count += 1
+                try:
+                    h_ts = time.mktime(time.strptime(h_time, "%Y-%m-%d %H:%M:%S"))
+                    if h_ts >= week_ago:
+                        total7 += 1
+                        d = h.get("data", {})
+                        if isinstance(d, dict):
+                            ok7 += d.get("ok", 0)
+                            fail7 += d.get("failed", 0)
+                except (ValueError, OverflowError):
+                    pass
+                if h_type != "expired_check":
+                    if not last_transfer:
+                        last_transfer = h
+                        d = h.get("data", {})
+                        if isinstance(d, dict):
+                            ok = d.get("ok", 0)
+                            fail = d.get("failed", 0)
+                            skip = d.get("skipped", 0)
+                            if ok > 0 and fail == 0:
+                                last_status = "success"
+                            elif ok > 0 and fail > 0:
+                                last_status = "partial"
+                            elif fail > 0 and ok == 0:
+                                last_status = "fail"
+                            else:
+                                last_status = "none"
+                        else:
+                            last_status = "none"
+            self._send_json({
+                "today_count": today_count,
+                "week_ok": ok7,
+                "week_fail": fail7,
+                "week_total": total7,
+                "last_status": last_status,
+                "last_time": last_transfer.get("time", "") if last_transfer else ""
+            })
+            return True
+
         if route == "/api/history":
             history = load_history()
             self._send_json({"total": len(history), "items": history})
