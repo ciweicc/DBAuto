@@ -93,10 +93,10 @@ def _run_scheduled_expired_check():
         with schedule_lock:
             schedule_status["last_expired_check"] = _now_local().strftime("%Y-%m-%d %H:%M:%S")
         if expired:
-            add_exec_record("expired_check", "found {} expired".format(len(expired)), "fail",
+            add_exec_record("expired_check", "发现 {} 个失效链接".format(len(expired)), "fail",
                             data={"expired": [{"title": e.get("taskname", ""), "path": e.get("savepath", "")} for e in expired]})
         else:
-            add_exec_record("expired_check", "all ok", "ok", data={"expired": []})
+            add_exec_record("expired_check", "检测完成，无失效链接", "ok", data={"expired": []})
     except Exception as e:
         log("定时检测失效链接错误: {}".format(e))
         traceback.print_exc()
