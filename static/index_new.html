@@ -68,12 +68,12 @@ body::before{
 
 .search-box{
   position:relative;flex:1;max-width:360px;height:36px;display:flex;align-items:center;
-  background:var(--card);border:1px solid var(--border);border-radius:18px;
+  background:linear-gradient(135deg,rgba(10,132,255,.15),rgba(94,92,230,.15));border:1px solid rgba(10,132,255,.25);border-radius:18px;
   padding:0 14px;transition:all var(--transition-normal);
   -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
 }
-.search-box:hover{background:rgba(255,255,255,.08);border-color:var(--border2)}
-.search-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.15)}
+.search-box:hover{background:linear-gradient(135deg,rgba(10,132,255,.22),rgba(94,92,230,.22));border-color:rgba(10,132,255,.4)}
+.search-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.25)}
 .search-icon{color:var(--text3);margin-right:10px;flex-shrink:0}
 .search-box input{
   flex:1;border:none;background:transparent;color:var(--text);font-size:14px;
