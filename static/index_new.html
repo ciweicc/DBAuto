@@ -67,15 +67,15 @@ body::before{
 .icon-btn:hover{background:rgba(10,132,255,.12);border-color:var(--accent);color:var(--accent)}
 
 .search-box{
-  position:relative;flex:1;max-width:320px;display:flex;align-items:center;
-  background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:20px;
-  padding:8px 14px;transition:all var(--transition-normal);
+  position:relative;flex:1;max-width:360px;height:36px;display:flex;align-items:center;
+  background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:18px;
+  padding:0 14px;transition:all var(--transition-normal);
 }
-.search-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.15)}
-.search-icon{color:var(--text3);margin-right:8px;flex-shrink:0}
+.search-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.15);background:rgba(255,255,255,.08)}
+.search-icon{color:var(--text3);margin-right:10px;flex-shrink:0}
 .search-box input{
-  flex:1;border:none;background:transparent;color:var(--text);font-size:13px;
-  outline:none;font-family:var(--font);
+  flex:1;border:none;background:transparent;color:var(--text);font-size:14px;
+  outline:none;font-family:var(--font);height:100%;
 }
 .search-box input::placeholder{color:var(--text4)}
 
@@ -962,7 +962,7 @@ async function doSearch(){
   var q=document.getElementById('searchInput').value.trim();
   var el=document.getElementById('searchResults');
   el.innerHTML='<div style=\"text-align:center;padding:20px;color:var(--text3)\">搜索中...</div>';
-  try{var d=await apiGet('/api/search?q='+encodeURIComponent(q));
+  try{var d=await apiGet('/api/search?keyword='+encodeURIComponent(q));
     if(!d.success||!d.results||!d.results.length){el.innerHTML='<div style=\"text-align:center;padding:20px;color:var(--text3)\">未找到资源</div>';return}
     el.innerHTML=d.results.map(function(r){return '<div style=\"display:flex;align-items:center;justify-content:space-between;padding:10px;border-radius:var(--radius-sm);background:rgba(255,255,255,.02);margin-bottom:6px\"><div style=\"flex:1;min-width:0\"><div style=\"font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap\">'+esc(r.title)+'</div><div style=\"font-size:12px;color:var(--text3)\">'+esc(r.source||'夸克网盘')+'</div></div><button class=\"btn btn-sm btn-primary\" onclick=\"transferOne(this)\" data-title=\"'+esc(r.title)+'\" data-url=\"'+esc(r.url)+'\">转存</button></div>'}).join('')}
   catch(e){el.innerHTML='<div style=\"text-align:center;padding:20px;color:var(--red)\">搜索失败</div>'}}
