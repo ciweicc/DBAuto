@@ -44,7 +44,9 @@ class TransferRouteMixin:
                 return True
 
             try:
+                log("开始搜索: keyword={}, category={}".format(keyword, category))
                 results = search_pansou(keyword, category)
+                log("搜索完成: 找到 {} 个结果".format(len(results)))
                 self._send_json({"success": True, "results": results})
             except Exception as e:
                 log("搜索失败: {}".format(e))

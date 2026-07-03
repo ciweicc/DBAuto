@@ -990,9 +990,10 @@ async function doSearch(){
   var el=document.getElementById('searchResults');
   el.innerHTML='<div style=\"text-align:center;padding:20px;color:var(--text3)\">搜索中...</div>';
   try{var d=await apiGet('/api/search?keyword='+encodeURIComponent(q));
-    if(!d.success||!d.results||!d.results.length){el.innerHTML='<div style=\"text-align:center;padding:20px;color:var(--text3)\">未找到资源</div>';return}
+    if(!d.success){el.innerHTML='<div style=\"text-align:center;padding:20px;color:var(--red)\">搜索失败: '+esc(d.message||'未知错误')+'</div>';return}
+    if(!d.results||!d.results.length){el.innerHTML='<div style=\"text-align:center;padding:20px;color:var(--text3)\">未找到资源</div>';return}
     el.innerHTML=d.results.map(function(r){return '<div class=\"search-item\"><div style=\"flex:1;min-width:0\"><div class=\"search-item-title\">'+esc(r.title)+'</div><div class=\"search-item-source\">'+esc(r.source||'夸克网盘')+'</div></div><button class=\"btn btn-sm btn-primary\" onclick=\"transferOne(this)\" data-title=\"'+esc(r.title)+'\" data-url=\"'+esc(r.url)+'\">转存</button></div>'}).join('')}
-  catch(e){el.innerHTML='<div style=\"text-align:center;padding:20px;color:var(--red)\">搜索失败</div>'}}
+  catch(e){el.innerHTML='<div style=\"text-align:center;padding:20px;color:var(--red)\">搜索失败: '+esc(e.message||'网络错误')+'</div>'}}
 document.addEventListener('click',function(e){
   var dropdown=document.getElementById('searchDropdown');
   var wrapper=document.querySelector('.search-wrapper');
@@ -1007,7 +1008,7 @@ async function transferOne(btn){
   var savepath = localStorage.getItem('search_path')||'/批量转存/手动搜索存';
   btn.disabled=true; btn.textContent='转存中...';
   try{
-    var r = await apiPost('/api/transfer_one',{title:title, url:url, savepath:savepath});
+    var r = await apiPost('/api/transfer_one',{title:title, shareurl:url, savepath:savepath});
     if(r.success){showToast('已提交转存: '+title,true); btn.textContent='已转存'; btn.className='btn btn-sm btn-outline'}
     else{showToast(r.message||'失败',false); btn.disabled=false; btn.textContent='转存'}
   }catch(e){showToast('请求失败',false); btn.disabled=false; btn.textContent='转存'}
