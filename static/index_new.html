@@ -1162,3 +1162,65 @@ async function exportHistory(){
     URL.revokeObjectURL(a.href);
   }catch(e){showToast('导出失败',false)}
 }
+
+// ============ Init ============
+function initTimeSelects(){
+  var sel1=document.getElementById('schedHour');if(sel1)for(var i=0;i<24;i++){var o1=document.createElement('option');o1.value=i;o1.textContent=String(i).padStart(2,'0');sel1.appendChild(o1)}
+  var sel2=document.getElementById('schedMin');if(sel2)for(var i=0;i<60;i+=5){var o2=document.createElement('option');o2.value=i;o2.textContent=String(i).padStart(2,'0');sel2.appendChild(o2)}
+  var sel3=document.getElementById('schedEHour');if(sel3)for(var i=0;i<24;i++){var o3=document.createElement('option');o3.value=i;o3.textContent=String(i).padStart(2,'0');sel3.appendChild(o3)}
+  var sel4=document.getElementById('schedEMin');if(sel4)for(var i=0;i<60;i+=5){var o4=document.createElement('option');o4.value=i;o4.textContent=String(i).padStart(2,'0');sel4.appendChild(o4)}
+}
+
+async function loadDashboard(){
+  try{
+    var d=await apiGet('/api/dashboard');
+    if(d.transfer_total!=null)document.getElementById('dashTotal').textContent=d.transfer_total;
+    if(d.transfer_success!=null)document.getElementById('dashSuccess').textContent=d.transfer_success;
+    if(d.transfer_failed!=null)document.getElementById('dashFailed').textContent=d.transfer_failed;
+    if(d.expired_count!=null)document.getElementById('dashExpired').textContent=d.expired_count;
+  }catch(e){}
+}
+
+async function loadConfig(){
+  try{
+    var d=await apiGet('/api/config');
+    if(d.pansou_url)document.getElementById('cfg_pansou').value=d.pansou_url;
+    if(d.qas_url)document.getElementById('cfg_qas').value=d.qas_url;
+    if(d.auth_user)document.getElementById('cfg_auth_user').value=d.auth_user;
+  }catch(e){}
+}
+
+function initSSE(){
+  if(!window.EventSource)return;
+  var es=new EventSource('/api/sse');
+  es.addEventListener('schedule_update',function(){loadDashboard()});
+  es.addEventListener('config_update',function(){loadConfig()});
+  es.addEventListener('history_update',function(){loadExecHistory()});
+  es.addEventListener('transfer_progress',function(e){
+    var d=JSON.parse(e.data);
+    if(d.stats){
+      if(document.getElementById('stSearched'))document.getElementById('stSearched').textContent=d.stats.searched||0;
+      if(document.getElementById('stOK'))document.getElementById('stOK').textContent=d.stats.ok||0;
+      if(document.getElementById('stSkip'))document.getElementById('stSkip').textContent=d.stats.skipped||0;
+      if(document.getElementById('stFail'))document.getElementById('stFail').textContent=d.stats.failed||0;
+      if(document.getElementById('stTotal'))document.getElementById('stTotal').textContent=d.stats.total||0;
+      if(d.stats.total)updateProgress(d.stats);
+    }
+    if(d.running&&document.getElementById('stopBtn'))document.getElementById('stopBtn').style.display='inline-block';
+  });
+  es.addEventListener('log',function(e){
+    var d=JSON.parse(e.data);
+    if(d.line)addLog(d.line);
+  });
+  es.onerror=function(){es.close();setTimeout(initSSE,5000)};
+}
+
+async function init(){
+  initTheme(); initTimeSelects();
+  try{C=await apiGet('/api/categories')}
+  catch(e){showToast('认证失败，请重新登录',false);setTimeout(function(){location.href='/login.html'},1500);return}
+  parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
+  checkRunningStatus(); loadDashboard(); loadConfig();
+  initSSE();
+}
+init();
