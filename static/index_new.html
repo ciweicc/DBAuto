@@ -987,10 +987,12 @@ function onSearchInput(){clearTimeout(searchTimer);var q=document.getElementById
   searchTimer=setTimeout(doSearch,500)}
 async function doSearch(){
   var q=document.getElementById('searchInput').value.trim();
+  if(!q)return;
+  var dropdown=document.getElementById('searchDropdown');
+  dropdown.classList.add('show');
   var el=document.getElementById('searchResults');
   el.innerHTML='<div style=\"text-align:center;padding:20px;color:var(--text3)\">搜索中...</div>';
-  try{var d=await apiGet('/api/search?keyword='+encodeURIComponent(q));
-    if(!d.success){el.innerHTML='<div style=\"text-align:center;padding:20px;color:var(--red)\">搜索失败: '+esc(d.message||'未知错误')+'</div>';return}
+  try{var d=await apiGet('/api/search?q='+encodeURIComponent(q));
     if(!d.results||!d.results.length){el.innerHTML='<div style=\"text-align:center;padding:20px;color:var(--text3)\">未找到资源</div>';return}
     el.innerHTML=d.results.map(function(r){return '<div class=\"search-item\"><div style=\"flex:1;min-width:0\"><div class=\"search-item-title\">'+esc(r.title)+'</div><div class=\"search-item-source\">'+esc(r.source||'夸克网盘')+'</div></div><button class=\"btn btn-sm btn-primary\" onclick=\"transferOne(this)\" data-title=\"'+esc(r.title)+'\" data-url=\"'+esc(r.url)+'\">转存</button></div>'}).join('')}
   catch(e){el.innerHTML='<div style=\"text-align:center;padding:20px;color:var(--red)\">搜索失败: '+esc(e.message||'网络错误')+'</div>'}}
