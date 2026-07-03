@@ -68,16 +68,20 @@ body::before{
 
 .search-box{
   position:relative;flex:1;max-width:360px;height:36px;display:flex;align-items:center;
-  background:rgba(255,255,255,.05);border:1px solid var(--border);border-radius:18px;
+  background:var(--card);border:1px solid var(--border);border-radius:18px;
   padding:0 14px;transition:all var(--transition-normal);
+  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
 }
-.search-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.15);background:rgba(255,255,255,.08)}
+.search-box:hover{background:rgba(255,255,255,.08);border-color:var(--border2)}
+.search-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.15)}
 .search-icon{color:var(--text3);margin-right:10px;flex-shrink:0}
 .search-box input{
   flex:1;border:none;background:transparent;color:var(--text);font-size:14px;
-  outline:none;font-family:var(--font);height:100%;
+  outline:none;font-family:var(--font);height:100%;padding:0;width:auto;
+  border-radius:0;
 }
-.search-box input::placeholder{color:var(--text4)}
+.search-box input::placeholder{color:var(--text3)}
+.search-box input:focus{box-shadow:none;border-color:transparent}
 
 /* Dashboard */
 .dash{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px}
@@ -280,7 +284,7 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
   <div class="header-btns">
     <div class="search-box">
       <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg>
-      <input type="text" id="searchInput" placeholder="搜索资源..." oninput="onSearchInput()">
+      <input type="text" id="searchInput" placeholder="搜索资源..." oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()">
     </div>
     <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="切换主题"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-moon"/></svg></button>
     <button class="icon-btn" onclick="openSettings()" title="设置"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-settings"/></svg></button>
