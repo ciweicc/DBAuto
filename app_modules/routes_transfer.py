@@ -30,7 +30,7 @@ class TransferRouteMixin:
 
         if route == "/api/search":
             params = self._get_query_params()
-            keyword = params.get("keyword", "").strip()
+            keyword = params.get("keyword", params.get("q", "")).strip()
             category = params.get("category", "movie")
 
             ok, msg = validate_string(keyword, min_len=1, max_len=200, allow_empty=False)
