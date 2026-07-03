@@ -45,10 +45,10 @@ class TransferRouteMixin:
 
             try:
                 results = search_pansou(keyword, category)
-                self._send_json(results)
+                self._send_json({"success": True, "results": results})
             except Exception as e:
                 log("搜索失败: {}".format(e))
-                self._send_json({"error": str(e)}, 500)
+                self._send_json({"success": False, "message": str(e)}, 500)
             return True
 
         if route == "/api/check_expired":
