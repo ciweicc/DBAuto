@@ -1131,9 +1131,9 @@ async function loadDashboard(){
   try{
     var s = await apiGet('/api/schedule');
     if(s._status){
-      var ss=s._status, h='<div style=\"display:grid;grid-template-columns:60px 1fr;gap:2px 8px\">';
-      if(ss.transfer_next) h+='<span><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" style=\"vertical-align:middle\"><use href=\"#icon-transfer\"/></svg> 转存</span><span style=\"text-align:right;color:var(--text2)\">'+ss.transfer_next.slice(5)+'</span>';
-      if(ss.expired_check_next) h+='<span><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" style=\"vertical-align:middle\"><use href=\"#icon-refresh\"/></svg> 检测</span><span style=\"text-align:right;color:var(--text2)\">'+ss.expired_check_next.slice(5)+'</span>';
+      var ss=s._status, h='<div style=\"display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:center\">';
+      if(ss.transfer_next) h+='<span style=\"display:flex;align-items:center;gap:4px;white-space:nowrap\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><use href=\"#icon-transfer\"/></svg> 转存</span><span style=\"text-align:right;color:var(--text2);white-space:nowrap\">'+ss.transfer_next.slice(5)+'</span>';
+      if(ss.expired_check_next) h+='<span style=\"display:flex;align-items:center;gap:4px;white-space:nowrap\"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><use href=\"#icon-refresh\"/></svg> 检测</span><span style=\"text-align:right;color:var(--text2);white-space:nowrap\">'+ss.expired_check_next.slice(5)+'</span>';
       h+='</div>';
       document.getElementById('dashNext').innerHTML = h||'暂无调度';
     }
