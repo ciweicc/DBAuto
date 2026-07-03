@@ -81,9 +81,28 @@ def search_pansou(keyword, category="movie"):
         try:
             client = _get_pansou_client()
             data = client.search(keyword)
-            result = data.get("data", {}).get("merged_by_type", {}).get("quark", [])
-            _pansou_cache.set("{}:{}".format(category, keyword), result)
-            return result
+            results = data.get("data", {}).get("merged_by_type", {}).get("quark", [])
+            if not isinstance(results, list):
+                results = data.get("results", [])
+            formatted_results = []
+            for item in results:
+                title = item.get("Title", item.get("title", ""))
+                links = item.get("Links", item.get("links", []))
+                url = ""
+                if isinstance(links, list) and len(links) > 0:
+                    url = links[0].get("URL", links[0].get("url", ""))
+                elif isinstance(links, dict):
+                    url = links.get("URL", links.get("url", ""))
+                else:
+                    url = item.get("URL", item.get("url", ""))
+                if title and url:
+                    formatted_results.append({
+                        "title": title,
+                        "url": url,
+                        "source": item.get("Source", item.get("source", "夸克网盘"))
+                    })
+            _pansou_cache.set("{}:{}".format(category, keyword), formatted_results)
+            return formatted_results
         except Exception as e:
             if attempt == 0:
                 log("PanSou 重试: {}".format(e))
