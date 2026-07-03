@@ -86,20 +86,17 @@ def search_pansou(keyword, category="movie"):
                 results = data.get("results", [])
             formatted_results = []
             for item in results:
-                title = item.get("Title", item.get("title", ""))
-                links = item.get("Links", item.get("links", []))
-                url = ""
-                if isinstance(links, list) and len(links) > 0:
-                    url = links[0].get("URL", links[0].get("url", ""))
-                elif isinstance(links, dict):
-                    url = links.get("URL", links.get("url", ""))
-                else:
-                    url = item.get("URL", item.get("url", ""))
+                title = item.get("note", item.get("Title", item.get("title", "")))
+                url = item.get("url", item.get("URL", ""))
+                if isinstance(url, list) and len(url) > 0:
+                    url = url[0].get("url", url[0].get("URL", ""))
+                elif isinstance(url, dict):
+                    url = url.get("url", url.get("URL", ""))
                 if title and url:
                     formatted_results.append({
                         "title": title,
                         "url": url,
-                        "source": item.get("Source", item.get("source", "夸克网盘"))
+                        "source": item.get("source", item.get("Source", "夸克网盘"))
                     })
             _pansou_cache.set("{}:{}".format(category, keyword), formatted_results)
             return formatted_results
