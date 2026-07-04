@@ -182,13 +182,15 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
 /* Toggle */
-.toggle{position:relative;width:44px;height:26px;display:inline-block;cursor:pointer}
-.toggle input{opacity:0;width:0;height:0}
-.toggle .slider{position:absolute;inset:0;background:rgba(255,255,255,.1);border-radius:13px;transition:.2s}
-.toggle .slider:before{content:'';position:absolute;width:22px;height:22px;left:2px;top:2px;
-  background:#fff;border-radius:50%;transition:.2s;box-shadow:0 1px 4px rgba(0,0,0,.2)}
-.toggle input:checked+.slider{background:var(--green)}
-.toggle input:checked+.slider:before{transform:translateX(18px)}
+.toggle{position:relative;width:48px;height:28px;display:inline-block;cursor:pointer;flex-shrink:0}
+.toggle input{opacity:0;width:0;height:0;position:absolute}
+.toggle .slider{position:absolute;inset:0;background:rgba(255,255,255,.1);border-radius:14px;transition:background .3s cubic-bezier(.4,0,.2,1),box-shadow .3s ease}
+.toggle .slider:before{content:'';position:absolute;width:22px;height:22px;left:3px;top:3px;
+  background:#fff;border-radius:50%;transition:transform .35s cubic-bezier(.34,1.56,.64,1);box-shadow:0 2px 6px rgba(0,0,0,.25)}
+.toggle input:checked+.slider{background:var(--green);box-shadow:0 0 0 3px rgba(48,209,88,.15)}
+.toggle input:checked+.slider:before{transform:translateX(20px)}
+.toggle:active .slider:before{transform:scale(.92)}
+.toggle input:checked:active .slider:before{transform:translateX(20px) scale(.92)}
 
 /* Sched row */
 .sched-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
@@ -236,11 +238,13 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
 @keyframes shimmer{0%{opacity:.5}50%{opacity:1}100%{opacity:.5}}
 
 /* Empty State */
-.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center}
-.empty-state .empty-icon{width:56px;height:56px;color:var(--text4);margin-bottom:12px;opacity:.6}
-.empty-state .empty-title{font-size:15px;font-weight:600;color:var(--text2);margin-bottom:4px}
-.empty-state .empty-desc{font-size:13px;color:var(--text3)}
-.empty-state .empty-action{margin-top:12px}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center;animation:fadeInUp .4s ease}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+.empty-state .empty-icon{width:56px;height:56px;color:var(--text4);margin-bottom:14px;opacity:.5;transition:transform .3s ease}
+.empty-state:hover .empty-icon{transform:scale(1.08);opacity:.65}
+.empty-state .empty-title{font-size:15px;font-weight:600;color:var(--text2);margin-bottom:6px}
+.empty-state .empty-desc{font-size:13px;color:var(--text3);line-height:1.6}
+.empty-state .empty-action{margin-top:16px}
 
 /* Dir */
 .dir-item{display:flex;gap:8px;margin-bottom:8px}.dir-item input{flex:1}
@@ -472,7 +476,7 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10
       <span class="filter-tab" onclick="setLogFilter(this,'skip')">跳过</span>
       <span class="filter-tab" onclick="setLogFilter(this,'fail')">失败</span>
     </div>
-    <div class="log-box" id="log"><div class="empty-state" style="padding:24px"><div class="empty-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-empty"/></svg></div><div class="empty-title">暂无日志</div><div class="empty-desc">开始转存后日志将显示在此</div></div></div>
+    <div class="log-box" id="log"><div class="empty-state" style="padding:32px 20px"><div class="empty-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-play"/></svg></div><div class="empty-title">准备就绪</div><div class="empty-desc">选择榜单并点击「开始转存」<br>进度和日志将会实时显示在这里</div></div></div>
   </div>
 </div>
 
@@ -601,6 +605,25 @@ async function apiPost(url,body){
   var r = await fetch(url,{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json'},body:JSON.stringify(body)});
   if(r.status===401){TOKEN='';localStorage.removeItem('auth_token');location.href='/login.html';throw new Error('401')}
   return r.json()
+}
+
+// ============ Animation Utils ============
+function easeOutCubic(t){return 1-Math.pow(1-t,3)}
+function animateNumber(el, target, duration){
+  duration = duration||800;
+  var start = 0;
+  try{start = parseInt(el.textContent)||0}catch(e){start=0}
+  if(start===target)return;
+  var startTime = null;
+  function step(ts){
+    if(!startTime)startTime=ts;
+    var p = Math.min((ts-startTime)/duration, 1);
+    var eased = easeOutCubic(p);
+    var val = Math.round(start + (target-start)*eased);
+    el.textContent = val;
+    if(p<1)requestAnimationFrame(step);
+  }
+  requestAnimationFrame(step);
 }
 
 // ============ Theme ============
@@ -954,7 +977,7 @@ async function loadExecHistory(){
     execHistoryData = data.items || data || [];
     if(execHistoryData.length < 50) histMore=false;
     renderExecHistory();
-  }catch(e){el.innerHTML='<div class="empty-state"><div class="empty-icon"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-empty"/></svg></div><div class="empty-title">加载失败</div><div class="empty-desc">'+esc(e.message||'网络错误')+'</div></div>'}
+  }catch(e){el.innerHTML='<div class="empty-state"><div class="empty-icon" style="color:var(--red);opacity:.6"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-x-circle"/></svg></div><div class="empty-title">加载失败了</div><div class="empty-desc">'+esc(e.message||'网络连接可能有问题')+'<br>请检查网络后刷新页面重试</div></div>'}
 }
 async function loadMoreHistory(){
   if(!histMore)return; histPage++;
@@ -969,7 +992,7 @@ function renderExecHistory(){
   var el = document.getElementById('execHistoryList');
   var filtered = execHistoryData;
   if(execHistoryFilter!=='all')filtered=execHistoryData.filter(function(h){return h.type===execHistoryFilter});
-  if(!filtered.length){el.innerHTML='<div class="empty-state"><div class="empty-icon"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-empty"/></svg></div><div class="empty-title">暂无记录</div><div class="empty-desc">执行转存或检测后，历史记录将显示在此</div></div>';return}
+  if(!filtered.length){el.innerHTML='<div class="empty-state"><div class="empty-icon"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-clock"/></svg></div><div class="empty-title">还没有执行记录</div><div class="empty-desc">去「手动转存」选择一个榜单开始吧<br>每次转存和检测都会记录在这里</div></div>';return}
   el.innerHTML = filtered.reverse().map(function(h){
     var icon='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-transfer"/></svg>',cls='transfer',tn='转存';
     if(h.type==='expired_check'){icon='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-refresh"/></svg>';cls='expired';tn='检测'}
@@ -1104,7 +1127,7 @@ async function doSearch(){
   var el=document.getElementById('searchResults');
   el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3)"><div class="skeleton-text" style="width:60%;margin:0 auto 8px"></div><div class="skeleton-text" style="width:40%;margin:0 auto"></div></div>';
   try{var d=await apiGet('/api/search?q='+encodeURIComponent(q));
-    if(!d.results||!d.results.length){el.innerHTML='<div class="empty-state" style="padding:24px"><div class="empty-icon" style="width:40px;height:40px"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg></div><div class="empty-title">未找到资源</div><div class="empty-desc">试试其他关键词</div></div>';return}
+    if(!d.results||!d.results.length){el.innerHTML='<div class="empty-state" style="padding:28px 20px"><div class="empty-icon" style="width:44px;height:44px"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-search"/></svg></div><div class="empty-title">没有找到相关资源</div><div class="empty-desc">试试换个关键词，或检查拼写<br>也可以去「手动转存」从榜单中选择</div></div>';return}
     el.innerHTML=d.results.map(function(r){return '<div class=\"search-item\"><div style=\"flex:1;min-width:0\"><div class=\"search-item-title\">'+esc(r.title)+'</div><div class=\"search-item-source\">'+esc(r.source||'夸克网盘')+'</div></div><button class=\"btn btn-sm btn-primary\" onclick=\"transferOne(this)\" data-title=\"'+esc(r.title)+'\" data-url=\"'+esc(r.url)+'\">转存</button></div>'}).join('')}
   catch(e){el.innerHTML='<div class="empty-state" style="padding:24px"><div class="empty-icon" style="width:40px;height:40px;color:var(--red)"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg></div><div class="empty-title">搜索失败</div><div class="empty-desc">'+esc(e.message||'网络错误')+'</div></div>'}}
 document.addEventListener('click',function(e){
@@ -1139,10 +1162,11 @@ async function loadDashboard(){
       document.getElementById('dashNext').innerHTML = h||'暂无调度';
     }
     var stats = await apiGet('/api/dashboard/stats');
-    document.getElementById('dashToday').textContent = stats.today_count||'-';
-    document.getElementById('dash7OK').textContent = stats.week_ok||0;
-    document.getElementById('dash7Fail').textContent = stats.week_fail||0;
-    document.getElementById('dash7Total').textContent = stats.week_total||0;
+    var todayEl = document.getElementById('dashToday');
+    if(stats.today_count){animateNumber(todayEl,stats.today_count,800)}else{todayEl.textContent='-'}
+    animateNumber(document.getElementById('dash7OK'),stats.week_ok||0,900);
+    animateNumber(document.getElementById('dash7Fail'),stats.week_fail||0,900);
+    animateNumber(document.getElementById('dash7Total'),stats.week_total||0,1000);
     var statusEl = document.getElementById('dashLastStatus');
     var timeEl = document.getElementById('dashLastTime');
     if(stats.last_status && stats.last_status !== 'none'){
