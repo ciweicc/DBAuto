@@ -221,24 +221,46 @@ body::after{
 }
 
 /* Segmented Control */
-.tabs{display:flex;background:rgba(255,255,255,.04);border-radius:14px;padding:4px;margin-bottom:20px;
+.tabs{display:flex;background:rgba(255,255,255,.04);border-radius:16px;padding:5px;margin-bottom:20px;
   position:relative;border:1px solid var(--border);
   animation:fadeUp .6s var(--ease-bounce) both;animation-delay:.5s;
 }
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 [data-theme="light"] .tabs{background:rgba(0,0,0,.03)}
-.tab-btn{flex:1;padding:11px 8px;text-align:center;font-size:14px;font-weight:600;
-  cursor:pointer;color:var(--text3);border-radius:10px;border:none;background:transparent;
+.tab-btn{flex:1;padding:12px 10px;text-align:center;font-size:14px;font-weight:500;
+  cursor:pointer;color:var(--text3);border-radius:12px;border:none;background:transparent;
   letter-spacing:-.2px;white-space:nowrap;position:relative;z-index:1;
-  transition:color var(--transition-normal);font-family:var(--font-display);
+  transition:color var(--transition-normal),transform var(--transition-fast);font-family:var(--font-display);
 }
-.tab-btn.active{color:#fff}
+.tab-btn:hover{color:var(--text2);transform:translateY(-1px)}
+.tab-btn:active{transform:translateY(0) scale(.97)}
+.tab-btn.active{color:#fff;font-weight:700;letter-spacing:-.3px;
+  text-shadow:0 1px 2px rgba(0,0,0,.2);
+}
 .tab-indicator{
-  position:absolute;top:4px;bottom:4px;border-radius:10px;
-  background:linear-gradient(135deg,var(--accent),var(--accent2));
-  box-shadow:0 4px 16px rgba(10,132,255,.35);
+  position:absolute;top:5px;bottom:5px;border-radius:12px;
+  background:linear-gradient(135deg,var(--accent) 0%,var(--accent2) 50%,var(--purple) 100%);
+  box-shadow:
+    0 4px 20px rgba(10,132,255,.45),
+    0 2px 8px rgba(94,92,230,.3),
+    inset 0 1px 0 rgba(255,255,255,.2),
+    inset 0 -1px 0 rgba(0,0,0,.1);
   transition:transform var(--transition-slow),width var(--transition-slow);
+  pointer-events:none;overflow:hidden;
+}
+.tab-indicator::before{
+  content:'';position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(255,255,255,.25) 0%,transparent 50%);
   pointer-events:none;
+}
+.tab-indicator::after{
+  content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;
+  background:linear-gradient(90deg,transparent,rgba(255,255,255,.3),transparent);
+  animation:tabShine 3s ease-in-out infinite;
+}
+@keyframes tabShine{
+  0%,100%{left:-100%}
+  50%{left:100%}
 }
 
 /* Tab Content */
@@ -717,7 +739,8 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(10
 </div>
 
 <!-- Tabs -->
-<div class="tabs">
+<div class="tabs" id="mainTabs">
+  <div class="tab-indicator" id="tabIndicator"></div>
   <button class="tab-btn active" onclick="switchTab('manual')">手动转存</button>
   <button class="tab-btn" onclick="switchTab('schedule')">定时任务</button>
   <button class="tab-btn" onclick="switchTab('history')">执行历史</button>
@@ -1025,6 +1048,16 @@ function resolveConfirm(result){
 }
 
 // ============ Tab ============
+function updateTabIndicator(){
+  var tabs = document.getElementById('mainTabs');
+  var indicator = document.getElementById('tabIndicator');
+  var activeBtn = tabs.querySelector('.tab-btn.active');
+  if(!indicator||!activeBtn)return;
+  var tabsRect = tabs.getBoundingClientRect();
+  var btnRect = activeBtn.getBoundingClientRect();
+  indicator.style.width = btnRect.width + 'px';
+  indicator.style.transform = 'translateX(' + (btnRect.left - tabsRect.left) + 'px)';
+}
 function switchTab(tab){
   currentTab = tab;
   var idx = tab==='manual'?0:tab==='schedule'?1:2;
@@ -1038,6 +1071,7 @@ function switchTab(tab){
   document.getElementById('tabManual').classList.toggle('active', tab==='manual');
   document.getElementById('tabSchedule').classList.toggle('active', tab==='schedule');
   document.getElementById('tabHistory').classList.toggle('active', tab==='history');
+  updateTabIndicator();
   if(tab==='schedule')loadSchedule();
   if(tab==='history')loadExecHistory();
 }
@@ -1579,6 +1613,8 @@ async function init(){
   catch(e){showToast('认证失败，请重新登录',false);setTimeout(function(){location.href='/login.html'},1500);return}
   parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
   checkRunningStatus(); loadDashboard();
+  updateTabIndicator();
+  window.addEventListener('resize', updateTabIndicator);
   initSSE();
 }
 
