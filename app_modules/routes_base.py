@@ -2,6 +2,8 @@
 import json
 from http.server import BaseHTTPRequestHandler
 
+MAX_BODY_SIZE = 1024 * 1024  # 请求体最大 1MB
+
 
 class BaseRouteHandler(BaseHTTPRequestHandler):
     """路由处理基类，提供通用工具方法和路由分发"""
@@ -24,9 +26,16 @@ class BaseRouteHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _read_body(self):
-        length = int(self.headers.get("Content-Length", 0))
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except (ValueError, TypeError):
+            self._send_json({"error": "invalid Content-Length"}, 400)
+            return None
         if length == 0:
             return {}
+        if length > MAX_BODY_SIZE:
+            self._send_json({"error": "request body too large (max {}KB)".format(MAX_BODY_SIZE // 1024)}, 413)
+            return None
         try:
             raw = self.rfile.read(length).decode("utf-8")
             return json.loads(raw)

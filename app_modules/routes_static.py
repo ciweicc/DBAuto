@@ -31,11 +31,11 @@ def _gzip_compress(data):
 def _get_static_file(relpath):
     fp = os.path.join(STATIC_DIR, relpath)
     if not os.path.isfile(fp):
-        return None, None
+        return None, None, None
     try:
         mtime = os.path.getmtime(fp)
     except OSError:
-        return None, None
+        return None, None, None
     with _static_cache_lock:
         cached = _static_cache.get(fp)
         if cached and cached[0] == mtime:
@@ -46,7 +46,7 @@ def _get_static_file(relpath):
         with open(fp, "rb") as f:
             raw = f.read()
     except Exception:
-        return None, None
+        return None, None, None
     gzipped = None
     if ext in _GZIP_EXTS and len(raw) > 1024:
         gzipped = _gzip_compress(raw)

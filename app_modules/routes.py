@@ -60,6 +60,8 @@ class H(BaseRouteHandler,
     def do_POST(self):
         route = self._route_path()
         body = self._read_body()
+        if body is None:
+            return  # _read_body 已发送错误响应（413/400）
 
         # 1. 登录（不需要认证）
         if AuthRouteMixin._handle_auth_post(self, route, body):
