@@ -28,7 +28,7 @@
 
 ```bash
 docker run -d \
-  --name douban-transfer \
+  --name dbauto \
   --restart unless-stopped \
   -p 3001:3001 \
   -v /opt/douban-history:/data/douban-history \
@@ -41,7 +41,7 @@ docker run -d \
 ### 更新镜像
 
 ```bash
-docker stop douban-transfer && docker rm douban-transfer
+docker stop dbauto && docker rm dbauto
 docker pull ghcr.io/ciweicc/dbauto:latest
 # 然后重新执行上面的 docker run 命令
 ```
