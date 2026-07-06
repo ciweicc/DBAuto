@@ -5,7 +5,7 @@ from douban import get_douban_list
 from transfer import (
     transfer_status, transfer_lock, search_pansou, check_pansou_links,
     check_expired_tasks, update_expired_task, validate_share_link, fix_expired_tasks,
-    run_transfer, add_and_run, VIDEO_SUB, TV_REPLACE, build_transfer_tasks,
+    run_transfer, add_and_run, transfer_one, VIDEO_SUB, TV_REPLACE, build_transfer_tasks,
     is_transfer_running,
 )
 from storage import load_history, save_history, add_exec_record
@@ -144,7 +144,7 @@ class TransferRouteMixin:
                     return True
                 pattern = body.get("pattern", "")
                 replace = body.get("replace", "")
-                Thread(target=add_and_run, args=(title, shareurl, savepath, pattern, replace), daemon=True).start()
+                Thread(target=transfer_one, args=(title, shareurl, savepath, pattern, replace, category), daemon=True).start()
             else:
                 task = {"title": title, "savepath": savepath, "category": category}
                 Thread(target=run_transfer, args=([task], 1), daemon=True).start()

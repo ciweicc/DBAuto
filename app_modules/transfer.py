@@ -32,19 +32,24 @@ def _get_pansou_client():
 
 _qas_thread_local = local()
 _qas_client_lock = Lock()
+_qas_client_version = 0
 
 def _get_qas_client():
     cfg = ConfigManager.get_instance()
-    if not hasattr(_qas_thread_local, "client"):
+    # 版本号变化时重新创建客户端（配置更新后所有线程都会重建）
+    cached_version = getattr(_qas_thread_local, "version", -1)
+    if cached_version != _qas_client_version or not hasattr(_qas_thread_local, "client"):
         from api_client import QASClient
         _qas_thread_local.client = QASClient(cfg.qas, cfg.qas_token, timeout=20)
+        _qas_thread_local.version = _qas_client_version
         with _qas_client_lock:
             log("QAS Client 创建，token 长度: {}".format(len(cfg.qas_token or "")))
     return _qas_thread_local.client
 
 def reset_qas_client():
-    if hasattr(_qas_thread_local, "client"):
-        delattr(_qas_thread_local, "client")
+    global _qas_client_version
+    with _qas_client_lock:
+        _qas_client_version += 1
     init_qas_cache()
 
 def init_qas_cache():
@@ -114,6 +119,8 @@ def check_pansou_links(urls):
     try:
         client = _get_pansou_client()
         data = client.check_links(urls)
+        if not isinstance(data, dict):
+            return set()
         valid = set()
         for r in data.get("results", []):
             if r.get("state") == "ok":
@@ -155,6 +162,41 @@ def add_and_run(title, shareurl, savepath, pattern="", replace=""):
     elif "成功" in summary or "更新" in summary:
         return {"status": "ok", "msg": "转存成功"}
     return {"status": "done", "msg": "转存成功"}
+
+def transfer_one(title, shareurl, savepath, pattern="", replace="", category="movie"):
+    """单条转存，正确管理 transfer_status 状态"""
+    tid = get_ident()
+    with transfer_lock:
+        transfer_status.update({
+            "running": True,
+            "summary": None,
+            "start_time": datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"),
+            "stats": {"searched": 0, "ok": 0, "skipped": 0, "failed": 0, "total": 1},
+            "thread_id": tid,
+            "stop": False
+        })
+    clear_progress()
+    try:
+        res = add_and_run(title, shareurl, savepath, pattern, replace)
+        with transfer_lock:
+            if res["status"] in ("ok", "done"):
+                transfer_status["stats"]["ok"] += 1
+            elif res["status"] == "exists":
+                transfer_status["stats"]["skipped"] += 1
+            else:
+                transfer_status["stats"]["failed"] += 1
+            sse_broadcast("transfer_progress", dict(transfer_status))
+        # 更新历史记录
+        history = load_history()
+        history[title] = {"date": datetime.now(TZ).strftime("%Y-%m-%d"),
+                          "status": res["status"], "category": category}
+        save_history(history)
+        return res
+    finally:
+        with transfer_lock:
+            transfer_status["running"] = False
+            transfer_status["stop"] = False
+            transfer_status["thread_id"] = None
 
 EXPIRED_CHECK_CONCURRENCY = 5
 
@@ -242,7 +284,8 @@ def fix_expired_tasks():
         transfer_status.update({
             "running": True,
             "thread_id": tid,
-            "summary": "fix_expired"
+            "summary": "fix_expired",
+            "stop": False
         })
     try:
         expired = check_expired_tasks()
@@ -308,6 +351,7 @@ def fix_expired_tasks():
         with transfer_lock:
             transfer_status["running"] = False
             transfer_status["thread_id"] = None
+            transfer_status["stop"] = False
 
 def _clean_title(title):
     return re.sub(r'[^\u4e00-\u9fff0-9a-zA-Z]', '', title).lower()
@@ -534,6 +578,7 @@ def run_transfer(task_list, limit):
             final_status = "fail" if error_msg or fail_count > 0 else "ok"
             detail = "转存完成 成功{} 失败{} 跳过{}".format(ok_count, fail_count, skip_count)
             try:
-                update_exec_record(exec_record_id, detail=detail, status=final_status, data={"results": results})
+                update_exec_record(exec_record_id, detail=detail, status=final_status,
+                                   data={"results": results, "ok": ok_count, "failed": fail_count, "skipped": skip_count})
             except Exception:
                 pass

@@ -88,6 +88,9 @@ def _run_scheduled_expired_check():
     try:
         settings = load_settings()
         if not settings.get("expired_check", {}).get("enabled"): return
+        if is_transfer_running():
+            log("定时失效检测跳过：已有转存任务正在运行")
+            return
         log("定时检测失效链接开始")
         expired = check_expired_tasks()
         with schedule_lock:

@@ -120,7 +120,7 @@ def load_history():
     global _history_cache
     with _history_lock:
         if _history_cache is not None:
-            return _history_cache
+            return dict(_history_cache)
         with _db_lock:
             conn = _get_db()
             rows = conn.execute("SELECT title, date, status, category FROM transfer_history").fetchall()
@@ -132,7 +132,7 @@ def load_history():
                     "category": row["category"]
                 }
             _history_cache = result
-            return _history_cache
+            return dict(result)
 
 
 def save_history(h):

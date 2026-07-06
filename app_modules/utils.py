@@ -2,7 +2,7 @@
 import json, logging, time, hashlib, hmac, base64, os
 import requests
 from collections import deque
-from threading import Lock
+from threading import Lock, local
 from config import DATA_DIR
 
 
@@ -306,13 +306,13 @@ def log(msg):
     log_progress.append(line)
     sse_broadcast("log", {"line": msg})
 
-_in_sse_broadcast = False
+_sse_thread_local = local()
 
 def sse_broadcast(evt, data):
-    global _in_sse_broadcast
-    if _in_sse_broadcast:
+    # 使用线程局部变量防止同线程递归广播，不影响其他线程
+    if getattr(_sse_thread_local, "in_broadcast", False):
         return
-    _in_sse_broadcast = True
+    _sse_thread_local.in_broadcast = True
     try:
         payload = "event: {}\ndata: {}\n\n".format(evt, json.dumps(data, ensure_ascii=False))
         now = time.time()
@@ -328,7 +328,7 @@ def sse_broadcast(evt, data):
                 del sse_clients[cid]
             _prune_sse_clients()
     finally:
-        _in_sse_broadcast = False
+        _sse_thread_local.in_broadcast = False
 
 _http_session = None
 _http_session_lock = Lock()

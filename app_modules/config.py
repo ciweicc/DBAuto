@@ -133,7 +133,13 @@ class ConfigManager:
             else:
                 self._config = dict(DEFAULT_CONFIG)
             if not os.path.exists(CONFIG_FILE):
-                self.set_config(self._config)
+                # 直接写入文件，不调用 set_config 以避免死锁（Lock 不可重入）
+                file_data = dict(self._config)
+                for k in _SENSITIVE_FIELDS:
+                    if k in file_data:
+                        file_data[k] = _encrypt_if_needed(k, file_data[k])
+                from utils import atomic_write_json
+                atomic_write_json(CONFIG_FILE, file_data)
             return self._config
 
     def set_config(self, cfg):
