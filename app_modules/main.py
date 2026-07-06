@@ -26,7 +26,7 @@ def start():
     log("=== douban-transfer 启动 ===")
     log("端口: {}".format(PORT))
     load_config()
-    init_qas_cache()
+    Thread(target=init_qas_cache, daemon=True).start()
     Thread(target=scheduler_loop, daemon=True).start()
     server = ThreadedHTTPServer(("0.0.0.0", PORT), H)
     _shutdown_server = server
