@@ -37,8 +37,10 @@ docker run -d \
   -e QAS_TOKEN=your_token \
   -e AUTH_USER=root \
   -e AUTH_PASS=your_password \
-  your-image-name
+  ghcr.io/ciweicc/dbauto:latest
 ```
+
+> 也可使用 `docker-compose up -d`，详见 [docker-compose.yml](docker-compose.yml)。
 
 ### 本地运行
 
