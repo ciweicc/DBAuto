@@ -38,6 +38,14 @@ docker run -d \
 
 启动后访问 `http://localhost:3001` 登录，在设置页面（⚙️）中配置 PanSou、QAS 地址和 Token。
 
+### 更新镜像
+
+```bash
+docker stop douban-transfer && docker rm douban-transfer
+docker pull ghcr.io/ciweicc/dbauto:latest
+# 然后重新执行上面的 docker run 命令
+```
+
 > 也可使用 `docker-compose up -d`，详见 [docker-compose.yml](docker-compose.yml)。
 
 ### 本地运行
