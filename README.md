@@ -20,7 +20,7 @@
 | [PanSou](https://github.com/fish2018/pansou) | 网盘资源搜索 | 8080 |
 | [QAS (夸克自动转存)](https://github.com/Cp0204/quark-auto-save) | 转存任务执行 | 5005 |
 
-以上服务通过设置页面（⚙️）或环境变量配置地址和 Token。
+以上服务地址和 Token 在首次启动后通过设置页面（⚙️）配置即可，无需写在环境变量中。
 
 ## 快速开始
 
@@ -32,13 +32,11 @@ docker run -d \
   --restart unless-stopped \
   -p 3001:3001 \
   -v /opt/douban-history:/data/douban-history \
-  -e PANSOU=http://192.168.1.1:8080 \
-  -e QAS=http://192.168.1.1:5005 \
-  -e QAS_TOKEN=your_token \
-  -e AUTH_USER=root \
   -e AUTH_PASS=your_password \
   ghcr.io/ciweicc/dbauto:latest
 ```
+
+启动后访问 `http://localhost:3001` 登录，在设置页面（⚙️）中配置 PanSou、QAS 地址和 Token。
 
 > 也可使用 `docker-compose up -d`，详见 [docker-compose.yml](docker-compose.yml)。
 
@@ -53,15 +51,17 @@ python main.py
 
 ### 环境变量
 
+环境变量仅在**首次启动**时作为初始值写入 `config.json`，后续以配置文件为准。推荐直接启动后在设置页面配置。
+
 | 变量 | 默认值 | 说明 |
 |------|--------|------|
 | `PORT` | `3001` | 服务端口 |
 | `DATA_DIR` | `/data/douban-history` | 数据持久化目录 |
-| `PANSOU` | — | PanSou 搜索服务地址 |
-| `QAS` | — | QAS 转存服务地址 |
-| `QAS_TOKEN` | — | QAS API Token |
-| `AUTH_USER` | `root` | 登录用户名 |
-| `AUTH_PASS` | — | 登录密码 |
+| `AUTH_USER` | `root` | 登录用户名（首次） |
+| `AUTH_PASS` | — | 登录密码（首次） |
+| `PANSOU` | — | PanSou 地址（首次，可选） |
+| `QAS` | — | QAS 地址（首次，可选） |
+| `QAS_TOKEN` | — | QAS Token（首次，可选） |
 | `TZ` | `Asia/Shanghai` | 时区 |
 
 ### 数据目录
