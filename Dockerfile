@@ -6,6 +6,7 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY main.py ./
+COPY reset_password.py ./
 COPY app_modules/ ./app_modules/
 COPY static/ ./static/
 COPY VERSION ./
