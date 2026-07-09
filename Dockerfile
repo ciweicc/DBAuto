@@ -15,6 +15,10 @@ COPY docker-entrypoint.sh ./
 
 RUN sed -i 's/\r$//' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
 
+LABEL org.opencontainers.image.title="DBAuto" \
+      org.opencontainers.image.description="豆瓣自动转存工具" \
+      org.opencontainers.image.licenses="AGPL-3.0"
+
 ENV DATA_DIR=/data/douban-history
 ENV PORT=3001
 ENV TZ=Asia/Shanghai
