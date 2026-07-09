@@ -9,7 +9,7 @@ SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 PORT = int(os.environ.get("PORT", "3001"))
 
-_SENSITIVE_FIELDS = {"qas_token", "auth_pass"}
+_SENSITIVE_FIELDS = {"qas_token", "auth_pass", "ai_api_key"}
 
 
 def _is_encrypted(val):
@@ -48,6 +48,9 @@ DEFAULT_CONFIG = {
     "qas_token": os.environ.get("QAS_TOKEN", ""),
     "auth_user": os.environ.get("AUTH_USER", "root"),
     "auth_pass": os.environ.get("AUTH_PASS", ""),
+    "ai_base_url": os.environ.get("AI_BASE_URL", "https://api.deepseek.com/v1"),
+    "ai_api_key": os.environ.get("AI_API_KEY", ""),
+    "ai_model": os.environ.get("AI_MODEL", "deepseek-chat"),
 }
 
 DEFAULT_SETTINGS = {
@@ -115,6 +118,18 @@ class ConfigManager:
     @property
     def auth_pass(self):
         return self.get_config().get("auth_pass", DEFAULT_CONFIG["auth_pass"])
+
+    @property
+    def ai_base_url(self):
+        return self.get_config().get("ai_base_url", DEFAULT_CONFIG["ai_base_url"])
+
+    @property
+    def ai_api_key(self):
+        return self.get_config().get("ai_api_key", DEFAULT_CONFIG["ai_api_key"])
+
+    @property
+    def ai_model(self):
+        return self.get_config().get("ai_model", DEFAULT_CONFIG["ai_model"])
 
     def get_config(self):
         with self._config_lock:

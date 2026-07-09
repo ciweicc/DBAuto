@@ -1,0 +1,184 @@
+# ai_assistant.py — AI 错误诊断引擎
+# 兼容 OpenAI API 格式（DeepSeek / Moonshot / 智谱 / 通义千问 / OpenAI 等）
+import json
+import logging
+import requests
+from config import ConfigManager
+
+logger = logging.getLogger(__name__)
+
+
+def _get_ai_config():
+    """从系统配置中获取 AI 供应商配置"""
+    cfg = ConfigManager.get_instance().get_config()
+    return {
+        "base_url": cfg.get("ai_base_url", ""),
+        "api_key": cfg.get("ai_api_key", ""),
+        "model": cfg.get("ai_model", "deepseek-chat"),
+    }
+
+
+def is_ai_enabled():
+    """检查 AI 诊断是否已配置"""
+    c = _get_ai_config()
+    return bool(c["base_url"] and c["api_key"])
+
+
+def _build_diagnosis_prompt(exec_record):
+    """根据执行历史记录构建诊断 prompt"""
+    detail = exec_record.get("detail", "")
+    exec_type = exec_record.get("type", "")
+    status = exec_record.get("status", "")
+    data = exec_record.get("data", {}) or {}
+
+    # 收集失败结果
+    failed_items = []
+    all_items = []
+
+    if exec_type == "transfer" and data.get("results"):
+        for r in data["results"]:
+            all_items.append(r)
+            if r.get("status") not in ("ok", "done", "skipped", "exists"):
+                failed_items.append(r)
+    elif exec_type == "expired_check" and data.get("expired"):
+        for r in data.get("expired", []):
+            failed_items.append({"title": r.get("title", ""), "status": "expired", "msg": r.get("msg", "")})
+
+    # 构建上下文
+    context_lines = [
+        "## 系统信息",
+        "这是一个「豆瓣榜单自动追踪转存」系统，工作流程：",
+        "1. 从豆瓣 API 获取热门影视榜单",
+        "2. 通过 PanSou 搜索夸克网盘资源链接",
+        "3. 调用 QAS (夸克自动转存) 将资源转存到用户网盘",
+        "4. 定期检测已转存链接是否失效",
+        "",
+        "## 本次执行记录",
+        f"- 类型: {exec_type}",
+        f"- 状态: {status}",
+        f"- 概要: {detail}",
+        f"- 失败数量: {len(failed_items)}",
+        "",
+        "## 失败详情",
+    ]
+
+    if failed_items:
+        for item in failed_items[:20]:
+            title = item.get("title", "未知")
+            err_status = item.get("status", "")
+            msg = item.get("msg", "")
+            context_lines.append(f"- 标题: {title} | 状态: {err_status} | 信息: {msg}")
+    else:
+        context_lines.append("(无明确失败项)")
+
+    context_lines.extend([
+        "",
+        "## 常见错误原因参考",
+        "- not_found: PanSou 未搜索到资源，可能是影片太新/太冷门，或搜索服务不可用",
+        "- error: QAS 转存失败，可能是 Cookie 过期、分享链接已失效、网络异常、保存目录无权限",
+        "- expired: 分享链接已被分享者删除或举报下架",
+        "- invalid: 新链接验证不通过，可能是提取码错误或链接已失效",
+        "- update_fail: QAS API 调用失败，可能是 Token 过期或 QAS 服务不可用",
+        "",
+        "## 请你作为运维专家，分析以下问题：",
+        "1. **根因分析**：判断最可能的失败原因",
+        "2. **修复建议**：给出具体的操作步骤",
+        "3. **预防措施**：如何避免此类问题再次发生",
+        "",
+        "请用简洁的中文回答，使用 Markdown 格式。",
+    ])
+
+    return "\n".join(context_lines)
+
+
+def diagnose(exec_record):
+    """
+    调用 AI 分析执行记录中的错误
+
+    Args:
+        exec_record: 执行历史记录 dict，包含 type/detail/status/data 等字段
+
+    Returns:
+        dict: {"success": bool, "diagnosis": str, "error": str}
+    """
+    ai_config = _get_ai_config()
+    if not (ai_config["base_url"] and ai_config["api_key"]):
+        return {
+            "success": False,
+            "error": "AI 诊断未配置，请在设置页面填写 AI 供应商信息",
+        }
+
+    prompt = _build_diagnosis_prompt(exec_record)
+
+    # 构建 OpenAI 兼容请求
+    url = ai_config["base_url"].rstrip("/") + "/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + ai_config["api_key"],
+    }
+    payload = {
+        "model": ai_config["model"],
+        "messages": [
+            {
+                "role": "system",
+                "content": "你是一个网盘自动化转存系统的运维诊断助手。用户会提供转存任务的执行记录和失败信息，你需要分析根因并给出可操作的修复建议。回答要简洁实用，用中文 Markdown 格式。",
+            },
+            {
+                "role": "user",
+                "content": prompt,
+            },
+        ],
+        "temperature": 0.3,
+        "max_tokens": 1500,
+    }
+
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=60)
+        resp.raise_for_status()
+        data = resp.json()
+        choices = data.get("choices", [])
+        if not choices:
+            return {"success": False, "error": "AI 返回为空"}
+        diagnosis = choices[0].get("message", {}).get("content", "").strip()
+        if not diagnosis:
+            return {"success": False, "error": "AI 未返回有效内容"}
+        return {"success": True, "diagnosis": diagnosis}
+    except requests.exceptions.Timeout:
+        return {"success": False, "error": "AI 请求超时（60s），请稍后重试"}
+    except requests.exceptions.ConnectionError as e:
+        return {"success": False, "error": f"无法连接 AI 服务: {e}"}
+    except requests.exceptions.HTTPError as e:
+        status_code = e.response.status_code if e.response else "?"
+        try:
+            err_body = e.response.json() if e.response else {}
+            err_msg = err_body.get("error", {}).get("message", str(e))
+        except Exception:
+            err_msg = str(e)
+        return {"success": False, "error": f"AI 服务返回错误 ({status_code}): {err_msg}"}
+    except Exception as e:
+        logger.exception("AI 诊断异常")
+        return {"success": False, "error": f"诊断异常: {e}"}
+
+
+def test_connection():
+    """测试 AI 供应商连接是否正常"""
+    ai_config = _get_ai_config()
+    if not (ai_config["base_url"] and ai_config["api_key"]):
+        return {"success": False, "error": "未配置 AI 服务"}
+
+    url = ai_config["base_url"].rstrip("/") + "/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + ai_config["api_key"],
+    }
+    payload = {
+        "model": ai_config["model"],
+        "messages": [{"role": "user", "content": "Hi"}],
+        "max_tokens": 10,
+    }
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=15)
+        resp.raise_for_status()
+        return {"success": True, "message": f"连接正常，模型: {ai_config['model']}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}

@@ -7,6 +7,7 @@
 #   routes_transfer.py  - 转存、搜索、失效检测
 #   routes_history.py   - 历史记录管理
 #   routes_config.py    - 系统配置 + 调度管理
+#   routes_ai.py        - AI 诊断
 #
 # 新增路由时，在对应模块的 Mixin 类中添加 _handle_xxx_get/_handle_xxx_post 方法，
 # 然后在下面的 H 类的 do_GET / do_POST 中调用即可。
@@ -17,6 +18,7 @@ from routes_auth import AuthRouteMixin
 from routes_transfer import TransferRouteMixin
 from routes_history import HistoryRouteMixin
 from routes_config import ConfigRouteMixin
+from routes_ai import AIRouteMixin
 
 
 class H(BaseRouteHandler,
@@ -24,7 +26,8 @@ class H(BaseRouteHandler,
         AuthRouteMixin,
         TransferRouteMixin,
         HistoryRouteMixin,
-        ConfigRouteMixin):
+        ConfigRouteMixin,
+        AIRouteMixin):
     """主 HTTP 请求处理器，通过 Mixin 多继承整合所有路由模块"""
 
     def do_GET(self):
@@ -54,6 +57,10 @@ class H(BaseRouteHandler,
         if ConfigRouteMixin._handle_config_get(self, route):
             return
 
+        # 7. AI 诊断
+        if AIRouteMixin._handle_ai_get(self, route):
+            return
+
         # 404
         self._send_json({"error": "not found"}, 404)
 
@@ -81,6 +88,10 @@ class H(BaseRouteHandler,
 
         # 5. 配置 & 调度
         if ConfigRouteMixin._handle_config_post(self, route, body):
+            return
+
+        # 6. AI 诊断
+        if AIRouteMixin._handle_ai_post(self, route, body):
             return
 
         # 404
