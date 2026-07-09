@@ -1048,6 +1048,7 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(10
     </div>
   </div>
   <div class="ai-chat-suggestions" id="aiChatSuggestions">
+    <span class="ai-chat-suggestion" onclick="aiQuickAsk('帮我转存流浪地球2')">🎬 帮我转存流浪地球2</span>
     <span class="ai-chat-suggestion" onclick="aiQuickAsk('转存失败了怎么办？')">转存失败了怎么办？</span>
     <span class="ai-chat-suggestion" onclick="aiQuickAsk('如何配置定时转存？')">如何配置定时转存？</span>
     <span class="ai-chat-suggestion" onclick="aiQuickAsk('搜索不到资源怎么排查？')">搜索不到资源怎么排查？</span>
@@ -1780,6 +1781,16 @@ async function aiChatSend(){
     if(d.success){
       aiAddMsg('ai', d.reply);
       aiChatMessages.push({role: 'assistant', content: d.reply});
+      // 如果有转存 action，渲染转存按钮
+      if(d.action && d.action.type === 'transfer'){
+        var title = esc(d.action.title);
+        var cat = esc(d.action.category);
+        var actionHtml = '<div style="margin-top:8px;padding:10px 12px;background:rgba(48,209,88,.06);border:1px solid rgba(48,209,88,.15);border-radius:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'+
+          '<span style="font-size:13px;color:var(--text2)">🎬 '+title+' ('+(cat==='tv'?'电视剧':'电影')+')</span>'+
+          '<button class="btn btn-sm" style="background:linear-gradient(135deg,#30d158,#28a745);color:#fff;border:none;padding:5px 14px;border-radius:8px;cursor:pointer;font-size:12px" onclick="aiDoTransfer(\''+title.replace(/'/g,"\\'")+'\',\''+cat+'\')" id="aiTransferBtn">'+
+          '🔍 搜索并转存</button></div>';
+        aiAddMsg('ai', actionHtml, true);
+      }
     } else {
       aiAddMsg('ai', '<span class="ai-err">'+esc(d.error||'请求失败')+'</span>', true);
     }
@@ -1789,6 +1800,29 @@ async function aiChatSend(){
   }finally{
     sendBtn.disabled = false;
     input.focus();
+  }
+}
+
+async function aiDoTransfer(title, category){
+  var btn = document.getElementById('aiTransferBtn');
+  if(btn){ btn.disabled = true; btn.textContent = '转存中...'; }
+  var savepath = localStorage.getItem('search_path') || '/批量转存/AI助手转存';
+  try{
+    var r = await apiPost('/api/transfer_one', {title: title, savepath: savepath, category: category});
+    if(r.success){
+      aiAddMsg('ai', '✅ 已提交转存任务：**'+title+'**\n\n系统正在搜索资源并转存，可在「转存」页面查看进度。');
+      showToast('已提交转存: '+title, true);
+      if(btn){ btn.textContent = '已提交'; btn.style.opacity = '.6'; }
+    } else {
+      var errMsg = r.message || '失败';
+      if(r.conflict) errMsg = '当前有转存任务正在进行，请稍后再试';
+      aiAddMsg('ai', '❌ 转存失败：'+esc(errMsg));
+      showToast(errMsg, false);
+      if(btn){ btn.disabled = false; btn.textContent = '🔍 搜索并转存'; }
+    }
+  }catch(e){
+    aiAddMsg('ai', '<span class="ai-err">请求失败: '+esc(e.message)+'</span>', true);
+    if(btn){ btn.disabled = false; btn.textContent = '🔍 搜索并转存'; }
   }
 }
 

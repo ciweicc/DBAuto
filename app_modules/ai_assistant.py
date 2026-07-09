@@ -238,6 +238,79 @@ def chat(messages):
         return {"success": False, "error": f"对话异常: {e}"}
 
 
+# 转存意图识别的关键词
+_TRANSFER_KEYWORDS = ["转存", "存", "下载", "保存到网盘", "帮我找", "搜一下", "搜索"]
+
+
+def _detect_transfer_intent(message):
+    """快速检测用户消息是否包含转存意图"""
+    for kw in _TRANSFER_KEYWORDS:
+        if kw in message:
+            return True
+    return False
+
+
+def _extract_transfer_info(message):
+    """
+    用 AI 从用户消息中提取转存信息（片名 + 类型）
+
+    Returns:
+        dict: {"success": bool, "title": str, "category": str, "error": str}
+    """
+    ai_config = _get_ai_config()
+    if not (ai_config["base_url"] and ai_config["api_key"]):
+        return {"success": False, "error": "AI 未配置"}
+
+    url = ai_config["base_url"].rstrip("/") + "/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + ai_config["api_key"],
+    }
+
+    prompt = (
+        "从以下用户消息中提取要转存的影视名称和类型。\n"
+        "规则：\n"
+        '1. 只返回 JSON 格式：{"title": "影视名称", "category": "movie 或 tv"}\n'
+        "2. movie = 电影，tv = 电视剧/综艺/动漫\n"
+        "3. 如果无法确定是电影还是电视剧，默认 movie\n"
+        "4. title 只保留影视名称，不要包含其他描述\n"
+        "5. 不要输出任何其他内容，只输出 JSON\n\n"
+        f"用户消息：{message}"
+    )
+
+    payload = {
+        "model": ai_config["model"],
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.1,
+        "max_tokens": 200,
+    }
+
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=30)
+        resp.raise_for_status()
+        data = resp.json()
+        choices = data.get("choices", [])
+        if not choices:
+            return {"success": False, "error": "AI 返回为空"}
+        content = choices[0].get("message", {}).get("content", "").strip()
+        # 尝试提取 JSON
+        import re
+        json_match = re.search(r'\{[^}]+\}', content)
+        if not json_match:
+            return {"success": False, "error": "AI 未返回有效信息"}
+        info = json.loads(json_match.group())
+        title = info.get("title", "").strip()
+        category = info.get("category", "movie").strip()
+        if not title:
+            return {"success": False, "error": "未能提取到影视名称"}
+        if category not in ("movie", "tv"):
+            category = "movie"
+        return {"success": True, "title": title, "category": category}
+    except Exception as e:
+        logger.exception("提取转存信息异常")
+        return {"success": False, "error": f"提取异常: {e}"}
+
+
 def test_connection():
     """测试 AI 供应商连接是否正常"""
     ai_config = _get_ai_config()
