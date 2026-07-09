@@ -432,6 +432,8 @@ async def run_sse(port):
     from mcp.server.sse import SseServerTransport
     from starlette.applications import Starlette
     from starlette.routing import Mount, Route
+    from starlette.middleware import Middleware
+    from starlette.middleware.cors import CORSMiddleware
     import uvicorn
 
     sse = SseServerTransport("/messages/")
@@ -454,11 +456,21 @@ async def run_sse(port):
             )
         return None
 
+    middleware = [
+        Middleware(
+            CORSMiddleware,
+            allow_origins=["*"],
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
+    ]
+
     app = Starlette(
         routes=[
             Route("/sse", endpoint=handle_sse),
             Mount("/messages/", app=sse.handle_post_message),
         ],
+        middleware=middleware,
     )
     config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
     uvicorn_server = uvicorn.Server(config)
