@@ -460,8 +460,10 @@ async def run_sse(port):
             Mount("/messages/", app=sse.handle_post_message),
         ],
     )
+    config = uvicorn.Config(app, host="0.0.0.0", port=port, log_level="info")
+    uvicorn_server = uvicorn.Server(config)
     print("DBAuto MCP Server (SSE) running on http://0.0.0.0:{}/sse".format(port), file=sys.stderr)
-    uvicorn.run(app, host="0.0.0.0", port=port)
+    await uvicorn_server.serve()
 
 
 def main():
