@@ -61,19 +61,6 @@ class ConfigRouteMixin:
                             self._send_json({"success": False, "message": "auth_pass: {}".format(msg)}, 400)
                             return True
                         cfg[k] = hash_auth_password(v)
-                elif k == "ai_api_key":
-                    if v and v != "***":
-                        ok, msg = validate_string(v, min_len=1, max_len=500)
-                        if not ok:
-                            self._send_json({"success": False, "message": "ai_api_key: {}".format(msg)}, 400)
-                            return True
-                        cfg[k] = v
-                elif k in ("ai_base_url", "ai_model"):
-                    ok, msg = validate_string(v, min_len=0, max_len=200)
-                    if not ok:
-                        self._send_json({"success": False, "message": "{}: {}".format(k, msg)}, 400)
-                        return True
-                    cfg[k] = v
                 elif k == "qas_token":
                     if v and v != "***":
                         ok, msg = validate_string(v, min_len=1, max_len=500)

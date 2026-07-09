@@ -188,40 +188,6 @@ def load_exec_history():
             return _exec_cache
 
 
-def get_exec_record_by_id(record_id):
-    """根据 ID 获取单条执行记录"""
-    # 先从缓存中查找
-    with _exec_lock:
-        if _exec_cache is not None:
-            for item in _exec_cache:
-                if item["id"] == record_id:
-                    return item
-    # 缓存中没找到，查数据库
-    with _db_lock:
-        conn = _get_db()
-        row = conn.execute(
-            "SELECT id, type, detail, status, time, data FROM exec_history WHERE id = ?",
-            (record_id,)
-        ).fetchone()
-        if not row:
-            return None
-        item = {
-            "id": row["id"],
-            "type": row["type"],
-            "detail": row["detail"],
-            "status": row["status"],
-            "time": row["time"]
-        }
-        if row["data"]:
-            try:
-                item["data"] = json.loads(row["data"])
-            except (json.JSONDecodeError, ValueError):
-                item["data"] = None
-        else:
-            item["data"] = None
-        return item
-
-
 def save_exec_history(data):
     global _exec_cache
     with _exec_lock:
