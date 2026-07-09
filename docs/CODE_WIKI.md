@@ -112,7 +112,7 @@
 ├── main.py                      # 项目入口文件
 ├── mcp_server.py                # MCP Server (stdio + SSE 双模式)
 ├── reset_password.py            # 密码重置脚本
-├── VERSION                      # 版本号文件 (1.0.0)
+├── VERSION                      # 版本号文件 (1.1.0)
 ├── requirements.txt             # Python 依赖
 ├── requirements-dev.txt         # 开发依赖 (含 pytest)
 ├── Dockerfile                   # Docker 镜像构建
@@ -1079,7 +1079,7 @@ PanSou 资源搜索。
 **响应**：
 ```json
 {
-  "version": "1.0.0"
+  "version": "1.1.0"
 }
 ```
 
@@ -1464,4 +1464,4 @@ mcp_server.py
 ---
 
 *文档生成时间：2026-07-10*
-*项目版本：1.0.0*
+*项目版本：1.1.0*

@@ -121,7 +121,7 @@ class StaticRouteMixin:
             return True
 
         if route == "/version":
-            version = "1.0.0"
+            version = "1.1.0"
             version_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
             if os.path.isfile(version_path):
                 try:
