@@ -681,6 +681,54 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(10
   background:radial-gradient(ellipse at 20% 0%,rgba(10,132,255,.06) 0%,transparent 50%),
              radial-gradient(ellipse at 80% 100%,rgba(191,90,242,.04) 0%,transparent 50%)}
 [data-theme="light"] ::-webkit-scrollbar-track{background:rgba(0,0,0,.03)}
+
+/* AI Chat */
+.ai-fab{position:fixed;right:20px;bottom:80px;z-index:900;width:52px;height:52px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 20px rgba(10,132,255,.35);transition:all var(--transition-normal);color:#fff}
+.ai-fab:hover{transform:scale(1.08);box-shadow:0 6px 28px rgba(10,132,255,.5)}
+.ai-fab svg{width:24px;height:24px}
+.ai-fab .fab-dot{position:absolute;top:2px;right:2px;width:10px;height:10px;border-radius:50%;background:var(--green);border:2px solid var(--bg);display:none}
+.ai-fab .fab-dot.show{display:block;animation:pulse 2s infinite}
+.ai-chat-panel{position:fixed;right:20px;bottom:80px;z-index:901;width:380px;max-width:calc(100vw - 40px);height:520px;max-height:calc(100vh - 120px);background:var(--bg);border:1px solid var(--border2);border-radius:var(--radius-lg);box-shadow:0 12px 48px rgba(0,0,0,.4);display:none;flex-direction:column;overflow:hidden;animation:cardSlideUp .3s ease}
+.ai-chat-panel.show{display:flex}
+.ai-chat-header{display:flex;align-items:center;gap:10px;padding:14px 16px;background:linear-gradient(135deg,rgba(10,132,255,.1),rgba(94,92,230,.1));border-bottom:1px solid var(--border);flex-shrink:0}
+.ai-chat-header .ai-avatar{width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent),var(--accent2));display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0}
+.ai-chat-header .ai-avatar svg{width:18px;height:18px}
+.ai-chat-header .ai-title{flex:1;font-weight:600;font-size:15px}
+.ai-chat-header .ai-subtitle{font-size:11px;color:var(--text3)}
+.ai-chat-close{background:none;border:none;color:var(--text3);cursor:pointer;padding:4px;border-radius:8px;transition:all var(--transition-fast)}
+.ai-chat-close:hover{background:var(--card);color:var(--text)}
+.ai-chat-close svg{width:18px;height:18px}
+.ai-chat-body{flex:1;overflow-y:auto;padding:16px;display:flex;flex-direction:column;gap:12px}
+.ai-chat-body::-webkit-scrollbar{width:4px}
+.ai-chat-body::-webkit-scrollbar-thumb{background:var(--border3);border-radius:2px}
+.ai-msg{display:flex;gap:8px;max-width:90%;animation:fadeInUp .3s ease}
+.ai-msg.user{align-self:flex-end;flex-direction:row-reverse}
+.ai-msg-avatar{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px}
+.ai-msg.ai .ai-msg-avatar{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff}
+.ai-msg.user .ai-msg-avatar{background:var(--card);border:1px solid var(--border2);color:var(--text2)}
+.ai-msg-bubble{padding:10px 14px;border-radius:14px;font-size:14px;line-height:1.6;word-break:break-word}
+.ai-msg.ai .ai-msg-bubble{background:var(--card);border:1px solid var(--border);border-top-left-radius:4px}
+.ai-msg.user .ai-msg-bubble{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;border-top-right-radius:4px}
+.ai-msg-bubble code{padding:1px 5px;border-radius:4px;background:rgba(255,255,255,.1);font-family:var(--mono);font-size:12px}
+.ai-msg-bubble strong{font-weight:600}
+.ai-msg-bubble .ai-err{color:var(--red)}
+.ai-chat-typing{display:flex;gap:4px;padding:12px 14px}
+.ai-chat-typing span{width:7px;height:7px;border-radius:50%;background:var(--text3);animation:typingDot 1.4s infinite}
+.ai-chat-typing span:nth-child(2){animation-delay:.2s}
+.ai-chat-typing span:nth-child(3){animation-delay:.4s}
+@keyframes typingDot{0%,60%,100%{opacity:.3;transform:translateY(0)}30%{opacity:1;transform:translateY(-4px)}}
+.ai-chat-input{display:flex;gap:8px;padding:12px 14px;border-top:1px solid var(--border);flex-shrink:0;align-items:flex-end}
+.ai-chat-input textarea{flex:1;background:var(--card);border:1px solid var(--border2);border-radius:12px;padding:10px 12px;font-size:14px;color:var(--text);resize:none;max-height:100px;min-height:42px;font-family:var(--font);line-height:1.4;transition:border-color var(--transition-fast)}
+.ai-chat-input textarea:focus{outline:none;border-color:var(--accent)}
+.ai-chat-input textarea::placeholder{color:var(--text4)}
+.ai-chat-send{width:38px;height:38px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));border:none;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#fff;flex-shrink:0;transition:all var(--transition-fast)}
+.ai-chat-send:hover{transform:scale(1.05)}
+.ai-chat-send:disabled{opacity:.4;cursor:not-allowed;transform:none}
+.ai-chat-send svg{width:18px;height:18px}
+.ai-chat-suggestions{display:flex;flex-wrap:wrap;gap:6px;padding:0 16px 12px}
+.ai-chat-suggestion{padding:6px 12px;border-radius:8px;background:var(--card);border:1px solid var(--border2);font-size:12px;color:var(--text2);cursor:pointer;transition:all var(--transition-fast)}
+.ai-chat-suggestion:hover{border-color:var(--accent);color:var(--accent)}
+@media(max-width:600px){.ai-chat-panel{right:0;bottom:0;width:100%;height:100%;max-height:100%;border-radius:0}.ai-fab{right:16px;bottom:72px}}
 </style>
 </head>
 <body>
@@ -976,6 +1024,41 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(10
     </div>
   </div>
 </nav>
+
+<!-- AI Chat Floating Button -->
+<button class="ai-fab" id="aiFab" onclick="toggleAiChat()">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+  <span class="fab-dot" id="aiFabDot"></span>
+</button>
+
+<!-- AI Chat Panel -->
+<div class="ai-chat-panel" id="aiChatPanel">
+  <div class="ai-chat-header">
+    <div class="ai-avatar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg></div>
+    <div style="flex:1">
+      <div class="ai-title">AI 助手</div>
+      <div class="ai-subtitle" id="aiChatStatus">在线</div>
+    </div>
+    <button class="ai-chat-close" onclick="toggleAiChat()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+  </div>
+  <div class="ai-chat-body" id="aiChatBody">
+    <div class="ai-msg ai">
+      <div class="ai-msg-avatar">AI</div>
+      <div class="ai-msg-bubble">你好！我是你的 AI 助手 🤖<br>有什么关于转存系统的问题都可以问我。</div>
+    </div>
+  </div>
+  <div class="ai-chat-suggestions" id="aiChatSuggestions">
+    <span class="ai-chat-suggestion" onclick="aiQuickAsk('转存失败了怎么办？')">转存失败了怎么办？</span>
+    <span class="ai-chat-suggestion" onclick="aiQuickAsk('如何配置定时转存？')">如何配置定时转存？</span>
+    <span class="ai-chat-suggestion" onclick="aiQuickAsk('搜索不到资源怎么排查？')">搜索不到资源怎么排查？</span>
+  </div>
+  <div class="ai-chat-input">
+    <textarea id="aiChatInput" rows="1" placeholder="输入消息..." onkeydown="aiChatKeydown(event)" oninput="aiChatAutoHeight(this)"></textarea>
+    <button class="ai-chat-send" id="aiChatSend" onclick="aiChatSend()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+    </button>
+  </div>
+</div>
 
 <!-- Toast Container -->
 <div id="toastContainer"></div>
@@ -1569,6 +1652,146 @@ function renderMarkdown(text){
   html = html.replace(/\n/g,'<br>');
   return html;
 }
+
+// ============ AI Chat ============
+var aiChatMessages = [];
+var aiChatOpened = false;
+
+async function checkAiStatus(){
+  try{
+    var d = await apiGet('/api/ai/status');
+    var fab = document.getElementById('aiFab');
+    var dot = document.getElementById('aiFabDot');
+    var statusEl = document.getElementById('aiChatStatus');
+    if(d.enabled){
+      fab.style.display = 'flex';
+      dot.classList.add('show');
+      if(statusEl) statusEl.textContent = '在线';
+      statusEl.style.color = '#30d158';
+    } else {
+      fab.style.display = 'flex';
+      dot.classList.remove('show');
+      if(statusEl){ statusEl.textContent = '未配置'; statusEl.style.color = 'var(--orange)'; }
+    }
+  }catch(e){}
+}
+
+function toggleAiChat(){
+  var panel = document.getElementById('aiChatPanel');
+  var fab = document.getElementById('aiFab');
+  if(panel.classList.contains('show')){
+    panel.classList.remove('show');
+    fab.style.display = 'flex';
+    aiChatOpened = false;
+  } else {
+    panel.classList.add('show');
+    fab.style.display = 'none';
+    aiChatOpened = true;
+    var input = document.getElementById('aiChatInput');
+    if(input) input.focus();
+    aiScrollToBottom();
+  }
+}
+
+function aiScrollToBottom(){
+  var body = document.getElementById('aiChatBody');
+  if(body) body.scrollTop = body.scrollHeight;
+}
+
+function aiChatAutoHeight(el){
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 100) + 'px';
+}
+
+function aiChatKeydown(e){
+  if(e.key === 'Enter' && !e.shiftKey){
+    e.preventDefault();
+    aiChatSend();
+  }
+}
+
+function aiQuickAsk(text){
+  var input = document.getElementById('aiChatInput');
+  input.value = text;
+  aiChatSend();
+}
+
+function aiAddMsg(role, content, isHtml){
+  var body = document.getElementById('aiChatBody');
+  var cls = role === 'user' ? 'user' : 'ai';
+  var avatar = role === 'user' ? '我' : 'AI';
+  var html = isHtml ? content : (role === 'user' ? esc(content) : renderMarkdown(content));
+  var msg = document.createElement('div');
+  msg.className = 'ai-msg ' + cls;
+  msg.innerHTML = '<div class="ai-msg-avatar">'+avatar+'</div><div class="ai-msg-bubble">'+html+'</div>';
+  body.appendChild(msg);
+  aiScrollToBottom();
+  return msg;
+}
+
+function aiAddTyping(){
+  var body = document.getElementById('aiChatBody');
+  var msg = document.createElement('div');
+  msg.className = 'ai-msg ai';
+  msg.id = 'aiTypingMsg';
+  msg.innerHTML = '<div class="ai-msg-avatar">AI</div><div class="ai-msg-bubble"><div class="ai-chat-typing"><span></span><span></span><span></span></div></div>';
+  body.appendChild(msg);
+  aiScrollToBottom();
+  return msg;
+}
+
+function aiRemoveTyping(){
+  var el = document.getElementById('aiTypingMsg');
+  if(el) el.remove();
+}
+
+async function aiChatSend(){
+  var input = document.getElementById('aiChatInput');
+  var sendBtn = document.getElementById('aiChatSend');
+  var text = input.value.trim();
+  if(!text) return;
+
+  // 检查 AI 是否配置
+  var statusEl = document.getElementById('aiChatStatus');
+  if(statusEl && statusEl.textContent === '未配置'){
+    aiAddMsg('ai', '<span class="ai-err">AI 未配置，请先在设置页面填写 AI 供应商信息。</span>', true);
+    return;
+  }
+
+  // 添加用户消息
+  aiAddMsg('user', text);
+  aiChatMessages.push({role: 'user', content: text});
+
+  // 清空输入框
+  input.value = '';
+  aiChatAutoHeight(input);
+
+  // 隐藏快捷建议（第一次对话后）
+  var suggestions = document.getElementById('aiChatSuggestions');
+  if(suggestions) suggestions.style.display = 'none';
+
+  // 显示 typing 指示器
+  sendBtn.disabled = true;
+  aiAddTyping();
+
+  try{
+    var d = await apiPost('/api/ai/chat', {messages: aiChatMessages});
+    aiRemoveTyping();
+    if(d.success){
+      aiAddMsg('ai', d.reply);
+      aiChatMessages.push({role: 'assistant', content: d.reply});
+    } else {
+      aiAddMsg('ai', '<span class="ai-err">'+esc(d.error||'请求失败')+'</span>', true);
+    }
+  }catch(e){
+    aiRemoveTyping();
+    aiAddMsg('ai', '<span class="ai-err">网络错误: '+esc(e.message)+'</span>', true);
+  }finally{
+    sendBtn.disabled = false;
+    input.focus();
+  }
+}
+
 function openSettings(){document.getElementById('settingsModal').classList.add('show');loadConfig()}
 function closeSettings(){document.getElementById('settingsModal').classList.remove('show')}
 async function loadConfig(){
@@ -1715,6 +1938,7 @@ async function init(){
   updateTabIndicator();
   window.addEventListener('resize', updateTabIndicator);
   initSSE();
+  checkAiStatus();
 }
 
 var sseRetryDelay=5000;

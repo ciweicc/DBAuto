@@ -160,6 +160,84 @@ def diagnose(exec_record):
         return {"success": False, "error": f"诊断异常: {e}"}
 
 
+def chat(messages):
+    """
+    AI 多轮对话
+
+    Args:
+        messages: 对话历史列表, [{"role": "user", "content": "..."}, ...]
+
+    Returns:
+        dict: {"success": bool, "reply": str, "error": str}
+    """
+    ai_config = _get_ai_config()
+    if not (ai_config["base_url"] and ai_config["api_key"]):
+        return {
+            "success": False,
+            "error": "AI 未配置，请在设置页面填写 AI 供应商信息",
+        }
+
+    if not messages or not isinstance(messages, list):
+        return {"success": False, "error": "消息内容不能为空"}
+
+    # 限制历史消息数量，防止 token 过多
+    if len(messages) > 20:
+        messages = messages[-20:]
+
+    url = ai_config["base_url"].rstrip("/") + "/chat/completions"
+    headers = {
+        "Content-Type": "application/json",
+        "Authorization": "Bearer " + ai_config["api_key"],
+    }
+
+    system_prompt = {
+        "role": "system",
+        "content": (
+            "你是「豆瓣自动转存」系统的 AI 助手。这个系统的功能是：\n"
+            "1. 从豆瓣获取热门影视榜单\n"
+            "2. 通过 PanSou 搜索夸克网盘资源\n"
+            "3. 调用 QAS (夸克自动转存) 转存到用户网盘\n"
+            "4. 定期检测失效链接并自动修复\n\n"
+            "你可以帮助用户解答系统使用问题、排查错误、提供建议。"
+            "回答要简洁实用，用中文，可以使用 Markdown 格式。"
+        ),
+    }
+
+    payload = {
+        "model": ai_config["model"],
+        "messages": [system_prompt] + messages,
+        "temperature": 0.5,
+        "max_tokens": 2000,
+    }
+
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=60)
+        resp.raise_for_status()
+        data = resp.json()
+        choices = data.get("choices", [])
+        if not choices:
+            return {"success": False, "error": "AI 返回为空"}
+        reply = choices[0].get("message", {}).get("content", "").strip()
+        if not reply:
+            return {"success": False, "error": "AI 未返回有效内容"}
+        return {"success": True, "reply": reply}
+    except requests.exceptions.Timeout:
+        return {"success": False, "error": "AI 请求超时（60s），请稍后重试"}
+    except requests.exceptions.ConnectionError as e:
+        return {"success": False, "error": f"无法连接 AI 服务: {e}"}
+    except requests.exceptions.HTTPError as e:
+        status_code = e.response.status_code if e.response else "?"
+        try:
+            err_body = e.response.json() if e.response else {}
+            err_msg = err_body.get("error", {}).get("message", str(e))
+        except Exception:
+            err_msg = str(e)
+        return {"success": False, "error": f"AI 服务返回错误 ({status_code}): {err_msg}"}
+    except Exception as e:
+        logger.exception("AI 对话异常")
+        return {"success": False, "error": f"对话异常: {e}"}
+
+
 def test_connection():
     """测试 AI 供应商连接是否正常"""
     ai_config = _get_ai_config()

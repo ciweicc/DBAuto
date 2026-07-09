@@ -1,5 +1,5 @@
 # routes_ai.py — AI 诊断路由 Mixin
-from ai_assistant import diagnose, test_connection, is_ai_enabled
+from ai_assistant import diagnose, test_connection, is_ai_enabled, chat
 from storage import get_exec_record_by_id
 from utils import log
 from validator import validate_string
@@ -34,6 +34,24 @@ class AIRouteMixin:
             log("AI 诊断请求: id={}, type={}, status={}".format(record_id, target.get("type"), target.get("status")))
 
             result = diagnose(target)
+            self._send_json(result)
+            return True
+
+        if route == "/api/ai/chat":
+            messages = body.get("messages", [])
+            if not isinstance(messages, list) or not messages:
+                self._send_json({"success": False, "error": "消息不能为空"}, 400)
+                return True
+
+            # 验证每条消息
+            for msg in messages:
+                content = msg.get("content", "")
+                ok, msg_err = validate_string(content, min_len=1, max_len=2000, allow_empty=False)
+                if not ok:
+                    self._send_json({"success": False, "error": "消息内容: {}".format(msg_err)}, 400)
+                    return True
+
+            result = chat(messages)
             self._send_json(result)
             return True
 
