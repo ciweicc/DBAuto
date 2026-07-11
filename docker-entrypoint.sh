@@ -9,10 +9,4 @@ if [ "$1" = "--reset-password" ]; then
     exec python reset_password.py "$@"
 fi
 
-# 支持 MCP 服务模式: docker run ... --mcp [--sse] [--port 8765]
-if [ "$1" = "--mcp" ]; then
-    shift
-    exec python mcp_server.py "$@"
-fi
-
 exec python main.py
