@@ -110,7 +110,6 @@
 ```
 /workspace/
 ├── main.py                      # 项目入口文件
-├── mcp_server.py                # MCP Server (stdio + SSE 双模式)
 ├── reset_password.py            # 密码重置脚本
 ├── VERSION                      # 版本号文件 (1.1.0)
 ├── requirements.txt             # Python 依赖
@@ -152,10 +151,7 @@
 │   └── test_transfer.py         # transfer 模块测试
 │
 ├── docs/                        # 文档
-│   ├── CODE_WIKI.md             # 本文档
-│   └── compose/
-│       └── plans/
-│           └── 2026-06-13-transfer-improvements.md
+│   └── CODE_WIKI.md             # 本文档
 │
 └── .github/
     └── workflows/
@@ -1134,8 +1130,6 @@ SSE 实时推送接口。
 | requests | >= 2.28.0 | HTTP 请求 |
 | cryptography | >= 41.0.0 | 加密 (Fernet) |
 | croniter | >= 1.3.0 | Cron 表达式解析 |
-| mcp | >= 1.0.0 | MCP 协议 Server (含 uvicorn, starlette) |
-
 ### 开发依赖
 
 | 包名 | 版本要求 | 用途 |
@@ -1175,43 +1169,6 @@ main.py
 
 ## 部署与运行
 
-### 环境变量
-
-| 变量 | 默认值 | 说明 |
-|------|--------|------|
-| `PORT` | `3001` | 服务端口 |
-| `DATA_DIR` | `/data/douban-history` | 数据目录 |
-| `PANSOU` | `http://192.168.1.1:8080` | PanSou 服务地址 |
-| `QAS` | `http://192.168.1.1:5005` | QAS 服务地址 |
-| `QAS_TOKEN` | - | QAS API Token |
-| `AUTH_USER` | `root` | 登录用户名 |
-| `AUTH_PASS` | - | 登录密码 |
-| `TZ` | `Asia/Shanghai` | 时区 |
-
-### Docker 部署
-
-#### 使用 docker run
-
-```bash
-docker run -d \
-  --name douban-transfer \
-  --restart unless-stopped \
-  -p 3001:3001 \
-  -v /opt/douban-history:/data/douban-history \
-  -e PANSOU=http://192.168.1.1:8080 \
-  -e QAS=http://192.168.1.1:5005 \
-  -e QAS_TOKEN=your_token \
-  -e AUTH_USER=root \
-  -e AUTH_PASS=your_password \
-  your-image-name
-```
-
-#### 使用 docker-compose
-
-```bash
-docker-compose up -d
-```
-
 ### 本地运行
 
 #### 安装依赖
@@ -1228,56 +1185,10 @@ python main.py
 
 服务将在 `http://localhost:3001` 启动。
 
-#### 启动 MCP 服务 (stdio 模式)
-
-```bash
-python mcp_server.py
-```
-
-#### 启动 MCP 服务 (SSE 模式)
-
-```bash
-python mcp_server.py --sse --port 8765
-```
-
-SSE 模式将在 `http://localhost:8765/sse` 启动。
-
 #### 密码重置
 
 ```bash
 python reset_password.py your_new_password
-```
-
-### MCP 部署
-
-#### Docker 启动 MCP Server (SSE 模式)
-
-```bash
-docker run -d \
-  --name dbauto-mcp \
-  -p 8765:8765 \
-  -v /opt/douban-history:/data/douban-history \
-  ghcr.io/ciweicc/dbauto:latest \
-  --mcp --sse --port 8765
-```
-
-#### Claude Desktop 配置 (stdio 模式)
-
-编辑 `claude_desktop_config.json`：
-
-```json
-{
-  "mcpServers": {
-    "dbauto": {
-      "command": "python",
-      "args": ["mcp_server.py"],
-      "cwd": "/path/to/DBAuto",
-      "env": {
-        "DATA_DIR": "/data/douban-history"
-      }
-    }
-  }
-}
 ```
 
 ### 健康检查
@@ -1407,59 +1318,6 @@ pytest tests/ -v
 4. **登录频率限制**：60 秒 5 次，锁定 5 分钟
 5. **输入验证**：所有 API 参数都经过 validator 验证
 6. **路径安全**：静态文件路径检查，防止目录遍历
-
----
-
-## MCP Server
-
-### 概述
-
-**位置**：[mcp_server.py](file:///workspace/mcp_server.py)
-
-DBAuto 内置 MCP (Model Context Protocol) Server，可将转存系统的核心能力暴露给 AI 客户端（如 Claude Desktop、Cursor、VS Code），通过自然语言对话即可搜索资源、执行转存、查看历史等。
-
-### 运行模式
-
-| 模式 | 命令 | 适用场景 |
-|------|------|----------|
-| stdio | `python mcp_server.py` | Claude Desktop 等本地客户端 |
-| SSE | `python mcp_server.py --sse --port 8765` | 远程/网络客户端 |
-| Docker SSE | `docker run ... --mcp --sse --port 8765` | 容器化部署 |
-
-### 可用 Tools (11 个)
-
-| Tool | 说明 | 参数 |
-|------|------|------|
-| `get_categories` | 获取豆瓣榜单分类 | 无 |
-| `get_douban_list` | 获取豆瓣榜单数据 | path, sub_type, limit, min_rating, sort_by |
-| `search_resources` | 搜索夸克网盘资源 | keyword |
-| `transfer_one` | 搜索并转存单部影视 | title, savepath, category |
-| `transfer_by_url` | 通过分享链接直接转存 | title, shareurl, savepath, category |
-| `get_transfer_status` | 获取转存状态和进度 | 无 |
-| `get_history` | 获取转存历史 | category (可选) |
-| `get_exec_history` | 获取执行历史 | limit |
-| `check_expired` | 检测失效链接 | limit |
-| `get_dashboard_stats` | 获取仪表盘统计 | 无 |
-| `get_schedule` | 获取定时任务设置 | 无 |
-
-### 架构设计
-
-- **异步执行**：所有同步业务函数通过 `asyncio.to_thread()` 在后台线程执行，不阻塞 MCP 协议通信
-- **状态检查**：转存操作前检查 `is_transfer_running()` 防止并发冲突
-- **配置初始化**：启动时调用 `ConfigManager.get_instance()` 和 `load_config()` 加载配置
-- **数据共享**：与 Web 服务共享同一 `DATA_DIR`，读写同一 `config.json`、`app.db`
-
-### 模块依赖
-
-```
-mcp_server.py
-  ├── mcp.server (Server, stdio_server, NotificationOptions)
-  ├── config.py (ConfigManager, CATEGORIES, load_config)
-  ├── douban.py (get_douban_list)
-  ├── transfer.py (search_pansou, transfer_one, check_expired_tasks, ...)
-  ├── storage.py (load_history, load_exec_history)
-  └── scheduler.py (_next_fire_time, _now_local)
-```
 
 ---
 

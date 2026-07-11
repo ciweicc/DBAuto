@@ -11,7 +11,6 @@
 - 🗑️ **历史管理**：转存历史查看 / 删除 / 导出，执行记录一键清除
 - 🔐 **安全认证**：PBKDF2 密码哈希、Token 登录保护、登录频率限制、敏感字段加密存储
 - 🎨 **Apple 风格 UI**：深色 / 浅色主题切换、毛玻璃卡片、响应式布局
-- 🤖 **MCP 服务**：支持作为 MCP Server 接入 Claude Desktop / Cursor 等 AI 客户端，通过自然语言对话操控转存
 - 🐳 **Docker 部署**：容器化运行，数据目录绑定持久化
 
 ## 依赖服务
@@ -135,79 +134,6 @@ python main.py
 | GET | `/api/sse` | SSE 实时推送（日志 / 进度 / 状态变更） |
 
 详细接口文档参见 [CODE_WIKI.md](docs/CODE_WIKI.md)。
-
-## MCP 服务
-
-DBAuto 内置 MCP (Model Context Protocol) Server，可将转存系统的能力暴露给 AI 客户端（如 Claude Desktop、Cursor、VS Code），通过自然语言对话即可搜索资源、执行转存、查看历史等。
-
-### 可用 Tools
-
-| Tool | 说明 |
-|------|------|
-| `get_categories` | 获取豆瓣榜单分类 |
-| `get_douban_list` | 获取豆瓣榜单数据 |
-| `search_resources` | 搜索夸克网盘资源 |
-| `transfer_one` | 搜索并转存单部影视 |
-| `transfer_by_url` | 通过分享链接直接转存 |
-| `get_transfer_status` | 获取转存状态 |
-| `get_history` | 获取转存历史 |
-| `get_exec_history` | 获取执行历史 |
-| `check_expired` | 检测失效链接 |
-| `get_dashboard_stats` | 获取仪表盘统计 |
-| `get_schedule` | 获取定时任务设置 |
-
-### 本地运行（stdio 模式）
-
-```bash
-pip install -r requirements.txt
-python mcp_server.py
-```
-
-### Claude Desktop 配置
-
-编辑 `claude_desktop_config.json`（macOS: `~/Library/Application Support/Claude/`，Windows: `%APPDATA%/Claude/`）：
-
-```json
-{
-  "mcpServers": {
-    "dbauto": {
-      "command": "python",
-      "args": ["mcp_server.py"],
-      "cwd": "/path/to/DBAuto",
-      "env": {
-        "DATA_DIR": "/data/douban-history"
-      }
-    }
-  }
-}
-```
-
-### Docker 运行（SSE 模式）
-
-```bash
-docker run -d \
-  --name dbauto-mcp \
-  -p 8765:8765 \
-  -v /opt/douban-history:/data/douban-history \
-  ghcr.io/ciweicc/dbauto:latest \
-  --mcp --sse --port 8765
-```
-
-然后在支持 MCP SSE 的客户端中配置：
-
-```
-MCP Server URL: http://localhost:8765/sse
-```
-
-### 使用示例
-
-配置完成后，可以在 AI 客户端中直接对话：
-
-- "帮我搜索一下《流浪地球》的网盘资源"
-- "把《奥本海默》转存到 /电影/2024 目录"
-- "今天转存了多少部？"
-- "看看有没有失效链接"
-- "豆瓣热门电影有哪些？"
 
 ---
 
