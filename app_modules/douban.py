@@ -1,5 +1,5 @@
 # douban.py — 豆瓣榜单：直接调用豆瓣移动端 API
-import time, urllib.parse
+import re, time, urllib.parse
 from threading import Lock
 from utils import http_get, log
 
@@ -44,7 +44,6 @@ def _parse_year(year_str):
         if isinstance(year_str, int):
             return year_str
         s = str(year_str).strip()
-        import re
         match = re.search(r'(\d{4})', s)
         if match:
             return int(match.group(1))

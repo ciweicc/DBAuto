@@ -1,5 +1,6 @@
 # config.py — 配置管理（ConfigManager 类 + 兼容层函数）
 import os, json, time
+from datetime import timezone, timedelta
 from threading import Lock
 
 DATA_DIR = os.environ.get("DATA_DIR", "/data/douban-history")
@@ -8,6 +9,17 @@ EXEC_HISTORY_FILE = os.path.join(DATA_DIR, "exec_history.json")
 SETTINGS_FILE = os.path.join(DATA_DIR, "settings.json")
 CONFIG_FILE = os.path.join(DATA_DIR, "config.json")
 PORT = int(os.environ.get("PORT", "3001"))
+
+# 时区：从 TZ 环境变量推断偏移量，默认东八区
+_TZ_NAME = os.environ.get("TZ", "Asia/Shanghai")
+_TZ_OFFSETS = {
+    "Asia/Shanghai": 8, "Asia/Hong_Kong": 8, "Asia/Taipei": 8, "Asia/Singapore": 8,
+    "Asia/Tokyo": 9, "Asia/Seoul": 9, "Asia/Bangkok": 7, "Asia/Jakarta": 7,
+    "UTC": 0, "Europe/London": 0, "Europe/Paris": 1, "Europe/Berlin": 1,
+    "US/Eastern": -5, "US/Central": -6, "US/Mountain": -7, "US/Pacific": -8,
+}
+_TZ_OFFSET = _TZ_OFFSETS.get(_TZ_NAME, 8)
+LOCAL_TZ = timezone(timedelta(hours=_TZ_OFFSET))
 
 _SENSITIVE_FIELDS = {"qas_token", "auth_pass"}
 
@@ -184,7 +196,7 @@ class ConfigManager:
             self._settings = None
 
 
-# ===== 兼容层：保持原有模块级变量和函数 =====
+# ===== 模块级函数接口（供其他模块使用）=====
 
 _config_manager = None
 
@@ -214,26 +226,3 @@ def load_settings():
 
 def save_settings(settings):
     _get_config_manager().set_settings(settings)
-
-
-# 模块级属性（动态从 ConfigManager 获取，始终最新）
-class _ConfigProxy:
-    def __getattr__(self, name):
-        if name in ("PANSOU", "pansou"):
-            return _get_config_manager().pansou
-        if name in ("QAS", "qas"):
-            return _get_config_manager().qas
-        if name in ("QAS_TOKEN", "qas_token"):
-            return _get_config_manager().qas_token
-        if name in ("AUTH_USER", "auth_user"):
-            return _get_config_manager().auth_user
-        if name in ("AUTH_PASS", "auth_pass"):
-            return _get_config_manager().auth_pass
-        raise AttributeError(name)
-
-
-PANSOU = DEFAULT_CONFIG["pansou"]
-QAS = DEFAULT_CONFIG["qas"]
-QAS_TOKEN = DEFAULT_CONFIG["qas_token"]
-AUTH_USER = DEFAULT_CONFIG["auth_user"]
-AUTH_PASS = DEFAULT_CONFIG["auth_pass"]

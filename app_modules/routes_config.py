@@ -13,6 +13,13 @@ from threading import Thread
 from validator import validate_string, validate_url, validate_cron, validate_time, validate_positive_int, validate_list
 
 
+def _format_next(time_str, cron_str):
+    dt = _next_fire_time(time_str, cron_str)
+    if dt:
+        return dt.strftime("%Y-%m-%d %H:%M")
+    return None
+
+
 class ConfigRouteMixin:
     """系统配置 & 调度管理相关路由"""
 
@@ -191,10 +198,3 @@ class ConfigRouteMixin:
                 return True
 
         return False
-
-
-def _format_next(time_str, cron_str):
-    dt = _next_fire_time(time_str, cron_str)
-    if dt:
-        return dt.strftime("%Y-%m-%d %H:%M")
-    return None

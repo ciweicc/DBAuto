@@ -1,5 +1,5 @@
 # utils.py — HTTP 工具、日志、SSE 广播、加密工具、通用缓存
-import json, logging, time, hashlib, hmac, base64, os
+import json, logging, logging.handlers, time, hashlib, hmac, base64, os
 import requests
 from collections import deque
 from threading import Lock, local
@@ -49,161 +49,6 @@ class TTLCache:
     def __len__(self):
         return len(self._cache)
 
-
-class DiskCache:
-    """磁盘缓存，支持持久化存储"""
-
-    def __init__(self, base_path, max_size=1000):
-        self._base_path = os.path.join(base_path, "cache")
-        os.makedirs(self._base_path, exist_ok=True)
-        self._max_size = max_size
-        self._lock = Lock()
-        self._file_index = self._load_index()
-
-    def _load_index(self):
-        index_path = os.path.join(self._base_path, "_index.json")
-        if os.path.exists(index_path):
-            try:
-                with open(index_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception:
-                pass
-        return {}
-
-    def _save_index(self):
-        index_path = os.path.join(self._base_path, "_index.json")
-        atomic_write_json(index_path, self._file_index)
-
-    def _get_file_path(self, key):
-        hash_val = hashlib.md5(key.encode("utf-8")).hexdigest()
-        return os.path.join(self._base_path, "{}.json".format(hash_val))
-
-    def get(self, key):
-        with self._lock:
-            if key not in self._file_index:
-                return None
-            file_path = self._get_file_path(key)
-            if not os.path.exists(file_path):
-                del self._file_index[key]
-                self._save_index()
-                return None
-            try:
-                with open(file_path, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                now = time.time()
-                if data.get("expire_time", 0) > now:
-                    return data.get("value")
-                os.remove(file_path)
-                del self._file_index[key]
-                self._save_index()
-                return None
-            except Exception:
-                return None
-
-    def set(self, key, value, ttl=3600):
-        with self._lock:
-            expire_time = time.time() + ttl
-            self._file_index[key] = {
-                "expire_time": expire_time,
-                "created_at": time.time()
-            }
-            file_path = self._get_file_path(key)
-            data = {
-                "key": key,
-                "value": value,
-                "expire_time": expire_time,
-                "created_at": time.time()
-            }
-            atomic_write_json(file_path, data)
-            self._prune()
-            self._save_index()
-
-    def _prune(self):
-        if len(self._file_index) <= self._max_size:
-            return
-        sorted_keys = sorted(self._file_index.keys(), key=lambda k: self._file_index[k]["created_at"])
-        to_remove = len(self._file_index) - self._max_size
-        for k in sorted_keys[:to_remove]:
-            file_path = self._get_file_path(k)
-            try:
-                os.remove(file_path)
-            except Exception:
-                pass
-            del self._file_index[k]
-
-    def clear(self):
-        with self._lock:
-            for key in list(self._file_index.keys()):
-                file_path = self._get_file_path(key)
-                try:
-                    os.remove(file_path)
-                except Exception:
-                    pass
-            self._file_index.clear()
-            self._save_index()
-
-    def __contains__(self, key):
-        return self.get(key) is not None
-
-    def __len__(self):
-        return len(self._file_index)
-
-
-class TwoLevelCache:
-    """二级缓存：内存缓存（快速）+ 磁盘缓存（持久化）"""
-
-    def __init__(self, memory_ttl=300, memory_max_size=100, disk_max_size=1000):
-        self._memory_cache = TTLCache(ttl=memory_ttl, max_size=memory_max_size)
-        self._disk_cache = DiskCache(DATA_DIR, max_size=disk_max_size)
-        self._lock = Lock()
-
-    def get(self, key):
-        with self._lock:
-            val = self._memory_cache.get(key)
-            if val is not None:
-                return val
-            val = self._disk_cache.get(key)
-            if val is not None:
-                self._memory_cache.set(key, val)
-            return val
-
-    def set(self, key, value, ttl=3600):
-        with self._lock:
-            self._memory_cache.set(key, value)
-            self._disk_cache.set(key, value, ttl)
-
-    def clear(self):
-        with self._lock:
-            self._memory_cache.clear()
-            self._disk_cache.clear()
-
-    def __contains__(self, key):
-        return self.get(key) is not None
-
-    def __len__(self):
-        return len(self._disk_cache)
-
-_thread_pool = None
-_thread_pool_lock = Lock()
-
-def get_thread_pool(max_workers=5):
-    global _thread_pool
-    with _thread_pool_lock:
-        if _thread_pool is None:
-            from concurrent.futures import ThreadPoolExecutor
-            _thread_pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="DBAuto")
-        return _thread_pool
-
-def shutdown_thread_pool():
-    global _thread_pool
-    with _thread_pool_lock:
-        if _thread_pool is not None:
-            _thread_pool.shutdown(wait=True)
-            _thread_pool = None
-
-def submit_task(func, *args, **kwargs):
-    pool = get_thread_pool()
-    return pool.submit(func, *args, **kwargs)
 
 _HASH_SALT_FILE = os.path.join(DATA_DIR, ".salt")
 _SECRET_KEY = None
@@ -280,6 +125,9 @@ sse_lock = Lock()
 SSE_MAX = 20
 SSE_TIMEOUT = 300
 
+# 日志文件路径
+LOG_FILE = os.path.join(DATA_DIR, "app.log")
+
 def _prune_sse_clients():
     now = time.time()
     expired = [cid for cid, info in sse_clients.items() if now - info["time"] > SSE_TIMEOUT]
@@ -292,9 +140,23 @@ def clear_progress():
 def setup_logging():
     logger = logging.getLogger("douban")
     logger.setLevel(logging.INFO)
-    h = logging.StreamHandler()
-    h.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S"))
-    logger.addHandler(h)
+    # 避免重复添加 handler
+    if not logger.handlers:
+        fmt = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s", datefmt="%H:%M:%S")
+        # 控制台输出
+        sh = logging.StreamHandler()
+        sh.setFormatter(fmt)
+        logger.addHandler(sh)
+        # 文件持久化（滚动 3 个文件，每个最大 5MB）
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+            fh = logging.handlers.RotatingFileHandler(
+                LOG_FILE, maxBytes=5*1024*1024, backupCount=3, encoding="utf-8"
+            )
+            fh.setFormatter(fmt)
+            logger.addHandler(fh)
+        except Exception:
+            pass
     return logger
 
 logger = setup_logging()

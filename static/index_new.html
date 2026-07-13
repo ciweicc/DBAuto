@@ -988,15 +988,31 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(10
 var TOKEN = localStorage.getItem('auth_token')||'';
 if(!TOKEN){location.href='/login.html'}
 function authHeaders(){return{'X-Auth-Token':TOKEN}}
-async function apiGet(url){
-  var r = await fetch(url,{headers:authHeaders()});
-  if(r.status===401){TOKEN='';localStorage.removeItem('auth_token');location.href='/login.html';throw new Error('401')}
-  return r.json()
+async function apiGet(url,retries=2){
+for(let i=0;i<=retries;i++){
+try{
+var r = await fetch(url,{headers:authHeaders()});
+if(r.status===401){TOKEN='';localStorage.removeItem('auth_token');location.href='/login.html';throw new Error('401')}
+return r.json()
+}catch(e){
+if(e.message==='401')throw e;
+if(i<retries){await new Promise(r=>setTimeout(r,1000*(i+1)))}
+else throw e
 }
-async function apiPost(url,body){
-  var r = await fetch(url,{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json'},body:JSON.stringify(body)});
-  if(r.status===401){TOKEN='';localStorage.removeItem('auth_token');location.href='/login.html';throw new Error('401')}
-  return r.json()
+}
+}
+async function apiPost(url,body,retries=2){
+for(let i=0;i<=retries;i++){
+try{
+var r = await fetch(url,{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json'},body:JSON.stringify(body)});
+if(r.status===401){TOKEN='';localStorage.removeItem('auth_token');location.href='/login.html';throw new Error('401')}
+return r.json()
+}catch(e){
+if(e.message==='401')throw e;
+if(i<retries){await new Promise(r=>setTimeout(r,1000*(i+1)))}
+else throw e
+}
+}
 }
 
 // ============ Animation Utils ============

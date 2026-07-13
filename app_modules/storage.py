@@ -1,10 +1,8 @@
 # storage.py — SQLite 存储（历史记录、执行历史），兼容原有 JSON 数据自动迁移
 import os, json, uuid, sqlite3
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from threading import Lock, RLock
-from config import DATA_DIR, HISTORY_FILE, EXEC_HISTORY_FILE, ensure_data_dir
-
-TZ = timezone(timedelta(hours=8))
+from config import DATA_DIR, HISTORY_FILE, EXEC_HISTORY_FILE, ensure_data_dir, LOCAL_TZ
 
 DB_FILE = os.path.join(DATA_DIR, "app.db")
 
@@ -220,7 +218,7 @@ def add_exec_record(typ, detail, status="ok", data=None):
         "type": typ,
         "detail": detail,
         "status": status,
-        "time": datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"),
+        "time": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S"),
         "data": data
     }
     with _exec_lock:

@@ -1,7 +1,7 @@
 import time, traceback
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
 from threading import Thread, Lock, Event
-from config import load_settings, ConfigManager
+from config import load_settings, ConfigManager, LOCAL_TZ
 from douban import get_douban_list
 from transfer import run_transfer, check_expired_tasks, is_in_qas, build_transfer_tasks, is_transfer_running
 from storage import add_exec_record
@@ -13,14 +13,13 @@ try:
 except ImportError:
     _has_croniter = False
 
-TZ = timezone(timedelta(hours=8))
 schedule_status = {"transfer_next": None, "expired_check_next": None,
                    "last_transfer": None, "last_expired_check": None}
 schedule_lock = Lock()
 _settings_changed = Event()
 
 def _now_local():
-    return datetime.now(TZ)
+    return datetime.now(LOCAL_TZ)
 
 def _next_fire_time(time_str, cron_str):
     if cron_str:

@@ -42,6 +42,11 @@ class H(BaseRouteHandler,
         if not AuthRouteMixin._require_auth(self):
             return
 
+        # 3.5 SSE 实时推送（需要认证）
+        if route == "/api/sse":
+            StaticRouteMixin._handle_sse(self)
+            return
+
         # 4. 转存 & 搜索
         if TransferRouteMixin._handle_transfer_get(self, route):
             return

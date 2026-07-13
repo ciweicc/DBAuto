@@ -12,10 +12,6 @@ class AuthRouteMixin:
             self._send_json({"auth": _check_auth(self)})
             return True
 
-        if route == "/api/sse":
-            from routes_static import StaticRouteMixin
-            return StaticRouteMixin._handle_sse(self)
-
         return False
 
     def _handle_auth_post(self, route, body):

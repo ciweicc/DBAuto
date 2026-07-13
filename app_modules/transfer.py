@@ -3,14 +3,12 @@ import json, time, re
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone, timedelta
 from threading import Lock, get_ident, enumerate as enumerate_threads, local
-from config import ConfigManager, load_settings
+from config import ConfigManager, load_settings, LOCAL_TZ
 from utils import http_get, http_post, log, TTLCache, clear_progress, sse_broadcast
 from storage import load_history, save_history, add_exec_record, update_exec_record
 from douban import get_douban_list
 
 SEARCH_CONCURRENCY = 3
-
-TZ = timezone(timedelta(hours=8))
 
 VIDEO_SUB = r".*?\.(mp4|mkv|avi|ts|rmvb|flv|mov|srt|ass|ssa|sub|idx)"
 TV_REPLACE = "{TASKNAME}.{SXX}E{E}.{EXT}"
@@ -128,7 +126,7 @@ def check_pansou_links(urls):
         return valid
     except Exception as e:
         log("PanSou 链接检查错误: {}".format(e))
-        return set(urls)
+        return set()
 
 def validate_share_link(url):
     try:
@@ -170,7 +168,7 @@ def transfer_one(title, shareurl, savepath, pattern="", replace="", category="mo
         transfer_status.update({
             "running": True,
             "summary": None,
-            "start_time": datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"),
+            "start_time": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             "stats": {"searched": 0, "ok": 0, "skipped": 0, "failed": 0, "total": 1},
             "thread_id": tid,
             "stop": False
@@ -188,7 +186,7 @@ def transfer_one(title, shareurl, savepath, pattern="", replace="", category="mo
             sse_broadcast("transfer_progress", dict(transfer_status))
         # 更新历史记录
         history = load_history()
-        history[title] = {"date": datetime.now(TZ).strftime("%Y-%m-%d"),
+        history[title] = {"date": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d"),
                           "status": res["status"], "category": category}
         save_history(history)
         return res
@@ -460,7 +458,7 @@ def run_transfer(task_list, limit):
         pass
     with transfer_lock:
         transfer_status.update({"running": True, "summary": None,
-                                "start_time": datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S"),
+                                "start_time": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S"),
                                 "stats": {"searched": 0, "ok": 0, "skipped": 0, "failed": 0, "total": len(task_list)},
                                 "thread_id": tid, "stop": False})
     clear_progress()
@@ -538,7 +536,7 @@ def run_transfer(task_list, limit):
             replace = TV_REPLACE if category == "tv" else ""
             res = add_and_run(title, chosen.get("url", ""), "{}/{}".format(savepath, title), pattern, replace)
             log("  {}".format(res["msg"]))
-            history[title] = {"date": datetime.now(TZ).strftime("%Y-%m-%d"),
+            history[title] = {"date": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d"),
                               "status": res["status"], "category": category}
             results.append({"title": title, "status": res["status"], "msg": res["msg"], "category": category})
             if res["status"] in ("ok", "done"):

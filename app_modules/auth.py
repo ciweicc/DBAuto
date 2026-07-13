@@ -1,5 +1,5 @@
-# auth.py — 认证管理（AuthManager 类 + 兼容层函数）
-import secrets, time
+# auth.py — 认证管理
+import os, secrets, time
 from threading import Lock
 from config import ConfigManager
 from utils import log, verify_password, hash_password
@@ -8,6 +8,8 @@ TOKEN_TTL = 86400
 LOGIN_MAX_ATTEMPTS = 5
 LOGIN_WINDOW = 60
 LOGIN_LOCK_DURATION = 300
+
+_TRUST_PROXY = os.environ.get("TRUST_PROXY", "").lower() in ("1", "true", "yes")
 
 
 class AuthManager:
@@ -73,7 +75,21 @@ class AuthManager:
             return not password
         if stored.startswith("$pbkdf2$"):
             return verify_password(password, stored[8:])
-        return password == stored
+        # 兼容旧版明文密码：验证后自动迁移为哈希格式
+        if password == stored:
+            self._migrate_password(password)
+            return True
+        return False
+
+    def _migrate_password(self, password):
+        """将旧版明文密码自动迁移为 PBKDF2 哈希"""
+        try:
+            cfg = self._config.get_config()
+            cfg["auth_pass"] = self.hash_password(password)
+            self._config.set_config(cfg)
+            log("已自动将旧版明文密码迁移为哈希格式")
+        except Exception as e:
+            log("密码迁移失败: {}".format(e))
 
     @staticmethod
     def hash_password(password):
@@ -108,10 +124,15 @@ class AuthManager:
 
     @staticmethod
     def get_client_ip(handler):
+        # 信任反向代理时从 X-Forwarded-For 获取真实 IP
+        if _TRUST_PROXY:
+            xff = handler.headers.get("X-Forwarded-For", "")
+            if xff:
+                return xff.split(",")[0].strip()
         return handler.client_address[0]
 
 
-# ===== 兼容层：保持原有模块级变量和函数 =====
+# ===== 模块级函数接口（供路由模块使用）=====
 
 _auth_manager = None
 
@@ -121,12 +142,6 @@ def _get_auth_manager():
     if _auth_manager is None:
         _auth_manager = AuthManager.get_instance()
     return _auth_manager
-
-
-auth_tokens = {}
-auth_lock = Lock()
-login_attempts = {}
-login_lock = Lock()
 
 
 def _check_auth(handler):
@@ -139,10 +154,6 @@ def _do_login(username, password):
 
 def hash_auth_password(password):
     return AuthManager.hash_password(password)
-
-
-def verify_auth_password(password, stored):
-    return AuthManager.get_instance()._verify_pass(password, stored)
 
 
 def _login_rate_check(ip):
