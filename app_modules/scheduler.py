@@ -2,8 +2,8 @@ import time, traceback
 from datetime import datetime, timedelta
 from threading import Thread, Lock, Event
 from config import load_settings, ConfigManager, LOCAL_TZ
-from douban import get_douban_list
-from transfer import run_transfer, check_expired_tasks, is_in_qas, build_transfer_tasks, is_transfer_running
+from douban import get_douban_list, get_douban_wishlist
+from transfer import run_transfer, check_expired_tasks, fix_expired_tasks, is_in_qas, build_transfer_tasks, is_transfer_running
 from storage import add_exec_record
 from utils import log, http_post
 
@@ -21,7 +21,20 @@ _settings_changed = Event()
 def _now_local():
     return datetime.now(LOCAL_TZ)
 
-def _next_fire_time(time_str, cron_str):
+def _next_fire_time(time_str, cron_str, interval_hours=0, last_run=None):
+    # 间隔模式：每 N 小时执行一次
+    if interval_hours and interval_hours > 0:
+        now = _now_local()
+        if last_run:
+            try:
+                base = datetime.strptime(last_run, "%Y-%m-%d %H:%M:%S")
+                base = base.replace(tzinfo=LOCAL_TZ)
+            except (ValueError, TypeError):
+                base = now
+        else:
+            base = now
+        return base + timedelta(hours=interval_hours)
+
     if cron_str:
         if not _has_croniter:
             log("croniter 未安装，无法解析 cron 表达式")
@@ -66,9 +79,29 @@ def _run_scheduled_transfer():
         settings = load_settings()
         t = settings.get("transfer", {})
         if not t.get("enabled"): return
-        tasks = t.get("tasks", [])
+        tasks = list(t.get("tasks", []))
         limit = t.get("limit", 5)
         filters = t.get("filters", {})
+        # 获取豆瓣想看列表作为额外任务来源
+        wish_cfg = settings.get("douban_wish", {})
+        if wish_cfg.get("enabled"):
+            try:
+                wish_items = get_douban_wishlist()
+                if wish_items:
+                    wish_savepath = wish_cfg.get("savepath", "/批量转存/想看")
+                    wish_category = wish_cfg.get("category", "movie")
+                    for item in wish_items:
+                        tasks.append({
+                            "path": "",
+                            "type": "",
+                            "savepath": wish_savepath,
+                            "category": wish_category,
+                            "title": item["title"],
+                            "_wish": True
+                        })
+                    log("豆瓣想看列表已加载 {} 条".format(len(wish_items)))
+            except Exception as e:
+                log("豆瓣想看列表加载失败: {}".format(e))
         if not tasks: return
         if is_transfer_running():
             log("定时转存跳过：已有转存任务正在运行")
@@ -86,7 +119,8 @@ def _run_scheduled_transfer():
 def _run_scheduled_expired_check():
     try:
         settings = load_settings()
-        if not settings.get("expired_check", {}).get("enabled"): return
+        ec = settings.get("expired_check", {})
+        if not ec.get("enabled"): return
         if is_transfer_running():
             log("定时失效检测跳过：已有转存任务正在运行")
             return
@@ -97,6 +131,17 @@ def _run_scheduled_expired_check():
         if expired:
             add_exec_record("expired_check", "发现 {} 个失效链接".format(len(expired)), "fail",
                             data={"expired": [{"title": e.get("taskname", ""), "path": e.get("savepath", "")} for e in expired]})
+            # 自动修复失效链接
+            if ec.get("auto_fix"):
+                log("自动修复失效链接开始")
+                try:
+                    fix_result = fix_expired_tasks()
+                    add_exec_record("expired_check", "自动修复完成: 成功{} 失败{}".format(
+                        fix_result.get("fixed", 0), fix_result.get("failed", 0)), "ok",
+                        data=fix_result)
+                except Exception as e:
+                    log("自动修复失败: {}".format(e))
+                    add_exec_record("expired_check", "自动修复失败: {}".format(e), "fail")
         else:
             add_exec_record("expired_check", "检测完成，无失效链接", "ok", data={"expired": []})
     except Exception as e:
@@ -129,8 +174,10 @@ def scheduler_loop():
             settings = _load_settings_cached()
             t = settings.get("transfer", {})
             e = settings.get("expired_check", {})
-            t_next = _next_fire_time(t.get("time"), t.get("cron"))
-            e_next = _next_fire_time(e.get("time"), e.get("cron"))
+            t_next = _next_fire_time(t.get("time"), t.get("cron"), t.get("interval_hours", 0),
+                                     schedule_status.get("last_transfer"))
+            e_next = _next_fire_time(e.get("time"), e.get("cron"), e.get("interval_hours", 0),
+                                     schedule_status.get("last_expired_check"))
             now = _now_local()
             with schedule_lock:
                 schedule_status["transfer_next"] = t_next.strftime("%Y-%m-%d %H:%M") if t_next else None

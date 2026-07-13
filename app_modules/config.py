@@ -21,7 +21,7 @@ _TZ_OFFSETS = {
 _TZ_OFFSET = _TZ_OFFSETS.get(_TZ_NAME, 8)
 LOCAL_TZ = timezone(timedelta(hours=_TZ_OFFSET))
 
-_SENSITIVE_FIELDS = {"qas_token", "auth_pass"}
+_SENSITIVE_FIELDS = {"qas_token", "auth_pass", "douban_cookie"}
 
 
 def _is_encrypted(val):
@@ -60,12 +60,17 @@ DEFAULT_CONFIG = {
     "qas_token": os.environ.get("QAS_TOKEN", ""),
     "auth_user": os.environ.get("AUTH_USER", "root"),
     "auth_pass": os.environ.get("AUTH_PASS", ""),
+    "douban_uid": os.environ.get("DOUBAN_UID", ""),
+    "douban_cookie": os.environ.get("DOUBAN_COOKIE", ""),
 }
 
 DEFAULT_SETTINGS = {
-    "transfer": {"enabled": False, "time": "02:00", "cron": "", "limit": 5, "tasks": [],
-                 "filters": {"min_rating": 0, "sort_by": "rating", "year_from": 0, "year_to": 0}},
-    "expired_check": {"enabled": False, "time": "03:00", "cron": "", "directories": []},
+    "transfer": {"enabled": False, "time": "02:00", "cron": "", "interval_hours": 0, "limit": 5, "tasks": [],
+                 "filters": {"min_rating": 0, "sort_by": "rating", "year_from": 0, "year_to": 0,
+                             "exclude_keywords": [], "genre": ""}},
+    "expired_check": {"enabled": False, "time": "03:00", "cron": "", "interval_hours": 0,
+                      "directories": [], "auto_fix": False},
+    "douban_wish": {"enabled": False, "savepath": "/批量转存/想看", "category": "movie"},
 }
 
 CATEGORIES = {
@@ -127,6 +132,14 @@ class ConfigManager:
     @property
     def auth_pass(self):
         return self.get_config().get("auth_pass", DEFAULT_CONFIG["auth_pass"])
+
+    @property
+    def douban_uid(self):
+        return self.get_config().get("douban_uid", DEFAULT_CONFIG["douban_uid"])
+
+    @property
+    def douban_cookie(self):
+        return self.get_config().get("douban_cookie", DEFAULT_CONFIG["douban_cookie"])
 
     def get_config(self):
         with self._config_lock:

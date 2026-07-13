@@ -400,12 +400,19 @@ def build_transfer_tasks(tasks_config, filters=None):
     all_t = []
     for tk in tasks_config:
         try:
+            # 如果任务已包含 title（来自豆瓣想看列表），直接使用
+            if tk.get("_wish") and tk.get("title"):
+                all_t.append({"title": tk["title"], "savepath": tk["savepath"],
+                              "category": tk.get("category", "movie")})
+                continue
             items = get_douban_list(
                 tk["path"], tk["type"], 20,
                 min_rating=filters.get("min_rating", 0),
                 sort_by=filters.get("sort_by", "rating"),
                 year_from=filters.get("year_from", 0),
-                year_to=filters.get("year_to", 0)
+                year_to=filters.get("year_to", 0),
+                exclude_keywords=filters.get("exclude_keywords", []),
+                genre=filters.get("genre", "")
             )
             for i in items:
                 all_t.append({"title": i["title"], "savepath": tk["savepath"],

@@ -13,8 +13,8 @@ from threading import Thread
 from validator import validate_string, validate_url, validate_cron, validate_time, validate_positive_int, validate_list
 
 
-def _format_next(time_str, cron_str):
-    dt = _next_fire_time(time_str, cron_str)
+def _format_next(time_str, cron_str, interval_hours=0, last_run=None):
+    dt = _next_fire_time(time_str, cron_str, interval_hours, last_run)
     if dt:
         return dt.strftime("%Y-%m-%d %H:%M")
     return None
@@ -28,7 +28,7 @@ class ConfigRouteMixin:
             cfg = load_config()
             masked = {}
             for k, v in cfg.items():
-                if k in ("qas_token", "auth_pass"):
+                if k in ("qas_token", "auth_pass", "douban_cookie"):
                     masked[k] = "***" if v else ""
                 else:
                     masked[k] = v
@@ -44,15 +44,21 @@ class ConfigRouteMixin:
             result = dict(settings)
             result["_status"] = status
             result["_next_runs"] = {
-                "transfer": _format_next(t.get("time"), t.get("cron")) if t.get("enabled") else None,
-                "expired_check": _format_next(e.get("time"), e.get("cron")) if e.get("enabled") else None,
+                "transfer": _format_next(t.get("time"), t.get("cron"), t.get("interval_hours", 0),
+                                          status.get("last_transfer")) if t.get("enabled") else None,
+                "expired_check": _format_next(e.get("time"), e.get("cron"), e.get("interval_hours", 0),
+                                               status.get("last_expired_check")) if e.get("enabled") else None,
             }
             self._send_json(result)
             return True
 
-        return False
+        if route == "/api/refresh_douban":
+            from douban import refresh_douban_cache
+            refresh_douban_cache()
+            self._send_json({"success": True, "message": "豆瓣缓存已刷新"})
+            return True
 
-    def _handle_config_post(self, route, body):
+        return False
         if route == "/api/config":
             cfg = load_config()
 
@@ -88,6 +94,20 @@ class ConfigRouteMixin:
                         self._send_json({"success": False, "message": "auth_user: {}".format(msg)}, 400)
                         return True
                     cfg[k] = v
+                elif k == "douban_uid":
+                    if v:
+                        ok, msg = validate_string(v, min_len=1, max_len=50)
+                        if not ok:
+                            self._send_json({"success": False, "message": "douban_uid: {}".format(msg)}, 400)
+                            return True
+                    cfg[k] = v
+                elif k == "douban_cookie":
+                    if v and v != "***":
+                        ok, msg = validate_string(v, min_len=1, max_len=2000)
+                        if not ok:
+                            self._send_json({"success": False, "message": "douban_cookie: {}".format(msg)}, 400)
+                            return True
+                        cfg[k] = v
                 else:
                     cfg[k] = v
 
@@ -105,7 +125,7 @@ class ConfigRouteMixin:
 
             if action == "save":
                 old_settings = dict(settings)
-                for section in ("transfer", "expired_check"):
+                for section in ("transfer", "expired_check", "douban_wish"):
                     if section in body:
                         section_data = body[section]
                         if section not in settings:
@@ -123,6 +143,12 @@ class ConfigRouteMixin:
                                 self._send_json({"success": False, "message": "{} cron: {}".format(section, msg)}, 400)
                                 return True
 
+                        if "interval_hours" in section_data:
+                            val = section_data["interval_hours"]
+                            if not isinstance(val, int) or val < 0 or val > 168:
+                                self._send_json({"success": False, "message": "interval_hours must be 0-168"}, 400)
+                                return True
+
                         if section == "transfer" and "limit" in section_data:
                             ok, msg = validate_positive_int(section_data["limit"], min_val=1, max_val=100)
                             if not ok:
@@ -134,6 +160,19 @@ class ConfigRouteMixin:
                             if not ok:
                                 self._send_json({"success": False, "message": "{} directories: {}".format(section, msg)}, 400)
                                 return True
+
+                        # 豆瓣想看同步的保存路径和分类
+                        if section == "douban_wish":
+                            if "savepath" in section_data:
+                                ok, msg = validate_string(section_data["savepath"], min_len=1, max_len=500)
+                                if not ok:
+                                    self._send_json({"success": False, "message": "savepath: {}".format(msg)}, 400)
+                                    return True
+                            if "category" in section_data:
+                                ok, msg = validate_string(section_data["category"], min_len=1, max_len=50)
+                                if not ok:
+                                    self._send_json({"success": False, "message": "category: {}".format(msg)}, 400)
+                                    return True
 
                         settings[section].update(section_data)
 
