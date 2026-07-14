@@ -94,7 +94,8 @@ def get_douban_list(path, sub_type, limit=20, min_rating=0, sort_by="rating", ye
         result = [{
             "title": i.get("title", ""),
             "rating": i.get("rating", {}).get("value", 0),
-            "year": _parse_year(i.get("year", ""))
+            "year": _parse_year(i.get("year", "")),
+            "genres": i.get("genres", []) or []
         } for i in items if i.get("title")]
 
         if min_rating > 0:
@@ -111,7 +112,7 @@ def get_douban_list(path, sub_type, limit=20, min_rating=0, sort_by="rating", ye
 
         # 类型过滤（豆瓣 API 返回的 items 可能包含 genres 字段）
         if genre:
-            result = [r for r in result if genre in ",".join(i.get("genres", []) or []) for i in [r]]
+            result = [r for r in result if genre in ",".join(r.get("genres", []) or [])]
 
         if sort_by == "rating":
             result.sort(key=lambda x: x["rating"], reverse=True)
