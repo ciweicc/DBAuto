@@ -3,7 +3,7 @@ import os
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app_modules"))
 
 from validator import (
-    validate_string, validate_url, validate_port, validate_cron,
+    validate_string, validate_url, validate_cron,
     validate_time, validate_positive_int, validate_list, validate_task
 )
 
@@ -23,14 +23,6 @@ class TestValidator:
         assert validate_url(123) == (False, "url must be string")
         assert validate_url("") == (False, "url is required")
         assert validate_url("", required=False) == (True, "")
-
-    def test_validate_port(self):
-        assert validate_port(8080) == (True, "")
-        assert validate_port("8080") == (True, "")
-        assert validate_port(0) == (False, "port must be between 1-65535")
-        assert validate_port(65536) == (False, "port must be between 1-65535")
-        assert validate_port("abc") == (False, "invalid port format")
-        assert validate_port(None) == (False, "port is required")
 
     def test_validate_cron(self):
         assert validate_cron("0 2 * * *") == (True, "")

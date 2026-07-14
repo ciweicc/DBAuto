@@ -1,10 +1,7 @@
 import re
 from typing import Optional, List, Dict, Any, Callable, Tuple
 
-_EMAIL_REGEX = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 _URL_REGEX = re.compile(r"^https?://[^\s/$.?#].[^\s]*$")
-_PORT_REGEX = re.compile(r"^\d{1,5}$")
-_CRON_REGEX = re.compile(r"^(\*|[0-5]?\d)(/(\d+))?(\s+(\*|[01]?\d|2[0-3])(/(\d+))?)?(\s+(\*|[1-9]|[12]\d|3[01])(/(\d+))?)?(\s+(\*|[1-9]|1[0-2])(/(\d+))?)?(\s+(\*|[0-6])(/(\d+))?)?$")
 
 def validate_string(value: Any, min_len: int = 0, max_len: int = 500, allow_empty: bool = True) -> Tuple[bool, str]:
     if not isinstance(value, str):
@@ -27,22 +24,6 @@ def validate_url(value: Any, required: bool = True) -> Tuple[bool, str]:
     if not _URL_REGEX.match(value):
         return False, "invalid url format"
     return True, ""
-
-def validate_port(value: Any) -> Tuple[bool, str]:
-    if value is None:
-        return False, "port is required"
-    if isinstance(value, int):
-        if 1 <= value <= 65535:
-            return True, ""
-        return False, "port must be between 1-65535"
-    if isinstance(value, str):
-        if not _PORT_REGEX.match(value):
-            return False, "invalid port format"
-        v = int(value)
-        if 1 <= v <= 65535:
-            return True, ""
-        return False, "port must be between 1-65535"
-    return False, "port must be number"
 
 def validate_cron(value: Any, required: bool = False) -> Tuple[bool, str]:
     if not value:

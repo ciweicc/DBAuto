@@ -1,7 +1,7 @@
 # transfer.py — 转存执行、PanSou 搜索、QAS 交互、失效检测、目录清理
-import json, time, re
+import time, re
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import datetime, timezone, timedelta
+from datetime import datetime
 from threading import Lock, get_ident, enumerate as enumerate_threads, local
 from config import ConfigManager, load_settings, LOCAL_TZ
 from utils import http_get, http_post, log, TTLCache, clear_progress, sse_broadcast
@@ -110,23 +110,6 @@ def search_pansou(keyword, category="movie"):
             else:
                 log("PanSou 错误: {}".format(e))
                 return []
-
-def check_pansou_links(urls):
-    if not urls:
-        return set()
-    try:
-        client = _get_pansou_client()
-        data = client.check_links(urls)
-        if not isinstance(data, dict):
-            return set()
-        valid = set()
-        for r in data.get("results", []):
-            if r.get("state") == "ok":
-                valid.add(r.get("url", ""))
-        return valid
-    except Exception as e:
-        log("PanSou 链接检查错误: {}".format(e))
-        return set()
 
 def validate_share_link(url):
     try:

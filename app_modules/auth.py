@@ -114,14 +114,6 @@ class AuthManager:
                 return False, LOGIN_LOCK_DURATION
             return True, 0
 
-    def cleanup_expired_attempts(self):
-        now = time.time()
-        with self._login_lock:
-            expired = [ip for ip, v in self._login_attempts.items()
-                       if v["locked"] < now and now - v["first"] > LOGIN_WINDOW * 2]
-            for ip in expired:
-                del self._login_attempts[ip]
-
     @staticmethod
     def get_client_ip(handler):
         # 信任反向代理时从 X-Forwarded-For 获取真实 IP

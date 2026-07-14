@@ -117,7 +117,6 @@ def decrypt_secret(encrypted):
     except Exception:
         return ""
 
-log_lock = Lock()
 LOG_PROGRESS_MAX = 500
 log_progress = deque(maxlen=LOG_PROGRESS_MAX)
 sse_clients = {}

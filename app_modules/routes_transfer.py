@@ -3,7 +3,7 @@ from threading import Thread
 from config import CATEGORIES
 from douban import get_douban_list
 from transfer import (
-    transfer_status, transfer_lock, search_pansou, check_pansou_links,
+    transfer_status, transfer_lock, search_pansou,
     check_expired_tasks, update_expired_task, validate_share_link, fix_expired_tasks,
     run_transfer, add_and_run, transfer_one, VIDEO_SUB, TV_REPLACE, build_transfer_tasks,
     is_transfer_running,
