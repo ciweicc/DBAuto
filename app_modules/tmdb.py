@@ -17,9 +17,15 @@ _TMDB_CACHE_MAX = 50
 _tmdb_session = requests.Session()
 _tmdb_session.headers.update({"Accept": "application/json"})
 
+# 双地址自动切换（api.tmdb.org 短域名国内通常可访问）
+_TMDB_PRIMARY = "https://api.tmdb.org/3"
+_TMDB_BACKUP = "https://api.themoviedb.org/3"
+_tmdb_current_url = _TMDB_PRIMARY
+
 
 def _tmdb_request(url):
-    """发起 TMDB API 请求，容错 SSL / 代理场景"""
+    """发起 TMDB API 请求，双地址自动切换 + SSL 容错"""
+    global _tmdb_current_url
     last_err = None
     for attempt in range(3):
         try:
@@ -38,6 +44,33 @@ def _tmdb_request(url):
             last_err = e
         if attempt < 2:
             time.sleep(1)
+    raise last_err
+
+
+def _tmdb_request_with_failover(endpoint, params):
+    """带双地址故障转移的请求：主地址失败 → 备用地址 → 自定义地址"""
+    global _tmdb_current_url
+    custom = _get_base_url()
+    # 候选地址列表：当前地址优先，然后是其他地址
+    urls = []
+    base = _tmdb_current_url
+    qs = "&".join("{}={}".format(k, v) for k, v in params.items())
+    urls.append("{}{}?{}".format(base, endpoint, qs))
+    # 添加备用地址（去重）
+    for alt in [_TMDB_PRIMARY, _TMDB_BACKUP, custom]:
+        alt = alt.rstrip("/")
+        if alt != base:
+            urls.append("{}{}?{}".format(alt, endpoint, qs))
+    last_err = None
+    for url in urls:
+        try:
+            data = _tmdb_request(url)
+            # 成功，更新当前地址
+            _tmdb_current_url = url.split("/3")[0] + "/3" if "/3" in url else _tmdb_current_url
+            return data
+        except Exception as e:
+            last_err = e
+            log("TMDB 地址请求失败 {}: {}".format(url.split("?")[0], e))
     raise last_err
 
 # 列表类型 → endpoint 映射
@@ -76,7 +109,7 @@ def _get_api_key():
 
 def _get_base_url():
     cfg = ConfigManager.get_instance().get_config()
-    return cfg.get("tmdb_base_url", "https://api.themoviedb.org/3").rstrip("/")
+    return cfg.get("tmdb_base_url", "").rstrip("/")
 
 
 def _poster_url(path, size="w300"):
@@ -172,13 +205,8 @@ def get_tmdb_list(media_type="movie", list_type="trending", page=1,
         if region:
             params["with_original_language"] = region
 
-    base = _get_base_url()
-    url = "{}{}?{}".format(
-        base, endpoint,
-        "&".join("{}={}".format(k, v) for k, v in params.items()))
-
     try:
-        data = _tmdb_request(url)
+        data = _tmdb_request_with_failover(endpoint, params)
         raw_items = data.get("results", [])
         items = [_parse_item(item, media_type) for item in raw_items if item.get("title") or item.get("name")]
 
@@ -214,11 +242,9 @@ def get_tmdb_genres(media_type="movie", language=""):
             if now - ct < _TMDB_TTL * 24:  # 类型列表缓存 24 倍 TTL
                 return cd
 
-    base = _get_base_url()
-    url = "{}/genre/{}/list?api_key={}&language={}".format(
-        base, media_type, api_key, lang)
     try:
-        data = _tmdb_request(url)
+        params = {"api_key": api_key, "language": lang}
+        data = _tmdb_request_with_failover("/genre/{}/list".format(media_type), params)
         genres = data.get("genres", [])
         with _tmdb_lock:
             _tmdb_cache[cache_key] = (now, genres)

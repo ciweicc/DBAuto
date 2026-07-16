@@ -139,6 +139,7 @@ class StaticRouteMixin:
         self.send_header("Content-Type", "text/event-stream; charset=utf-8")
         self.send_header("Cache-Control", "no-cache")
         self.send_header("Connection", "keep-alive")
+        self.send_header("X-Accel-Buffering", "no")  # 禁止 Nginx/CF 缓冲
         self.end_headers()
         cid = uuid.uuid4().hex[:8]
         q = queue.Queue(maxsize=100)
@@ -162,6 +163,7 @@ class StaticRouteMixin:
         except Exception:
             pass
         finally:
+            self.close_connection = True  # SSE 结束后关闭连接
             with sse_lock:
                 sse_clients.pop(cid, None)
         return True
