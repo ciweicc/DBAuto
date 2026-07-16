@@ -2,9 +2,10 @@
 import time
 from config import ConfigManager
 from utils import log, TTLCache
-from resilience import pansou_breaker, CircuitBreakerOpen
+from resilience import CircuitBreaker, CircuitBreakerOpen
 
 _pansou_cache = TTLCache(ttl=600, max_size=200)
+pansou_breaker = CircuitBreaker("pansou", failure_threshold=5, recovery_timeout=60)
 
 
 def _get_pansou_client():

@@ -3,7 +3,9 @@ import re, time, urllib.parse
 from threading import Lock
 from utils import http_get, log
 from config import ConfigManager
-from resilience import douban_breaker, retry_with_backoff, CircuitBreakerOpen
+from resilience import CircuitBreaker, retry_with_backoff, CircuitBreakerOpen
+
+douban_breaker = CircuitBreaker("douban", failure_threshold=3, recovery_timeout=120)
 
 DOUBAN_BASE = "https://m.douban.com/rexxar/api/v2"
 

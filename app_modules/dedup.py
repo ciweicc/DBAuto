@@ -4,10 +4,11 @@ import time
 from threading import Lock, local
 from config import ConfigManager
 from utils import log
-from resilience import qas_breaker, CircuitBreakerOpen
+from resilience import CircuitBreaker, CircuitBreakerOpen
 
 _qas_cache = set()
 _qas_cache_lock = Lock()
+qas_breaker = CircuitBreaker("qas", failure_threshold=3, recovery_timeout=60)
 
 _qas_thread_local = local()
 _qas_client_lock = Lock()

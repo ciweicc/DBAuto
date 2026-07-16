@@ -2,7 +2,7 @@
 import time
 from datetime import datetime
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from threading import Lock, get_ident, enumerate as enumerate_threads
+from threading import get_ident
 from config import LOCAL_TZ
 from utils import log, clear_progress, sse_broadcast
 from storage import load_history, save_history, add_exec_record, update_exec_record
@@ -13,36 +13,11 @@ from dedup import (
     build_history_index, find_in_history
 )
 from verify import validate_share_link
+from state import transfer_status, transfer_lock
 
 SEARCH_CONCURRENCY = 3
 VIDEO_SUB = r".*?\.(mp4|mkv|avi|ts|rmvb|flv|mov|srt|ass|ssa|sub|idx)"
 TV_REPLACE = "{TASKNAME}.{SXX}E{E}.{EXT}"
-
-# 全局状态（保留在 transfer.py 中，通过参数传入）
-transfer_status = {
-    "running": False, "summary": None,
-    "start_time": None,
-    "stats": {"searched": 0, "ok": 0, "skipped": 0, "failed": 0, "total": 0},
-    "thread_id": None
-}
-transfer_lock = Lock()
-
-
-def is_transfer_running():
-    with transfer_lock:
-        if not transfer_status.get("running"):
-            return False
-        tid = transfer_status.get("thread_id")
-        if tid is None:
-            return False
-        for t in enumerate_threads():
-            if t.ident == tid and t.is_alive():
-                return True
-        transfer_status["running"] = False
-        transfer_status["thread_id"] = None
-        transfer_status["stop"] = False
-        log("检测到转存线程已结束，自动重置状态")
-        return False
 
 
 def add_and_run(title, shareurl, savepath, pattern="", replace=""):

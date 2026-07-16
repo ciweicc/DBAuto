@@ -98,10 +98,3 @@ def retry_with_backoff(func, max_retries=3, base_delay=1.0, max_delay=30.0, retr
             log("重试 {}/{}，等待 {:.1f}s: {}".format(attempt + 1, max_retries, total, e))
             time.sleep(total)
     raise last_exception
-
-
-# ===== 预置熔断器实例 =====
-
-douban_breaker = CircuitBreaker("douban", failure_threshold=3, recovery_timeout=120)
-pansou_breaker = CircuitBreaker("pansou", failure_threshold=5, recovery_timeout=60)
-qas_breaker = CircuitBreaker("qas", failure_threshold=3, recovery_timeout=60)

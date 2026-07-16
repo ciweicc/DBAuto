@@ -63,6 +63,10 @@ def _init_db():
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA cache_size=-64000")
     conn.commit()
+    # 确认 WAL 模式已生效
+    mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+    from utils import log
+    log("SQLite: journal_mode={}, busy_timeout=5000, cache_size=64MB".format(mode))
 
 
 def _read_json_file(filepath, default):

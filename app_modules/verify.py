@@ -4,9 +4,9 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from threading import get_ident
 from config import load_settings
 from utils import log
-from dedup import _get_qas_client
+from dedup import _get_qas_client, qas_breaker
 from search import search_pansou
-from resilience import qas_breaker, CircuitBreakerOpen
+from resilience import CircuitBreakerOpen
 
 EXPIRED_CHECK_CONCURRENCY = 5
 
