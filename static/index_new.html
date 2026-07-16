@@ -927,29 +927,36 @@ font-family:var(--font-display);display:flex;align-items:center;gap:8px;
 
 <!-- ===== 设置 ===== -->
 <div class="tab-content" id="tabSettings">
-<div class="card">
-<div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-settings"/></svg> 系统设置</div>
-    <div class="section-title"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><use href="#icon-search"/></svg>搜索服务</div>
+  <div class="card">
+    <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg> 搜索服务</div>
     <div class="form-group"><label>PanSou 地址</label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"></div>
-    <div class="section-title">📦 转存服务</div>
+  </div>
+  <div class="card">
+    <div class="card-title">📦 转存服务</div>
     <div class="form-group"><label>QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
-    <div class="form-group"><label>QAS Token</label><input type="password" id="cfg_qas_token" placeholder="留空不修改" ></div>
-    <div class="section-title">🔐 管理认证</div>
+    <div class="form-group" style="margin-bottom:0"><label>QAS Token</label><input type="password" id="cfg_qas_token" placeholder="留空不修改"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">🔐 管理认证</div>
     <div class="form-group"><label>用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
-    <div class="form-group"><label>密码</label><input type="password" id="cfg_auth_pass" placeholder="留空不修改"></div>
-<div class="section-title">🎬 豆瓣想看同步</div>
-<div id="wishAccountsList" style="display:flex;flex-direction:column;gap:8px"></div>
-<button class="btn btn-outline btn-sm" onclick="addWishAccount()" style="margin-top:2px;border-style:dashed;align-self:flex-start"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加豆瓣账号</button>
-<div class="form-group"><label>保存路径</label><input type="text" id="cfg_wish_savepath" placeholder="/批量转存/想看"></div>
-<div class="form-group"><label>分类</label><div class="chips" id="wishCategoryChips" style="margin-top:4px"><span class="chip" data-cat="movie" onclick="toggleWishCat(this)">电影</span><span class="chip" data-cat="tv" onclick="toggleWishCat(this)">电视剧</span></div></div>
-<div style="display:flex;gap:10px;align-items:center;margin-top:4px">
-<span class="chip" id="cfg_wish_enabled_chip" onclick="toggleWishEnabled(this)">启用想看同步</span>
-<button class="btn btn-outline btn-sm" onclick="refreshDoubanCache()">刷新榜单缓存</button>
-</div>
-    <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
+    <div class="form-group" style="margin-bottom:0"><label>密码</label><input type="password" id="cfg_auth_pass" placeholder="留空不修改"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">🎬 豆瓣想看同步</div>
+    <div id="wishAccountsList" style="display:flex;flex-direction:column;gap:8px"></div>
+    <button class="btn btn-outline btn-sm" onclick="addWishAccount()" style="margin-top:2px;border-style:dashed"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加豆瓣账号</button>
+    <div class="form-group" style="margin-top:12px"><label>保存路径</label><input type="text" id="cfg_wish_savepath" placeholder="/批量转存/想看"></div>
+    <div class="form-group"><label>分类</label><div class="chips" id="wishCategoryChips" style="margin-top:4px"><span class="chip" data-cat="movie" onclick="toggleWishCat(this)">电影</span><span class="chip" data-cat="tv" onclick="toggleWishCat(this)">电视剧</span></div></div>
+    <div class="sched-row" style="margin-top:4px">
+      <span class="chip" id="cfg_wish_enabled_chip" onclick="toggleWishEnabled(this)">启用想看同步</span>
+      <button class="btn btn-outline btn-sm" onclick="refreshDoubanCache()">刷新榜单缓存</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="row" style="justify-content:flex-end">
       <button class="btn btn-primary btn-sm" onclick="saveConfig(false)">保存设置</button>
     </div>
-</div>
+  </div>
 </div>
 
 
