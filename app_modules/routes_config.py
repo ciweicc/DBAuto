@@ -28,7 +28,7 @@ class ConfigRouteMixin:
             cfg = load_config()
             masked = {}
             for k, v in cfg.items():
-                if k in ("qas_token", "auth_pass", "douban_cookie"):
+                if k in ("qas_token", "auth_pass", "douban_cookie", "tmdb_api_key"):
                     masked[k] = "***" if v else ""
                 else:
                     masked[k] = v
@@ -121,6 +121,13 @@ class ConfigRouteMixin:
                             self._send_json({"success": False, "message": "douban_cookie: {}".format(msg)}, 400)
                             return True
                         cfg[k] = v
+                elif k == "tmdb_api_key":
+                    if v:
+                        ok, msg = validate_string(v, min_len=1, max_len=100)
+                        if not ok:
+                            self._send_json({"success": False, "message": "tmdb_api_key: {}".format(msg)}, 400)
+                            return True
+                    cfg[k] = v
                 else:
                     cfg[k] = v
 

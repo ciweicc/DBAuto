@@ -680,6 +680,59 @@ font-family:var(--font-display);display:flex;align-items:center;gap:8px;
   background:radial-gradient(ellipse at 20% 0%,rgba(10,132,255,.06) 0%,transparent 50%),
              radial-gradient(ellipse at 80% 100%,rgba(191,90,242,.04) 0%,transparent 50%)}
 [data-theme="light"] ::-webkit-scrollbar-track{background:rgba(0,0,0,.03)}
+
+/* ===== TMDB Page ===== */
+.tmdb-filter-bar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:16px}
+.tmdb-filter-group{display:flex;flex-direction:column;gap:4px}
+.tmdb-filter-group label{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
+.tmdb-select{padding:8px 12px;border-radius:var(--radius-xs);border:1px solid var(--border);
+background:rgba(255,255,255,.03);color:var(--text);font-size:13px;font-weight:500;
+transition:all var(--transition-normal);cursor:pointer;min-width:100px}
+[data-theme="light"] .tmdb-select{background:rgba(0,0,0,.02)}
+.tmdb-select:hover{border-color:rgba(10,132,255,.3);color:var(--accent)}
+.tmdb-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.15)}
+.tmdb-genre-chips{display:flex;flex-wrap:wrap;gap:6px;max-height:80px;overflow-y:auto;padding:4px 0}
+.tmdb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px}
+.tmdb-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+overflow:hidden;cursor:pointer;transition:all var(--transition-normal);position:relative;
+display:flex;flex-direction:column}
+.tmdb-card:hover{transform:translateY(-4px);border-color:rgba(10,132,255,.4);
+box-shadow:0 8px 24px rgba(0,0,0,.2)}
+.tmdb-card.selected{border-color:var(--green);box-shadow:0 0 0 2px rgba(48,209,88,.4)}
+.tmdb-card.selected::after{content:'✓';position:absolute;top:8px;right:8px;
+width:28px;height:28px;border-radius:50%;background:var(--green);color:#fff;
+display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;z-index:2}
+.tmdb-poster{width:100%;aspect-ratio:2/3;object-fit:cover;background:rgba(255,255,255,.03);
+display:block;transition:transform .3s var(--ease-bounce)}
+.tmdb-card:hover .tmdb-poster{transform:scale(1.05)}
+.tmdb-poster-wrap{overflow:hidden;position:relative}
+.tmdb-poster-wrap::after{content:'';position:absolute;bottom:0;left:0;right:0;height:60px;
+background:linear-gradient(transparent,rgba(0,0,0,.8));pointer-events:none}
+.tmdb-rating-badge{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.7);
+color:#fbbf24;padding:3px 8px;border-radius:8px;font-size:12px;font-weight:700;
+backdrop-filter:blur(4px);z-index:1;display:flex;align-items:center;gap:3px}
+.tmdb-info{padding:12px;flex:1;display:flex;flex-direction:column;gap:4px}
+.tmdb-title{font-size:14px;font-weight:600;color:var(--text);line-height:1.3;
+display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.tmdb-meta{font-size:12px;color:var(--text2);display:flex;gap:8px;align-items:center}
+.tmdb-overview{font-size:11px;color:var(--text2);line-height:1.5;margin-top:4px;
+display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;opacity:.8}
+.tmdb-loading{display:flex;justify-content:center;align-items:center;padding:60px 0;
+color:var(--text2);font-size:14px;gap:8px}
+.tmdb-empty{text-align:center;padding:60px 0;color:var(--text2);font-size:14px}
+.tmdb-pagination{display:flex;justify-content:center;gap:12px;align-items:center;margin-top:20px}
+.tmdb-sel-bar{position:sticky;top:0;z-index:10;background:var(--card);border:1px solid var(--border);
+border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;display:flex;
+justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;
+backdrop-filter:blur(12px);transition:all var(--transition-normal)}
+.tmdb-sel-bar.active{border-color:rgba(48,209,88,.4);box-shadow:0 4px 16px rgba(48,209,88,.1)}
+.tmdb-sel-count{font-size:14px;font-weight:600;color:var(--green)}
+.tmdb-key-warning{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);
+border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;font-size:13px;
+color:#fbbf24;display:flex;gap:8px;align-items:center}
+.tmdb-loading .spinner{width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--accent);
+border-radius:50%;animation:tmdbSpin .8s linear infinite}
+@keyframes tmdbSpin{to{transform:rotate(360deg)}}
 </style>
 </head>
 <body>
@@ -768,6 +821,7 @@ font-family:var(--font-display);display:flex;align-items:center;gap:8px;
   <button class="tab-btn active" onclick="switchTab('manual')">手动转存</button>
   <button class="tab-btn" onclick="switchTab('schedule')">定时任务</button>
   <button class="tab-btn" onclick="switchTab('history')">执行历史</button>
+<button class="tab-btn" onclick="switchTab('tmdb')">TMDB</button>
 <button class="tab-btn" onclick="switchTab('settings')">设置</button>
 </div>
 
@@ -931,6 +985,11 @@ font-family:var(--font-display);display:flex;align-items:center;gap:8px;
     <div class="form-group"><label>PanSou 地址</label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"></div>
   </div>
   <div class="card">
+    <div class="card-title">🎬 TMDB 数据源</div>
+    <div class="form-group" style="margin-bottom:0"><label>API Key</label><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"></div>
+    <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.5">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">TMDB 官网</a> 申请 API Key，填入后即可在 TMDB 页面浏览和转存</div>
+  </div>
+  <div class="card">
     <div class="card-title">📦 转存服务</div>
     <div class="form-group"><label>QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
     <div class="form-group" style="margin-bottom:0"><label>QAS Token</label><input type="password" id="cfg_qas_token" placeholder="留空不修改"></div>
@@ -960,6 +1019,77 @@ font-family:var(--font-display);display:flex;align-items:center;gap:8px;
 </div>
 </div>
 
+<!-- ===== TMDB ===== -->
+<div class="tab-content" id="tabTmdb">
+  <div id="tmdbKeyWarning" class="tmdb-key-warning" style="display:none">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L8 2 3 7v4a6 6 0 0 0 6 6 6 6 0 0 0 6-6V7l-5-5-2.29 1.86z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <span>未配置 TMDB API Key，请在「设置」页面填入后保存</span>
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="justify-content:space-between">
+      <span><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg> TMDB 数据源</span>
+      <button class="btn btn-outline btn-sm" onclick="refreshTmdbCache()">刷新缓存</button>
+    </div>
+
+    <div class="tmdb-filter-bar">
+      <div class="tmdb-filter-group">
+        <label>分类</label>
+        <select class="tmdb-select" id="tmdbMediaType" onchange="onTmdbFilterChange()">
+          <option value="movie">电影</option>
+          <option value="tv">电视剧</option>
+        </select>
+      </div>
+      <div class="tmdb-filter-group">
+        <label>榜单类型</label>
+        <select class="tmdb-select" id="tmdbListType" onchange="onTmdbFilterChange()"></select>
+      </div>
+      <div class="tmdb-filter-group">
+        <label>地区/语言</label>
+        <select class="tmdb-select" id="tmdbRegion" onchange="onTmdbFilterChange()"></select>
+      </div>
+      <div class="tmdb-filter-group">
+        <label>排序</label>
+        <select class="tmdb-select" id="tmdbSort" onchange="onTmdbFilterChange()">
+          <option value="popularity.desc">按热度</option>
+          <option value="vote_average.desc">按评分</option>
+          <option value="release_date.desc">按时间</option>
+          <option value="vote_count.desc">按投票数</option>
+        </select>
+      </div>
+      <div class="tmdb-filter-group">
+        <label>最低评分</label>
+        <input type="number" id="tmdbMinRating" min="0" max="10" step="0.5" value="0" style="width:80px" onchange="onTmdbFilterChange()">
+      </div>
+      <div class="tmdb-filter-group">
+        <label>年份</label>
+        <input type="number" id="tmdbYear" min="1900" max="2030" placeholder="全部" style="width:90px" onchange="onTmdbFilterChange()">
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-bottom:12px">
+      <label>类型筛选</label>
+      <div class="tmdb-genre-chips" id="tmdbGenreChips"></div>
+    </div>
+  </div>
+
+  <div class="tmdb-sel-bar" id="tmdbSelBar">
+    <div class="tmdb-sel-count" id="tmdbSelCount">已选 0 部</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm" onclick="clearTmdbSelection()">清空选择</button>
+      <button class="btn btn-primary btn-sm" onclick="transferTmdbSelection()">开始转存</button>
+    </div>
+  </div>
+
+  <div id="tmdbGrid" class="tmdb-grid"></div>
+
+  <div class="tmdb-pagination" id="tmdbPagination" style="display:none">
+    <button class="btn btn-outline btn-sm" id="tmdbPrevBtn" onclick="tmdbPrevPage()">上一页</button>
+    <span id="tmdbPageInfo" style="font-size:13px;color:var(--text2);font-weight:600"></span>
+    <button class="btn btn-outline btn-sm" id="tmdbNextBtn" onclick="tmdbNextPage()">下一页</button>
+  </div>
+</div>
+
 <!-- Bottom Navigation (Mobile) -->
 <nav class="bottom-nav">
   <div class="bottom-nav-inner">
@@ -974,6 +1104,10 @@ font-family:var(--font-display);display:flex;align-items:center;gap:8px;
     <div class="nav-item" onclick="switchTab('history')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
       <span>历史</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('tmdb')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+      <span>TMDB</span>
     </div>
     <div class="nav-item" onclick="switchTab('settings')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -1114,7 +1248,7 @@ function updateTabIndicator(){
 }
 function switchTab(tab){
   currentTab = tab;
-  var idx = tab==='manual'?0:tab==='schedule'?1:tab==='history'?2:3;
+  var idx = tab==='manual'?0:tab==='schedule'?1:tab==='history'?2:tab==='tmdb'?3:4;
   document.querySelectorAll('.tab-btn').forEach(function(b,i){
     b.classList.toggle('active', i===idx);
   });
@@ -1125,10 +1259,12 @@ function switchTab(tab){
   document.getElementById('tabManual').classList.toggle('active', tab==='manual');
   document.getElementById('tabSchedule').classList.toggle('active', tab==='schedule');
   document.getElementById('tabHistory').classList.toggle('active', tab==='history');
+  document.getElementById('tabTmdb').classList.toggle('active', tab==='tmdb');
   document.getElementById('tabSettings').classList.toggle('active', tab==='settings');
   updateTabIndicator();
   if(tab==='schedule')loadSchedule();
   if(tab==='history')loadExecHistory();
+  if(tab==='tmdb')initTmdbPage();
   if(tab==='settings')loadConfig();
 }
 
@@ -1587,6 +1723,7 @@ async function loadConfig(){
 document.getElementById('cfg_qas_token').value='';
 document.getElementById('cfg_auth_user').value=cfg.auth_user||'';
 document.getElementById('cfg_auth_pass').value='';
+document.getElementById('cfg_tmdb_api_key').value='';
 // 加载想看同步设置
 try{var s=await apiGet('/api/schedule');
 if(s.douban_wish){
@@ -1613,7 +1750,8 @@ var cfg={pansou:document.getElementById('cfg_pansou').value.trim(),
 qas:document.getElementById('cfg_qas').value.trim(),
 qas_token:document.getElementById('cfg_qas_token').value,
 auth_user:document.getElementById('cfg_auth_user').value.trim(),
-auth_pass:document.getElementById('cfg_auth_pass').value};
+auth_pass:document.getElementById('cfg_auth_pass').value,
+tmdb_api_key:document.getElementById('cfg_tmdb_api_key').value};
 try{
 var d=await apiPost('/api/config',cfg);
 if(d.success){if(!silent)showToast('设置已保存',true);if(!silent)closeSettings()}
@@ -1625,6 +1763,290 @@ var wishCfg={action:'save',douban_wish:{enabled:document.getElementById('cfg_wis
 await apiPost('/api/schedule',wishCfg);
 }catch(e){showToast('保存失败',false)}
 }
+
+// ============ TMDB Page ============
+var tmdbState = {
+  page: 1,
+  total_pages: 1,
+  media_type: 'movie',
+  list_type: 'trending',
+  genre_id: 0,
+  items: [],
+  selected: {},
+  options: null,
+  genres: [],
+  initialized: false
+};
+
+async function initTmdbPage(){
+  if(!tmdbState.initialized){
+    // 加载选项
+    try{
+      var opts = await apiGet('/api/tmdb/options');
+      tmdbState.options = opts;
+      // 填充地区
+      var regionSel = document.getElementById('tmdbRegion');
+      regionSel.innerHTML = opts.regions.map(function(r){return '<option value="'+r.code+'">'+r.name+'</option>'}).join('');
+      // 填充列表类型
+      updateTmdbListTypeOptions(opts.movie_list_types);
+      tmdbState.initialized = true;
+    }catch(e){
+      console.error('TMDB init error', e);
+    }
+  }
+  // 检查 API Key
+  try{
+    var cfg = await apiGet('/api/config');
+    if(cfg.tmdb_api_key && cfg.tmdb_api_key !== '***'){
+      document.getElementById('tmdbKeyWarning').style.display = 'none';
+    }else if(cfg.tmdb_api_key === '***'){
+      document.getElementById('tmdbKeyWarning').style.display = 'none';
+    }else{
+      document.getElementById('tmdbKeyWarning').style.display = 'flex';
+      document.getElementById('tmdbGrid').innerHTML = '<div class="tmdb-empty">请先在设置中配置 TMDB API Key</div>';
+      return;
+    }
+  }catch(e){}
+  // 加载类型和列表
+  await loadTmdbGenres();
+  await loadTmdbList();
+}
+
+function updateTmdbListTypeOptions(listTypes){
+  var sel = document.getElementById('tmdbListType');
+  var current = sel.value || 'trending';
+  sel.innerHTML = listTypes.map(function(l){return '<option value="'+l.code+'">'+l.name+'</option>'}).join('');
+  // 尝试保持当前选择
+  if([].some.call(sel.options, function(o){return o.value === current})){
+    sel.value = current;
+  }
+}
+
+async function loadTmdbGenres(){
+  var mt = document.getElementById('tmdbMediaType').value;
+  if(mt === tmdbState.media_type && tmdbState.genres.length) return;
+  tmdbState.media_type = mt;
+  try{
+    var d = await apiGet('/api/tmdb/genres?media_type='+mt);
+    tmdbState.genres = d.genres || [];
+    var chips = document.getElementById('tmdbGenreChips');
+    var html = '<span class="chip on" data-gid="0" onclick="toggleTmdbGenre(this)">全部</span>';
+    html += tmdbState.genres.map(function(g){return '<span class="chip" data-gid="'+g.id+'" onclick="toggleTmdbGenre(this)">'+g.name+'</span>'}).join('');
+    chips.innerHTML = html;
+    tmdbState.genre_id = 0;
+  }catch(e){
+    console.error('TMDB genres error', e);
+  }
+}
+
+function toggleTmdbGenre(el){
+  var chips = document.querySelectorAll('#tmdbGenreChips .chip');
+  chips.forEach(function(c){c.classList.remove('on')});
+  el.classList.add('on');
+  tmdbState.genre_id = parseInt(el.dataset.gid) || 0;
+  tmdbState.page = 1;
+  loadTmdbList();
+}
+
+function onTmdbFilterChange(){
+  var mt = document.getElementById('tmdbMediaType').value;
+  var lt = document.getElementById('tmdbListType').value;
+  // 如果切换了 media_type，更新列表类型选项
+  if(mt !== tmdbState.media_type){
+    var listTypes = mt === 'movie' ? tmdbState.options.movie_list_types : tmdbState.options.tv_list_types;
+    updateTmdbListTypeOptions(listTypes);
+  }
+  // 如果不是 discover，禁用排序/评分/年份/类型筛选（仅 discover 有效）
+  var isDiscover = lt === 'discover';
+  document.getElementById('tmdbSort').disabled = !isDiscover;
+  document.getElementById('tmdbMinRating').disabled = !isDiscover;
+  document.getElementById('tmdbYear').disabled = !isDiscover;
+  // 切换 media_type 时重新加载类型
+  if(mt !== tmdbState.media_type){
+    tmdbState.media_type = mt;
+    tmdbState.genres = [];
+    loadTmdbGenres().then(function(){tmdbState.page = 1; loadTmdbList()});
+  }else{
+    tmdbState.page = 1;
+    loadTmdbList();
+  }
+}
+
+async function loadTmdbList(){
+  var mt = document.getElementById('tmdbMediaType').value;
+  var lt = document.getElementById('tmdbListType').value;
+  var region = document.getElementById('tmdbRegion').value;
+  var sort = document.getElementById('tmdbSort').value;
+  var minRating = parseFloat(document.getElementById('tmdbMinRating').value) || 0;
+  var year = parseInt(document.getElementById('tmdbYear').value) || 0;
+  var genreId = tmdbState.genre_id || 0;
+
+  // 如果不是 discover，但用户选了类型/评分/年份，自动切换到 discover
+  if(lt !== 'discover' && (genreId > 0 || minRating > 0 || year > 0)){
+    document.getElementById('tmdbListType').value = 'discover';
+    lt = 'discover';
+    onTmdbFilterChange();
+    return;
+  }
+
+  var grid = document.getElementById('tmdbGrid');
+  grid.innerHTML = '<div class="tmdb-loading" style="grid-column:1/-1"><div class="spinner"></div> 加载中...</div>';
+
+  var params = 'media_type='+mt+'&list_type='+lt+'&page='+tmdbState.page;
+  if(lt === 'discover'){
+    if(genreId) params += '&genre_id='+genreId;
+    if(year) params += '&year='+year;
+    if(minRating) params += '&min_rating='+minRating;
+    params += '&sort_by='+sort;
+  }
+  if(region) params += '&region='+region;
+
+  try{
+    var d = await apiGet('/api/tmdb/list?'+params);
+    tmdbState.items = d.items || [];
+    tmdbState.total_pages = d.total_pages || 1;
+    renderTmdbGrid();
+    renderTmdbPagination();
+  }catch(e){
+    grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">加载失败: '+esc(e.message||'')+'</div>';
+  }
+}
+
+function renderTmdbGrid(){
+  var grid = document.getElementById('tmdbGrid');
+  if(!tmdbState.items.length){
+    grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">暂无数据</div>';
+    return;
+  }
+  grid.innerHTML = tmdbState.items.map(function(item){
+    var sel = tmdbState.selected[item.id] ? ' selected' : '';
+    var poster = item.poster || '';
+    var posterHtml = poster
+      ? '<img class="tmdb-poster" src="'+esc(poster)+'" loading="lazy" alt="'+esc(item.title)+'">'
+      : '<div class="tmdb-poster" style="display:flex;align-items:center;justify-content:center;font-size:40px;color:var(--text3)">🎬</div>';
+    var ratingHtml = item.rating > 0
+      ? '<div class="tmdb-rating-badge">★ '+item.rating.toFixed(1)+'</div>'
+      : '';
+    var yearStr = item.year ? item.year : '';
+    var votesStr = item.votes > 0 ? (item.votes >= 1000 ? (item.votes/1000).toFixed(1)+'k' : item.votes) + '票' : '';
+    var metaParts = [];
+    if(yearStr) metaParts.push(yearStr);
+    if(votesStr) metaParts.push(votesStr);
+    return '<div class="tmdb-card'+sel+'" onclick="toggleTmdbCard(this,'+item.id+')">'+
+      '<div class="tmdb-poster-wrap">'+posterHtml+ratingHtml+'</div>'+
+      '<div class="tmdb-info">'+
+        '<div class="tmdb-title">'+esc(item.title)+'</div>'+
+        '<div class="tmdb-meta">'+metaParts.join(' · ')+'</div>'+
+        (item.overview ? '<div class="tmdb-overview">'+esc(item.overview)+'</div>' : '')+
+      '</div>'+
+    '</div>';
+  }).join('');
+}
+
+function toggleTmdbCard(el, id){
+  if(tmdbState.selected[id]){
+    delete tmdbState.selected[id];
+    el.classList.remove('selected');
+  }else{
+    tmdbState.selected[id] = true;
+    el.classList.add('selected');
+  }
+  updateTmdbSelBar();
+}
+
+function updateTmdbSelBar(){
+  var count = Object.keys(tmdbState.selected).length;
+  document.getElementById('tmdbSelCount').textContent = '已选 '+count+' 部';
+  document.getElementById('tmdbSelBar').classList.toggle('active', count > 0);
+}
+
+function clearTmdbSelection(){
+  tmdbState.selected = {};
+  document.querySelectorAll('.tmdb-card.selected').forEach(function(c){c.classList.remove('selected')});
+  updateTmdbSelBar();
+}
+
+async function transferTmdbSelection(){
+  var ids = Object.keys(tmdbState.selected);
+  if(!ids.length){showToast('请先选择内容',false);return}
+  // 构建转存任务
+  var mt = document.getElementById('tmdbMediaType').value;
+  var category = mt === 'movie' ? 'movie' : 'tv';
+  var savepath = '/批量转存/TMDB';
+  var tasks = [];
+  for(var i=0; i<tmdbState.items.length; i++){
+    var item = tmdbState.items[i];
+    if(tmdbState.selected[item.id]){
+      tasks.push({
+        path: 'tmdb',
+        type: category,
+        savepath: savepath,
+        _wish: true,
+        title: item.title,
+        category: category
+      });
+    }
+  }
+  if(!tasks.length){showToast('未找到选中项',false);return}
+  try{
+    var d = await apiPost('/api/transfer',{tasks:tasks,limit:5,filters:{}});
+    if(d.success){
+      showToast('已提交 '+tasks.length+' 项转存',true);
+      // 切换到手动转存 tab 查看日志
+      switchTab('manual');
+      document.getElementById('logCard').style.display='block';
+      document.getElementById('stopBtn').style.display='inline-block';
+      logBefore=[]; document.getElementById('log').innerHTML='';
+      addLog('[开始转存 TMDB 选中内容]');
+      startLogPoll(3000);
+      clearTmdbSelection();
+    }else{
+      if(d.conflict){
+        showToast('已有转存任务在运行',false);
+      }else{
+        showToast(d.message||'转存失败',false);
+      }
+    }
+  }catch(e){showToast('请求失败: '+e.message,false)}
+}
+
+function renderTmdbPagination(){
+  var pg = document.getElementById('tmdbPagination');
+  if(tmdbState.total_pages <= 1){
+    pg.style.display = 'none';
+    return;
+  }
+  pg.style.display = 'flex';
+  document.getElementById('tmdbPageInfo').textContent = tmdbState.page + ' / ' + tmdbState.total_pages;
+  document.getElementById('tmdbPrevBtn').disabled = tmdbState.page <= 1;
+  document.getElementById('tmdbNextBtn').disabled = tmdbState.page >= tmdbState.total_pages;
+}
+
+function tmdbPrevPage(){
+  if(tmdbState.page > 1){
+    tmdbState.page--;
+    loadTmdbList();
+    document.getElementById('tabTmdb').scrollTop = 0;
+  }
+}
+
+function tmdbNextPage(){
+  if(tmdbState.page < tmdbState.total_pages){
+    tmdbState.page++;
+    loadTmdbList();
+    document.getElementById('tabTmdb').scrollTop = 0;
+  }
+}
+
+async function refreshTmdbCache(){
+  try{
+    var d = await apiGet('/api/tmdb/refresh');
+    showToast(d.message||'已刷新',true);
+    tmdbState.page = 1;
+    await loadTmdbList();
+  }catch(e){showToast('刷新失败',false)}
+}
+
 // ============ Search ============
 var searchTimer=null;
 function toggleMobileSearch(){

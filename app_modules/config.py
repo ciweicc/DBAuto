@@ -62,6 +62,7 @@ DEFAULT_CONFIG = {
     "auth_pass": os.environ.get("AUTH_PASS", ""),
     "douban_uid": os.environ.get("DOUBAN_UID", ""),
     "douban_cookie": os.environ.get("DOUBAN_COOKIE", ""),
+    "tmdb_api_key": os.environ.get("TMDB_API_KEY", ""),
 }
 
 DEFAULT_SETTINGS = {
