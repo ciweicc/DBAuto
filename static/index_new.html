@@ -1907,8 +1907,11 @@ async function loadTmdbList(){
     tmdbState.total_pages = d.total_pages || 1;
     renderTmdbGrid();
     renderTmdbPagination();
+    if(d.error){
+      grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">⚠ '+esc(d.error)+'</div>';
+    }
   }catch(e){
-    grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">加载失败: '+esc(e.message||'')+'</div>';
+    grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">加载失败: '+esc(e.message||'')+'<br><span style="font-size:12px;opacity:.7">请检查 TMDB API Key 是否正确，以及网络是否能访问 themoviedb.org</span></div>';
   }
 }
 

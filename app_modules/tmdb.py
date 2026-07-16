@@ -101,7 +101,7 @@ def get_tmdb_list(media_type="movie", list_type="trending", page=1,
     api_key = _get_api_key()
     if not api_key:
         log("TMDB: 未配置 api_key")
-        return {"items": [], "total_pages": 0, "total_results": 0, "page": 1}
+        return {"items": [], "total_pages": 0, "total_results": 0, "page": 1, "error": "未配置 TMDB API Key"}
 
     lang = language or _LANG
     cache_key = "{}:{}:{}:{}:{}:{}:{}:{}:{}".format(
@@ -164,7 +164,7 @@ def get_tmdb_list(media_type="movie", list_type="trending", page=1,
         return result
     except Exception as e:
         log("TMDB 获取错误: {}".format(e))
-        return {"items": [], "total_pages": 0, "total_results": 0, "page": 1}
+        return {"items": [], "total_pages": 0, "total_results": 0, "page": 1, "error": str(e)}
 
 
 def get_tmdb_genres(media_type="movie", language=""):

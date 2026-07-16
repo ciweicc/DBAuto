@@ -122,12 +122,12 @@ class ConfigRouteMixin:
                             return True
                         cfg[k] = v
                 elif k == "tmdb_api_key":
-                    if v:
+                    if v and v != "***":
                         ok, msg = validate_string(v, min_len=1, max_len=100)
                         if not ok:
                             self._send_json({"success": False, "message": "tmdb_api_key: {}".format(msg)}, 400)
                             return True
-                    cfg[k] = v
+                        cfg[k] = v
                 else:
                     cfg[k] = v
 
