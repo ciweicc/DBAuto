@@ -59,6 +59,8 @@ class ConfigRouteMixin:
             return True
 
         return False
+
+    def _handle_config_post(self, route, body):
         if route == "/api/config":
             cfg = load_config()
 
