@@ -941,9 +941,9 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(10
 <div class="form-group"><label>豆瓣用户 ID</label><input type="text" id="cfg_douban_uid" placeholder="豆瓣个人主页 URL 中的 ID"></div>
 <div class="form-group"><label>豆瓣 Cookie</label><input type="password" id="cfg_douban_cookie" placeholder="留空不修改"></div>
 <div class="form-group"><label>保存路径</label><input type="text" id="cfg_wish_savepath" placeholder="/批量转存/想看"></div>
-<div class="form-group"><label>分类</label><select id="cfg_wish_category"><option value="movie">电影</option><option value="tv">电视剧</option></select></div>
-<div style="display:flex;gap:10px;align-items:center">
-<label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text-secondary)"><input type="checkbox" id="cfg_wish_enabled" style="margin:0"> 启用想看同步</label>
+<div class="form-group"><label>分类</label><div class="chips" id="wishCategoryChips" style="margin-top:4px"><span class="chip" data-cat="movie" onclick="toggleWishCat(this)">电影</span><span class="chip" data-cat="tv" onclick="toggleWishCat(this)">电视剧</span></div></div>
+<div style="display:flex;gap:10px;align-items:center;margin-top:4px">
+<span class="chip" id="cfg_wish_enabled_chip" onclick="toggleWishEnabled(this)">启用想看同步</span>
 <button class="btn btn-outline btn-sm" onclick="refreshDoubanCache()">刷新榜单缓存</button>
 </div>
     <div style="display:flex;gap:10px;justify-content:flex-end;margin-top:20px">
@@ -1170,6 +1170,8 @@ function parseSchedCats(){
 
 function toggleChip(el){el.classList.toggle('on')}
 function toggleSchedChip(el){el.classList.toggle('on');autoSaveSchedule()}
+function toggleWishCat(el){el.classList.toggle('on')}
+function toggleWishEnabled(el){el.classList.toggle('on')}
 
 function toggleSub(btn){
   var chips = btn.parentElement.nextElementSibling.querySelectorAll('.chip');
@@ -1550,8 +1552,11 @@ document.getElementById('cfg_douban_cookie').value='';
 try{var s=await apiGet('/api/schedule');
 if(s.douban_wish){
 document.getElementById('cfg_wish_savepath').value=s.douban_wish.savepath||'/批量转存/想看';
-document.getElementById('cfg_wish_category').value=s.douban_wish.category||'movie';
-document.getElementById('cfg_wish_enabled').checked=s.douban_wish.enabled||false;
+var wishCats=s.douban_wish.category;
+if(typeof wishCats==='string')wishCats=[wishCats];
+if(!Array.isArray(wishCats))wishCats=['movie'];
+document.querySelectorAll('#wishCategoryChips .chip').forEach(function(c){c.classList.toggle('on',wishCats.indexOf(c.dataset.cat)!==-1)});
+document.getElementById('cfg_wish_enabled_chip').classList.toggle('on',!!s.douban_wish.enabled);
 }
 }catch(e){}
 
@@ -1574,7 +1579,8 @@ var d=await apiPost('/api/config',cfg);
 if(d.success){if(!silent)showToast('设置已保存',true);if(!silent)closeSettings()}
 else showToast(d.message||'保存失败',false);
 // 保存想看同步设置
-var wishCfg={action:'save',douban_wish:{enabled:document.getElementById('cfg_wish_enabled').checked,savepath:document.getElementById('cfg_wish_savepath').value.trim(),category:document.getElementById('cfg_wish_category').value}};
+var wishCats=[];document.querySelectorAll('#wishCategoryChips .chip.on').forEach(function(c){wishCats.push(c.dataset.cat)});
+var wishCfg={action:'save',douban_wish:{enabled:document.getElementById('cfg_wish_enabled_chip').classList.contains('on'),savepath:document.getElementById('cfg_wish_savepath').value.trim(),category:wishCats.length?wishCats:['movie']}};
 await apiPost('/api/schedule',wishCfg);
 }catch(e){showToast('保存失败',false)}
 }

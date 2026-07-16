@@ -52,21 +52,10 @@ def _init_db():
         conn.execute("ALTER TABLE exec_history ADD COLUMN data TEXT")
     except sqlite3.OperationalError:
         pass
-    # 索引：加速常用查询路径
     conn.execute("CREATE INDEX IF NOT EXISTS idx_exec_time ON exec_history(time DESC)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_history_date ON transfer_history(date DESC)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_history_status ON transfer_history(status)")
-    conn.execute("CREATE INDEX IF NOT EXISTS idx_history_category ON transfer_history(category)")
-    # PRAGMA：并发安全 + 性能
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
-    conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA cache_size=-64000")
     conn.commit()
-    # 确认 WAL 模式已生效
-    mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
-    from utils import log
-    log("SQLite: journal_mode={}, busy_timeout=5000, cache_size=64MB".format(mode))
 
 
 def _read_json_file(filepath, default):
@@ -292,17 +281,3 @@ def clear_exec_history():
             conn.execute("DELETE FROM exec_history")
             conn.commit()
         _exec_cache = []
-
-
-def close_db():
-    """关闭数据库连接，供优雅关闭调用"""
-    global _db_conn
-    with _db_lock:
-        if _db_conn is not None:
-            try:
-                _db_conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-                _db_conn.commit()
-                _db_conn.close()
-            except Exception:
-                pass
-            _db_conn = None

@@ -89,13 +89,18 @@ def _run_scheduled_transfer():
                 wish_items = get_douban_wishlist()
                 if wish_items:
                     wish_savepath = wish_cfg.get("savepath", "/批量转存/想看")
-                    wish_category = wish_cfg.get("category", "movie")
+                    wish_category = wish_cfg.get("category", ["movie"])
+                    if isinstance(wish_category, str):
+                        wish_category = [wish_category]
                     for item in wish_items:
+                        item_cat = item.get("category", "movie")
+                        if item_cat not in wish_category:
+                            continue
                         tasks.append({
                             "path": "",
                             "type": "",
                             "savepath": wish_savepath,
-                            "category": wish_category,
+                            "category": item_cat,
                             "title": item["title"],
                             "_wish": True
                         })

@@ -3,9 +3,6 @@ import re, time, urllib.parse
 from threading import Lock
 from utils import http_get, log
 from config import ConfigManager
-from resilience import CircuitBreaker, retry_with_backoff, CircuitBreakerOpen
-
-douban_breaker = CircuitBreaker("douban", failure_threshold=3, recovery_timeout=120)
 
 DOUBAN_BASE = "https://m.douban.com/rexxar/api/v2"
 
@@ -92,7 +89,7 @@ def get_douban_list(path, sub_type, limit=20, min_rating=0, sort_by="rating", ye
     url = "{}/subject/recent_hot/{}?{}".format(DOUBAN_BASE, api_type, encoded)
 
     try:
-        data = douban_breaker.call(http_get, url, timeout=15, referer="https://m.douban.com/")
+        data = http_get(url, timeout=15, referer="https://m.douban.com/")
         items = data.get("items") or data.get("subjects") or []
         result = [{
             "title": i.get("title", ""),
@@ -129,9 +126,6 @@ def get_douban_list(path, sub_type, limit=20, min_rating=0, sort_by="rating", ye
             _prune_cache()
         log("douban: {}/{} → {} 条 (筛选后)".format(path, sub_type, len(result)))
         return result
-    except CircuitBreakerOpen as e:
-        log("douban 熔断: {}".format(e))
-        return []
     except Exception as e:
         log("douban 获取错误: {}".format(e))
         return []

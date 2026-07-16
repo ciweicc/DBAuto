@@ -59,8 +59,6 @@ class ConfigRouteMixin:
             return True
 
         return False
-
-    def _handle_config_post(self, route, body):
         if route == "/api/config":
             cfg = load_config()
 
@@ -171,10 +169,22 @@ class ConfigRouteMixin:
                                     self._send_json({"success": False, "message": "savepath: {}".format(msg)}, 400)
                                     return True
                             if "category" in section_data:
-                                ok, msg = validate_string(section_data["category"], min_len=1, max_len=50)
-                                if not ok:
-                                    self._send_json({"success": False, "message": "category: {}".format(msg)}, 400)
-                                    return True
+                                cat = section_data["category"]
+                                if isinstance(cat, list):
+                                    ok, msg = validate_list(cat, max_len=10)
+                                    if not ok:
+                                        self._send_json({"success": False, "message": "category: {}".format(msg)}, 400)
+                                        return True
+                                    for c in cat:
+                                        ok, msg = validate_string(c, min_len=1, max_len=50)
+                                        if not ok:
+                                            self._send_json({"success": False, "message": "category: {}".format(msg)}, 400)
+                                            return True
+                                elif isinstance(cat, str):
+                                    ok, msg = validate_string(cat, min_len=1, max_len=50)
+                                    if not ok:
+                                        self._send_json({"success": False, "message": "category: {}".format(msg)}, 400)
+                                        return True
 
                         settings[section].update(section_data)
 
