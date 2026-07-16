@@ -987,7 +987,8 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
   <div class="card">
     <div class="card-title">🎬 TMDB 数据源</div>
     <div class="form-group" style="margin-bottom:0"><label>API Key</label><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"></div>
-    <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.5">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">TMDB 官网</a> 申请 API Key，填入后即可在 TMDB 页面浏览和转存</div>
+    <div class="form-group" style="margin-top:8px"><label>API 地址</label><input type="text" id="cfg_tmdb_base_url" placeholder="https://api.themoviedb.org/3"></div>
+    <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.5">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">TMDB 官网</a> 申请 API Key。如果无法访问，可在「API 地址」填入代理/镜像地址</div>
   </div>
   <div class="card">
     <div class="card-title">📦 转存服务</div>
@@ -1724,6 +1725,7 @@ document.getElementById('cfg_qas_token').value='';
 document.getElementById('cfg_auth_user').value=cfg.auth_user||'';
 document.getElementById('cfg_auth_pass').value='';
 document.getElementById('cfg_tmdb_api_key').value='';
+document.getElementById('cfg_tmdb_base_url').value=cfg.tmdb_base_url||'';
 // 加载想看同步设置
 try{var s=await apiGet('/api/schedule');
 if(s.douban_wish){
@@ -1751,7 +1753,8 @@ qas:document.getElementById('cfg_qas').value.trim(),
 qas_token:document.getElementById('cfg_qas_token').value,
 auth_user:document.getElementById('cfg_auth_user').value.trim(),
 auth_pass:document.getElementById('cfg_auth_pass').value,
-tmdb_api_key:document.getElementById('cfg_tmdb_api_key').value};
+tmdb_api_key:document.getElementById('cfg_tmdb_api_key').value,
+tmdb_base_url:document.getElementById('cfg_tmdb_base_url').value.trim()};
 try{
 var d=await apiPost('/api/config',cfg);
 if(d.success){if(!silent)showToast('设置已保存',true);if(!silent)closeSettings()}

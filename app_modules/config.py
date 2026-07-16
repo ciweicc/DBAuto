@@ -63,6 +63,7 @@ DEFAULT_CONFIG = {
     "douban_uid": os.environ.get("DOUBAN_UID", ""),
     "douban_cookie": os.environ.get("DOUBAN_COOKIE", ""),
     "tmdb_api_key": os.environ.get("TMDB_API_KEY", ""),
+    "tmdb_base_url": os.environ.get("TMDB_BASE_URL", "https://api.themoviedb.org/3"),
 }
 
 DEFAULT_SETTINGS = {

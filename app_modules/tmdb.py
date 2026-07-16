@@ -1,10 +1,10 @@
 # tmdb.py — TMDB (The Movie Database) 官方 API 客户端
 import time
+import requests
 from threading import Lock
 from utils import http_get, log
 from config import ConfigManager
 
-TMDB_BASE = "https://api.themoviedb.org/3"
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p"
 
 # 简易缓存
@@ -12,6 +12,33 @@ _tmdb_cache = {}
 _tmdb_lock = Lock()
 _TMDB_TTL = 1800  # 30 分钟
 _TMDB_CACHE_MAX = 50
+
+# 请求 session（复用连接池）
+_tmdb_session = requests.Session()
+_tmdb_session.headers.update({"Accept": "application/json"})
+
+
+def _tmdb_request(url):
+    """发起 TMDB API 请求，容错 SSL / 代理场景"""
+    last_err = None
+    for attempt in range(3):
+        try:
+            resp = _tmdb_session.get(url, timeout=15)
+            resp.raise_for_status()
+            return resp.json()
+        except requests.exceptions.SSLError:
+            # SSL 错误：尝试禁用验证重试（代理场景）
+            try:
+                resp = _tmdb_session.get(url, timeout=15, verify=False)
+                resp.raise_for_status()
+                return resp.json()
+            except Exception as e2:
+                last_err = e2
+        except Exception as e:
+            last_err = e
+        if attempt < 2:
+            time.sleep(1)
+    raise last_err
 
 # 列表类型 → endpoint 映射
 _MOVIE_ENDPOINTS = {
@@ -44,8 +71,12 @@ def _prune_cache():
 
 
 def _get_api_key():
-    cfg = ConfigManager.get_instance()
-    return cfg.get_config().get("tmdb_api_key", "")
+    cfg = ConfigManager.get_instance().get_config()
+    return cfg.get("tmdb_api_key", "")
+
+def _get_base_url():
+    cfg = ConfigManager.get_instance().get_config()
+    return cfg.get("tmdb_base_url", "https://api.themoviedb.org/3").rstrip("/")
 
 
 def _poster_url(path, size="w300"):
@@ -141,12 +172,13 @@ def get_tmdb_list(media_type="movie", list_type="trending", page=1,
         if region:
             params["with_original_language"] = region
 
+    base = _get_base_url()
     url = "{}{}?{}".format(
-        TMDB_BASE, endpoint,
+        base, endpoint,
         "&".join("{}={}".format(k, v) for k, v in params.items()))
 
     try:
-        data = http_get(url, timeout=15)
+        data = _tmdb_request(url)
         raw_items = data.get("results", [])
         items = [_parse_item(item, media_type) for item in raw_items if item.get("title") or item.get("name")]
 
@@ -182,10 +214,11 @@ def get_tmdb_genres(media_type="movie", language=""):
             if now - ct < _TMDB_TTL * 24:  # 类型列表缓存 24 倍 TTL
                 return cd
 
+    base = _get_base_url()
     url = "{}/genre/{}/list?api_key={}&language={}".format(
-        TMDB_BASE, media_type, api_key, lang)
+        base, media_type, api_key, lang)
     try:
-        data = http_get(url, timeout=10)
+        data = _tmdb_request(url)
         genres = data.get("genres", [])
         with _tmdb_lock:
             _tmdb_cache[cache_key] = (now, genres)
