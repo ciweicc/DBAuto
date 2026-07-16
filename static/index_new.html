@@ -820,8 +820,8 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
   <div class="tab-indicator" id="tabIndicator"></div>
   <button class="tab-btn active" onclick="switchTab('manual')">手动转存</button>
   <button class="tab-btn" onclick="switchTab('schedule')">定时任务</button>
-  <button class="tab-btn" onclick="switchTab('history')">执行历史</button>
 <button class="tab-btn" onclick="switchTab('tmdb')">TMDB</button>
+  <button class="tab-btn" onclick="switchTab('history')">执行历史</button>
 <button class="tab-btn" onclick="switchTab('settings')">设置</button>
 </div>
 
@@ -1017,7 +1017,6 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
     </div>
   </div>
 </div>
-</div>
 
 <!-- ===== TMDB ===== -->
 <div class="tab-content" id="tabTmdb">
@@ -1089,6 +1088,7 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
     <button class="btn btn-outline btn-sm" id="tmdbNextBtn" onclick="tmdbNextPage()">下一页</button>
   </div>
 </div>
+</div>
 
 <!-- Bottom Navigation (Mobile) -->
 <nav class="bottom-nav">
@@ -1101,13 +1101,13 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       <span>定时</span>
     </div>
-    <div class="nav-item" onclick="switchTab('history')">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-      <span>历史</span>
-    </div>
     <div class="nav-item" onclick="switchTab('tmdb')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
       <span>TMDB</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('history')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+      <span>历史</span>
     </div>
     <div class="nav-item" onclick="switchTab('settings')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -1248,7 +1248,7 @@ function updateTabIndicator(){
 }
 function switchTab(tab){
   currentTab = tab;
-  var idx = tab==='manual'?0:tab==='schedule'?1:tab==='history'?2:tab==='tmdb'?3:4;
+  var idx = tab==='manual'?0:tab==='schedule'?1:tab==='tmdb'?2:tab==='history'?3:4;
   document.querySelectorAll('.tab-btn').forEach(function(b,i){
     b.classList.toggle('active', i===idx);
   });
