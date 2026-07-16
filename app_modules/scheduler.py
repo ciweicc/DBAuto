@@ -86,12 +86,26 @@ def _run_scheduled_transfer():
         wish_cfg = settings.get("douban_wish", {})
         if wish_cfg.get("enabled"):
             try:
-                wish_items = get_douban_wishlist()
-                if wish_items:
-                    wish_savepath = wish_cfg.get("savepath", "/批量转存/想看")
-                    wish_category = wish_cfg.get("category", ["movie"])
-                    if isinstance(wish_category, str):
-                        wish_category = [wish_category]
+                wish_savepath = wish_cfg.get("savepath", "/批量转存/想看")
+                wish_category = wish_cfg.get("category", ["movie"])
+                if isinstance(wish_category, str):
+                    wish_category = [wish_category]
+                # 构建账号列表：优先使用 accounts 多账号配置，兼容旧单账号
+                accounts = wish_cfg.get("accounts", [])
+                if not accounts:
+                    cfg = ConfigManager.get_instance()
+                    if cfg.douban_uid and cfg.douban_cookie:
+                        accounts = [{"uid": cfg.douban_uid, "cookie": cfg.douban_cookie}]
+                wish_total = 0
+                for acc in accounts:
+                    acc_uid = acc.get("uid", "")
+                    acc_cookie = acc.get("cookie", "")
+                    acc_name = acc.get("name", acc_uid)
+                    if not acc_uid or not acc_cookie:
+                        continue
+                    wish_items = get_douban_wishlist(uid=acc_uid, cookie=acc_cookie)
+                    if not wish_items:
+                        continue
                     for item in wish_items:
                         item_cat = item.get("category", "movie")
                         if item_cat not in wish_category:
@@ -104,7 +118,10 @@ def _run_scheduled_transfer():
                             "title": item["title"],
                             "_wish": True
                         })
-                    log("豆瓣想看列表已加载 {} 条".format(len(wish_items)))
+                    wish_total += len(wish_items)
+                    log("豆瓣想看 [{}] {} 条".format(acc_name, len(wish_items)))
+                if wish_total:
+                    log("豆瓣想看列表已加载 {} 条 ({} 个账号)".format(wish_total, len(accounts)))
             except Exception as e:
                 log("豆瓣想看列表加载失败: {}".format(e))
         if not tasks: return

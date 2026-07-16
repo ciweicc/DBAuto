@@ -70,7 +70,7 @@ DEFAULT_SETTINGS = {
                              "exclude_keywords": [], "genre": ""}},
     "expired_check": {"enabled": False, "time": "03:00", "cron": "", "interval_hours": 0,
                       "directories": [], "auto_fix": False},
-    "douban_wish": {"enabled": False, "savepath": "/批量转存/想看", "category": "movie"},
+    "douban_wish": {"enabled": False, "savepath": "/批量转存/想看", "category": "movie", "accounts": []},
 }
 
 CATEGORIES = {

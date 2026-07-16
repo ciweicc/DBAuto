@@ -42,6 +42,17 @@ class ConfigRouteMixin:
             t = settings.get("transfer", {})
             e = settings.get("expired_check", {})
             result = dict(settings)
+            # 脱敏豆瓣多账号 cookie
+            dw = result.get("douban_wish", {})
+            if dw and isinstance(dw.get("accounts"), list):
+                masked_accounts = []
+                for acc in dw["accounts"]:
+                    ma = dict(acc)
+                    if ma.get("cookie"):
+                        ma["cookie"] = "***"
+                    masked_accounts.append(ma)
+                result["douban_wish"] = dict(dw)
+                result["douban_wish"]["accounts"] = masked_accounts
             result["_status"] = status
             result["_next_runs"] = {
                 "transfer": _format_next(t.get("time"), t.get("cron"), t.get("interval_hours", 0),
@@ -59,6 +70,8 @@ class ConfigRouteMixin:
             return True
 
         return False
+
+    def _handle_config_post(self, route, body):
         if route == "/api/config":
             cfg = load_config()
 
@@ -185,6 +198,42 @@ class ConfigRouteMixin:
                                     if not ok:
                                         self._send_json({"success": False, "message": "category: {}".format(msg)}, 400)
                                         return True
+                            if "accounts" in section_data:
+                                accts = section_data["accounts"]
+                                if not isinstance(accts, list):
+                                    self._send_json({"success": False, "message": "accounts must be a list"}, 400)
+                                    return True
+                                if len(accts) > 20:
+                                    self._send_json({"success": False, "message": "accounts: max 20 accounts"}, 400)
+                                    return True
+                                existing = settings.get(section, {}).get("accounts", [])
+                                for ai, acc in enumerate(accts):
+                                    if not isinstance(acc, dict):
+                                        self._send_json({"success": False, "message": "accounts[{}] must be object".format(ai)}, 400)
+                                        return True
+                                    ok, msg = validate_string(acc.get("uid", ""), min_len=1, max_len=50)
+                                    if not ok:
+                                        self._send_json({"success": False, "message": "accounts[{}].uid: {}".format(ai, msg)}, 400)
+                                        return True
+                                    ck = acc.get("cookie", "")
+                                    if ck == "***":
+                                        # 保留已有 cookie（脱敏占位），找不到则置空
+                                        acc["cookie"] = ""
+                                        for ea in existing:
+                                            if ea.get("uid") == acc.get("uid"):
+                                                acc["cookie"] = ea.get("cookie", "")
+                                                break
+                                    else:
+                                        ok, msg = validate_string(ck, min_len=1, max_len=2000)
+                                        if not ok:
+                                            self._send_json({"success": False, "message": "accounts[{}].cookie: {}".format(ai, msg)}, 400)
+                                            return True
+                                    nm = acc.get("name", "")
+                                    if nm:
+                                        ok, msg = validate_string(nm, min_len=1, max_len=50)
+                                        if not ok:
+                                            self._send_json({"success": False, "message": "accounts[{}].name: {}".format(ai, msg)}, 400)
+                                            return True
 
                         settings[section].update(section_data)
 

@@ -938,8 +938,8 @@ input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(10
     <div class="form-group"><label>用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
     <div class="form-group"><label>密码</label><input type="password" id="cfg_auth_pass" placeholder="留空不修改"></div>
 <div class="section-title">🎬 豆瓣想看同步</div>
-<div class="form-group"><label>豆瓣用户 ID</label><input type="text" id="cfg_douban_uid" placeholder="豆瓣个人主页 URL 中的 ID"></div>
-<div class="form-group"><label>豆瓣 Cookie</label><input type="password" id="cfg_douban_cookie" placeholder="留空不修改"></div>
+<div id="wishAccountsList" style="display:flex;flex-direction:column;gap:8px"></div>
+<button class="btn btn-outline btn-sm" onclick="addWishAccount()" style="margin-top:2px;border-style:dashed;align-self:flex-start"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加豆瓣账号</button>
 <div class="form-group"><label>保存路径</label><input type="text" id="cfg_wish_savepath" placeholder="/批量转存/想看"></div>
 <div class="form-group"><label>分类</label><div class="chips" id="wishCategoryChips" style="margin-top:4px"><span class="chip" data-cat="movie" onclick="toggleWishCat(this)">电影</span><span class="chip" data-cat="tv" onclick="toggleWishCat(this)">电视剧</span></div></div>
 <div style="display:flex;gap:10px;align-items:center;margin-top:4px">
@@ -1172,6 +1172,40 @@ function toggleChip(el){el.classList.toggle('on')}
 function toggleSchedChip(el){el.classList.toggle('on');autoSaveSchedule()}
 function toggleWishCat(el){el.classList.toggle('on')}
 function toggleWishEnabled(el){el.classList.toggle('on')}
+function renderWishAccounts(accounts){
+var el=document.getElementById('wishAccountsList');
+el.innerHTML='';
+if(!accounts||!accounts.length)return;
+for(var i=0;i<accounts.length;i++){el.appendChild(_makeWishAccRow(i,accounts[i]||{}))}
+}
+function _makeWishAccRow(i,a){
+var row=document.createElement('div');
+row.className='wish-acc-row';
+row.style.cssText='border:1px solid var(--border);border-radius:12px;padding:12px;background:rgba(255,255,255,.02)';
+row.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
++'<span style="font-size:13px;font-weight:600;color:var(--text2);font-family:var(--font-display)">账号 '+(i+1)+'</span>'
++'<button class="btn btn-sm btn-outline" onclick="removeWishAccount(this)" style="color:var(--text3)">移除</button>'
++'</div>'
++'<div class="form-group" style="margin-bottom:8px"><label>备注</label><input type="text" class="wish-acc-name" placeholder="可选备注名" value="'+(a.name||'')+'"></div>'
++'<div class="form-group" style="margin-bottom:8px"><label>豆瓣用户 ID</label><input type="text" class="wish-acc-uid" placeholder="豆瓣个人主页 URL 中的 ID" value="'+(a.uid||'')+'"></div>'
++'<div class="form-group" style="margin-bottom:0"><label>豆瓣 Cookie</label><input type="password" class="wish-acc-cookie" placeholder="留空不修改"></div>';
+return row;
+}
+function addWishAccount(){
+var el=document.getElementById('wishAccountsList');
+el.appendChild(_makeWishAccRow(el.children.length,{}));
+}
+function removeWishAccount(btn){btn.closest('.wish-acc-row').remove()}
+function collectWishAccounts(){
+var accounts=[];
+document.querySelectorAll('#wishAccountsList .wish-acc-row').forEach(function(row){
+var name=row.querySelector('.wish-acc-name').value.trim();
+var uid=row.querySelector('.wish-acc-uid').value.trim();
+var cookie=row.querySelector('.wish-acc-cookie').value;
+if(uid)accounts.push({uid:uid,cookie:cookie||'***',name:name});
+});
+return accounts;
+}
 
 function toggleSub(btn){
   var chips = btn.parentElement.nextElementSibling.querySelectorAll('.chip');
@@ -1546,8 +1580,6 @@ async function loadConfig(){
 document.getElementById('cfg_qas_token').value='';
 document.getElementById('cfg_auth_user').value=cfg.auth_user||'';
 document.getElementById('cfg_auth_pass').value='';
-document.getElementById('cfg_douban_uid').value=cfg.douban_uid||'';
-document.getElementById('cfg_douban_cookie').value='';
 // 加载想看同步设置
 try{var s=await apiGet('/api/schedule');
 if(s.douban_wish){
@@ -1557,6 +1589,9 @@ if(typeof wishCats==='string')wishCats=[wishCats];
 if(!Array.isArray(wishCats))wishCats=['movie'];
 document.querySelectorAll('#wishCategoryChips .chip').forEach(function(c){c.classList.toggle('on',wishCats.indexOf(c.dataset.cat)!==-1)});
 document.getElementById('cfg_wish_enabled_chip').classList.toggle('on',!!s.douban_wish.enabled);
+var wishAccounts=s.douban_wish.accounts||[];
+if(!wishAccounts.length&&cfg.douban_uid){wishAccounts=[{uid:cfg.douban_uid,cookie:'',name:''}]}
+renderWishAccounts(wishAccounts);
 }
 }catch(e){}
 
@@ -1571,16 +1606,15 @@ var cfg={pansou:document.getElementById('cfg_pansou').value.trim(),
 qas:document.getElementById('cfg_qas').value.trim(),
 qas_token:document.getElementById('cfg_qas_token').value,
 auth_user:document.getElementById('cfg_auth_user').value.trim(),
-auth_pass:document.getElementById('cfg_auth_pass').value,
-douban_uid:document.getElementById('cfg_douban_uid').value.trim(),
-douban_cookie:document.getElementById('cfg_douban_cookie').value};
+auth_pass:document.getElementById('cfg_auth_pass').value};
 try{
 var d=await apiPost('/api/config',cfg);
 if(d.success){if(!silent)showToast('设置已保存',true);if(!silent)closeSettings()}
 else showToast(d.message||'保存失败',false);
 // 保存想看同步设置
 var wishCats=[];document.querySelectorAll('#wishCategoryChips .chip.on').forEach(function(c){wishCats.push(c.dataset.cat)});
-var wishCfg={action:'save',douban_wish:{enabled:document.getElementById('cfg_wish_enabled_chip').classList.contains('on'),savepath:document.getElementById('cfg_wish_savepath').value.trim(),category:wishCats.length?wishCats:['movie']}};
+var wishAccounts=collectWishAccounts();
+var wishCfg={action:'save',douban_wish:{enabled:document.getElementById('cfg_wish_enabled_chip').classList.contains('on'),savepath:document.getElementById('cfg_wish_savepath').value.trim(),category:wishCats.length?wishCats:['movie'],accounts:wishAccounts}};
 await apiPost('/api/schedule',wishCfg);
 }catch(e){showToast('保存失败',false)}
 }
