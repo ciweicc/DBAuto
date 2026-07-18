@@ -1882,6 +1882,15 @@ function toggleTmdbGenre(el){
   el.classList.add('on');
   tmdbState.genre_id = parseInt(el.dataset.gid) || 0;
   tmdbState.page = 1;
+  // 选了具体类型但不在自定义筛选模式，自动切换
+  if(tmdbState.genre_id > 0){
+    var lt = document.getElementById('tmdbListType').value;
+    if(lt !== 'discover'){
+      document.getElementById('tmdbListType').value = 'discover';
+      onTmdbFilterChange();
+      return;
+    }
+  }
   loadTmdbList();
 }
 
@@ -1898,9 +1907,9 @@ function onTmdbFilterChange(){
   document.getElementById('tmdbSort').disabled = !isDiscover;
   document.getElementById('tmdbMinRating').disabled = !isDiscover;
   document.getElementById('tmdbYear').disabled = !isDiscover;
-  // 类型 chips：非 discover 时禁用
+  // 类型 chips：非 discover 时半透明提示，但仍可点击（点击会自动切换到 discover）
   var chips = document.querySelectorAll('#tmdbGenreChips .chip');
-  chips.forEach(function(c){c.style.opacity = isDiscover ? '' : '0.4'; c.style.pointerEvents = isDiscover ? '' : 'none'});
+  chips.forEach(function(c){c.style.opacity = isDiscover ? '' : '0.5'});
   // 非 discover 时重置类型选择
   if(!isDiscover && tmdbState.genre_id > 0){
     chips.forEach(function(c){c.classList.remove('on')});
