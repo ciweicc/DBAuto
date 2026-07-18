@@ -134,7 +134,14 @@ class ConfigRouteMixin:
                         if not ok:
                             self._send_json({"success": False, "message": "tmdb_base_url: {}".format(msg)}, 400)
                             return True
-                    cfg[k] = v
+                        cfg[k] = v
+                elif k == "default_savepath":
+                    if v:
+                        ok, msg = validate_string(v, min_len=1, max_len=200)
+                        if not ok:
+                            self._send_json({"success": False, "message": "default_savepath: {}".format(msg)}, 400)
+                            return True
+                        cfg[k] = v
                 else:
                     cfg[k] = v
 

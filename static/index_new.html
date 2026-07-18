@@ -992,9 +992,10 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
     <div class="form-group" style="margin-top:8px"><label>API 地址（可选）</label><input type="text" id="cfg_tmdb_base_url" placeholder="留空自动切换 api.tmdb.org / api.themoviedb.org"></div>
     <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.5">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">TMDB 官网</a> 申请 API Key。系统自动尝试短域名访问，无需代理</div>
   </div>
-  <div class="card">
-    <div class="card-title">📦 转存服务</div>
-    <div class="form-group"><label>QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
+    <div class="card">
+      <div class="card-title">📦 转存服务</div>
+      <div class="form-group"><label>默认转存路径</label><input type="text" id="cfg_default_savepath" placeholder="/批量转存"></div>
+      <div class="form-group"><label>QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
     <div class="form-group" style="margin-bottom:0"><label>QAS Token</label><input type="password" id="cfg_qas_token" placeholder="留空不修改"></div>
   </div>
   <div class="card">
@@ -1205,6 +1206,7 @@ function toggleTheme(){
 // ============ Global ============
 var C = {}, currentTab = 'manual', execHistoryData = [], execHistoryFilter = 'all';
 var expiredDirEntries = [], autoSaveTimer = null, logPollTimer = null;
+var defaultSavepath = '/批量转存';
 var logBefore = [], logFilter = 'all', logPaused = false;
 
 // ============ Toast ============
@@ -1369,13 +1371,14 @@ function toggleSubSched(btn){
 }
 
 function getSelectedTasks(prefix){
-  var tasks=[], seen=new Set();
-  document.querySelectorAll('#'+prefix+' .chip.on').forEach(function(el){
-    var k = el.dataset.path+'/'+el.dataset.type;
-    if(seen.has(k))return; seen.add(k);
-    tasks.push({path:el.dataset.path, type:el.dataset.type, savepath:'/影视/'+el.dataset.gname, category:el.dataset.group});
-  });
-  return tasks;
+var tasks=[], seen=new Set();
+var basePath=defaultSavepath||'/批量转存';
+document.querySelectorAll('#'+prefix+' .chip.on').forEach(function(el){
+var k = el.dataset.path+'/'+el.dataset.type;
+if(seen.has(k))return; seen.add(k);
+tasks.push({path:el.dataset.path, type:el.dataset.type, savepath:basePath+'/'+el.dataset.gname, category:el.dataset.group});
+});
+return tasks;
 }
 
 function syncToSchedule(){
@@ -1754,6 +1757,8 @@ document.getElementById('cfg_auth_user').value=cfg.auth_user||'';
 document.getElementById('cfg_auth_pass').value='';
 document.getElementById('cfg_tmdb_api_key').value='';
 document.getElementById('cfg_tmdb_base_url').value=cfg.tmdb_base_url||'';
+document.getElementById('cfg_default_savepath').value=cfg.default_savepath||'/批量转存';
+defaultSavepath=cfg.default_savepath||'/批量转存';
 // 加载想看同步设置
 try{var s=await apiGet('/api/schedule');
 if(s.douban_wish){
@@ -1782,7 +1787,8 @@ qas_token:document.getElementById('cfg_qas_token').value,
 auth_user:document.getElementById('cfg_auth_user').value.trim(),
 auth_pass:document.getElementById('cfg_auth_pass').value,
 tmdb_api_key:document.getElementById('cfg_tmdb_api_key').value,
-tmdb_base_url:document.getElementById('cfg_tmdb_base_url').value.trim()};
+tmdb_base_url:document.getElementById('cfg_tmdb_base_url').value.trim(),
+default_savepath:document.getElementById('cfg_default_savepath').value.trim()};
 try{
 var d=await apiPost('/api/config',cfg);
 if(d.success){if(!silent)showToast('设置已保存',true);if(!silent)closeSettings()}
@@ -2008,7 +2014,7 @@ async function transferTmdbSelection(){
   // 构建转存任务
   var mt = document.getElementById('tmdbMediaType').value;
   var category = mt === 'movie' ? 'movie' : 'tv';
-  var savepath = '/批量转存/TMDB';
+  var savepath = defaultSavepath+'/TMDB';
   var tasks = [];
   for(var i=0; i<tmdbState.items.length; i++){
     var item = tmdbState.items[i];
@@ -2128,7 +2134,7 @@ document.addEventListener('click',function(e){
 async function transferOne(btn){
   var title = btn.dataset.title;
   var url = btn.dataset.url;
-  var savepath = localStorage.getItem('search_path')||'/批量转存/手动搜索存';
+  var savepath = localStorage.getItem('search_path')||defaultSavepath+'/手动搜索';
   btn.disabled=true; btn.textContent='转存中...';
   try{
     var r = await apiPost('/api/transfer_one',{title:title, shareurl:url, savepath:savepath});
@@ -2198,9 +2204,11 @@ async function init(){
   initTheme(); initTimeSelects();
   try{C = await apiGet('/api/categories')}
   catch(e){showToast('认证失败，请重新登录',false);setTimeout(function(){location.href='/login.html'},1500);return}
-  parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
-  checkRunningStatus(); loadDashboard();
-  updateTabIndicator();
+parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
+checkRunningStatus(); loadDashboard();
+// 预加载默认转存路径
+try{var _cfg=await apiGet('/api/config'); if(_cfg.default_savepath)defaultSavepath=_cfg.default_savepath}catch(e){}
+updateTabIndicator();
   window.addEventListener('resize', updateTabIndicator);
   initSSE();
 }
