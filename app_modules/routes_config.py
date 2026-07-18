@@ -2,9 +2,9 @@
 from config import load_config, save_config, load_settings, save_settings
 from auth import hash_auth_password
 from scheduler import (
-    schedule_status, schedule_lock, _next_fire_time, _now_local,
-    _run_scheduled_transfer, _run_scheduled_expired_check,
-    notify_settings_changed,
+schedule_status, schedule_lock, _next_fire_time, _now_local,
+_run_scheduled_transfer, _run_scheduled_expired_check, _run_scheduled_wish_sync,
+notify_settings_changed,
 )
 from transfer import reset_qas_client
 from utils import log, sse_broadcast
@@ -54,11 +54,14 @@ class ConfigRouteMixin:
                 result["douban_wish"] = dict(dw)
                 result["douban_wish"]["accounts"] = masked_accounts
             result["_status"] = status
+            w = result.get("douban_wish", {})
             result["_next_runs"] = {
                 "transfer": _format_next(t.get("time"), t.get("cron"), t.get("interval_hours", 0),
                                           status.get("last_transfer")) if t.get("enabled") else None,
                 "expired_check": _format_next(e.get("time"), e.get("cron"), e.get("interval_hours", 0),
                                                status.get("last_expired_check")) if e.get("enabled") else None,
+                "wish_sync": _format_next(w.get("time"), w.get("cron"), w.get("interval_hours", 0),
+                                           status.get("last_wish_sync")) if w.get("enabled") else None,
             }
             self._send_json(result)
             return True
@@ -309,6 +312,10 @@ class ConfigRouteMixin:
                 elif section == "expired_check":
                     Thread(target=_run_scheduled_expired_check, daemon=True).start()
                     self._send_json({"success": True, "message": "expired_check started"})
+                    return True
+                elif section == "wish_sync":
+                    Thread(target=_run_scheduled_wish_sync, daemon=True).start()
+                    self._send_json({"success": True, "message": "wish_sync started"})
                     return True
 
                 self._send_json({"success": False, "message": "unknown section: {}".format(section)})
