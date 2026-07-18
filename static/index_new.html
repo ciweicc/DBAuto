@@ -1338,7 +1338,8 @@ row.innerHTML='<div style="display:flex;justify-content:space-between;align-item
 +'</div>'
 +'<div class="form-group" style="margin-bottom:8px"><label>备注</label><input type="text" class="wish-acc-name" placeholder="可选备注名" value="'+(a.name||'')+'"></div>'
 +'<div class="form-group" style="margin-bottom:8px"><label>豆瓣用户 ID</label><input type="text" class="wish-acc-uid" placeholder="豆瓣个人主页 URL 中的 ID" value="'+(a.uid||'')+'"></div>'
-+'<div class="form-group" style="margin-bottom:0"><label>豆瓣 Cookie</label><input type="password" class="wish-acc-cookie" placeholder="留空不修改"></div>';
++'<div class="form-group" style="margin-bottom:0"><label>豆瓣 Cookie</label><input type="text" class="wish-acc-cookie" placeholder="豆瓣登录 Cookie" value="'+(a.cookie||'')+'"></div>'
++'<div style="margin-top:8px"><button class="btn btn-sm btn-outline" onclick="testWishAccount(this)">测试</button> <span class="wish-acc-status" style="font-size:13px;color:var(--text3)"></span></div>';
 return row;
 }
 function addWishAccount(){
@@ -1346,13 +1347,26 @@ var el=document.getElementById('wishAccountsList');
 el.appendChild(_makeWishAccRow(el.children.length,{}));
 }
 function removeWishAccount(btn){btn.closest('.wish-acc-row').remove()}
+async function testWishAccount(btn){
+var row=btn.closest('.wish-acc-row');
+var uid=row.querySelector('.wish-acc-uid').value.trim();
+var cookie=row.querySelector('.wish-acc-cookie').value.trim();
+var st=row.querySelector('.wish-acc-status');
+if(!uid||!cookie){st.textContent='请填写 UID 和 Cookie';st.style.color='var(--text3)';return}
+btn.disabled=true;st.textContent='测试中...';st.style.color='var(--text3)';
+try{var r=await apiPost('/api/wish_test',{uid:uid,cookie:cookie});
+if(r.success){st.textContent='✓ '+r.message+(r.count?' ('+r.count+' 条)':'');st.style.color='#4caf50'}
+else{st.textContent='✗ '+r.message;st.style.color='#f44336'}
+}catch(e){st.textContent='✗ 请求失败';st.style.color='#f44336'}
+btn.disabled=false;
+}
 function collectWishAccounts(){
 var accounts=[];
 document.querySelectorAll('#wishAccountsList .wish-acc-row').forEach(function(row){
 var name=row.querySelector('.wish-acc-name').value.trim();
 var uid=row.querySelector('.wish-acc-uid').value.trim();
 var cookie=row.querySelector('.wish-acc-cookie').value;
-if(uid)accounts.push({uid:uid,cookie:cookie||'***',name:name});
+if(uid)accounts.push({uid:uid,cookie:cookie,name:name});
 });
 return accounts;
 }

@@ -42,17 +42,6 @@ class ConfigRouteMixin:
             t = settings.get("transfer", {})
             e = settings.get("expired_check", {})
             result = dict(settings)
-            # 脱敏豆瓣多账号 cookie
-            dw = result.get("douban_wish", {})
-            if dw and isinstance(dw.get("accounts"), list):
-                masked_accounts = []
-                for acc in dw["accounts"]:
-                    ma = dict(acc)
-                    if ma.get("cookie"):
-                        ma["cookie"] = "***"
-                    masked_accounts.append(ma)
-                result["douban_wish"] = dict(dw)
-                result["douban_wish"]["accounts"] = masked_accounts
             result["_status"] = status
             w = result.get("douban_wish", {})
             result["_next_runs"] = {
@@ -324,5 +313,27 @@ class ConfigRouteMixin:
             else:
                 self._send_json({"success": False, "message": "unknown action: {}".format(action)})
                 return True
+
+        if route == "/api/wish_test":
+            uid = body.get("uid", "")
+            cookie = body.get("cookie", "")
+            ok, msg = validate_string(uid, min_len=1, max_len=50)
+            if not ok:
+                self._send_json({"success": False, "message": "uid: {}".format(msg)}, 400)
+                return True
+            ok, msg = validate_string(cookie, min_len=1, max_len=2000)
+            if not ok:
+                self._send_json({"success": False, "message": "cookie: {}".format(msg)}, 400)
+                return True
+            try:
+                from douban import get_douban_wishlist
+                items = get_douban_wishlist(uid=uid, cookie=cookie, limit=1)
+                if items:
+                    self._send_json({"success": True, "message": "账号有效，想看列表可正常获取", "count": len(items)})
+                else:
+                    self._send_json({"success": False, "message": "Cookie 已失效或想看列表为空，请重新获取"})
+            except Exception as e:
+                self._send_json({"success": False, "message": "测试失败: {}".format(e)})
+            return True
 
         return False
