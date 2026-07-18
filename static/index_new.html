@@ -1009,7 +1009,7 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
     <button class="btn btn-outline btn-sm" onclick="addWishAccount()" style="margin-top:2px;border-style:dashed"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加豆瓣账号</button>
     <div class="form-group" style="margin-top:12px"><label>保存路径</label><input type="text" id="cfg_wish_savepath" placeholder="/批量转存/想看"></div>
     <div class="form-group"><label>分类</label><div class="chips" id="wishCategoryChips" style="margin-top:4px"><span class="chip" data-cat="movie" onclick="toggleWishCat(this)">电影</span><span class="chip" data-cat="tv" onclick="toggleWishCat(this)">电视剧</span></div></div>
-    <div class="form-group"><label>定时同步时间</label><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><input type="number" id="cfg_wish_hour" min="0" max="23" value="3" style="width:64px"><span style="color:var(--text-muted)">时</span><input type="number" id="cfg_wish_min" min="0" max="59" value="0" style="width:64px"><span style="color:var(--text-muted)">分</span><span style="color:var(--text-muted);font-size:13px">（每天执行一次）</span></div></div>
+    <div class="form-group"><label>定时同步</label><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><select id="cfg_wish_mode" onchange="toggleWishMode()" style="width:auto;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--card)"><option value="daily">每天定时</option><option value="interval">每隔 N 小时</option></select></div><div id="wish_mode_daily" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px"><input type="number" id="cfg_wish_hour" min="0" max="23" value="3" style="width:64px"><span style="color:var(--text-muted)">时</span><input type="number" id="cfg_wish_min" min="0" max="59" value="0" style="width:64px"><span style="color:var(--text-muted)">分</span></div><div id="wish_mode_interval" style="display:none;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px"><input type="number" id="cfg_wish_interval" min="1" max="168" value="6" style="width:64px"><span style="color:var(--text-muted)">小时执行一次</span></div></div>
     <div style="border-top:1px solid var(--border);margin:4px 0 8px"></div>
     <div class="sched-row" style="margin-top:4px">
       <span class="chip" id="cfg_wish_enabled_chip" onclick="toggleWishEnabled(this)">启用想看同步</span>
@@ -1322,6 +1322,7 @@ function toggleChip(el){el.classList.toggle('on')}
 function toggleSchedChip(el){el.classList.toggle('on');autoSaveSchedule()}
 function toggleWishCat(el){el.classList.toggle('on')}
 function toggleWishEnabled(el){el.classList.toggle('on')}
+function toggleWishMode(){var m=document.getElementById('cfg_wish_mode').value;document.getElementById('wish_mode_daily').style.display=m==='daily'?'flex':'none';document.getElementById('wish_mode_interval').style.display=m==='interval'?'flex':'none'}
 function renderWishAccounts(accounts){
 var el=document.getElementById('wishAccountsList');
 el.innerHTML='';
@@ -1783,7 +1784,7 @@ if(typeof wishCats==='string')wishCats=[wishCats];
 if(!Array.isArray(wishCats))wishCats=['movie'];
 document.querySelectorAll('#wishCategoryChips .chip').forEach(function(c){c.classList.toggle('on',wishCats.indexOf(c.dataset.cat)!==-1)});
 document.getElementById('cfg_wish_enabled_chip').classList.toggle('on',!!s.douban_wish.enabled);
-if(s.douban_wish.time){var wp=s.douban_wish.time.split(':');document.getElementById('cfg_wish_hour').value=parseInt(wp[0])||3;document.getElementById('cfg_wish_min').value=parseInt(wp[1])||0;}
+if(s.douban_wish.interval_hours&&s.douban_wish.interval_hours>0){document.getElementById('cfg_wish_mode').value='interval';document.getElementById('cfg_wish_interval').value=s.douban_wish.interval_hours;toggleWishMode();}else if(s.douban_wish.time){var wp=s.douban_wish.time.split(':');document.getElementById('cfg_wish_hour').value=parseInt(wp[0])||3;document.getElementById('cfg_wish_min').value=parseInt(wp[1])||0;}
 var wishAccounts=s.douban_wish.accounts||[];
 if(!wishAccounts.length&&cfg.douban_uid){wishAccounts=[{uid:cfg.douban_uid,cookie:'',name:''}]}
 renderWishAccounts(wishAccounts);
@@ -1812,7 +1813,10 @@ else showToast(d.message||'保存失败',false);
 // 保存想看同步设置
 var wishCats=[];document.querySelectorAll('#wishCategoryChips .chip.on').forEach(function(c){wishCats.push(c.dataset.cat)});
 var wishAccounts=collectWishAccounts();
-var wishCfg={action:'save',douban_wish:{enabled:document.getElementById('cfg_wish_enabled_chip').classList.contains('on'),savepath:document.getElementById('cfg_wish_savepath').value.trim(),category:wishCats.length?wishCats:['movie'],accounts:wishAccounts,time:pad2(document.getElementById('cfg_wish_hour').value)+':'+pad2(document.getElementById('cfg_wish_min').value)}};
+var wishMode=document.getElementById('cfg_wish_mode').value;
+var wishData={enabled:document.getElementById('cfg_wish_enabled_chip').classList.contains('on'),savepath:document.getElementById('cfg_wish_savepath').value.trim(),category:wishCats.length?wishCats:['movie'],accounts:wishAccounts};
+if(wishMode==='interval'){wishData.interval_hours=parseInt(document.getElementById('cfg_wish_interval').value)||6;wishData.time='';}else{wishData.time=pad2(document.getElementById('cfg_wish_hour').value)+':'+pad2(document.getElementById('cfg_wish_min').value);wishData.interval_hours=0;}
+var wishCfg={action:'save',douban_wish:wishData};
 await apiPost('/api/schedule',wishCfg);
 }catch(e){showToast('保存失败',false)}
 }
