@@ -181,7 +181,7 @@ def sse_broadcast(evt, data):
             dead = []
             for cid, info in sse_clients.items():
                 try:
-                    info["queue"].put(payload)
+                    info["queue"].put_nowait(payload)
                     info["time"] = now
                 except Exception:
                     dead.append(cid)
