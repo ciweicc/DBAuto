@@ -75,6 +75,7 @@ def _tmdb_request_with_failover(endpoint, params):
 
 # 列表类型 → endpoint 映射
 _MOVIE_ENDPOINTS = {
+    "trending_day": "/trending/movie/day",
     "trending": "/trending/movie/week",
     "popular": "/movie/popular",
     "top_rated": "/movie/top_rated",
@@ -83,6 +84,7 @@ _MOVIE_ENDPOINTS = {
 }
 
 _TV_ENDPOINTS = {
+    "trending_day": "/trending/tv/day",
     "trending": "/trending/tv/week",
     "popular": "/tv/popular",
     "top_rated": "/tv/top_rated",
@@ -202,12 +204,18 @@ def get_tmdb_list(media_type="movie", list_type="trending", page=1,
             log("TMDB: 未知列表类型 {}".format(list_type))
             return {"items": [], "total_pages": 0, "total_results": 0, "page": 1}
         endpoint = endpoints[list_type]
-        if region:
-            params["with_original_language"] = region
+        # 注意：with_original_language 只对 discover 有效
+        # 对 trending/popular 等端点 TMDB 会忽略此参数
+        # 改为在结果中客户端过滤
+        _client_filter_region = region if region else ""
 
     try:
         data = _tmdb_request_with_failover(endpoint, params)
         raw_items = data.get("results", [])
+        # 非 discover 端点：客户端过滤地区/语言
+        if list_type != "discover" and _client_filter_region:
+            raw_items = [it for it in raw_items
+                         if it.get("original_language", "") == _client_filter_region]
         items = [_parse_item(item, media_type) for item in raw_items if item.get("title") or item.get("name")]
 
         result = {
@@ -286,19 +294,21 @@ SORT_OPTIONS = [
 
 # 列表类型选项
 MOVIE_LIST_TYPES = [
-    {"code": "trending", "name": "热门趋势"},
-    {"code": "popular", "name": "流行"},
-    {"code": "top_rated", "name": "高分"},
+    {"code": "trending_day", "name": "今日热门"},
+    {"code": "trending", "name": "本周热门"},
     {"code": "now_playing", "name": "正在上映"},
     {"code": "upcoming", "name": "即将上映"},
+    {"code": "top_rated", "name": "高分好评"},
+    {"code": "popular", "name": "综合热门"},
     {"code": "discover", "name": "自定义筛选"},
 ]
 
 TV_LIST_TYPES = [
-    {"code": "trending", "name": "热门趋势"},
-    {"code": "popular", "name": "流行"},
-    {"code": "top_rated", "name": "高分"},
-    {"code": "on_the_air", "name": "正在播出"},
+    {"code": "trending_day", "name": "今日热门"},
+    {"code": "trending", "name": "本周热门"},
     {"code": "airing_today", "name": "今日播出"},
+    {"code": "on_the_air", "name": "本周播出"},
+    {"code": "top_rated", "name": "高分好评"},
+    {"code": "popular", "name": "综合热门"},
     {"code": "discover", "name": "自定义筛选"},
 ]
