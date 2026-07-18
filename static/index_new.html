@@ -41,11 +41,10 @@
   --shadow-glow:0 0 30px rgba(0,122,255,.12);
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;overflow-x:hidden}
 body{
   font-family:var(--font);background:var(--bg);color:var(--text);
   min-height:100vh;min-height:100dvh;-webkit-font-smoothing:antialiased;line-height:1.5;
-  overflow-x:hidden;
 }
 body::before{
   content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
@@ -721,7 +720,7 @@ display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hi
 color:var(--text2);font-size:14px;gap:8px}
 .tmdb-empty{text-align:center;padding:60px 0;color:var(--text2);font-size:14px}
 .tmdb-pagination{display:flex;justify-content:center;gap:12px;align-items:center;margin-top:20px}
-.tmdb-sel-bar{position:fixed;bottom:0;left:0;right:0;z-index:100;
+.tmdb-sel-bar{position:fixed;bottom:0;left:0;right:0;z-index:200;
 background:var(--card);border-top:1px solid var(--border);
 padding:12px 20px;display:flex;justify-content:space-between;align-items:center;gap:8px;
 backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
