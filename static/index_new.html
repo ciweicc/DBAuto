@@ -79,10 +79,10 @@ body::after{
   bottom:-200px;right:-100px;animation-delay:-10s;
 }
 .app{max-width:860px;margin:0 auto;padding:16px 20px;padding-bottom:100px;position:relative;z-index:1;
-  opacity:0;transform:translateY(12px);
-  animation:appEnter .6s var(--ease-bounce) forwards;animation-delay:.1s;
+  opacity:0;
+  animation:appFadeIn .6s ease forwards;animation-delay:.1s;
 }
-@keyframes appEnter{to{opacity:1;transform:none}}
+@keyframes appFadeIn{to{opacity:1}}
 
 /* Header */
 .header{
@@ -2200,15 +2200,6 @@ function initTimeSelects(){
 
 async function init(){
   initTheme(); initTimeSelects();
-  // 动画结束后清理 transform，防止 .app 创建包含块导致 fixed 元素定位异常
-  var appEl=document.querySelector('.app');
-  if(appEl){
-    appEl.addEventListener('animationend',function(){
-      appEl.style.animation='none';
-      appEl.style.transform='none';
-    },{once:true});
-    setTimeout(function(){appEl.style.animation='none';appEl.style.transform='none'},1000);
-  }
   try{C = await apiGet('/api/categories')}
   catch(e){showToast('认证失败，请重新登录',false);setTimeout(function(){location.href='/login.html'},1500);return}
   parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
