@@ -165,7 +165,7 @@ def log(msg):
     line = "[{}] {}".format(ts, msg)
     logger.info(msg)
     log_progress.append(line)
-    sse_broadcast("log", {"line": msg})
+    sse_broadcast("log", {"line": line})
 
 _sse_thread_local = local()
 

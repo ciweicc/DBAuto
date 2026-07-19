@@ -156,7 +156,7 @@ def transfer_one(title, shareurl, savepath, pattern="", replace="", category="mo
             "thread_id": tid,
             "stop": False
         })
-    clear_progress()
+        clear_progress()
     try:
         res = add_and_run(title, shareurl, savepath, pattern, replace)
         with transfer_lock:
@@ -178,6 +178,7 @@ def transfer_one(title, shareurl, savepath, pattern="", replace="", category="mo
             transfer_status["running"] = False
             transfer_status["stop"] = False
             transfer_status["thread_id"] = None
+            sse_broadcast("transfer_progress", dict(transfer_status))
 
 EXPIRED_CHECK_CONCURRENCY = 5
 
@@ -266,8 +267,15 @@ def fix_expired_tasks():
             "running": True,
             "thread_id": tid,
             "summary": "fix_expired",
+            "start_time": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S"),
+            "stats": {"searched": 0, "ok": 0, "skipped": 0, "failed": 0, "total": 0},
             "stop": False
         })
+        clear_progress()
+    expired = []
+    fixed = 0
+    failed = 0
+    results = []
     try:
         expired = check_expired_tasks()
         if not expired:
@@ -275,9 +283,8 @@ def fix_expired_tasks():
             return {"total": 0, "fixed": 0, "failed": 0, "results": []}
         
         log("开始修复 {} 个失效链接".format(len(expired)))
-        fixed = 0
-        failed = 0
-        results = []
+        with transfer_lock:
+            transfer_status["stats"]["total"] = len(expired)
         
         for task in expired:
             # 检查停止标志
@@ -293,6 +300,9 @@ def fix_expired_tasks():
                     log("  未找到替代资源")
                     failed += 1
                     results.append({"taskname": taskname, "status": "not_found", "msg": "未找到替代资源"})
+                    with transfer_lock:
+                        transfer_status["stats"]["failed"] = failed
+                        sse_broadcast("transfer_progress", dict(transfer_status))
                     continue
                 
                 chosen = sr[0]
@@ -301,6 +311,9 @@ def fix_expired_tasks():
                     log("  资源无有效链接")
                     failed += 1
                     results.append({"taskname": taskname, "status": "no_url", "msg": "资源无有效链接"})
+                    with transfer_lock:
+                        transfer_status["stats"]["failed"] = failed
+                        sse_broadcast("transfer_progress", dict(transfer_status))
                     continue
                 
                 valid, msg = validate_share_link(new_url)
@@ -308,6 +321,9 @@ def fix_expired_tasks():
                     log("  新链接无效: {}".format(msg))
                     failed += 1
                     results.append({"taskname": taskname, "status": "invalid", "msg": msg})
+                    with transfer_lock:
+                        transfer_status["stats"]["failed"] = failed
+                        sse_broadcast("transfer_progress", dict(transfer_status))
                     continue
                 
                 success = update_expired_task(task, new_url)
@@ -319,12 +335,19 @@ def fix_expired_tasks():
                     log("  ❌ 更新失败")
                     failed += 1
                     results.append({"taskname": taskname, "status": "update_fail", "msg": "更新失败"})
+                with transfer_lock:
+                    transfer_status["stats"]["ok"] = fixed
+                    transfer_status["stats"]["failed"] = failed
+                    sse_broadcast("transfer_progress", dict(transfer_status))
                 
                 time.sleep(2)
             except Exception as e:
                 log("  ❌ 异常: {}".format(e))
                 failed += 1
                 results.append({"taskname": taskname, "status": "error", "msg": str(e)})
+                with transfer_lock:
+                    transfer_status["stats"]["failed"] = failed
+                    sse_broadcast("transfer_progress", dict(transfer_status))
         
         log("修复完成: 成功 {} / 失败 {}".format(fixed, failed))
         return {"total": len(expired), "fixed": fixed, "failed": failed, "results": results}
@@ -333,6 +356,10 @@ def fix_expired_tasks():
             transfer_status["running"] = False
             transfer_status["thread_id"] = None
             transfer_status["stop"] = False
+            transfer_status["stats"]["total"] = len(expired)
+            transfer_status["stats"]["ok"] = fixed
+            transfer_status["stats"]["failed"] = failed
+            sse_broadcast("transfer_progress", dict(transfer_status))
 
 def _clean_title(title):
     return re.sub(r'[^\u4e00-\u9fff0-9a-zA-Z]', '', title).lower()
@@ -558,6 +585,7 @@ def run_transfer(task_list, limit):
                 "results": results,
                 "error": error_msg,
             }
+            sse_broadcast("transfer_progress", dict(transfer_status))
         log("转存完成: {} 条".format(transferred))
         if exec_record_id:
             ok_count = sum(1 for r in results if r.get("status") in ("ok", "done"))

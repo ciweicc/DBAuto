@@ -88,7 +88,7 @@ body::after{
 .header{
   position:sticky;top:0;z-index:100;display:flex;justify-content:space-between;align-items:center;
   padding:14px 0;margin-bottom:16px;
-  background:var(--blur);-webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
   background-color:rgba(0,0,0,.35);
   animation:slideDown .6s var(--ease-bounce) both;animation-delay:.15s;
 }
@@ -1225,6 +1225,9 @@ function toggleTheme(){
 var C = {}, currentTab = 'manual', execHistoryData = [], execHistoryFilter = 'all';
 var expiredDirEntries = [], autoSaveTimer = null, logPollTimer = null;
 var logBefore = [], logFilter = 'all', logPaused = false;
+var logPollInterval = 0;
+var sseConnected = false;
+var LOG_BEFORE_MAX = 500;
 
 // ============ Toast ============
 function showToast(msg,ok,duration){
@@ -1232,7 +1235,10 @@ function showToast(msg,ok,duration){
   var t=document.createElement('div');
   t.className='toast '+(ok?'ok':'err')+' show';
   var icon=ok?'<span class="toast-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-check-circle"/></svg></span>':'<span class="toast-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg></span>';
-  t.innerHTML=icon+'<span>'+msg+'</span>';
+  t.innerHTML=icon;
+  var msgSpan=document.createElement('span');
+  msgSpan.textContent=msg;
+  t.appendChild(msgSpan);
   container.appendChild(t);
   var dur=duration||(ok?2500:4000);
   setTimeout(function(){
@@ -1432,7 +1438,7 @@ async function startTransfer(){
     var d = await apiPost('/api/transfer',{tasks:tasks,limit:limit,filters:filters});
     if(d.success){
       document.getElementById('stopBtn').style.display='inline-block';
-      startLogPoll(3000);logPollTimer._interval=3000;
+      startLogPoll(3000);
     }
     else{
       document.getElementById('stopBtn').style.display='none';
@@ -1446,7 +1452,7 @@ async function stopTransfer(){
   try{await apiPost('/api/stop')}catch(e){}
   addLog('任务已终止');
   document.getElementById('stopBtn').style.display='none';
-  if(logPollTimer){clearInterval(logPollTimer);logPollTimer=null}
+  if(logPollTimer){clearInterval(logPollTimer);logPollTimer=null;logPollInterval=0}
 }
 
 // ============ Log ============
@@ -1454,6 +1460,7 @@ function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').repl
 
 function addLog(line){
   logBefore.push(line);
+  if(logBefore.length>LOG_BEFORE_MAX)logBefore.shift();
   if(matchFilter(line)) appendLine(line);
 }
 function matchFilter(line){
@@ -1489,17 +1496,23 @@ function togglePause(){
   document.getElementById('pauseBtn').innerHTML=logPaused?'<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><use href=\"#icon-play\"/></svg>':'<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><use href=\"#icon-pause\"/></svg>';
 }
 
-function startLogPoll(interval){
+function startLogPoll(interval, initLen, skipFirstSync){
   if(logPollTimer)clearInterval(logPollTimer);
   var pollInterval=interval||3000;
-  var lastProgressLen=0;
+  var lastProgressLen=initLen||0;
+  var firstSyncSkip=skipFirstSync||false;
+  logPollInterval=pollInterval;
   logPollTimer = setInterval(async function(){
     if(document.getElementById('logCard').style.display==='none')return;
     try{
       var d = await apiGet('/api/transfer/status');
-      // 同步日志进度（SSE 断连时作为降级方案）
-      if(d.progress&&d.progress.length>0){
-        if(d.progress.length>lastProgressLen){
+      // 同步日志进度（仅当 SSE 断连时作为降级方案，避免与 SSE 重复）
+      if(!sseConnected&&d.progress&&d.progress.length>0){
+        if(firstSyncSkip){
+          // SSE 刚断连，仅对齐进度游标，不重复添加已有日志
+          lastProgressLen=d.progress.length;
+          firstSyncSkip=false;
+        }else if(d.progress.length>lastProgressLen){
           for(var i=lastProgressLen;i<d.progress.length;i++)addLog(d.progress[i]);
           lastProgressLen=d.progress.length;
         }
@@ -1512,7 +1525,7 @@ function startLogPoll(interval){
         document.getElementById('stTotal').textContent=d.stats.total||0;
         updateProgress(d.stats);
       }
-      if(!d.running&&logPollTimer){clearInterval(logPollTimer);logPollTimer=null;
+      if(!d.running&&logPollTimer){clearInterval(logPollTimer);logPollTimer=null;logPollInterval=0;
         document.getElementById('stopBtn').style.display='none';addLog('全部完成');}
     }catch(e){}
   },pollInterval);
@@ -1546,12 +1559,14 @@ async function checkRunningStatus(){
     if(d.running){
       document.getElementById('logCard').style.display='block';
       document.getElementById('stopBtn').style.display='inline-block';
-      if(d.progress&&d.progress.length>0){logBefore=[];for(var i=0;i<d.progress.length;i++)addLog(d.progress[i])}
-      startLogPoll(3000);logPollTimer._interval=3000;
+      var initLen=0;
+      if(d.progress&&d.progress.length>0){logBefore=[];for(var i=0;i<d.progress.length;i++)addLog(d.progress[i]);initLen=d.progress.length}
+      startLogPoll(3000, initLen);
     }
   }catch(e){showToast('检查运行状态失败',false)}
 }
 async function checkExpired(){
+  if(logPollTimer){clearInterval(logPollTimer);logPollTimer=null;logPollInterval=0}
   document.getElementById('logCard').style.display='block'; logBefore=[]; document.getElementById('log').innerHTML='';
   addLog('正在检测失效链接...');
   try{
@@ -1561,7 +1576,17 @@ async function checkExpired(){
       for(var i=0;i<d.expired.length;i++)addLog('  '+d.expired[i].taskname);
       addLog('开始搜索并替换失效链接...');
       var fd = await apiGet('/api/fix_expired');
-      if(!fd.success)addLog('启动修复失败: '+fd.message);
+      if(fd.success){
+        document.getElementById('stopBtn').style.display='inline-block';
+        startLogPoll(3000);
+      }else{
+        if(fd.conflict){
+          addLog('已有任务在运行，恢复监控...');
+          checkRunningStatus();
+        }else{
+          addLog('启动修复失败: '+(fd.message||'未知错误'));
+        }
+      }
     }else addLog('所有链接正常');
   }catch(e){addLog('检测失败: '+e.message)}
 }
@@ -1675,15 +1700,16 @@ function renderExecHistory(){
     if(h.type==='expired_check'){icon='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-refresh"/></svg>';cls='expired';tn='检测'}
     var hasDetail = h.data && (h.data.results || h.data.expired);
     var cursor = hasDetail ? 'cursor:pointer' : '';
-    return '<div class=\"hist-item\" style=\"'+cursor+'\" onclick=\"toggleHistDetail(\''+h.id+'\')\" id=\"hist_'+h.id+'\">'+
-      '<div class=\"hist-icon '+cls+'\">'+icon+'</div>'+
-      '<div class=\"hist-info\">'+
-        '<div class=\"hist-title\">'+esc(h.detail)+'</div>'+
-        '<div class=\"hist-meta\">'+tn+(hasDetail?' · 点击查看详情':'')+'</div>'+
+    var hid = String(h.id);
+    return '<div class="hist-item" style="'+cursor+'" onclick="toggleHistDetail(\''+esc(hid)+'\')" id="hist_'+esc(hid)+'">'+
+      '<div class="hist-icon '+cls+'">'+icon+'</div>'+
+      '<div class="hist-info">'+
+        '<div class="hist-title">'+esc(h.detail)+'</div>'+
+        '<div class="hist-meta">'+tn+(hasDetail?' · 点击查看详情':'')+'</div>'+
       '</div>'+
-      '<div class=\"hist-time\">'+h.time+'</div>'+
+      '<div class="hist-time">'+esc(h.time)+'</div>'+
       '</div>'+
-      '<div class=\"hist-detail\" id=\"hist_detail_'+h.id+'\" style=\"display:none;padding:0 16px 16px 60px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)\">'+
+      '<div class="hist-detail" id="hist_detail_'+esc(hid)+'" style="display:none;padding:0 16px 16px 60px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)">'+
         renderHistDetailContent(h)+
       '</div>';
   }).join('');
@@ -1904,12 +1930,13 @@ function toggleTmdbGenre(el){
 
 function onTmdbFilterChange(){
   var mt = document.getElementById('tmdbMediaType').value;
-  var lt = document.getElementById('tmdbListType').value;
   // 如果切换了 media_type，更新列表类型选项
   if(mt !== tmdbState.media_type){
     var listTypes = mt === 'movie' ? tmdbState.options.movie_list_types : tmdbState.options.tv_list_types;
     updateTmdbListTypeOptions(listTypes);
   }
+  // 更新列表选项后重新获取 lt，确保使用最新的下拉框值
+  var lt = document.getElementById('tmdbListType').value;
   // 如果不是 discover，禁用排序/评分/年份/类型筛选（仅 discover 有效）
   var isDiscover = lt === 'discover';
   document.getElementById('tmdbSort').disabled = !isDiscover;
@@ -2005,7 +2032,12 @@ function toggleTmdbCard(el, id){
     delete tmdbState.selected[id];
     el.classList.remove('selected');
   }else{
-    tmdbState.selected[id] = true;
+    // 存储完整信息，以便翻页后仍能构建转存任务
+    var item = null;
+    for(var i=0;i<tmdbState.items.length;i++){
+      if(tmdbState.items[i].id===id){item=tmdbState.items[i];break}
+    }
+    tmdbState.selected[id] = item ? {title: item.title} : {title: ''};
     el.classList.add('selected');
   }
   updateTmdbSelBar();
@@ -2026,20 +2058,20 @@ function clearTmdbSelection(){
 async function transferTmdbSelection(){
   var ids = Object.keys(tmdbState.selected);
   if(!ids.length){showToast('请先选择内容',false);return}
-  // 构建转存任务
+  // 构建转存任务 - 直接从 selected 中获取信息，不依赖当前页 items
   var mt = document.getElementById('tmdbMediaType').value;
   var category = mt === 'movie' ? 'movie' : 'tv';
   var savepath = '/批量转存/TMDB';
   var tasks = [];
-  for(var i=0; i<tmdbState.items.length; i++){
-    var item = tmdbState.items[i];
-    if(tmdbState.selected[item.id]){
+  for(var i=0; i<ids.length; i++){
+    var sel = tmdbState.selected[ids[i]];
+    if(sel){
       tasks.push({
         path: 'tmdb',
         type: category,
         savepath: savepath,
         _wish: true,
-        title: item.title,
+        title: sel.title || ('TMDB_'+ids[i]),
         category: category
       });
     }
@@ -2231,9 +2263,10 @@ function initSSE(){
   if(!window.EventSource) return;
   var es = new EventSource('/api/sse');
   es.onopen=function(){
+    sseConnected=true;
     sseRetryDelay=5000;
-    if(logPollTimer&&logPollTimer._interval===3000){
-      clearInterval(logPollTimer);startLogPoll(10000);logPollTimer._interval=10000;
+    if(logPollTimer&&logPollInterval===3000){
+      clearInterval(logPollTimer);startLogPoll(10000);
     }
   };
   es.addEventListener('schedule_update', function(){
@@ -2256,6 +2289,7 @@ function initSSE(){
       updateProgress(d.stats);
     }
     if(d.running)document.getElementById('stopBtn').style.display='inline-block';
+    else document.getElementById('stopBtn').style.display='none';
   });
   es.addEventListener('log', function(e){
     var d=JSON.parse(e.data);
@@ -2263,8 +2297,10 @@ function initSSE(){
   });
   es.onerror = function(){
     es.close();
-    if(logPollTimer&&logPollTimer._interval===10000){
-      clearInterval(logPollTimer);startLogPoll(3000);logPollTimer._interval=3000;
+    sseConnected=false;
+    if(logPollTimer&&logPollInterval===10000){
+      // SSE 断连，切换到 3s 轮询；首次仅对齐游标，不重复添加已有日志
+      clearInterval(logPollTimer);startLogPoll(3000, 0, true);
     }
     setTimeout(initSSE, sseRetryDelay);
     sseRetryDelay=Math.min(sseRetryDelay*2, 30000);
