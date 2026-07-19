@@ -8,7 +8,7 @@ from transfer import (
     run_transfer, add_and_run, transfer_one, VIDEO_SUB, TV_REPLACE, build_transfer_tasks,
     is_transfer_running,
 )
-from storage import load_history, save_history, add_exec_record
+from storage import load_history, save_history
 from utils import log, sse_broadcast, log_progress
 from validator import validate_string, validate_positive_int, validate_list, validate_task
 
@@ -177,7 +177,6 @@ class TransferRouteMixin:
                 updated = True
             if updated:
                 save_history(history)
-                add_exec_record("history", "update shareurl for {}".format(title))
                 sse_broadcast("history_update", {"action": "update", "title": title})
             self._send_json({"success": True, "updated": updated})
             return True
@@ -200,7 +199,6 @@ class TransferRouteMixin:
                     count += 1
             if count > 0:
                 save_history(history)
-                add_exec_record("history", "batch update {} items".format(count))
                 sse_broadcast("history_update", {"action": "batch_update", "count": count})
             self._send_json({"success": True, "updated": count})
             return True

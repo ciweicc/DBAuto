@@ -1,6 +1,6 @@
 # routes_history.py — 历史记录管理路由 Mixin
 import time
-from storage import load_history, save_history, load_exec_history, add_exec_record, clear_exec_history
+from storage import load_history, save_history, load_exec_history, clear_exec_history
 from utils import log, sse_broadcast
 from validator import validate_string, validate_list
 
@@ -209,7 +209,6 @@ class HistoryRouteMixin:
 
             if changed:
                 save_history(history)
-                add_exec_record("history", "{} action".format(action))
                 sse_broadcast("history_update", {"action": action})
 
             self._send_json({"success": changed})

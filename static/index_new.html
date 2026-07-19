@@ -521,6 +521,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:rgba(255
 .hist-icon.transfer{background:linear-gradient(135deg,rgba(10,132,255,.15),rgba(100,210,255,.1));color:var(--accent)}
 .hist-icon.expired{background:linear-gradient(135deg,rgba(255,159,10,.15),rgba(255,69,58,.1));color:var(--orange)}
 .hist-icon.cleanup{background:linear-gradient(135deg,rgba(255,69,58,.15),rgba(191,90,242,.1));color:var(--red)}
+.hist-icon.config{background:linear-gradient(135deg,rgba(48,209,88,.15),rgba(100,210,255,.1));color:var(--green)}
 .hist-info{flex:1;min-width:0}
 .hist-title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
 .hist-meta{font-size:12px;color:var(--text3);margin-top:3px}
@@ -995,6 +996,7 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
       <span class="filter-tab active" onclick="filterHist('all',this)">全部</span>
       <span class="filter-tab" onclick="filterHist('transfer',this)">转存</span>
       <span class="filter-tab" onclick="filterHist('expired_check',this)">检测</span>
+      <span class="filter-tab" onclick="filterHist('config',this)">配置</span>
     </div>
     <div id="execHistoryList"><div style="text-align:center;padding:40px;color:var(--text3)">加载中...</div></div>
   </div>
@@ -1693,11 +1695,12 @@ async function loadMoreHistory(){
 }
 function renderExecHistory(){
   var el = document.getElementById('execHistoryList');
-  var filtered = execHistoryFilter==='all'?execHistoryData.slice():execHistoryData.filter(function(h){return h.type===execHistoryFilter});
+  var filtered = execHistoryFilter==='all'?execHistoryData.filter(function(h){return h.type!=='history'&&h.type!=='schedule'}).slice():execHistoryData.filter(function(h){return h.type===execHistoryFilter});
   if(!filtered.length){el.innerHTML='<div class="empty-state"><div class="empty-icon"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-clock"/></svg></div><div class="empty-title">还没有执行记录</div><div class="empty-desc">去「手动转存」选择一个榜单开始吧<br>每次转存和检测都会记录在这里</div></div>';return}
   el.innerHTML = filtered.reverse().map(function(h){
     var icon='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-transfer"/></svg>',cls='transfer',tn='转存';
     if(h.type==='expired_check'){icon='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-refresh"/></svg>';cls='expired';tn='检测'}
+    else if(h.type==='config'){icon='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-settings"/></svg>';cls='config';tn='配置'}
     var hasDetail = h.data && (h.data.results || h.data.expired);
     var cursor = hasDetail ? 'cursor:pointer' : '';
     var hid = String(h.id);

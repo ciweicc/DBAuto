@@ -151,7 +151,6 @@ class ConfigRouteMixin:
             action = body.get("action", "save")
 
             if action == "save":
-                old_settings = dict(settings)
                 for section in ("transfer", "expired_check", "douban_wish"):
                     if section in body:
                         section_data = body[section]
@@ -254,9 +253,6 @@ class ConfigRouteMixin:
                 save_settings(settings)
                 notify_settings_changed()
                 log("调度配置已更新")
-                import json
-                if json.dumps(settings, sort_keys=True) != json.dumps(old_settings, sort_keys=True):
-                    add_exec_record("schedule", "update schedule")
                 sse_broadcast("schedule_update", {})
                 self._send_json({"success": True})
                 return True
@@ -282,7 +278,6 @@ class ConfigRouteMixin:
                 save_settings(settings)
                 notify_settings_changed()
                 log("调度 {}: {}".format(section, "启用" if enabled else "停用"))
-                add_exec_record("schedule", "toggle {}".format(section))
                 sse_broadcast("schedule_update", {})
                 self._send_json({"success": True})
                 return True
