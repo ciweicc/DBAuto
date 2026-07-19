@@ -707,7 +707,7 @@ transition:all var(--transition-normal);cursor:pointer;min-width:100px}
 [data-theme="light"] .tmdb-select{background:rgba(0,0,0,.02)}
 .tmdb-select:hover{border-color:rgba(10,132,255,.3);color:var(--accent)}
 .tmdb-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.15)}
-.tmdb-genre-chips{display:flex;flex-wrap:wrap;gap:6px;max-height:80px;overflow-y:auto;padding:4px 0}
+.tmdb-genre-chips{display:flex;flex-wrap:wrap;gap:6px;max-height:200px;overflow-y:auto;padding:4px 0}
 .tmdb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px}
 .tmdb-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
 overflow:hidden;cursor:pointer;transition:all var(--transition-normal);position:relative;
@@ -2200,6 +2200,15 @@ function initTimeSelects(){
 
 async function init(){
   initTheme(); initTimeSelects();
+  // 动画结束后清理 transform，防止 .app 创建包含块导致 fixed 元素定位异常
+  var appEl=document.querySelector('.app');
+  if(appEl){
+    appEl.addEventListener('animationend',function(){
+      appEl.style.animation='none';
+      appEl.style.transform='none';
+    },{once:true});
+    setTimeout(function(){appEl.style.animation='none';appEl.style.transform='none'},1000);
+  }
   try{C = await apiGet('/api/categories')}
   catch(e){showToast('认证失败，请重新登录',false);setTimeout(function(){location.href='/login.html'},1500);return}
   parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
