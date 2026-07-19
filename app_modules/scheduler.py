@@ -93,7 +93,7 @@ def _run_scheduled_transfer():
         log("定时转存: {} 条".format(len(uniq)))
         with schedule_lock:
             schedule_status["last_transfer"] = _now_local().strftime("%Y-%m-%d %H:%M:%S")
-        Thread(target=run_transfer, args=(uniq, limit), daemon=True).start()
+        Thread(target=run_transfer, args=(uniq, limit), kwargs={"source": "schedule"}, daemon=True).start()
     except Exception as e:
         log("定时转存执行错误: {}".format(e))
         traceback.print_exc()
@@ -150,7 +150,7 @@ def _run_scheduled_wish_sync():
         log("想看同步: {} 条".format(len(uniq)))
         with schedule_lock:
             schedule_status["last_wish_sync"] = _now_local().strftime("%Y-%m-%d %H:%M:%S")
-        Thread(target=run_transfer, args=(uniq, limit), daemon=True).start()
+        Thread(target=run_transfer, args=(uniq, limit), kwargs={"source": "wish_sync"}, daemon=True).start()
     except Exception as e:
         log("想看同步执行错误: {}".format(e))
         traceback.print_exc()

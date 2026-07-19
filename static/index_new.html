@@ -973,8 +973,12 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
     <div class="card-title" style="justify-content:space-between">执行历史 <div><button class="btn btn-sm btn-outline" onclick="clearExecHistory()" style="margin-right:6px">清除</button><button class="btn btn-sm btn-outline" onclick="exportHistory()">导出</button></div></div>
     <div class="filter-tabs">
       <span class="filter-tab active" onclick="filterHist('all',this)">全部</span>
-      <span class="filter-tab" onclick="filterHist('transfer',this)">转存</span>
+      <span class="filter-tab" onclick="filterHist('manual',this)">手动转存</span>
+      <span class="filter-tab" onclick="filterHist('schedule',this)">定时转存</span>
+      <span class="filter-tab" onclick="filterHist('tmdb',this)">TMDB</span>
+      <span class="filter-tab" onclick="filterHist('wish_sync',this)">想看同步</span>
       <span class="filter-tab" onclick="filterHist('expired_check',this)">检测</span>
+      <span class="filter-tab" onclick="filterHist('config',this)">设置</span>
     </div>
     <div id="execHistoryList"><div style="text-align:center;padding:40px;color:var(--text3)">加载中...</div></div>
   </div>
@@ -1425,7 +1429,7 @@ async function startTransfer(){
     year_to: parseInt(document.getElementById('manualFilterYearTo').value)||0
   };
   try{
-    var d = await apiPost('/api/transfer',{tasks:tasks,limit:limit,filters:filters});
+    var d = await apiPost('/api/transfer',{tasks:tasks,limit:limit,filters:filters,source:'manual'});
     if(d.success){
       document.getElementById('logCard').style.display='block';
       document.getElementById('stopBtn').style.display='inline-block';
@@ -1668,19 +1672,22 @@ async function loadMoreHistory(){
 }
 function renderExecHistory(){
   var el = document.getElementById('execHistoryList');
-  var filtered = execHistoryData;
-  if(execHistoryFilter!=='all')filtered=execHistoryData.filter(function(h){return h.type===execHistoryFilter});
+var filtered = execHistoryData;
+if(execHistoryFilter==='config')filtered=execHistoryData.filter(function(h){return ['config','schedule','history'].indexOf(h.source)!==-1});
+else if(execHistoryFilter!=='all')filtered=execHistoryData.filter(function(h){return h.source===execHistoryFilter});
   if(!filtered.length){el.innerHTML='<div class="empty-state"><div class="empty-icon"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-clock"/></svg></div><div class="empty-title">还没有执行记录</div><div class="empty-desc">去「手动转存」选择一个榜单开始吧<br>每次转存和检测都会记录在这里</div></div>';return}
   el.innerHTML = filtered.reverse().map(function(h){
     var icon='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-transfer"/></svg>',cls='transfer',tn='转存';
     if(h.type==='expired_check'){icon='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-refresh"/></svg>';cls='expired';tn='检测'}
+    var srcLabel={manual:'手动转存',schedule:'定时转存',tmdb:'TMDB',wish_sync:'想看同步',expired_check:'检测',config:'设置',schedule_cfg:'调度配置',history:'历史记录'}[h.source||h.type]||tn;
+    if(h.source==='config'||h.source==='schedule'||h.source==='history'){srcLabel='设置'}
     var hasDetail = h.data && (h.data.results || h.data.expired);
     var cursor = hasDetail ? 'cursor:pointer' : '';
     return '<div class=\"hist-item\" style=\"'+cursor+'\" onclick=\"toggleHistDetail(\''+h.id+'\')\" id=\"hist_'+h.id+'\">'+
       '<div class=\"hist-icon '+cls+'\">'+icon+'</div>'+
       '<div class=\"hist-info\">'+
         '<div class=\"hist-title\">'+esc(h.detail)+'</div>'+
-        '<div class=\"hist-meta\">'+tn+(hasDetail?' · 点击查看详情':'')+'</div>'+
+        '<div class=\"hist-meta\">'+srcLabel+(hasDetail?' · 点击查看详情':'')+'</div>'+
       '</div>'+
       '<div class=\"hist-time\">'+h.time+'</div>'+
       '</div>'+
@@ -2060,7 +2067,7 @@ async function transferTmdbSelection(){
   }
   if(!tasks.length){showToast('未找到选中项',false);return}
   try{
-    var d = await apiPost('/api/transfer',{tasks:tasks,limit:5,filters:{}});
+    var d = await apiPost('/api/transfer',{tasks:tasks,limit:5,filters:{},source:'tmdb'});
     if(d.success){
       showToast('已提交 '+tasks.length+' 项转存',true);
       // 切换到手动转存 tab 查看日志

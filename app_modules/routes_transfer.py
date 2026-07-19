@@ -103,7 +103,8 @@ class TransferRouteMixin:
                 return True
 
             uniq = build_transfer_tasks(tasks_input, filters)
-            Thread(target=run_transfer, args=(uniq, limit), daemon=True).start()
+            source = body.get("source", "manual")
+            Thread(target=run_transfer, args=(uniq, limit), kwargs={"source": source}, daemon=True).start()
             self._send_json({"success": True, "message": "started {}".format(len(uniq))})
             return True
 
@@ -145,9 +146,9 @@ class TransferRouteMixin:
                 pattern = body.get("pattern", "")
                 replace = body.get("replace", "")
                 Thread(target=transfer_one, args=(title, shareurl, savepath, pattern, replace, category), daemon=True).start()
-            else:
-                task = {"title": title, "savepath": savepath, "category": category}
-                Thread(target=run_transfer, args=([task], 1), daemon=True).start()
+else:
+task = {"title": title, "savepath": savepath, "category": category}
+Thread(target=run_transfer, args=([task], 1), kwargs={"source": "manual"}, daemon=True).start()
             self._send_json({"success": True, "message": "added"})
             return True
 
