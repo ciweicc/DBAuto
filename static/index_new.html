@@ -709,7 +709,10 @@ transition:all var(--transition-normal);cursor:pointer;min-width:100px}
 .tmdb-select:hover{border-color:rgba(10,132,255,.3);color:var(--accent)}
 .tmdb-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.15)}
 .tmdb-genre-chips{display:flex;flex-wrap:wrap;gap:6px;max-height:200px;overflow-y:auto;padding:4px 0}
-.tmdb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px}
+.tmdb-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px}
+@media(max-width:900px){.tmdb-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
+@media(max-width:640px){.tmdb-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:480px){.tmdb-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .tmdb-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
 overflow:hidden;cursor:pointer;transition:all var(--transition-normal);position:relative;
 display:flex;flex-direction:column}
