@@ -1926,6 +1926,8 @@ async function loadTmdbGenres(){
 }
 
 function toggleTmdbGenre(el){
+  // 如果点击的条目已选中，无需重新加载
+  if(el.classList.contains('on')) return;
   var chips = document.querySelectorAll('#tmdbGenreChips .chip');
   chips.forEach(function(c){c.classList.remove('on')});
   el.classList.add('on');
@@ -1943,6 +1945,17 @@ function onTmdbFilterChange(){
   }
   // 更新列表选项后重新获取 lt，确保使用最新的下拉框值
   var lt = document.getElementById('tmdbListType').value;
+  // 如果用户手动从 discover 切换到其他榜单类型，清除 discover 专属筛选条件
+  if(lt !== 'discover' && tmdbState.list_type === 'discover'){
+    tmdbState.genre_id = 0;
+    var chips = document.querySelectorAll('#tmdbGenreChips .chip');
+    chips.forEach(function(c){c.classList.remove('on')});
+    var allChip = document.querySelector('#tmdbGenreChips .chip[data-gid="0"]');
+    if(allChip) allChip.classList.add('on');
+    document.getElementById('tmdbMinRating').value = 0;
+    document.getElementById('tmdbYear').value = '';
+  }
+  tmdbState.list_type = lt;
   // 如果不是 discover，禁用排序/评分/年份/类型筛选（仅 discover 有效）
   var isDiscover = lt === 'discover';
   document.getElementById('tmdbSort').disabled = !isDiscover;
@@ -1972,6 +1985,7 @@ async function loadTmdbList(){
   if(lt !== 'discover' && (genreId > 0 || minRating > 0 || year > 0)){
     document.getElementById('tmdbListType').value = 'discover';
     lt = 'discover';
+    tmdbState.list_type = 'discover';
     onTmdbFilterChange();
     return;
   }
