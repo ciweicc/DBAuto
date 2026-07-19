@@ -2,9 +2,9 @@
 from config import load_config, save_config, load_settings, save_settings
 from auth import hash_auth_password
 from scheduler import (
-schedule_status, schedule_lock, _next_fire_time, _now_local,
-_run_scheduled_transfer, _run_scheduled_expired_check, _run_scheduled_wish_sync,
-notify_settings_changed,
+    schedule_status, schedule_lock, _next_fire_time, _now_local,
+    _run_scheduled_transfer, _run_scheduled_expired_check,
+    notify_settings_changed,
 )
 from transfer import reset_qas_client
 from utils import log, sse_broadcast
@@ -42,15 +42,23 @@ class ConfigRouteMixin:
             t = settings.get("transfer", {})
             e = settings.get("expired_check", {})
             result = dict(settings)
+            # 脱敏豆瓣多账号 cookie
+            dw = result.get("douban_wish", {})
+            if dw and isinstance(dw.get("accounts"), list):
+                masked_accounts = []
+                for acc in dw["accounts"]:
+                    ma = dict(acc)
+                    if ma.get("cookie"):
+                        ma["cookie"] = "***"
+                    masked_accounts.append(ma)
+                result["douban_wish"] = dict(dw)
+                result["douban_wish"]["accounts"] = masked_accounts
             result["_status"] = status
-            w = result.get("douban_wish", {})
             result["_next_runs"] = {
                 "transfer": _format_next(t.get("time"), t.get("cron"), t.get("interval_hours", 0),
                                           status.get("last_transfer")) if t.get("enabled") else None,
                 "expired_check": _format_next(e.get("time"), e.get("cron"), e.get("interval_hours", 0),
                                                status.get("last_expired_check")) if e.get("enabled") else None,
-                "wish_sync": _format_next(w.get("time"), w.get("cron"), w.get("interval_hours", 0),
-                                           status.get("last_wish_sync")) if w.get("enabled") else None,
             }
             self._send_json(result)
             return True
@@ -126,14 +134,7 @@ class ConfigRouteMixin:
                         if not ok:
                             self._send_json({"success": False, "message": "tmdb_base_url: {}".format(msg)}, 400)
                             return True
-                        cfg[k] = v
-                elif k == "default_savepath":
-                    if v:
-                        ok, msg = validate_string(v, min_len=1, max_len=200)
-                        if not ok:
-                            self._send_json({"success": False, "message": "default_savepath: {}".format(msg)}, 400)
-                            return True
-                        cfg[k] = v
+                    cfg[k] = v
                 else:
                     cfg[k] = v
 
@@ -302,10 +303,6 @@ class ConfigRouteMixin:
                     Thread(target=_run_scheduled_expired_check, daemon=True).start()
                     self._send_json({"success": True, "message": "expired_check started"})
                     return True
-                elif section == "wish_sync":
-                    Thread(target=_run_scheduled_wish_sync, daemon=True).start()
-                    self._send_json({"success": True, "message": "wish_sync started"})
-                    return True
 
                 self._send_json({"success": False, "message": "unknown section: {}".format(section)})
                 return True
@@ -313,27 +310,5 @@ class ConfigRouteMixin:
             else:
                 self._send_json({"success": False, "message": "unknown action: {}".format(action)})
                 return True
-
-        if route == "/api/wish_test":
-            uid = body.get("uid", "")
-            cookie = body.get("cookie", "")
-            ok, msg = validate_string(uid, min_len=1, max_len=50)
-            if not ok:
-                self._send_json({"success": False, "message": "uid: {}".format(msg)}, 400)
-                return True
-            ok, msg = validate_string(cookie, min_len=1, max_len=2000)
-            if not ok:
-                self._send_json({"success": False, "message": "cookie: {}".format(msg)}, 400)
-                return True
-            try:
-                from douban import get_douban_wishlist
-                items = get_douban_wishlist(uid=uid, cookie=cookie, limit=1)
-                if items:
-                    self._send_json({"success": True, "message": "账号有效，想看列表可正常获取", "count": len(items)})
-                else:
-                    self._send_json({"success": False, "message": "Cookie 已失效或想看列表为空，请重新获取"})
-            except Exception as e:
-                self._send_json({"success": False, "message": "测试失败: {}".format(e)})
-            return True
 
         return False

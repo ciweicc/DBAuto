@@ -62,9 +62,8 @@ DEFAULT_CONFIG = {
     "auth_pass": os.environ.get("AUTH_PASS", ""),
     "douban_uid": os.environ.get("DOUBAN_UID", ""),
     "douban_cookie": os.environ.get("DOUBAN_COOKIE", ""),
-"tmdb_api_key": os.environ.get("TMDB_API_KEY", ""),
-"tmdb_base_url": os.environ.get("TMDB_BASE_URL", ""),
-"default_savepath": os.environ.get("DEFAULT_SAVEPATH", "/批量转存"),
+    "tmdb_api_key": os.environ.get("TMDB_API_KEY", ""),
+    "tmdb_base_url": os.environ.get("TMDB_BASE_URL", ""),
 }
 
 DEFAULT_SETTINGS = {

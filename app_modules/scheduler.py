@@ -14,9 +14,7 @@ except ImportError:
     _has_croniter = False
 
 schedule_status = {"transfer_next": None, "expired_check_next": None,
-                   "wish_sync_next": None,
-                   "last_transfer": None, "last_expired_check": None,
-                   "last_wish_sync": None}
+                   "last_transfer": None, "last_expired_check": None}
 schedule_lock = Lock()
 _settings_changed = Event()
 
@@ -84,6 +82,48 @@ def _run_scheduled_transfer():
         tasks = list(t.get("tasks", []))
         limit = t.get("limit", 5)
         filters = t.get("filters", {})
+        # 获取豆瓣想看列表作为额外任务来源
+        wish_cfg = settings.get("douban_wish", {})
+        if wish_cfg.get("enabled"):
+            try:
+                wish_savepath = wish_cfg.get("savepath", "/批量转存/想看")
+                wish_category = wish_cfg.get("category", ["movie"])
+                if isinstance(wish_category, str):
+                    wish_category = [wish_category]
+                # 构建账号列表：优先使用 accounts 多账号配置，兼容旧单账号
+                accounts = wish_cfg.get("accounts", [])
+                if not accounts:
+                    cfg = ConfigManager.get_instance()
+                    if cfg.douban_uid and cfg.douban_cookie:
+                        accounts = [{"uid": cfg.douban_uid, "cookie": cfg.douban_cookie}]
+                wish_total = 0
+                for acc in accounts:
+                    acc_uid = acc.get("uid", "")
+                    acc_cookie = acc.get("cookie", "")
+                    acc_name = acc.get("name", acc_uid)
+                    if not acc_uid or not acc_cookie:
+                        continue
+                    wish_items = get_douban_wishlist(uid=acc_uid, cookie=acc_cookie)
+                    if not wish_items:
+                        continue
+                    for item in wish_items:
+                        item_cat = item.get("category", "movie")
+                        if item_cat not in wish_category:
+                            continue
+                        tasks.append({
+                            "path": "",
+                            "type": "",
+                            "savepath": wish_savepath,
+                            "category": item_cat,
+                            "title": item["title"],
+                            "_wish": True
+                        })
+                    wish_total += len(wish_items)
+                    log("豆瓣想看 [{}] {} 条".format(acc_name, len(wish_items)))
+                if wish_total:
+                    log("豆瓣想看列表已加载 {} 条 ({} 个账号)".format(wish_total, len(accounts)))
+            except Exception as e:
+                log("豆瓣想看列表加载失败: {}".format(e))
         if not tasks: return
         if is_transfer_running():
             log("定时转存跳过：已有转存任务正在运行")
@@ -93,66 +133,9 @@ def _run_scheduled_transfer():
         log("定时转存: {} 条".format(len(uniq)))
         with schedule_lock:
             schedule_status["last_transfer"] = _now_local().strftime("%Y-%m-%d %H:%M:%S")
-        Thread(target=run_transfer, args=(uniq, limit), kwargs={"source": "schedule"}, daemon=True).start()
+        Thread(target=run_transfer, args=(uniq, limit), daemon=True).start()
     except Exception as e:
         log("定时转存执行错误: {}".format(e))
-        traceback.print_exc()
-
-def _run_scheduled_wish_sync():
-    try:
-        settings = load_settings()
-        wish_cfg = settings.get("douban_wish", {})
-        if not wish_cfg.get("enabled"): return
-        wish_savepath = wish_cfg.get("savepath", "/批量转存/想看")
-        wish_category = wish_cfg.get("category", ["movie"])
-        if isinstance(wish_category, str):
-            wish_category = [wish_category]
-        accounts = wish_cfg.get("accounts", [])
-        if not accounts:
-            cfg = ConfigManager.get_instance()
-            if cfg.douban_uid and cfg.douban_cookie:
-                accounts = [{"uid": cfg.douban_uid, "cookie": cfg.douban_cookie}]
-        tasks = []
-        wish_total = 0
-        for acc in accounts:
-            acc_uid = acc.get("uid", "")
-            acc_cookie = acc.get("cookie", "")
-            acc_name = acc.get("name", acc_uid)
-            if not acc_uid or not acc_cookie:
-                continue
-            wish_items = get_douban_wishlist(uid=acc_uid, cookie=acc_cookie)
-            if not wish_items:
-                continue
-            for item in wish_items:
-                item_cat = item.get("category", "movie")
-                if item_cat not in wish_category:
-                    continue
-                tasks.append({
-                    "path": "",
-                    "type": "",
-                    "savepath": wish_savepath,
-                    "category": item_cat,
-                    "title": item["title"],
-                    "_wish": True
-                })
-            wish_total += len(wish_items)
-            log("豆瓣想看 [{}] {} 条".format(acc_name, len(wish_items)))
-        if wish_total:
-            log("豆瓣想看列表已加载 {} 条 ({} 个账号)".format(wish_total, len(accounts)))
-        if not tasks: return
-        if is_transfer_running():
-            log("想看同步跳过：已有转存任务正在运行")
-            return
-        filters = settings.get("transfer", {}).get("filters", {})
-        limit = settings.get("transfer", {}).get("limit", 5)
-        log("想看同步开始")
-        uniq = build_transfer_tasks(tasks, filters)
-        log("想看同步: {} 条".format(len(uniq)))
-        with schedule_lock:
-            schedule_status["last_wish_sync"] = _now_local().strftime("%Y-%m-%d %H:%M:%S")
-        Thread(target=run_transfer, args=(uniq, limit), kwargs={"source": "wish_sync"}, daemon=True).start()
-    except Exception as e:
-        log("想看同步执行错误: {}".format(e))
         traceback.print_exc()
 
 def _run_scheduled_expired_check():
@@ -213,22 +196,17 @@ def scheduler_loop():
             settings = _load_settings_cached()
             t = settings.get("transfer", {})
             e = settings.get("expired_check", {})
-            w = settings.get("douban_wish", {})
             t_next = _next_fire_time(t.get("time"), t.get("cron"), t.get("interval_hours", 0),
                                      schedule_status.get("last_transfer"))
             e_next = _next_fire_time(e.get("time"), e.get("cron"), e.get("interval_hours", 0),
                                      schedule_status.get("last_expired_check"))
-            w_next = _next_fire_time(w.get("time"), w.get("cron"), w.get("interval_hours", 0),
-                                     schedule_status.get("last_wish_sync"))
             now = _now_local()
             with schedule_lock:
                 schedule_status["transfer_next"] = t_next.strftime("%Y-%m-%d %H:%M") if t_next else None
                 schedule_status["expired_check_next"] = e_next.strftime("%Y-%m-%d %H:%M") if e_next else None
-                schedule_status["wish_sync_next"] = w_next.strftime("%Y-%m-%d %H:%M") if w_next else None
             upcoming = []
             if t.get("enabled") and t_next: upcoming.append(("transfer", t_next))
             if e.get("enabled") and e_next: upcoming.append(("expired_check", e_next))
-            if w.get("enabled") and w_next: upcoming.append(("wish_sync", w_next))
             if not upcoming:
                 _settings_changed.wait(timeout=60)
                 _settings_changed.clear()
@@ -261,8 +239,6 @@ def scheduler_loop():
                     _run_scheduled_transfer()
                 elif name == "expired_check":
                     _run_scheduled_expired_check()
-                elif name == "wish_sync":
-                    _run_scheduled_wish_sync()
                 time.sleep(5)
         except Exception as e:
             log("调度错误: {}".format(e))

@@ -437,12 +437,12 @@ def _search_single_task(task):
         log("搜索异常 {}: {}".format(title, e))
         return task, []
 
-def run_transfer(task_list, limit, source="manual"):
+def run_transfer(task_list, limit):
     global transfer_status
     tid = get_ident()
     exec_record_id = None
     try:
-        rec = add_exec_record("transfer", "开始转存 ({} 条)".format(len(task_list)), "running", source=source)
+        rec = add_exec_record("transfer", "开始转存 ({} 条)".format(len(task_list)), "running")
         exec_record_id = rec["id"]
     except Exception:
         pass

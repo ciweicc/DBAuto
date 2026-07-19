@@ -41,10 +41,11 @@
   --shadow-glow:0 0 30px rgba(0,122,255,.12);
 }
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-html{scroll-behavior:smooth;-webkit-text-size-adjust:100%;overflow-x:hidden}
+html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
 body{
   font-family:var(--font);background:var(--bg);color:var(--text);
   min-height:100vh;min-height:100dvh;-webkit-font-smoothing:antialiased;line-height:1.5;
+  overflow-x:hidden;
 }
 body::before{
   content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
@@ -125,33 +126,33 @@ body::after{
 .icon-btn:active{transform:translateY(0) scale(.95)}
 
 .search-box{
-position:relative;flex:1;max-width:380px;height:42px;display:flex;align-items:center;
-background:rgba(255,255,255,.06);border:none;border-radius:21px;
-padding:0 16px;transition:all var(--transition-normal);
-box-shadow:inset 0 1px 3px rgba(0,0,0,.15),inset 0 -1px 1px rgba(255,255,255,.03);
--webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  position:relative;flex:1;max-width:380px;height:40px;display:flex;align-items:center;
+  background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:20px;
+  padding:0 14px;transition:all var(--transition-normal);
+  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
 }
-.search-box:hover{background:rgba(255,255,255,.09);
-box-shadow:inset 0 1px 3px rgba(0,0,0,.2),inset 0 -1px 1px rgba(255,255,255,.05);
+.search-box:hover{background:rgba(255,255,255,.07);border-color:var(--border2);
+  box-shadow:0 2px 12px rgba(0,0,0,.1);
 }
-.search-box:focus-within{background:rgba(10,132,255,.08);
-box-shadow:inset 0 1px 4px rgba(0,0,0,.2),0 0 0 2px rgba(10,132,255,.3);
+.search-box:focus-within{border-color:var(--accent);background:rgba(10,132,255,.06);
+  box-shadow:0 0 0 3px rgba(10,132,255,.2),0 4px 20px rgba(10,132,255,.12);
+  transform: translateY(-1px);
 }
 .search-icon{color:var(--text3);margin-right:10px;flex-shrink:0;
-transition:all var(--transition-normal);
+  transition:all var(--transition-normal);
 }
 .search-box:focus-within .search-icon{color:var(--accent);transform:scale(1.1);}
 .search-box input{
-flex:1;border:none;background:transparent;color:var(--text);font-size:14px;
-outline:none;font-family:var(--font);height:100%;padding:0;width:100%;
-border-radius:0;min-width:0;
+  flex:1;border:none;background:transparent;color:var(--text);font-size:14px;
+  outline:none;font-family:var(--font);height:100%;padding:0;width:auto;
+  border-radius:0;
 }
 .search-box input::placeholder{color:var(--text3)}
-.search-box input:focus{box-shadow:none}
+.search-box input:focus{box-shadow:none;border-color:transparent}
 .search-clear{
-width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;
-cursor:pointer;color:var(--text3);opacity:0;visibility:hidden;
-transition:all var(--transition-fast);flex-shrink:0;
+  width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  cursor:pointer;color:var(--text3);opacity:0;visibility:hidden;
+  transition:all var(--transition-fast);
 }
 .search-clear:hover{background:rgba(255,255,255,.1);color:var(--text);}
 .search-box.has-value .search-clear{opacity:1;visibility:visible;}
@@ -690,8 +691,8 @@ transition:all var(--transition-normal);cursor:pointer;min-width:100px}
 [data-theme="light"] .tmdb-select{background:rgba(0,0,0,.02)}
 .tmdb-select:hover{border-color:rgba(10,132,255,.3);color:var(--accent)}
 .tmdb-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.15)}
-.tmdb-genre-chips{display:flex;flex-wrap:wrap;gap:6px;padding:4px 0}
-.tmdb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px;padding-bottom:80px}
+.tmdb-genre-chips{display:flex;flex-wrap:wrap;gap:6px;max-height:80px;overflow-y:auto;padding:4px 0}
+.tmdb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:16px}
 .tmdb-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
 overflow:hidden;cursor:pointer;transition:all var(--transition-normal);position:relative;
 display:flex;flex-direction:column}
@@ -720,14 +721,11 @@ display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hi
 color:var(--text2);font-size:14px;gap:8px}
 .tmdb-empty{text-align:center;padding:60px 0;color:var(--text2);font-size:14px}
 .tmdb-pagination{display:flex;justify-content:center;gap:12px;align-items:center;margin-top:20px}
-.tmdb-sel-bar{position:fixed;bottom:0;left:0;right:0;z-index:200;
-background:var(--card);border-top:1px solid var(--border);
-padding:12px 20px;display:flex;justify-content:space-between;align-items:center;gap:8px;
-backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
-box-shadow:0 -4px 24px rgba(0,0,0,.3);
-transform:translateY(100%);transition:transform .3s var(--ease-bounce);
-max-width:860px;margin:0 auto}
-.tmdb-sel-bar.active{transform:translateY(0);border-top-color:rgba(48,209,88,.4)}
+.tmdb-sel-bar{position:sticky;top:0;z-index:10;background:var(--card);border:1px solid var(--border);
+border-radius:var(--radius-xl);padding:12px 16px;margin-bottom:16px;display:flex;
+justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;
+backdrop-filter:blur(12px);transition:all var(--transition-normal)}
+.tmdb-sel-bar.active{border-color:rgba(48,209,88,.4);box-shadow:0 4px 16px rgba(48,209,88,.1)}
 .tmdb-sel-count{font-size:14px;font-weight:600;color:var(--green)}
 .tmdb-key-warning{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);
 border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;font-size:13px;
@@ -973,12 +971,8 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
     <div class="card-title" style="justify-content:space-between">执行历史 <div><button class="btn btn-sm btn-outline" onclick="clearExecHistory()" style="margin-right:6px">清除</button><button class="btn btn-sm btn-outline" onclick="exportHistory()">导出</button></div></div>
     <div class="filter-tabs">
       <span class="filter-tab active" onclick="filterHist('all',this)">全部</span>
-      <span class="filter-tab" onclick="filterHist('manual',this)">手动转存</span>
-      <span class="filter-tab" onclick="filterHist('schedule',this)">定时转存</span>
-      <span class="filter-tab" onclick="filterHist('tmdb',this)">TMDB</span>
-      <span class="filter-tab" onclick="filterHist('wish_sync',this)">想看同步</span>
+      <span class="filter-tab" onclick="filterHist('transfer',this)">转存</span>
       <span class="filter-tab" onclick="filterHist('expired_check',this)">检测</span>
-      <span class="filter-tab" onclick="filterHist('config',this)">设置</span>
     </div>
     <div id="execHistoryList"><div style="text-align:center;padding:40px;color:var(--text3)">加载中...</div></div>
   </div>
@@ -996,10 +990,9 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
     <div class="form-group" style="margin-top:8px"><label>API 地址（可选）</label><input type="text" id="cfg_tmdb_base_url" placeholder="留空自动切换 api.tmdb.org / api.themoviedb.org"></div>
     <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.5">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">TMDB 官网</a> 申请 API Key。系统自动尝试短域名访问，无需代理</div>
   </div>
-    <div class="card">
-      <div class="card-title">📦 转存服务</div>
-      <div class="form-group"><label>默认转存路径</label><input type="text" id="cfg_default_savepath" placeholder="/批量转存"></div>
-      <div class="form-group"><label>QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
+  <div class="card">
+    <div class="card-title">📦 转存服务</div>
+    <div class="form-group"><label>QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
     <div class="form-group" style="margin-bottom:0"><label>QAS Token</label><input type="password" id="cfg_qas_token" placeholder="留空不修改"></div>
   </div>
   <div class="card">
@@ -1013,7 +1006,6 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
     <button class="btn btn-outline btn-sm" onclick="addWishAccount()" style="margin-top:2px;border-style:dashed"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加豆瓣账号</button>
     <div class="form-group" style="margin-top:12px"><label>保存路径</label><input type="text" id="cfg_wish_savepath" placeholder="/批量转存/想看"></div>
     <div class="form-group"><label>分类</label><div class="chips" id="wishCategoryChips" style="margin-top:4px"><span class="chip" data-cat="movie" onclick="toggleWishCat(this)">电影</span><span class="chip" data-cat="tv" onclick="toggleWishCat(this)">电视剧</span></div></div>
-    <div class="form-group"><label>定时同步</label><div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap"><select id="cfg_wish_mode" onchange="toggleWishMode()" style="width:auto;padding:6px 8px;border-radius:8px;border:1px solid var(--border);background:var(--card)"><option value="daily">每天定时</option><option value="interval">每隔 N 小时</option></select></div><div id="wish_mode_daily" style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px"><input type="number" id="cfg_wish_hour" min="0" max="23" value="3" style="width:64px"><span style="color:var(--text-muted)">时</span><input type="number" id="cfg_wish_min" min="0" max="59" value="0" style="width:64px"><span style="color:var(--text-muted)">分</span></div><div id="wish_mode_interval" style="display:none;align-items:center;gap:6px;flex-wrap:wrap;margin-top:6px"><input type="number" id="cfg_wish_interval" min="1" max="168" value="6" style="width:64px"><span style="color:var(--text-muted)">小时执行一次</span></div></div>
     <div style="border-top:1px solid var(--border);margin:4px 0 8px"></div>
     <div class="sched-row" style="margin-top:4px">
       <span class="chip" id="cfg_wish_enabled_chip" onclick="toggleWishEnabled(this)">启用想看同步</span>
@@ -1081,6 +1073,14 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
     </div>
   </div>
 
+  <div class="tmdb-sel-bar" id="tmdbSelBar">
+    <div class="tmdb-sel-count" id="tmdbSelCount">已选 0 部</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm" onclick="clearTmdbSelection()">清空选择</button>
+      <button class="btn btn-primary btn-sm" onclick="transferTmdbSelection()">开始转存</button>
+    </div>
+  </div>
+
   <div id="tmdbGrid" class="tmdb-grid"></div>
 
   <div class="tmdb-pagination" id="tmdbPagination" style="display:none">
@@ -1089,15 +1089,6 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
     <button class="btn btn-outline btn-sm" id="tmdbNextBtn" onclick="tmdbNextPage()">下一页</button>
   </div>
 </div>
-</div>
-
-<!-- TMDB 选择栏（固定在底部，放在 .app 外面避免 transform 干扰） -->
-<div class="tmdb-sel-bar" id="tmdbSelBar">
-  <div class="tmdb-sel-count" id="tmdbSelCount">已选 0 部</div>
-  <div style="display:flex;gap:8px">
-    <button class="btn btn-outline btn-sm" onclick="clearTmdbSelection()">清空选择</button>
-    <button class="btn btn-primary btn-sm" onclick="transferTmdbSelection()">开始转存</button>
-  </div>
 </div>
 
 <!-- Bottom Navigation (Mobile) -->
@@ -1211,7 +1202,6 @@ function toggleTheme(){
 // ============ Global ============
 var C = {}, currentTab = 'manual', execHistoryData = [], execHistoryFilter = 'all';
 var expiredDirEntries = [], autoSaveTimer = null, logPollTimer = null;
-var defaultSavepath = '/批量转存';
 var logBefore = [], logFilter = 'all', logPaused = false;
 
 // ============ Toast ============
@@ -1326,7 +1316,6 @@ function toggleChip(el){el.classList.toggle('on')}
 function toggleSchedChip(el){el.classList.toggle('on');autoSaveSchedule()}
 function toggleWishCat(el){el.classList.toggle('on')}
 function toggleWishEnabled(el){el.classList.toggle('on')}
-function toggleWishMode(){var m=document.getElementById('cfg_wish_mode').value;document.getElementById('wish_mode_daily').style.display=m==='daily'?'flex':'none';document.getElementById('wish_mode_interval').style.display=m==='interval'?'flex':'none'}
 function renderWishAccounts(accounts){
 var el=document.getElementById('wishAccountsList');
 el.innerHTML='';
@@ -1343,8 +1332,7 @@ row.innerHTML='<div style="display:flex;justify-content:space-between;align-item
 +'</div>'
 +'<div class="form-group" style="margin-bottom:8px"><label>备注</label><input type="text" class="wish-acc-name" placeholder="可选备注名" value="'+(a.name||'')+'"></div>'
 +'<div class="form-group" style="margin-bottom:8px"><label>豆瓣用户 ID</label><input type="text" class="wish-acc-uid" placeholder="豆瓣个人主页 URL 中的 ID" value="'+(a.uid||'')+'"></div>'
-+'<div class="form-group" style="margin-bottom:0"><label>豆瓣 Cookie</label><input type="text" class="wish-acc-cookie" placeholder="豆瓣登录 Cookie" value="'+(a.cookie||'')+'"></div>'
-+'<div style="margin-top:8px"><button class="btn btn-sm btn-outline" onclick="testWishAccount(this)">测试</button> <span class="wish-acc-status" style="font-size:13px;color:var(--text3)"></span></div>';
++'<div class="form-group" style="margin-bottom:0"><label>豆瓣 Cookie</label><input type="password" class="wish-acc-cookie" placeholder="留空不修改"></div>';
 return row;
 }
 function addWishAccount(){
@@ -1352,26 +1340,13 @@ var el=document.getElementById('wishAccountsList');
 el.appendChild(_makeWishAccRow(el.children.length,{}));
 }
 function removeWishAccount(btn){btn.closest('.wish-acc-row').remove()}
-async function testWishAccount(btn){
-var row=btn.closest('.wish-acc-row');
-var uid=row.querySelector('.wish-acc-uid').value.trim();
-var cookie=row.querySelector('.wish-acc-cookie').value.trim();
-var st=row.querySelector('.wish-acc-status');
-if(!uid||!cookie){st.textContent='请填写 UID 和 Cookie';st.style.color='var(--text3)';return}
-btn.disabled=true;st.textContent='测试中...';st.style.color='var(--text3)';
-try{var r=await apiPost('/api/wish_test',{uid:uid,cookie:cookie});
-if(r.success){st.textContent='✓ '+r.message+(r.count?' ('+r.count+' 条)':'');st.style.color='#4caf50'}
-else{st.textContent='✗ '+r.message;st.style.color='#f44336'}
-}catch(e){st.textContent='✗ 请求失败';st.style.color='#f44336'}
-btn.disabled=false;
-}
 function collectWishAccounts(){
 var accounts=[];
 document.querySelectorAll('#wishAccountsList .wish-acc-row').forEach(function(row){
 var name=row.querySelector('.wish-acc-name').value.trim();
 var uid=row.querySelector('.wish-acc-uid').value.trim();
 var cookie=row.querySelector('.wish-acc-cookie').value;
-if(uid)accounts.push({uid:uid,cookie:cookie,name:name});
+if(uid)accounts.push({uid:uid,cookie:cookie||'***',name:name});
 });
 return accounts;
 }
@@ -1391,14 +1366,13 @@ function toggleSubSched(btn){
 }
 
 function getSelectedTasks(prefix){
-var tasks=[], seen=new Set();
-var basePath=defaultSavepath||'/批量转存';
-document.querySelectorAll('#'+prefix+' .chip.on').forEach(function(el){
-var k = el.dataset.path+'/'+el.dataset.type;
-if(seen.has(k))return; seen.add(k);
-tasks.push({path:el.dataset.path, type:el.dataset.type, savepath:basePath+'/'+el.dataset.gname, category:el.dataset.group});
-});
-return tasks;
+  var tasks=[], seen=new Set();
+  document.querySelectorAll('#'+prefix+' .chip.on').forEach(function(el){
+    var k = el.dataset.path+'/'+el.dataset.type;
+    if(seen.has(k))return; seen.add(k);
+    tasks.push({path:el.dataset.path, type:el.dataset.type, savepath:'/影视/'+el.dataset.gname, category:el.dataset.group});
+  });
+  return tasks;
 }
 
 function syncToSchedule(){
@@ -1429,7 +1403,7 @@ async function startTransfer(){
     year_to: parseInt(document.getElementById('manualFilterYearTo').value)||0
   };
   try{
-    var d = await apiPost('/api/transfer',{tasks:tasks,limit:limit,filters:filters,source:'manual'});
+    var d = await apiPost('/api/transfer',{tasks:tasks,limit:limit,filters:filters});
     if(d.success){
       document.getElementById('logCard').style.display='block';
       document.getElementById('stopBtn').style.display='inline-block';
@@ -1493,41 +1467,16 @@ function togglePause(){
 }
 
 function startLogPoll(interval){
-if(logPollTimer)clearInterval(logPollTimer);
-var pollInterval=interval||3000;
-var lastLogLen=0;
-logPollTimer = setInterval(async function(){
-if(document.getElementById('logCard').style.display==='none')return;
-try{
-var d = await apiGet('/api/transfer/status');
-// 显示新增的日志行（避免与 SSE 重复）
-if(d.progress&&d.progress.length>0){
-for(var i=lastLogLen;i<d.progress.length;i++){
-var line=d.progress[i];
-// SSE 可能已推送过，检查是否重复
-if(logBefore.indexOf(line)===-1){
-addLog(line);
-}else{
-logBefore.push(line); // 标记已处理
-}
-}
-lastLogLen=d.progress.length;
-}
-// 更新统计
-if(d.stats){
-updateProgress(d.stats);
-if(d.stats.total){
-document.getElementById('stSearched').textContent=d.stats.searched||0;
-document.getElementById('stOK').textContent=d.stats.ok||0;
-document.getElementById('stSkip').textContent=d.stats.skipped||0;
-document.getElementById('stFail').textContent=d.stats.failed||0;
-document.getElementById('stTotal').textContent=d.stats.total||0;
-}
-}
-if(!d.running&&logPollTimer){clearInterval(logPollTimer);logPollTimer=null;
-document.getElementById('stopBtn').style.display='none';addLog('全部完成');}
-}catch(e){}
-},pollInterval);
+  if(logPollTimer)clearInterval(logPollTimer);
+  var pollInterval=interval||3000;
+  logPollTimer = setInterval(async function(){
+    if(document.getElementById('logCard').style.display==='none')return;
+    try{
+      var d = await apiGet('/api/transfer/status');
+      if(!d.running&&logPollTimer){clearInterval(logPollTimer);logPollTimer=null;
+        document.getElementById('stopBtn').style.display='none';addLog('全部完成');}
+    }catch(e){}
+  },pollInterval);
 }
 function updateProgress(stats){
   var total=(stats.total||0), done=(stats.ok||0)+(stats.skipped||0)+(stats.failed||0);
@@ -1672,22 +1621,19 @@ async function loadMoreHistory(){
 }
 function renderExecHistory(){
   var el = document.getElementById('execHistoryList');
-var filtered = execHistoryData;
-if(execHistoryFilter==='config')filtered=execHistoryData.filter(function(h){return ['config','schedule','history'].indexOf(h.source)!==-1});
-else if(execHistoryFilter!=='all')filtered=execHistoryData.filter(function(h){return h.source===execHistoryFilter});
+  var filtered = execHistoryData;
+  if(execHistoryFilter!=='all')filtered=execHistoryData.filter(function(h){return h.type===execHistoryFilter});
   if(!filtered.length){el.innerHTML='<div class="empty-state"><div class="empty-icon"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-clock"/></svg></div><div class="empty-title">还没有执行记录</div><div class="empty-desc">去「手动转存」选择一个榜单开始吧<br>每次转存和检测都会记录在这里</div></div>';return}
   el.innerHTML = filtered.reverse().map(function(h){
     var icon='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-transfer"/></svg>',cls='transfer',tn='转存';
     if(h.type==='expired_check'){icon='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-refresh"/></svg>';cls='expired';tn='检测'}
-    var srcLabel={manual:'手动转存',schedule:'定时转存',tmdb:'TMDB',wish_sync:'想看同步',expired_check:'检测',config:'设置',schedule_cfg:'调度配置',history:'历史记录'}[h.source||h.type]||tn;
-    if(h.source==='config'||h.source==='schedule'||h.source==='history'){srcLabel='设置'}
     var hasDetail = h.data && (h.data.results || h.data.expired);
     var cursor = hasDetail ? 'cursor:pointer' : '';
     return '<div class=\"hist-item\" style=\"'+cursor+'\" onclick=\"toggleHistDetail(\''+h.id+'\')\" id=\"hist_'+h.id+'\">'+
       '<div class=\"hist-icon '+cls+'\">'+icon+'</div>'+
       '<div class=\"hist-info\">'+
         '<div class=\"hist-title\">'+esc(h.detail)+'</div>'+
-        '<div class=\"hist-meta\">'+srcLabel+(hasDetail?' · 点击查看详情':'')+'</div>'+
+        '<div class=\"hist-meta\">'+tn+(hasDetail?' · 点击查看详情':'')+'</div>'+
       '</div>'+
       '<div class=\"hist-time\">'+h.time+'</div>'+
       '</div>'+
@@ -1780,8 +1726,6 @@ document.getElementById('cfg_auth_user').value=cfg.auth_user||'';
 document.getElementById('cfg_auth_pass').value='';
 document.getElementById('cfg_tmdb_api_key').value='';
 document.getElementById('cfg_tmdb_base_url').value=cfg.tmdb_base_url||'';
-document.getElementById('cfg_default_savepath').value=cfg.default_savepath||'/批量转存';
-defaultSavepath=cfg.default_savepath||'/批量转存';
 // 加载想看同步设置
 try{var s=await apiGet('/api/schedule');
 if(s.douban_wish){
@@ -1791,7 +1735,6 @@ if(typeof wishCats==='string')wishCats=[wishCats];
 if(!Array.isArray(wishCats))wishCats=['movie'];
 document.querySelectorAll('#wishCategoryChips .chip').forEach(function(c){c.classList.toggle('on',wishCats.indexOf(c.dataset.cat)!==-1)});
 document.getElementById('cfg_wish_enabled_chip').classList.toggle('on',!!s.douban_wish.enabled);
-if(s.douban_wish.interval_hours&&s.douban_wish.interval_hours>0){document.getElementById('cfg_wish_mode').value='interval';document.getElementById('cfg_wish_interval').value=s.douban_wish.interval_hours;toggleWishMode();}else if(s.douban_wish.time){var wp=s.douban_wish.time.split(':');document.getElementById('cfg_wish_hour').value=parseInt(wp[0])||3;document.getElementById('cfg_wish_min').value=parseInt(wp[1])||0;}
 var wishAccounts=s.douban_wish.accounts||[];
 if(!wishAccounts.length&&cfg.douban_uid){wishAccounts=[{uid:cfg.douban_uid,cookie:'',name:''}]}
 renderWishAccounts(wishAccounts);
@@ -1811,8 +1754,7 @@ qas_token:document.getElementById('cfg_qas_token').value,
 auth_user:document.getElementById('cfg_auth_user').value.trim(),
 auth_pass:document.getElementById('cfg_auth_pass').value,
 tmdb_api_key:document.getElementById('cfg_tmdb_api_key').value,
-tmdb_base_url:document.getElementById('cfg_tmdb_base_url').value.trim(),
-default_savepath:document.getElementById('cfg_default_savepath').value.trim()};
+tmdb_base_url:document.getElementById('cfg_tmdb_base_url').value.trim()};
 try{
 var d=await apiPost('/api/config',cfg);
 if(d.success){if(!silent)showToast('设置已保存',true);if(!silent)closeSettings()}
@@ -1820,10 +1762,7 @@ else showToast(d.message||'保存失败',false);
 // 保存想看同步设置
 var wishCats=[];document.querySelectorAll('#wishCategoryChips .chip.on').forEach(function(c){wishCats.push(c.dataset.cat)});
 var wishAccounts=collectWishAccounts();
-var wishMode=document.getElementById('cfg_wish_mode').value;
-var wishData={enabled:document.getElementById('cfg_wish_enabled_chip').classList.contains('on'),savepath:document.getElementById('cfg_wish_savepath').value.trim(),category:wishCats.length?wishCats:['movie'],accounts:wishAccounts};
-if(wishMode==='interval'){wishData.interval_hours=parseInt(document.getElementById('cfg_wish_interval').value)||6;wishData.time='';}else{wishData.time=pad2(document.getElementById('cfg_wish_hour').value)+':'+pad2(document.getElementById('cfg_wish_min').value);wishData.interval_hours=0;}
-var wishCfg={action:'save',douban_wish:wishData};
+var wishCfg={action:'save',douban_wish:{enabled:document.getElementById('cfg_wish_enabled_chip').classList.contains('on'),savepath:document.getElementById('cfg_wish_savepath').value.trim(),category:wishCats.length?wishCats:['movie'],accounts:wishAccounts}};
 await apiPost('/api/schedule',wishCfg);
 }catch(e){showToast('保存失败',false)}
 }
@@ -1833,7 +1772,7 @@ var tmdbState = {
   page: 1,
   total_pages: 1,
   media_type: 'movie',
-  list_type: 'trending_day',
+  list_type: 'trending',
   genre_id: 0,
   items: [],
   selected: {},
@@ -1878,7 +1817,7 @@ async function initTmdbPage(){
 
 function updateTmdbListTypeOptions(listTypes){
   var sel = document.getElementById('tmdbListType');
-  var current = sel.value || 'trending_day';
+  var current = sel.value || 'trending';
   sel.innerHTML = listTypes.map(function(l){return '<option value="'+l.code+'">'+l.name+'</option>'}).join('');
   // 尝试保持当前选择
   if([].some.call(sel.options, function(o){return o.value === current})){
@@ -1909,15 +1848,6 @@ function toggleTmdbGenre(el){
   el.classList.add('on');
   tmdbState.genre_id = parseInt(el.dataset.gid) || 0;
   tmdbState.page = 1;
-  // 选了具体类型但不在自定义筛选模式，自动切换
-  if(tmdbState.genre_id > 0){
-    var lt = document.getElementById('tmdbListType').value;
-    if(lt !== 'discover'){
-      document.getElementById('tmdbListType').value = 'discover';
-      onTmdbFilterChange();
-      return;
-    }
-  }
   loadTmdbList();
 }
 
@@ -1929,21 +1859,11 @@ function onTmdbFilterChange(){
     var listTypes = mt === 'movie' ? tmdbState.options.movie_list_types : tmdbState.options.tv_list_types;
     updateTmdbListTypeOptions(listTypes);
   }
-  // discover 独有筛选器：排序/评分/年份/类型
+  // 如果不是 discover，禁用排序/评分/年份/类型筛选（仅 discover 有效）
   var isDiscover = lt === 'discover';
   document.getElementById('tmdbSort').disabled = !isDiscover;
   document.getElementById('tmdbMinRating').disabled = !isDiscover;
   document.getElementById('tmdbYear').disabled = !isDiscover;
-  // 类型 chips：非 discover 时半透明提示，但仍可点击（点击会自动切换到 discover）
-  var chips = document.querySelectorAll('#tmdbGenreChips .chip');
-  chips.forEach(function(c){c.style.opacity = isDiscover ? '' : '0.5'});
-  // 非 discover 时重置类型选择
-  if(!isDiscover && tmdbState.genre_id > 0){
-    chips.forEach(function(c){c.classList.remove('on')});
-    var allChip = document.querySelector('#tmdbGenreChips .chip[data-gid="0"]');
-    if(allChip) allChip.classList.add('on');
-    tmdbState.genre_id = 0;
-  }
   // 切换 media_type 时重新加载类型
   if(mt !== tmdbState.media_type){
     tmdbState.media_type = mt;
@@ -1963,6 +1883,14 @@ async function loadTmdbList(){
   var minRating = parseFloat(document.getElementById('tmdbMinRating').value) || 0;
   var year = parseInt(document.getElementById('tmdbYear').value) || 0;
   var genreId = tmdbState.genre_id || 0;
+
+  // 如果不是 discover，但用户选了类型/评分/年份，自动切换到 discover
+  if(lt !== 'discover' && (genreId > 0 || minRating > 0 || year > 0)){
+    document.getElementById('tmdbListType').value = 'discover';
+    lt = 'discover';
+    onTmdbFilterChange();
+    return;
+  }
 
   var grid = document.getElementById('tmdbGrid');
   grid.innerHTML = '<div class="tmdb-loading" style="grid-column:1/-1"><div class="spinner"></div> 加载中...</div>';
@@ -2050,7 +1978,7 @@ async function transferTmdbSelection(){
   // 构建转存任务
   var mt = document.getElementById('tmdbMediaType').value;
   var category = mt === 'movie' ? 'movie' : 'tv';
-  var savepath = defaultSavepath+'/TMDB';
+  var savepath = '/批量转存/TMDB';
   var tasks = [];
   for(var i=0; i<tmdbState.items.length; i++){
     var item = tmdbState.items[i];
@@ -2067,7 +1995,7 @@ async function transferTmdbSelection(){
   }
   if(!tasks.length){showToast('未找到选中项',false);return}
   try{
-    var d = await apiPost('/api/transfer',{tasks:tasks,limit:5,filters:{},source:'tmdb'});
+    var d = await apiPost('/api/transfer',{tasks:tasks,limit:5,filters:{}});
     if(d.success){
       showToast('已提交 '+tasks.length+' 项转存',true);
       // 切换到手动转存 tab 查看日志
@@ -2170,7 +2098,7 @@ document.addEventListener('click',function(e){
 async function transferOne(btn){
   var title = btn.dataset.title;
   var url = btn.dataset.url;
-  var savepath = localStorage.getItem('search_path')||defaultSavepath+'/手动搜索';
+  var savepath = localStorage.getItem('search_path')||'/批量转存/手动搜索存';
   btn.disabled=true; btn.textContent='转存中...';
   try{
     var r = await apiPost('/api/transfer_one',{title:title, shareurl:url, savepath:savepath});
@@ -2240,11 +2168,9 @@ async function init(){
   initTheme(); initTimeSelects();
   try{C = await apiGet('/api/categories')}
   catch(e){showToast('认证失败，请重新登录',false);setTimeout(function(){location.href='/login.html'},1500);return}
-parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
-checkRunningStatus(); loadDashboard();
-// 预加载默认转存路径
-try{var _cfg=await apiGet('/api/config'); if(_cfg.default_savepath)defaultSavepath=_cfg.default_savepath}catch(e){}
-updateTabIndicator();
+  parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
+  checkRunningStatus(); loadDashboard();
+  updateTabIndicator();
   window.addEventListener('resize', updateTabIndicator);
   initSSE();
 }

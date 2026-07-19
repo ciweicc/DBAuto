@@ -52,10 +52,6 @@ def _init_db():
         conn.execute("ALTER TABLE exec_history ADD COLUMN data TEXT")
     except sqlite3.OperationalError:
         pass
-    try:
-        conn.execute("ALTER TABLE exec_history ADD COLUMN source TEXT")
-    except sqlite3.OperationalError:
-        pass
     conn.execute("CREATE INDEX IF NOT EXISTS idx_exec_time ON exec_history(time DESC)")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -166,7 +162,7 @@ def load_exec_history():
         with _db_lock:
             conn = _get_db()
             rows = conn.execute(
-                "SELECT id, type, detail, status, time, data, source FROM exec_history ORDER BY time DESC LIMIT ?",
+                "SELECT id, type, detail, status, time, data FROM exec_history ORDER BY time DESC LIMIT ?",
                 (_exec_limit,)
             ).fetchall()
             result = []
@@ -176,8 +172,7 @@ def load_exec_history():
                     "type": row["type"],
                     "detail": row["detail"],
                     "status": row["status"],
-                    "time": row["time"],
-                    "source": row["source"] or row["type"]
+                    "time": row["time"]
                 }
                 if row["data"]:
                     try:
@@ -216,7 +211,7 @@ def save_exec_history(data):
             conn.commit()
 
 
-def add_exec_record(typ, detail, status="ok", data=None, source=None):
+def add_exec_record(typ, detail, status="ok", data=None):
     global _exec_cache
     record = {
         "id": uuid.uuid4().hex[:8],
@@ -224,16 +219,15 @@ def add_exec_record(typ, detail, status="ok", data=None, source=None):
         "detail": detail,
         "status": status,
         "time": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S"),
-        "data": data,
-        "source": source or typ
+        "data": data
     }
     with _exec_lock:
         with _db_lock:
             conn = _get_db()
             conn.execute(
-                "INSERT INTO exec_history (id, type, detail, status, time, data, source) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO exec_history (id, type, detail, status, time, data) VALUES (?, ?, ?, ?, ?, ?)",
                 (record["id"], record["type"], record["detail"], record["status"], record["time"],
-                 json.dumps(data, ensure_ascii=False) if data is not None else None, record["source"])
+                 json.dumps(data, ensure_ascii=False) if data is not None else None)
             )
             conn.commit()
         if _exec_cache is not None:
