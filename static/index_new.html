@@ -126,7 +126,7 @@ body::after{
 .icon-btn:active{transform:translateY(0) scale(.95)}
 
 .search-box{
-  position:relative;flex:1;max-width:380px;height:40px;display:flex;align-items:center;
+  position:relative;flex:1;max-width:380px;height:40px;display:flex;align-items:center;cursor:text;
   background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:20px;
   padding:0 14px;transition:all var(--transition-normal);
   -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
@@ -142,7 +142,7 @@ body::after{
   transition:all var(--transition-normal);
 }
 .search-box:focus-within .search-icon{color:var(--accent);transform:scale(1.1);}
-.search-box input{
+.search-box input[type=text]{
   flex:1;border:none;background:transparent;color:var(--text);font-size:14px;
   outline:none;font-family:var(--font);height:100%;padding:0;width:auto;
   border-radius:0;
@@ -779,7 +779,7 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
   <h1>豆瓣自动转存 <span id="headerVersion" style="font-size:12px;font-weight:400;color:var(--text3);margin-left:6px">v1.1.0</span></h1>
   <div class="header-btns">
     <div class="search-wrapper">
-      <div class="search-box" id="searchBox">
+      <div class="search-box" id="searchBox" onclick="document.getElementById('searchInput').focus()">
         <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg>
         <input type="text" id="searchInput" placeholder="搜索资源..." oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()">
         <svg class="search-clear" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" onclick="clearSearch()"><use href="#icon-x-circle"/></svg>
