@@ -1424,13 +1424,14 @@ async function startTransfer(){
     year_from: parseInt(document.getElementById('manualFilterYearFrom').value)||0,
     year_to: parseInt(document.getElementById('manualFilterYearTo').value)||0
   };
+  // 提前清空日志，避免 SSE 早期日志被竞态清除
+  document.getElementById('logCard').style.display='block';
+  logBefore=[]; document.getElementById('log').innerHTML='';
+  addLog('[开始转存]');
   try{
     var d = await apiPost('/api/transfer',{tasks:tasks,limit:limit,filters:filters});
     if(d.success){
-      document.getElementById('logCard').style.display='block';
       document.getElementById('stopBtn').style.display='inline-block';
-      logBefore=[]; document.getElementById('log').innerHTML='';
-      addLog('[开始转存]');
       startLogPoll(3000);logPollTimer._interval=3000;
     }
     else{
@@ -1491,10 +1492,26 @@ function togglePause(){
 function startLogPoll(interval){
   if(logPollTimer)clearInterval(logPollTimer);
   var pollInterval=interval||3000;
+  var lastProgressLen=0;
   logPollTimer = setInterval(async function(){
     if(document.getElementById('logCard').style.display==='none')return;
     try{
       var d = await apiGet('/api/transfer/status');
+      // 同步日志进度（SSE 断连时作为降级方案）
+      if(d.progress&&d.progress.length>0){
+        if(d.progress.length>lastProgressLen){
+          for(var i=lastProgressLen;i<d.progress.length;i++)addLog(d.progress[i]);
+          lastProgressLen=d.progress.length;
+        }
+      }
+      if(d.stats){
+        document.getElementById('stSearched').textContent=d.stats.searched||0;
+        document.getElementById('stOK').textContent=d.stats.ok||0;
+        document.getElementById('stSkip').textContent=d.stats.skipped||0;
+        document.getElementById('stFail').textContent=d.stats.failed||0;
+        document.getElementById('stTotal').textContent=d.stats.total||0;
+        updateProgress(d.stats);
+      }
       if(!d.running&&logPollTimer){clearInterval(logPollTimer);logPollTimer=null;
         document.getElementById('stopBtn').style.display='none';addLog('全部完成');}
     }catch(e){}
@@ -2028,16 +2045,16 @@ async function transferTmdbSelection(){
     }
   }
   if(!tasks.length){showToast('未找到选中项',false);return}
+  // 提前清空日志并切换 tab，避免 SSE 早期日志被竞态清除
+  switchTab('manual');
+  document.getElementById('logCard').style.display='block';
+  logBefore=[]; document.getElementById('log').innerHTML='';
+  addLog('[开始转存 TMDB 选中内容]');
   try{
     var d = await apiPost('/api/transfer',{tasks:tasks,limit:5,filters:{}});
     if(d.success){
       showToast('已提交 '+tasks.length+' 项转存',true);
-      // 切换到手动转存 tab 查看日志
-      switchTab('manual');
-      document.getElementById('logCard').style.display='block';
       document.getElementById('stopBtn').style.display='inline-block';
-      logBefore=[]; document.getElementById('log').innerHTML='';
-      addLog('[开始转存 TMDB 选中内容]');
       startLogPoll(3000);
       clearTmdbSelection();
     }else{
