@@ -2,6 +2,7 @@
 import os, time, uuid, queue, gzip
 from threading import Lock as ThreadLock
 from utils import sse_clients, sse_lock, SSE_MAX
+from routes_base import CSP_HEADER
 
 STATIC_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "static")
 MIME = {".html": "text/html; charset=utf-8", ".js": "application/javascript", ".css": "text/css"}
@@ -77,6 +78,7 @@ class StaticRouteMixin:
         self.send_response(200)
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(resp_body)))
+        self.send_header("Content-Security-Policy", CSP_HEADER)
         if use_gzip:
             self.send_header("Content-Encoding", "gzip")
         if cache_control:

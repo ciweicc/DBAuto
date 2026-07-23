@@ -5,9 +5,10 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>豆瓣自动转存</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* FOUC 防闪烁：在 CSS 之前同步设置主题 */
+(function(){var t=localStorage.getItem('theme')||'dark';document.documentElement.setAttribute('data-theme',t)})();
+</style>
 <style>
 :root {
   --bg:#0a0a0f; --bg-deep:#05050a; --card:rgba(255,255,255,.04);
@@ -21,9 +22,9 @@
   --shadow:0 8px 32px rgba(0,0,0,.35);
   --shadow-sm:0 4px 12px rgba(0,0,0,.2);
   --shadow-glow:0 0 40px rgba(10,132,255,.15);
-  --font-display:'Space Grotesk',-apple-system,BlinkMacSystemFont,'SF Pro Display','Helvetica Neue',sans-serif;
-  --font:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',sans-serif;
-  --mono:'JetBrains Mono','SF Mono','Fira Code',monospace;
+  --font-display:-apple-system,BlinkMacSystemFont,'SF Pro Display','PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;
+  --font:-apple-system,BlinkMacSystemFont,'SF Pro Text','PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;
+  --mono:'SF Mono','Cascadia Code','Fira Code',Consolas,monospace;
   --space-xs:4px; --space-sm:8px; --space-md:12px; --space-lg:16px; --space-xl:20px; --space-2xl:24px; --space-3xl:32px;
   --transition-fast:.15s cubic-bezier(.4,0,.2,1);
   --transition-normal:.25s cubic-bezier(.4,0,.2,1);
@@ -238,6 +239,11 @@ body::after{
   .dash{grid-template-columns:repeat(2,1fr);gap:10px}
   .dcard{padding:14px}
   .dcard .num{font-size:26px}
+  .dcard-wide{grid-column:1/-1}
+  .dcard-wide .num{font-size:13px}
+}
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
 }
 
 /* Segmented Control */
@@ -1164,13 +1170,14 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
 var TOKEN = localStorage.getItem('auth_token')||'';
 if(!TOKEN){location.href='/login.html'}
 function authHeaders(){return{'X-Auth-Token':TOKEN}}
-async function apiGet(url,retries=2){
+async function apiGet(url,retries=2,signal){
 for(let i=0;i<=retries;i++){
 try{
-var r = await fetch(url,{headers:authHeaders()});
-if(r.status===401){TOKEN='';localStorage.removeItem('auth_token');location.href='/login.html';throw new Error('401')}
+var r = await fetch(url,{headers:authHeaders(),signal:signal});
+if(r.status===401){TOKEN='';localStorage.removeItem('auth_token');showToast('登录已过期，正在跳转...',false);setTimeout(function(){location.href='/login.html'},800);throw new Error('401')}
 return r.json()
 }catch(e){
+if(e.name==='AbortError')throw e;
 if(e.message==='401')throw e;
 if(i<retries){await new Promise(r=>setTimeout(r,1000*(i+1)))}
 else throw e
@@ -1181,7 +1188,7 @@ async function apiPost(url,body,retries=2){
 for(let i=0;i<=retries;i++){
 try{
 var r = await fetch(url,{method:'POST',headers:{...authHeaders(),'Content-Type':'application/json'},body:JSON.stringify(body)});
-if(r.status===401){TOKEN='';localStorage.removeItem('auth_token');location.href='/login.html';throw new Error('401')}
+if(r.status===401){TOKEN='';localStorage.removeItem('auth_token');showToast('登录已过期，正在跳转...',false);setTimeout(function(){location.href='/login.html'},800);throw new Error('401')}
 return r.json()
 }catch(e){
 if(e.message==='401')throw e;
@@ -1461,7 +1468,12 @@ async function stopTransfer(){
 }
 
 // ============ Log ============
-function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;')}
+function esc(s){
+  if(s==null)return'';
+  var d=document.createElement('div');
+  d.textContent=String(s);
+  return d.innerHTML.replace(/'/g,'&#39;')
+}
 
 function addLog(line){
   logBefore.push(line);
@@ -1799,7 +1811,6 @@ async function clearExecHistory(){
 
 // ============ Settings ============
 function openSettings(){switchTab('settings')}
-function closeSettings(){}
 async function loadConfig(){
   try{var cfg=await apiGet('/api/config');
     document.getElementById('cfg_pansou').value=cfg.pansou||'';
@@ -1840,7 +1851,7 @@ tmdb_api_key:document.getElementById('cfg_tmdb_api_key').value,
 tmdb_base_url:document.getElementById('cfg_tmdb_base_url').value.trim()};
 try{
 var d=await apiPost('/api/config',cfg);
-if(d.success){if(!silent)showToast('设置已保存',true);if(!silent)closeSettings()}
+if(d.success){if(!silent)showToast('设置已保存',true)}
 else showToast(d.message||'保存失败',false);
 // 保存想看同步设置
 var wishCats=[];document.querySelectorAll('#wishCategoryChips .chip.on').forEach(function(c){wishCats.push(c.dataset.cat)});
@@ -2157,7 +2168,7 @@ async function refreshTmdbCache(){
 }
 
 // ============ Search ============
-var searchTimer=null;
+var searchTimer=null;var searchAbort=null;
 function toggleMobileSearch(){
   var w=document.querySelector('.search-wrapper');
   w.classList.toggle('mobile-show');
@@ -2186,10 +2197,12 @@ async function doSearch(){
   dropdown.classList.add('show');
   var el=document.getElementById('searchResults');
   el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3)"><div class="skeleton-text" style="width:60%;margin:0 auto 8px"></div><div class="skeleton-text" style="width:40%;margin:0 auto"></div></div>';
-  try{var d=await apiGet('/api/search?q='+encodeURIComponent(q));
+  if(searchAbort)searchAbort.abort();
+  searchAbort=new AbortController();
+  try{var d=await apiGet('/api/search?q='+encodeURIComponent(q),2,searchAbort.signal);
     if(!d.results||!d.results.length){el.innerHTML='<div class="empty-state" style="padding:28px 20px"><div class="empty-icon" style="width:44px;height:44px"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-search"/></svg></div><div class="empty-title">没有找到相关资源</div><div class="empty-desc">试试换个关键词，或检查拼写<br>也可以去「手动转存」从榜单中选择</div></div>';return}
     el.innerHTML=d.results.map(function(r){return '<div class=\"search-item\"><div style=\"flex:1;min-width:0\"><div class=\"search-item-title\">'+esc(r.title)+'</div><div class=\"search-item-source\">'+esc(r.source||'夸克网盘')+'</div></div><button class=\"btn btn-sm btn-primary\" onclick=\"transferOne(this)\" data-title=\"'+esc(r.title)+'\" data-url=\"'+esc(r.url)+'\">转存</button></div>'}).join('')}
-  catch(e){el.innerHTML='<div class="empty-state" style="padding:24px"><div class="empty-icon" style="width:40px;height:40px;color:var(--red)"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg></div><div class="empty-title">搜索失败</div><div class="empty-desc">'+esc(e.message||'网络错误')+'</div></div>'}}
+  catch(e){if(e.name==='AbortError')return;el.innerHTML='<div class="empty-state" style="padding:24px"><div class="empty-icon" style="width:40px;height:40px;color:var(--red)"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg></div><div class="empty-title">搜索失败</div><div class="empty-desc">'+esc(e.message||'网络错误')+'</div></div>'}}
 document.addEventListener('click',function(e){
   var dropdown=document.getElementById('searchDropdown');
   var wrapper=document.querySelector('.search-wrapper');

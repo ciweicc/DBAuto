@@ -11,7 +11,7 @@
 # 新增路由时，在对应模块的 Mixin 类中添加 _handle_xxx_get/_handle_xxx_post 方法，
 # 然后在下面的 H 类的 do_GET / do_POST 中调用即可。
 
-from routes_base import BaseRouteHandler
+from routes_base import BaseRouteHandler, _check_rate_limit
 from routes_static import StaticRouteMixin
 from routes_auth import AuthRouteMixin
 from routes_transfer import TransferRouteMixin
@@ -44,7 +44,13 @@ class H(BaseRouteHandler,
         if not AuthRouteMixin._require_auth(self):
             return
 
-        # 3.5 SSE 实时推送（需要认证）
+        # 3.5 API 速率限制
+        ok, retry_after = _check_rate_limit(self._get_client_ip())
+        if not ok:
+            self._send_json({"error": "rate limit exceeded", "retry_after": retry_after}, 429)
+            return
+
+        # 3.6 SSE 实时推送（需要认证）
         if route == "/api/sse":
             StaticRouteMixin._handle_sse(self)
             return
@@ -80,6 +86,12 @@ class H(BaseRouteHandler,
 
         # 2. 需要认证的 API
         if not AuthRouteMixin._require_auth(self):
+            return
+
+        # 2.5 API 速率限制
+        ok, retry_after = _check_rate_limit(self._get_client_ip())
+        if not ok:
+            self._send_json({"error": "rate limit exceeded", "retry_after": retry_after}, 429)
             return
 
         # 3. 转存 & 搜索

@@ -1,8 +1,53 @@
 # routes_base.py — 路由基类 + 路由注册机制
-import json
+import json, time
 from http.server import BaseHTTPRequestHandler
+from threading import Lock
 
 MAX_BODY_SIZE = 1024 * 1024  # 请求体最大 1MB
+
+# CSP 策略：内联 JS/CSS 需保留 unsafe-inline，图片允许 https
+CSP_HEADER = (
+    "default-src 'self'; "
+    "script-src 'self' 'unsafe-inline'; "
+    "style-src 'self' 'unsafe-inline'; "
+    "img-src 'self' data: https:; "
+    "connect-src 'self'; "
+    "font-src 'self'; "
+    "frame-ancestors 'none'"
+)
+
+# API 速率限制
+API_RATE_MAX = 60       # 每分钟最大请求数
+API_RATE_WINDOW = 60    # 窗口（秒）
+_rate_bucket = {}       # {ip: {"count": n, "first": ts}}
+_rate_lock = Lock()
+
+
+def _check_rate_limit(ip):
+    """检查 API 速率限制，返回 (ok, retry_after) """
+    now = time.time()
+    with _rate_lock:
+        r = _rate_bucket.get(ip)
+        if r is None:
+            _rate_bucket[ip] = {"count": 1, "first": now}
+            return True, 0
+        if now - r["first"] > API_RATE_WINDOW:
+            r["count"] = 1
+            r["first"] = now
+            return True, 0
+        r["count"] += 1
+        if r["count"] > API_RATE_MAX:
+            return False, int(API_RATE_WINDOW - (now - r["first"]))
+        return True, 0
+
+
+def _prune_rate_bucket():
+    """清理过期的速率限制记录"""
+    now = time.time()
+    with _rate_lock:
+        expired = [ip for ip, r in _rate_bucket.items() if now - r["first"] > API_RATE_WINDOW]
+        for ip in expired:
+            del _rate_bucket[ip]
 
 
 class BaseRouteHandler(BaseHTTPRequestHandler):
@@ -55,6 +100,7 @@ class BaseRouteHandler(BaseHTTPRequestHandler):
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.send_header("Cache-Control", "no-store")
+        self.send_header("Content-Security-Policy", CSP_HEADER)
         self.end_headers()
         self.wfile.write(body)
 
@@ -63,6 +109,7 @@ class BaseRouteHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Content-Security-Policy", CSP_HEADER)
         self.end_headers()
         self.wfile.write(body)
 
