@@ -1,0 +1,405 @@
+<body>
+<div class="aurora-glow"></div>
+<div class="app">
+
+<!-- Icons Sprite -->
+<svg style="display:none">
+  <defs>
+    <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a84ff"/>
+      <stop offset="50%" style="stop-color:#64d2ff"/>
+      <stop offset="100%" style="stop-color:#30d158"/>
+    </linearGradient>
+  </defs>
+  <symbol id="icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></symbol>
+  <symbol id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
+  <symbol id="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="m4.22 4.22 1.42 1.42"/><path d="m18.36 18.36 1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="m6.34 17.66 1.42-1.42"/><path d="m19.78 4.22-1.42-1.42"/></symbol>
+  <symbol id="icon-settings" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="icon-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
+  <symbol id="icon-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
+  <symbol id="icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+  <symbol id="icon-movie" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="7" y1="3" x2="7" y2="21"/><line x1="17" y1="3" x2="17" y2="21"/><line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="17" x2="21" y2="17"/></symbol>
+  <symbol id="icon-tv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></symbol>
+  <symbol id="icon-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
+  <symbol id="icon-transfer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/><path d="m16 9-3-3-3 3"/><path d="m8 15-3 3 3-3"/></symbol>
+  <symbol id="icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
+  <symbol id="icon-check-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></symbol>
+  <symbol id="icon-x-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></symbol>
+  <symbol id="icon-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></symbol>
+  <symbol id="icon-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/></symbol>
+  <symbol id="icon-delete" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></symbol>
+  <symbol id="icon-pause" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></symbol>
+  <symbol id="icon-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="16"/></symbol>
+  <symbol id="icon-filter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 19 14 12.46 22 3"/></symbol>
+  <symbol id="icon-empty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+</svg>
+
+<!-- Header -->
+<div class="header">
+  <h1>豆瓣自动转存 <span id="headerVersion" style="font-size:12px;font-weight:400;color:var(--text3);margin-left:6px">v1.1.0</span></h1>
+  <div class="header-btns">
+    <div class="search-wrapper">
+      <div class="search-box" id="searchBox" onclick="document.getElementById('searchInput').focus()">
+        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg>
+        <input type="text" id="searchInput" placeholder="搜索资源..." oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()">
+        <svg class="search-clear" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" onclick="clearSearch()"><use href="#icon-x-circle"/></svg>
+      </div>
+      <div class="search-dropdown" id="searchDropdown">
+        <div id="searchResults"></div>
+      </div>
+    </div>
+    <button class="icon-btn search-toggle-btn" onclick="toggleMobileSearch()" title="搜索"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg></button>
+    <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="切换主题"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-moon"/></svg></button>
+    
+  </div>
+</div>
+
+<!-- Dashboard -->
+<div class="dash" id="dashSkeleton">
+  <div class="dcard"><div class="skeleton" style="height:48px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
+  <div class="dcard"><div class="skeleton" style="height:48px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
+  <div class="dcard"><div class="skeleton" style="height:48px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
+  <div class="dcard dcard-wide"><div class="skeleton" style="height:48px;margin-bottom:8px"></div><div class="skeleton-text" style="width:40%"></div></div>
+</div>
+<div class="dash" id="dashContent" style="display:none">
+  <div class="dcard">
+    <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--accent)"><path d="M12 5v14"/><path d="M5 12h14"/><path d="m16 9-3-3-3 3"/><path d="m8 15-3 3 3-3"/></svg>
+    <div class="num blue"><span id="dashToday">-</span></div>
+    <div class="lbl">今日转存</div>
+  </div>
+  <div class="dcard">
+    <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--purple)"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+    <div class="num" style="font-size:13px;color:var(--text2);line-height:1.5;font-weight:500" id="dashNext">加载中...</div>
+    <div class="lbl">下次调度</div>
+  </div>
+  <div class="dcard">
+    <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--green)"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+    <div class="num" id="dashLastStatus" style="font-size:16px;gap:6px"><span class="status-dot" id="dashStatusDot" style="display:none"></span><span id="dashStatusText">-</span></div>
+    <div class="lbl" id="dashLastTime">上次转存</div>
+  </div>
+  <div class="dcard dcard-wide">
+    <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--cyan)"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+    <div class="num"><span class="ok" id="dash7OK">0</span> 成功 / <span class="fail" id="dash7Fail">0</span> 失败</div>
+    <div class="lbl">近 7 天共 <span id="dash7Total" style="color:var(--text);font-weight:600">0</span> 次</div>
+  </div>
+</div>
+<!-- /Dashboard -->
+
+<!-- Tabs -->
+<div class="tabs" id="mainTabs">
+  <div class="tab-indicator" id="tabIndicator"></div>
+  <button class="tab-btn active" onclick="switchTab('manual')">手动转存</button>
+  <button class="tab-btn" onclick="switchTab('schedule')">定时任务</button>
+<button class="tab-btn" onclick="switchTab('tmdb')">TMDB</button>
+  <button class="tab-btn" onclick="switchTab('history')">执行历史</button>
+<button class="tab-btn" onclick="switchTab('settings')">设置</button>
+</div>
+
+<!-- ===== 手动转存 ===== -->
+<div class="tab-content active" id="tabManual">
+  <div class="card movie">
+    <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-movie"/></svg> 电影</div>
+    <div id="catsMovie"></div>
+  </div>
+  <div class="card tv">
+    <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-tv"/></svg> 电视剧</div>
+    <div id="catsTV"></div>
+  </div>
+  <div class="card variety">
+    <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg> 综艺</div>
+    <div id="catsVariety"></div>
+  </div>
+  <div class="card">
+    <div class="row">
+      <span style="color:var(--text2)">每次最多</span>
+      <input type="number" id="limit" value="5" min="1" max="50">
+      <span style="color:var(--text2)">条</span>
+      <button class="btn btn-primary" onclick="startTransfer()">开始转存</button>
+      <button class="btn btn-outline btn-sm" onclick="checkExpired()">检测失效链接</button>
+      <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="syncToSchedule()">同步到定时任务</button>
+    </div>
+    <div class="sched-row" style="margin-top:10px">
+      <span style="color:var(--text2)">最低评分</span>
+      <input type="range" id="manualFilterRating" min="0" max="10" step="0.5" value="0" onchange="updateManualFilterRating()">
+      <span id="manualFilterRatingVal" style="width:30px;text-align:right;color:var(--accent)">0</span>
+    </div>
+    <div class="sched-row">
+      <span style="color:var(--text2)">排序方式</span>
+      <select id="manualFilterSort" class="select">
+        <option value="rating">按评分</option>
+        <option value="year">按年份</option>
+      </select>
+    </div>
+    <div class="sched-row">
+      <span style="color:var(--text2)">年份范围</span>
+      <input type="number" id="manualFilterYearFrom" placeholder="起始" min="1900" max="2100" class="input-sm">
+      <span style="color:var(--text3)">-</span>
+      <input type="number" id="manualFilterYearTo" placeholder="结束" min="1900" max="2100" class="input-sm">
+    </div>
+  </div>
+  <div class="card" id="logCard" style="display:none">
+    <div class="card-title" style="justify-content:space-between">
+      <div style="display:flex;align-items:center;gap:14px">
+        <div class="ring-progress" id="ringProgress">
+          <svg viewBox="0 0 44 44">
+            <circle class="ring-bg" cx="22" cy="22" r="18"/>
+            <circle class="ring-fill" cx="22" cy="22" r="18" id="ringFill"/>
+          </svg>
+          <div class="ring-text" id="ringText">0%</div>
+        </div>
+        <div>
+          <div style="font-size:16px;font-weight:700;font-family:var(--font-display)">执行日志</div>
+          <div style="font-size:12px;color:var(--text3);margin-top:2px" id="ringSubtitle">准备开始...</div>
+        </div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-danger" id="stopBtn" onclick="stopTransfer()">停止</button>
+        <button class="btn btn-sm btn-outline" id="pauseBtn" onclick="togglePause()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-pause"/></svg></button>
+      </div>
+    </div>
+    <div class="progress-stats">
+      <div class="progress-stat">已搜 <span id="stSearched">0</span></div>
+      <div class="progress-stat"><span style="color:var(--green)">成功 <span id="stOK">0</span></span></div>
+      <div class="progress-stat">跳过 <span id="stSkip">0</span></div>
+      <div class="progress-stat"><span style="color:var(--red)">失败 <span id="stFail">0</span></span></div>
+      <div class="progress-stat">共 <span id="stTotal">0</span></div>
+    </div>
+    <div class="filter-tabs" style="margin-bottom:8px">
+      <span class="filter-tab active" onclick="setLogFilter(this,'all')">全部</span>
+      <span class="filter-tab" onclick="setLogFilter(this,'ok')">成功</span>
+      <span class="filter-tab" onclick="setLogFilter(this,'skip')">跳过</span>
+      <span class="filter-tab" onclick="setLogFilter(this,'fail')">失败</span>
+    </div>
+    <div class="log-box" id="log"><div class="empty-state" style="padding:32px 20px"><div class="empty-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-play"/></svg></div><div class="empty-title">准备就绪</div><div class="empty-desc">选择榜单并点击「开始转存」<br>进度和日志将会实时显示在这里</div></div></div>
+  </div>
+</div>
+
+<!-- ===== 定时任务 ===== -->
+<div class="tab-content" id="tabSchedule">
+  <div class="card">
+    <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-movie"/></svg> 电影</div>
+    <div id="schedCatsMovie"></div>
+  </div>
+  <div class="card">
+    <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-tv"/></svg> 电视剧</div>
+    <div id="schedCatsTV"></div>
+  </div>
+  <div class="card">
+    <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg> 综艺</div>
+    <div id="schedCatsVariety"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">转存设置</div>
+    <div class="sched-row">
+      <label class="toggle"><input type="checkbox" id="schedTOn" onchange="autoSaveSchedule()"><span class="slider"></span></label>
+      <span style="color:var(--text2)">启用</span>
+      <span style="color:var(--text2);margin-left:8px">上限</span>
+      <input type="number" id="schedLimit" value="5" min="1" max="50" onchange="autoSaveSchedule()">
+      <span style="color:var(--text2)">条</span>
+      <span style="color:var(--text2);margin-left:8px">时间</span>
+      <select id="schedTHour" onchange="autoSaveSchedule()" class="select"></select>
+      <span style="color:var(--text3)">:</span>
+      <select id="schedTMin" onchange="autoSaveSchedule()" class="select"></select>
+    </div>
+    <div class="sched-row" style="margin-top:8px">
+      <span style="color:var(--text2)">最低评分</span>
+      <input type="range" id="filterRating" min="0" max="10" step="0.5" value="0" onchange="updateFilterRating(); autoSaveSchedule()">
+      <span id="filterRatingVal" style="width:30px;text-align:right;color:var(--accent)">0</span>
+    </div>
+    <div class="sched-row">
+      <span style="color:var(--text2)">排序方式</span>
+      <select id="filterSort" onchange="autoSaveSchedule()" class="select">
+        <option value="rating">按评分</option>
+        <option value="year">按年份</option>
+      </select>
+    </div>
+    <div class="sched-row">
+      <span style="color:var(--text2)">年份范围</span>
+      <input type="number" id="filterYearFrom" placeholder="起始" min="1900" max="2100" onchange="autoSaveSchedule()" class="input-sm">
+      <span style="color:var(--text3)">-</span>
+      <input type="number" id="filterYearTo" placeholder="结束" min="1900" max="2100" onchange="autoSaveSchedule()" class="input-sm">
+    </div>
+  </div>
+  <div class="card">
+    <div class="card-title">失效检测</div>
+    <div class="sched-row">
+      <label class="toggle"><input type="checkbox" id="schedEOn" onchange="autoSaveSchedule()"><span class="slider"></span></label>
+      <span style="color:var(--text2)">启用</span>
+      <span style="color:var(--text2);margin-left:8px">时间</span>
+      <select id="schedEHour" onchange="autoSaveSchedule()" class="select"></select>
+      <span style="color:var(--text3)">:</span>
+      <select id="schedEMin" onchange="autoSaveSchedule()" class="select"></select>
+    </div>
+    <div id="expiredDirList" style="margin-top:10px"></div>
+    <button class="btn btn-outline btn-sm" style="margin-top:8px;border-style:dashed" onclick="addExpiredDir()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加目录</button>
+  </div>
+</div>
+
+<!-- ===== 执行历史 ===== -->
+<div class="tab-content" id="tabHistory">
+  <div class="card">
+    <div class="card-title" style="justify-content:space-between">执行历史 <div><button class="btn btn-sm btn-outline" onclick="clearExecHistory()" style="margin-right:6px">清除</button><button class="btn btn-sm btn-outline" onclick="exportHistory()">导出</button></div></div>
+    <div class="filter-tabs">
+      <span class="filter-tab active" onclick="filterHist('all',this)">全部</span>
+      <span class="filter-tab" onclick="filterHist('transfer',this)">转存</span>
+      <span class="filter-tab" onclick="filterHist('expired_check',this)">检测</span>
+      <span class="filter-tab" onclick="filterHist('config',this)">配置</span>
+    </div>
+    <div id="execHistoryList"><div class="empty-state" style="padding:32px 20px"><div class="empty-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-clock"/></svg></div><div class="empty-title">加载中...</div><div class="empty-desc">正在获取执行记录</div></div></div>
+  </div>
+</div>
+
+<!-- ===== 设置 ===== -->
+<div class="tab-content" id="tabSettings">
+  <div class="card">
+    <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg> 搜索服务</div>
+    <div class="form-group"><label>PanSou 地址</label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">🎬 TMDB 数据源</div>
+    <div class="form-group" style="margin-bottom:0"><label>API Key</label><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"></div>
+    <div class="form-group" style="margin-top:8px"><label>API 地址（可选）</label><input type="text" id="cfg_tmdb_base_url" placeholder="留空自动切换 api.tmdb.org / api.themoviedb.org"></div>
+    <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.5">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">TMDB 官网</a> 申请 API Key。系统自动尝试短域名访问，无需代理</div>
+  </div>
+  <div class="card">
+    <div class="card-title">📦 转存服务</div>
+    <div class="form-group"><label>QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
+    <div class="form-group" style="margin-bottom:0"><label>QAS Token</label><input type="password" id="cfg_qas_token" placeholder="留空不修改"></div>
+  </div>
+  <div class="card">
+    <div class="card-title">🔐 管理认证</div>
+    <div class="form-group"><label>用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
+    <div class="form-group" style="margin-bottom:0"><label>密码</label><input type="password" id="cfg_auth_pass" placeholder="留空不修改"></div>
+  </div>
+  <div class="card">
+    <div class="card-title" style="justify-content:space-between">🎬 豆瓣想看同步 <a href="https://www.douban.com/" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="text-decoration:none">打开豆瓣 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-left:2px"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
+    <div id="wishAccountsList" style="display:flex;flex-direction:column;gap:8px"></div>
+    <button class="btn btn-outline btn-sm" onclick="addWishAccount()" style="margin-top:2px;border-style:dashed"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加豆瓣账号</button>
+    <div class="form-group" style="margin-top:12px"><label>保存路径</label><input type="text" id="cfg_wish_savepath" placeholder="/批量转存/想看"></div>
+    <div class="form-group"><label>分类</label><div class="chips" id="wishCategoryChips" style="margin-top:4px"><span class="chip" data-cat="movie" onclick="toggleWishCat(this)">电影</span><span class="chip" data-cat="tv" onclick="toggleWishCat(this)">电视剧</span></div></div>
+    <div style="border-top:1px solid var(--border);margin:4px 0 8px"></div>
+    <div class="sched-row" style="margin-top:4px">
+      <span class="chip" id="cfg_wish_enabled_chip" onclick="toggleWishEnabled(this)">启用想看同步</span>
+      <button class="btn btn-outline btn-sm" onclick="refreshDoubanCache()">刷新榜单缓存</button>
+    </div>
+  </div>
+  <div class="card">
+    <div class="row" style="justify-content:flex-end">
+      <button class="btn btn-primary btn-sm" onclick="saveConfig(false)">保存设置</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== TMDB ===== -->
+<div class="tab-content" id="tabTmdb">
+  <div id="tmdbKeyWarning" class="tmdb-key-warning" style="display:none">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L8 2 3 7v4a6 6 0 0 0 6 6 6 6 0 0 0 6-6V7l-5-5-2.29 1.86z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    <span>未配置 TMDB API Key，请在「设置」页面填入后保存</span>
+  </div>
+
+  <div class="card">
+    <div class="card-title" style="justify-content:space-between">
+      <span><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg> TMDB 数据源</span>
+      <button class="btn btn-outline btn-sm" onclick="refreshTmdbCache()">刷新缓存</button>
+    </div>
+
+    <div class="tmdb-filter-bar">
+      <div class="tmdb-filter-group">
+        <label>分类</label>
+        <select class="tmdb-select" id="tmdbMediaType" onchange="onTmdbFilterChange()">
+          <option value="movie">电影</option>
+          <option value="tv">电视剧</option>
+        </select>
+      </div>
+      <div class="tmdb-filter-group">
+        <label>榜单类型</label>
+        <select class="tmdb-select" id="tmdbListType" onchange="onTmdbFilterChange()"></select>
+      </div>
+      <div class="tmdb-filter-group">
+        <label>地区/语言</label>
+        <select class="tmdb-select" id="tmdbRegion" onchange="onTmdbFilterChange()"></select>
+      </div>
+      <div class="tmdb-filter-group">
+        <label>排序</label>
+        <select class="tmdb-select" id="tmdbSort" onchange="onTmdbFilterChange()">
+          <option value="popularity.desc">按热度</option>
+          <option value="vote_average.desc">按评分</option>
+          <option value="release_date.desc">按时间</option>
+          <option value="vote_count.desc">按投票数</option>
+        </select>
+      </div>
+      <div class="tmdb-filter-group">
+        <label>最低评分</label>
+        <input type="number" id="tmdbMinRating" min="0" max="10" step="0.5" value="0" style="width:80px" onchange="onTmdbFilterChange()">
+      </div>
+      <div class="tmdb-filter-group">
+        <label>年份</label>
+        <input type="number" id="tmdbYear" min="1900" max="2030" placeholder="全部" style="width:90px" onchange="onTmdbFilterChange()">
+      </div>
+    </div>
+
+    <div class="form-group" style="margin-bottom:12px">
+      <label>类型筛选</label>
+      <div class="tmdb-genre-chips" id="tmdbGenreChips"></div>
+    </div>
+  </div>
+
+  <div class="tmdb-sel-bar" id="tmdbSelBar">
+    <div class="tmdb-sel-count" id="tmdbSelCount">已选 0 部</div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-outline btn-sm" onclick="clearTmdbSelection()">清空选择</button>
+      <button class="btn btn-primary btn-sm" onclick="transferTmdbSelection()">开始转存</button>
+    </div>
+  </div>
+
+  <div id="tmdbGrid" class="tmdb-grid"></div>
+
+  <div class="tmdb-pagination" id="tmdbPagination" style="display:none">
+    <button class="btn btn-outline btn-sm" id="tmdbPrevBtn" onclick="tmdbPrevPage()">上一页</button>
+    <span id="tmdbPageInfo" style="font-size:13px;color:var(--text2);font-weight:600"></span>
+    <button class="btn btn-outline btn-sm" id="tmdbNextBtn" onclick="tmdbNextPage()">下一页</button>
+  </div>
+</div>
+</div>
+
+<!-- Bottom Navigation (Mobile) -->
+<nav class="bottom-nav">
+  <div class="bottom-nav-inner">
+    <div class="nav-item active" onclick="switchTab('manual')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/><path d="m16 9-3-3-3 3"/><path d="m8 15-3 3 3-3"/></svg>
+      <span>转存</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('schedule')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      <span>定时</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('tmdb')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+      <span>TMDB</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('history')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+      <span>历史</span>
+    </div>
+    <div class="nav-item" onclick="switchTab('settings')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      <span>设置</span>
+    </div>
+  </div>
+</nav>
+
+<!-- Toast Container -->
+<div id="toastContainer"></div>
+
+<!-- Confirm Dialog -->
+<div class="confirm-overlay" id="confirmOverlay" onclick="if(event.target===this)resolveConfirm(false)">
+  <div class="confirm-box">
+    <h3 id="confirmTitle">确认</h3>
+    <p id="confirmDesc"></p>
+    <div class="confirm-actions">
+      <button class="btn btn-outline btn-sm" id="confirmCancel" onclick="resolveConfirm(false)">取消</button>
+      <button class="btn btn-primary btn-sm" id="confirmOk" onclick="resolveConfirm(true)">确认</button>
+    </div>
+  </div>
+</div>
+

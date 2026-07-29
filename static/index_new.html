@@ -5,42 +5,125 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>豆瓣自动转存</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
-<style>
+<script>
 /* FOUC 防闪烁：在 CSS 之前同步设置主题 */
 (function(){var t=localStorage.getItem('theme')||'dark';document.documentElement.setAttribute('data-theme',t)})();
-</style>
+</script>
 <style>
+/* ========================================
+   DBAuto Design Tokens
+   CSS Custom Properties for theming
+   ======================================== */
+
 :root {
-  --bg:#0a0a0f; --bg-deep:#05050a; --card:rgba(255,255,255,.04);
-  --border:rgba(255,255,255,.06); --border2:rgba(255,255,255,.1); --border3:rgba(255,255,255,.15);
-  --text:#ffffff; --text2:rgba(255,255,255,.65); --text3:rgba(255,255,255,.4); --text4:rgba(255,255,255,.25);
-  --accent:#0a84ff; --accent2:#5e5ce6; --accent3:#8585ff;
-  --green:#30d158; --red:#ff453a; --orange:#ff9f0a; --purple:#bf5af2; --cyan:#64d2ff;
-  --radius:20px; --radius-sm:14px; --radius-xs:10px; --radius-lg:24px; --radius-xl:28px;
-  --blur:saturate(180%) blur(24px);
-  --blur-xl:saturate(200%) blur(40px);
-  --shadow:0 8px 32px rgba(0,0,0,.35);
-  --shadow-sm:0 4px 12px rgba(0,0,0,.2);
-  --shadow-glow:0 0 40px rgba(10,132,255,.15);
-  --font-display:-apple-system,BlinkMacSystemFont,'SF Pro Display','PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;
-  --font:-apple-system,BlinkMacSystemFont,'SF Pro Text','PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;
-  --mono:'SF Mono','Cascadia Code','Fira Code',Consolas,monospace;
-  --space-xs:4px; --space-sm:8px; --space-md:12px; --space-lg:16px; --space-xl:20px; --space-2xl:24px; --space-3xl:32px;
-  --transition-fast:.15s cubic-bezier(.4,0,.2,1);
-  --transition-normal:.25s cubic-bezier(.4,0,.2,1);
-  --transition-slow:.4s cubic-bezier(.34,1.56,.64,1);
-  --ease-bounce:cubic-bezier(.34,1.56,.64,1);
+  /* Background */
+  --bg: #0a0a0f;
+  --bg-deep: #05050a;
+
+  /* Card */
+  --card: rgba(255, 255, 255, 0.04);
+
+  /* Border (3 levels) */
+  --border: rgba(255, 255, 255, 0.06);
+  --border2: rgba(255, 255, 255, 0.1);
+  --border3: rgba(255, 255, 255, 0.15);
+
+  /* Text (4 levels) */
+  --text: #ffffff;
+  --text2: rgba(255, 255, 255, 0.65);
+  --text3: rgba(255, 255, 255, 0.4);
+  --text4: rgba(255, 255, 255, 0.25);
+
+  /* Accent */
+  --accent: #0a84ff;
+  --accent2: #5e5ce6;
+  --accent3: #8585ff;
+
+  /* Functional Colors */
+  --green: #30d158;
+  --red: #ff453a;
+  --orange: #ff9f0a;
+  --purple: #bf5af2;
+  --cyan: #64d2ff;
+
+  /* Semantic Aliases */
+  --success: var(--green);
+  --danger: var(--red);
+  --warning: var(--orange);
+  --info: var(--cyan);
+
+  /* Status Colors */
+  --status-running: var(--accent);
+  --status-success: var(--green);
+  --status-failed: var(--red);
+  --status-skipped: var(--orange);
+  --status-pending: var(--text3);
+
+  /* Border Radius */
+  --radius: 20px;
+  --radius-sm: 14px;
+  --radius-xs: 10px;
+  --radius-lg: 24px;
+  --radius-xl: 28px;
+
+  /* Blur */
+  --blur: saturate(180%) blur(24px);
+  --blur-xl: saturate(200%) blur(40px);
+
+  /* Shadow */
+  --shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.2);
+  --shadow-glow: 0 0 40px rgba(10, 132, 255, 0.15);
+
+  /* Font */
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
+  --mono: "SF Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+
+  /* Spacing */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 20px;
+  --space-2xl: 24px;
+  --space-3xl: 32px;
+
+  /* Animation */
+  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
+
+/* ===== Light Theme ===== */
 [data-theme="light"] {
-  --bg:#f5f5f7; --bg-deep:#ebebef; --card:rgba(255,255,255,.85);
-  --border:rgba(0,0,0,.06); --border2:rgba(0,0,0,.1); --border3:rgba(0,0,0,.15);
-  --text:#1c1c1e; --text2:rgba(0,0,0,.55); --text3:rgba(0,0,0,.35); --text4:rgba(0,0,0,.2);
-  --accent:#007aff; --accent2:#5856d6; --accent3:#8e8dff;
-  --green:#34c759; --red:#ff3b30; --orange:#ff9500; --purple:#af52de; --cyan:#00a3ff;
-  --shadow:0 4px 20px rgba(0,0,0,.06);
-  --shadow-sm:0 2px 8px rgba(0,0,0,.04);
-  --shadow-glow:0 0 30px rgba(0,122,255,.12);
+  --bg: #f5f5f7;
+  --bg-deep: #ebebef;
+  --card: rgba(255, 255, 255, 0.85);
+  --border: rgba(0, 0, 0, 0.06);
+  --border2: rgba(0, 0, 0, 0.1);
+  --border3: rgba(0, 0, 0, 0.15);
+  --text: #1c1c1e;
+  --text2: rgba(0, 0, 0, 0.55);
+  --text3: rgba(0, 0, 0, 0.35);
+  --text4: rgba(0, 0, 0, 0.2);
+  --accent: #007aff;
+  --accent2: #5856d6;
+  --accent3: #8e8dff;
+  --green: #34c759;
+  --red: #ff3b30;
+  --orange: #ff9500;
+  --purple: #af52de;
+  --cyan: #00a3ff;
+  --shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
+  --shadow-glow: 0 0 30px rgba(0, 122, 255, 0.12);
 }
+/* Tokens are defined in tokens.css (loaded before this file).
+   This file only contains component styles that reference the tokens. */
+
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
 body{
@@ -686,6 +769,22 @@ font-family:var(--font-display);display:flex;align-items:center;gap:8px;
   .sched-row > *{width:100%}
   .tabs{display:none}
   .bottom-nav{display:block}
+
+  /* Touch target optimization: minimum 44px touch targets */
+  .chip{padding:10px 18px;min-height:44px;display:inline-flex;align-items:center}
+  .icon-btn{width:44px;height:44px}
+  .toggle{width:52px;height:32px}
+  .toggle .slider:before{width:26px;height:26px;top:3px;left:3px}
+  .toggle input:checked+.slider:before{transform:translateX(20px)}
+  .btn{padding:14px 28px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
+  .btn-sm{padding:10px 18px;min-height:36px}
+  .filter-tab{padding:8px 16px;min-height:36px;display:inline-flex;align-items:center}
+  .nav-item{padding:8px 18px;min-height:48px}
+  .sel-all{padding:6px 12px;min-height:32px;display:inline-flex;align-items:center}
+  .dir-del{width:36px;height:36px;min-width:36px}
+  .log-pause{padding:8px 16px;min-height:36px}
+  input[type="number"]{min-height:40px}
+  .select,.input-sm{min-height:40px}
 }
 @media(max-width:480px){
   .search-wrapper{display:none}
@@ -768,6 +867,7 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
 </style>
 </head>
 <body>
+<body>
 <div class="aurora-glow"></div>
 <div class="app">
 
@@ -824,7 +924,13 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
 </div>
 
 <!-- Dashboard -->
-<div class="dash">
+<div class="dash" id="dashSkeleton">
+  <div class="dcard"><div class="skeleton" style="height:48px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
+  <div class="dcard"><div class="skeleton" style="height:48px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
+  <div class="dcard"><div class="skeleton" style="height:48px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
+  <div class="dcard dcard-wide"><div class="skeleton" style="height:48px;margin-bottom:8px"></div><div class="skeleton-text" style="width:40%"></div></div>
+</div>
+<div class="dash" id="dashContent" style="display:none">
   <div class="dcard">
     <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--accent)"><path d="M12 5v14"/><path d="M5 12h14"/><path d="m16 9-3-3-3 3"/><path d="m8 15-3 3 3-3"/></svg>
     <div class="num blue"><span id="dashToday">-</span></div>
@@ -846,6 +952,7 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
     <div class="lbl">近 7 天共 <span id="dash7Total" style="color:var(--text);font-weight:600">0</span> 次</div>
   </div>
 </div>
+<!-- /Dashboard -->
 
 <!-- Tabs -->
 <div class="tabs" id="mainTabs">
@@ -1007,7 +1114,7 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
       <span class="filter-tab" onclick="filterHist('expired_check',this)">检测</span>
       <span class="filter-tab" onclick="filterHist('config',this)">配置</span>
     </div>
-    <div id="execHistoryList"><div style="text-align:center;padding:40px;color:var(--text3)">加载中...</div></div>
+    <div id="execHistoryList"><div class="empty-state" style="padding:32px 20px"><div class="empty-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-clock"/></svg></div><div class="empty-title">加载中...</div><div class="empty-desc">正在获取执行记录</div></div></div>
   </div>
 </div>
 
@@ -1222,7 +1329,19 @@ function initTheme(){
   var t = localStorage.getItem('theme')||'dark';
   document.documentElement.setAttribute('data-theme',t);
   var icon = t==='dark'?'icon-moon':'icon-sun';
-  document.getElementById('themeBtn').innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#'+icon+'"/></svg>';
+  var themeBtnEl = document.getElementById('themeBtn');
+  themeBtnEl.textContent='';
+  var themeSvg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  themeSvg.setAttribute('width','18');
+  themeSvg.setAttribute('height','18');
+  themeSvg.setAttribute('viewBox','0 0 24 24');
+  themeSvg.setAttribute('fill','none');
+  themeSvg.setAttribute('stroke','currentColor');
+  themeSvg.setAttribute('stroke-width','2');
+  var themeUse = document.createElementNS('http://www.w3.org/2000/svg','use');
+  themeUse.setAttribute('href','#'+icon);
+  themeSvg.appendChild(themeUse);
+  themeBtnEl.appendChild(themeSvg);
 }
 function toggleTheme(){
   var cur = document.documentElement.getAttribute('data-theme');
@@ -1230,7 +1349,19 @@ function toggleTheme(){
   document.documentElement.setAttribute('data-theme',next);
   localStorage.setItem('theme',next);
   var icon = next==='dark'?'icon-moon':'icon-sun';
-  document.getElementById('themeBtn').innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#'+icon+'"/></svg>';
+  var themeBtnEl = document.getElementById('themeBtn');
+  themeBtnEl.textContent='';
+  var themeSvg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  themeSvg.setAttribute('width','18');
+  themeSvg.setAttribute('height','18');
+  themeSvg.setAttribute('viewBox','0 0 24 24');
+  themeSvg.setAttribute('fill','none');
+  themeSvg.setAttribute('stroke','currentColor');
+  themeSvg.setAttribute('stroke-width','2');
+  var themeUse = document.createElementNS('http://www.w3.org/2000/svg','use');
+  themeUse.setAttribute('href','#'+icon);
+  themeSvg.appendChild(themeUse);
+  themeBtnEl.appendChild(themeSvg);
 }
 
 // ============ Global ============
@@ -1247,7 +1378,12 @@ function showToast(msg,ok,duration){
   var t=document.createElement('div');
   t.className='toast '+(ok?'ok':'err')+' show';
   var icon=ok?'<span class="toast-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-check-circle"/></svg></span>':'<span class="toast-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg></span>';
-  t.innerHTML=icon;
+  var iconSpan = document.createElement('span');
+  iconSpan.className = 'toast-icon';
+  iconSpan.innerHTML = ok
+    ?'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-check-circle"/></svg>'
+    :'<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg>';
+  t.appendChild(iconSpan);
   var msgSpan=document.createElement('span');
   msgSpan.textContent=msg;
   t.appendChild(msgSpan);
@@ -1310,45 +1446,81 @@ function switchTab(tab){
 }
 
 // ============ Categories ============
+function _makeChip(id, path, type, group, gname, label, onClick) {
+  var chip = document.createElement('span');
+  chip.className = 'chip';
+  chip.id = 'c_' + id;
+  chip.dataset.id = id;
+  chip.dataset.path = path;
+  chip.dataset.type = type;
+  chip.dataset.group = group;
+  chip.dataset.gname = gname;
+  chip.textContent = label;
+  chip.addEventListener('click', function() { onClick(chip); });
+  return chip;
+}
+
 function parseCategories(){
   for(var gk in C){
-    var g = C[gk]; var h = '';
+    var g = C[gk];
+    var container = null;
+    if(gk==='movie')container=document.getElementById('catsMovie');
+    else if(gk==='tv')container=document.getElementById('catsTV');
+    else container=document.getElementById('catsVariety');
+    if(!container)continue;
+    container.textContent='';
     for(var sn in g.subs){
       var s = g.subs[sn];
-      h += '<div class="sub-title">'+sn+' <span class="sel-all" onclick="toggleSub(this)">全选</span></div><div class="chips">';
+      var subTitle = document.createElement('div');
+      subTitle.className = 'sub-title';
+      subTitle.textContent = sn + ' ';
+      var selAll = document.createElement('span');
+      selAll.className = 'sel-all';
+      selAll.textContent = '全选';
+      selAll.addEventListener('click', function() { toggleSub(this); });
+      subTitle.appendChild(selAll);
+      container.appendChild(subTitle);
+      var chipsDiv = document.createElement('div');
+      chipsDiv.className = 'chips';
       for(var ti=0; ti<s.types.length; ti++){
         var t = s.types[ti];
         var id = gk+'_'+sn.replace(/\s/g,'_')+'_'+t.replace(/\s/g,'_');
-        h += '<span class="chip" id="c_manual_'+id+'" data-id="'+id+'" data-path="'+s.path+'" data-type="'+t+'" data-group="'+gk+'" data-gname="'+g.name+'" onclick="toggleChip(this)">'+t+'</span>';
+        chipsDiv.appendChild(_makeChip(id, s.path, t, gk, g.name, t, toggleChip));
       }
-      h += '</div>';
+      container.appendChild(chipsDiv);
     }
-    var el = null;
-    if(gk==='movie')el=document.getElementById('catsMovie');
-    else if(gk==='tv')el=document.getElementById('catsTV');
-    else el=document.getElementById('catsVariety');
-    if(el)el.innerHTML = h;
   }
 }
 
 function parseSchedCats(){
   for(var gk in C){
-    var g = C[gk]; var h = '';
+    var g = C[gk];
+    var container = null;
+    if(gk==='movie')container=document.getElementById('schedCatsMovie');
+    else if(gk==='tv')container=document.getElementById('schedCatsTV');
+    else container=document.getElementById('schedCatsVariety');
+    if(!container)continue;
+    container.textContent='';
     for(var sn in g.subs){
       var s = g.subs[sn];
-      h += '<div class="sub-title">'+sn+' <span class="sel-all" onclick="toggleSubSched(this)">全选</span></div><div class="chips">';
+      var subTitle = document.createElement('div');
+      subTitle.className = 'sub-title';
+      subTitle.textContent = sn + ' ';
+      var selAll = document.createElement('span');
+      selAll.className = 'sel-all';
+      selAll.textContent = '全选';
+      selAll.addEventListener('click', function() { toggleSubSched(this); });
+      subTitle.appendChild(selAll);
+      container.appendChild(subTitle);
+      var chipsDiv = document.createElement('div');
+      chipsDiv.className = 'chips';
       for(var ti=0; ti<s.types.length; ti++){
         var t = s.types[ti];
         var id = 'sch_'+gk+'_'+sn.replace(/\s/g,'_')+'_'+t.replace(/\s/g,'_');
-        h += '<span class="chip" id="c_'+id+'" data-id="'+id+'" data-path="'+s.path+'" data-type="'+t+'" data-group="'+gk+'" data-gname="'+g.name+'" onclick="toggleSchedChip(this)">'+t+'</span>';
+        chipsDiv.appendChild(_makeChip(id, s.path, t, gk, g.name, t, toggleSchedChip));
       }
-      h += '</div>';
+      container.appendChild(chipsDiv);
     }
-    var el = null;
-    if(gk==='movie')el=document.getElementById('schedCatsMovie');
-    else if(gk==='tv')el=document.getElementById('schedCatsTV');
-    else el=document.getElementById('schedCatsVariety');
-    if(el)el.innerHTML = h;
   }
 }
 
@@ -1366,13 +1538,41 @@ function _makeWishAccRow(i,a){
 var row=document.createElement('div');
 row.className='wish-acc-row';
 row.style.cssText='border:1px solid var(--border);border-radius:12px;padding:12px;background:rgba(255,255,255,.02)';
-row.innerHTML='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'
-+'<span style="font-size:13px;font-weight:600;color:var(--text2);font-family:var(--font-display)">账号 '+(i+1)+'</span>'
-+'<button class="btn btn-sm btn-outline" onclick="removeWishAccount(this)" style="color:var(--text3)">移除</button>'
-+'</div>'
-+'<div class="form-group" style="margin-bottom:8px"><label>备注</label><input type="text" class="wish-acc-name" placeholder="可选备注名" value="'+esc(a.name||'')+'"></div>'
-+'<div class="form-group" style="margin-bottom:8px"><label>豆瓣用户 ID</label><input type="text" class="wish-acc-uid" placeholder="豆瓣个人主页 URL 中的 ID" value="'+esc(a.uid||'')+'"></div>'
-+'<div class="form-group" style="margin-bottom:0"><label>豆瓣 Cookie</label><input type="password" class="wish-acc-cookie" placeholder="留空不修改"></div>';
+var headerDiv = document.createElement('div');
+headerDiv.style.cssText = 'display:flex;justify-content:space-between;align-items:center;margin-bottom:8px';
+var headerSpan = document.createElement('span');
+headerSpan.style.cssText = 'font-size:13px;font-weight:600;color:var(--text2);font-family:var(--font-display)';
+headerSpan.textContent = '账号 '+(i+1);
+var removeBtn = document.createElement('button');
+removeBtn.className = 'btn btn-sm btn-outline';
+removeBtn.style.color = 'var(--text3)';
+removeBtn.textContent = '移除';
+removeBtn.addEventListener('click', function(){ removeWishAccount(this); });
+headerDiv.appendChild(headerSpan);
+headerDiv.appendChild(removeBtn);
+
+function _makeFormGroup(labelText, inputClass, placeholder, value, type) {
+  var group = document.createElement('div');
+  group.className = 'form-group';
+  group.style.marginBottom = '8px';
+  var label = document.createElement('label');
+  label.textContent = labelText;
+  var input = document.createElement('input');
+  input.type = type || 'text';
+  input.className = inputClass;
+  input.placeholder = placeholder;
+  if(value) input.value = value;
+  group.appendChild(label);
+  group.appendChild(input);
+  return group;
+}
+
+row.appendChild(headerDiv);
+row.appendChild(_makeFormGroup('备注','wish-acc-name','可选备注名',a.name||''));
+row.appendChild(_makeFormGroup('豆瓣用户 ID','wish-acc-uid','豆瓣个人主页 URL 中的 ID',a.uid||''));
+var cookieGroup = _makeFormGroup('豆瓣 Cookie','wish-acc-cookie','留空不修改','','password');
+cookieGroup.style.marginBottom = '0';
+row.appendChild(cookieGroup);
 return row;
 }
 function addWishAccount(){
@@ -1444,7 +1644,7 @@ async function startTransfer(){
   };
   // 提前清空日志，避免 SSE 早期日志被竞态清除
   document.getElementById('logCard').style.display='block';
-  logBefore=[]; document.getElementById('log').innerHTML='';
+  logBefore=[]; document.getElementById('log').textContent='';
   addLog('[开始转存]');
   try{
     var d = await apiPost('/api/transfer',{tasks:tasks,limit:limit,filters:filters});
@@ -1488,7 +1688,8 @@ function matchFilter(line){
   return true;
 }
 function renderLog(){
-  var el = document.getElementById('log'); el.innerHTML='';
+  var el = document.getElementById('log');
+  el.textContent='';
   for(var i=0;i<logBefore.length;i++){if(matchFilter(logBefore[i])) appendLine(logBefore[i])}
   if(!logPaused){el.scrollTop=el.scrollHeight}
 }
@@ -1499,7 +1700,10 @@ function appendLine(line){
   else if(line.indexOf('失败')>=0||line.indexOf('未找到')>=0||line.indexOf('not found')>=0||line.indexOf('错误')>=0||line.indexOf('error')>=0)cls='er';
   else if(line.indexOf('跳过')>=0||line.indexOf('已存在')>=0||line.indexOf('exists')>=0)cls='sk';
   else if(line.indexOf('找到')>=0)cls='inf';
-  el.innerHTML+='<div class="log-line '+cls+'">'+esc(line)+'</div>';
+  var lineEl = document.createElement('div');
+  lineEl.className = 'log-line ' + cls;
+  lineEl.textContent = line;
+  el.appendChild(lineEl);
   if(!logPaused)el.scrollTop=el.scrollHeight;
 }
 function setLogFilter(btn,type){
@@ -1510,7 +1714,68 @@ function setLogFilter(btn,type){
 }
 function togglePause(){
   logPaused=!logPaused;
-  document.getElementById('pauseBtn').innerHTML=logPaused?'<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><use href=\"#icon-play\"/></svg>':'<svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><use href=\"#icon-pause\"/></svg>';
+  var pauseIcon = logPaused ? 'icon-play' : 'icon-pause';
+  var pauseBtnEl = document.getElementById('pauseBtn');
+  pauseBtnEl.textContent='';
+  var pauseSvg = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  pauseSvg.setAttribute('width','14');
+  pauseSvg.setAttribute('height','14');
+  pauseSvg.setAttribute('viewBox','0 0 24 24');
+  pauseSvg.setAttribute('fill','none');
+  pauseSvg.setAttribute('stroke','currentColor');
+  pauseSvg.setAttribute('stroke-width','2');
+  var pauseUse = document.createElementNS('http://www.w3.org/2000/svg','use');
+  pauseUse.setAttribute('href','#'+pauseIcon);
+  pauseSvg.appendChild(pauseUse);
+  pauseBtnEl.appendChild(pauseSvg);
+}
+
+// 智能滚动跟随：用户手动上翻时暂停自动滚动，回到底部时恢复
+(function(){
+  var logBox = document.getElementById('log');
+  if(logBox){
+    logBox.addEventListener('scroll', function(){
+      var isAtBottom = this.scrollHeight - this.scrollTop <= this.clientHeight + 50;
+      if(!logPaused && !isAtBottom){
+        // 用户上翻，临时暂停（不改变 logPaused 状态，只是不滚动到底部）
+      }
+    });
+  }
+})();
+
+// 日志搜索功能
+function filterLogSearch(keyword){
+  var el = document.getElementById('log');
+  el.textContent='';
+  var kw = (keyword||'').toLowerCase();
+  for(var i=0;i<logBefore.length;i++){
+    var line = logBefore[i];
+    if(kw && line.toLowerCase().indexOf(kw)<0) continue;
+    if(matchFilter(line)) appendLine(line);
+  }
+}
+
+// 复制全部日志
+function copyAllLogs(){
+  var text = logBefore.join('\n');
+  if(navigator.clipboard){
+    navigator.clipboard.writeText(text).then(function(){
+      showToast('已复制 '+logBefore.length+' 条日志',true);
+    }).catch(function(){
+      showToast('复制失败',false);
+    });
+  }else{
+    // 降级方案
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.style.position = 'fixed';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    try{document.execCommand('copy');showToast('已复制 '+logBefore.length+' 条日志',true)}
+    catch(e){showToast('复制失败',false)}
+    document.body.removeChild(ta);
+  }
 }
 
 function startLogPoll(interval, initLen, skipFirstSync){
@@ -1563,7 +1828,18 @@ function updateProgress(stats){
   if(ringText)ringText.textContent=pct+'%';
   if(ringSub){
     if(total>0){
-      ringSub.textContent='已完成 '+done+' / '+total+' 个任务';
+      var elapsed = '';
+      if(stats.start_time){
+        try{
+          var start = new Date(stats.start_time.replace(' ','T'));
+          var now = new Date();
+          var diff = Math.floor((now-start)/1000);
+          var mins = Math.floor(diff/60);
+          var secs = diff%60;
+          elapsed = ' | 已用 '+mins+'分'+secs+'秒';
+        }catch(e){}
+      }
+      ringSub.textContent='已完成 '+done+' / '+total+' 个任务'+elapsed;
     }else{
       ringSub.textContent='正在搜索资源...';
     }
@@ -1584,7 +1860,7 @@ async function checkRunningStatus(){
 }
 async function checkExpired(){
   if(logPollTimer){clearInterval(logPollTimer);logPollTimer=null;logPollInterval=0}
-  document.getElementById('logCard').style.display='block'; logBefore=[]; document.getElementById('log').innerHTML='';
+  document.getElementById('logCard').style.display='block'; logBefore=[]; document.getElementById('log').textContent='';
   addLog('正在检测失效链接...');
   try{
     var d = await apiGet('/api/check_expired');
@@ -1671,9 +1947,24 @@ function updateManualFilterRating(){
   document.getElementById('manualFilterRatingVal').textContent = document.getElementById('manualFilterRating').value;
 }
 function renderExpiredDirs(){
-  var el=document.getElementById('expiredDirList'),h='';
-  expiredDirEntries.forEach(function(d,i){h+='<div class="dir-item"><input type="text" value="'+esc(d)+'" placeholder="/影视/电视剧" onchange="expiredDirEntries['+i+']=this.value;autoSaveSchedule()"><span class="dir-del" onclick="removeExpiredDir('+i+')"><svg width=\"14\" height=\"14\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><use href=\"#icon-delete\"/></svg></span></div>'});
-  el.innerHTML=h;
+  var el=document.getElementById('expiredDirList');
+  el.textContent='';
+  expiredDirEntries.forEach(function(d,i){
+    var item = document.createElement('div');
+    item.className = 'dir-item';
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.value = d;
+    input.placeholder = '/影视/电视剧';
+    input.addEventListener('change', function(){ expiredDirEntries[i]=this.value; autoSaveSchedule(); });
+    var delBtn = document.createElement('span');
+    delBtn.className = 'dir-del';
+    delBtn.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-delete"/></svg>';
+    delBtn.addEventListener('click', function(){ removeExpiredDir(i); });
+    item.appendChild(input);
+    item.appendChild(delBtn);
+    el.appendChild(item);
+  });
 }
 function addExpiredDir(){expiredDirEntries.push('');renderExpiredDirs();autoSaveSchedule()}
 function removeExpiredDir(i){expiredDirEntries.splice(i,1);if(!expiredDirEntries.length)expiredDirEntries=[''];renderExpiredDirs();autoSaveSchedule()}
@@ -1683,13 +1974,21 @@ var histPage=0, histMore=true;
 async function loadExecHistory(){
   histPage=1;histMore=true;
   var el=document.getElementById('execHistoryList');
-  el.innerHTML='<div class="skeleton-row"></div><div class="skeleton-row"></div><div class="skeleton-row"></div><div class="skeleton-row"></div><div class="skeleton-row"></div>';
+  el.textContent='';
+  for(var i=0;i<5;i++){
+    var sk = document.createElement('div');
+    sk.className = 'skeleton-row';
+    el.appendChild(sk);
+  }
   try{
     var data = await apiGet('/api/exec_history?limit=50');
     execHistoryData = data.items || data || [];
     if(execHistoryData.length < 50) histMore=false;
     renderExecHistory();
-  }catch(e){el.innerHTML='<div class="empty-state"><div class="empty-icon" style="color:var(--red);opacity:.6"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-x-circle"/></svg></div><div class="empty-title">加载失败了</div><div class="empty-desc">'+esc(e.message||'网络连接可能有问题')+'<br>请检查网络后刷新页面重试</div></div>'}
+  }catch(e){
+    el.textContent='';
+    el.appendChild(_makeEmptyState('icon-x-circle','加载失败了',esc(e.message||'网络连接可能有问题')+'<br>请检查网络后刷新页面重试'));
+  }
 }
 async function loadMoreHistory(){
   if(!histMore)return; histPage++;
@@ -1708,30 +2007,88 @@ async function loadMoreHistory(){
     histPage--;
   }
 }
+function _makeEmptyState(iconId, title, descHTML) {
+  var wrapper = document.createElement('div');
+  wrapper.className = 'empty-state';
+  var iconDiv = document.createElement('div');
+  iconDiv.className = 'empty-icon';
+  iconDiv.innerHTML = '<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#'+iconId+'"/></svg>';
+  var titleDiv = document.createElement('div');
+  titleDiv.className = 'empty-title';
+  titleDiv.textContent = title;
+  var descDiv = document.createElement('div');
+  descDiv.className = 'empty-desc';
+  descDiv.innerHTML = descHTML;
+  wrapper.appendChild(iconDiv);
+  wrapper.appendChild(titleDiv);
+  wrapper.appendChild(descDiv);
+  return wrapper;
+}
+
 function renderExecHistory(){
   var el = document.getElementById('execHistoryList');
   var filtered = execHistoryFilter==='all'?execHistoryData.filter(function(h){return h.type!=='history'&&h.type!=='schedule'}).slice():execHistoryData.filter(function(h){return h.type===execHistoryFilter});
-  if(!filtered.length){el.innerHTML='<div class="empty-state"><div class="empty-icon"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-clock"/></svg></div><div class="empty-title">还没有执行记录</div><div class="empty-desc">去「手动转存」选择一个榜单开始吧<br>每次转存和检测都会记录在这里</div></div>';return}
-  el.innerHTML = filtered.reverse().map(function(h){
-    var icon='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-transfer"/></svg>',cls='transfer',tn='转存';
-    if(h.type==='expired_check'){icon='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-refresh"/></svg>';cls='expired';tn='检测'}
-    else if(h.type==='config'){icon='<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-settings"/></svg>';cls='config';tn='配置'}
+  el.textContent='';
+  if(!filtered.length){
+    el.appendChild(_makeEmptyState('icon-clock','还没有执行记录','去「手动转存」选择一个榜单开始吧<br>每次转存和检测都会记录在这里'));
+    return;
+  }
+  filtered.reverse().forEach(function(h){
+    var iconId='icon-transfer',cls='transfer',tn='转存';
+    if(h.type==='expired_check'){iconId='icon-refresh';cls='expired';tn='检测'}
+    else if(h.type==='config'){iconId='icon-settings';cls='config';tn='配置'}
     var hasDetail = h.data && (h.data.results || h.data.expired);
-    var cursor = hasDetail ? 'cursor:pointer' : '';
     var hid = String(h.id);
-    return '<div class="hist-item" style="'+cursor+'" onclick="toggleHistDetail(\''+esc(hid)+'\')" id="hist_'+esc(hid)+'">'+
-      '<div class="hist-icon '+cls+'">'+icon+'</div>'+
-      '<div class="hist-info">'+
-        '<div class="hist-title">'+esc(h.detail)+'</div>'+
-        '<div class="hist-meta">'+tn+(hasDetail?' · 点击查看详情':'')+'</div>'+
-      '</div>'+
-      '<div class="hist-time">'+esc(h.time)+'</div>'+
-      '</div>'+
-      '<div class="hist-detail" id="hist_detail_'+esc(hid)+'" style="display:none;padding:0 16px 16px 60px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)">'+
-        renderHistDetailContent(h)+
-      '</div>';
-  }).join('');
-  if(histMore)el.innerHTML+='<div style=\"text-align:center;padding:12px;margin-top:6px\"><button class=\"btn btn-outline btn-sm\" onclick=\"loadMoreHistory()\">加载更多</button></div>';
+
+    var item = document.createElement('div');
+    item.className = 'hist-item';
+    if(hasDetail) item.style.cursor = 'pointer';
+    item.id = 'hist_' + hid;
+
+    var iconDiv = document.createElement('div');
+    iconDiv.className = 'hist-icon ' + cls;
+    iconDiv.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#'+iconId+'"/></svg>';
+
+    var infoDiv = document.createElement('div');
+    infoDiv.className = 'hist-info';
+    var titleDiv = document.createElement('div');
+    titleDiv.className = 'hist-title';
+    titleDiv.textContent = h.detail;
+    var metaDiv = document.createElement('div');
+    metaDiv.className = 'hist-meta';
+    metaDiv.textContent = tn + (hasDetail ? ' · 点击查看详情' : '');
+    infoDiv.appendChild(titleDiv);
+    infoDiv.appendChild(metaDiv);
+
+    var timeDiv = document.createElement('div');
+    timeDiv.className = 'hist-time';
+    timeDiv.textContent = h.time;
+
+    item.appendChild(iconDiv);
+    item.appendChild(infoDiv);
+    item.appendChild(timeDiv);
+    item.addEventListener('click', function(){ toggleHistDetail(hid); });
+    el.appendChild(item);
+
+    if(hasDetail){
+      var detailDiv = document.createElement('div');
+      detailDiv.className = 'hist-detail';
+      detailDiv.id = 'hist_detail_' + hid;
+      detailDiv.style.cssText = 'display:none;padding:0 16px 16px 60px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)';
+      detailDiv.innerHTML = renderHistDetailContent(h);
+      el.appendChild(detailDiv);
+    }
+  });
+  if(histMore){
+    var moreDiv = document.createElement('div');
+    moreDiv.style.cssText = 'text-align:center;padding:12px;margin-top:6px';
+    var moreBtn = document.createElement('button');
+    moreBtn.className = 'btn btn-outline btn-sm';
+    moreBtn.textContent = '加载更多';
+    moreBtn.addEventListener('click', loadMoreHistory);
+    moreDiv.appendChild(moreBtn);
+    el.appendChild(moreDiv);
+  }
 }
 function renderHistDetailContent(h){
   if(!h.data) return '<div style=\"color:var(--text3);font-size:13px\">无详情</div>';
@@ -2111,7 +2468,7 @@ async function transferTmdbSelection(){
   // 提前清空日志并切换 tab，避免 SSE 早期日志被竞态清除
   switchTab('manual');
   document.getElementById('logCard').style.display='block';
-  logBefore=[]; document.getElementById('log').innerHTML='';
+  logBefore=[]; document.getElementById('log').textContent='';
   addLog('[开始转存 TMDB 选中内容]');
   try{
     var d = await apiPost('/api/transfer',{tasks:tasks,limit:5,filters:{}});
@@ -2196,13 +2553,87 @@ async function doSearch(){
   var dropdown=document.getElementById('searchDropdown');
   dropdown.classList.add('show');
   var el=document.getElementById('searchResults');
-  el.innerHTML='<div style="text-align:center;padding:20px;color:var(--text3)"><div class="skeleton-text" style="width:60%;margin:0 auto 8px"></div><div class="skeleton-text" style="width:40%;margin:0 auto"></div></div>';
+  el.textContent='';
+  var skWrap = document.createElement('div');
+  skWrap.style.cssText = 'text-align:center;padding:20px;color:var(--text3)';
+  var sk1 = document.createElement('div');
+  sk1.className = 'skeleton-text';
+  sk1.style.cssText = 'width:60%;margin:0 auto 8px';
+  var sk2 = document.createElement('div');
+  sk2.className = 'skeleton-text';
+  sk2.style.cssText = 'width:40%;margin:0 auto';
+  skWrap.appendChild(sk1);
+  skWrap.appendChild(sk2);
+  el.appendChild(skWrap);
   if(searchAbort)searchAbort.abort();
   searchAbort=new AbortController();
   try{var d=await apiGet('/api/search?q='+encodeURIComponent(q),2,searchAbort.signal);
-    if(!d.results||!d.results.length){el.innerHTML='<div class="empty-state" style="padding:28px 20px"><div class="empty-icon" style="width:44px;height:44px"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-search"/></svg></div><div class="empty-title">没有找到相关资源</div><div class="empty-desc">试试换个关键词，或检查拼写<br>也可以去「手动转存」从榜单中选择</div></div>';return}
-    el.innerHTML=d.results.map(function(r){return '<div class=\"search-item\"><div style=\"flex:1;min-width:0\"><div class=\"search-item-title\">'+esc(r.title)+'</div><div class=\"search-item-source\">'+esc(r.source||'夸克网盘')+'</div></div><button class=\"btn btn-sm btn-primary\" onclick=\"transferOne(this)\" data-title=\"'+esc(r.title)+'\" data-url=\"'+esc(r.url)+'\">转存</button></div>'}).join('')}
-  catch(e){if(e.name==='AbortError')return;el.innerHTML='<div class="empty-state" style="padding:24px"><div class="empty-icon" style="width:40px;height:40px;color:var(--red)"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg></div><div class="empty-title">搜索失败</div><div class="empty-desc">'+esc(e.message||'网络错误')+'</div></div>'}}
+    if(!d.results||!d.results.length){
+      el.textContent='';
+      var emptyWrap = document.createElement('div');
+      emptyWrap.className = 'empty-state';
+      emptyWrap.style.padding = '28px 20px';
+      var emptyIcon = document.createElement('div');
+      emptyIcon.className = 'empty-icon';
+      emptyIcon.style.cssText = 'width:44px;height:44px';
+      emptyIcon.innerHTML = '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-search"/></svg>';
+      var emptyTitle = document.createElement('div');
+      emptyTitle.className = 'empty-title';
+      emptyTitle.textContent = '没有找到相关资源';
+      var emptyDesc = document.createElement('div');
+      emptyDesc.className = 'empty-desc';
+      emptyDesc.innerHTML = '试试换个关键词，或检查拼写<br>也可以去「手动转存」从榜单中选择';
+      emptyWrap.appendChild(emptyIcon);
+      emptyWrap.appendChild(emptyTitle);
+      emptyWrap.appendChild(emptyDesc);
+      el.appendChild(emptyWrap);
+      return;
+    }
+    el.textContent='';
+    d.results.forEach(function(r){
+      var item = document.createElement('div');
+      item.className = 'search-item';
+      var infoDiv = document.createElement('div');
+      infoDiv.style.cssText = 'flex:1;min-width:0';
+      var titleDiv = document.createElement('div');
+      titleDiv.className = 'search-item-title';
+      titleDiv.textContent = r.title;
+      var sourceDiv = document.createElement('div');
+      sourceDiv.className = 'search-item-source';
+      sourceDiv.textContent = r.source||'夸克网盘';
+      infoDiv.appendChild(titleDiv);
+      infoDiv.appendChild(sourceDiv);
+      var btn = document.createElement('button');
+      btn.className = 'btn btn-sm btn-primary';
+      btn.textContent = '转存';
+      btn.dataset.title = r.title;
+      btn.dataset.url = r.url;
+      btn.addEventListener('click', function(){ transferOne(this); });
+      item.appendChild(infoDiv);
+      item.appendChild(btn);
+      el.appendChild(item);
+    });}
+  catch(e){
+    if(e.name==='AbortError')return;
+    el.textContent='';
+    var failWrap = document.createElement('div');
+    failWrap.className = 'empty-state';
+    failWrap.style.padding = '24px';
+    var failIcon = document.createElement('div');
+    failIcon.className = 'empty-icon';
+    failIcon.style.cssText = 'width:40px;height:40px;color:var(--red)';
+    failIcon.innerHTML = '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg>';
+    var failTitle = document.createElement('div');
+    failTitle.className = 'empty-title';
+    failTitle.textContent = '搜索失败';
+    var failDesc = document.createElement('div');
+    failDesc.className = 'empty-desc';
+    failDesc.textContent = e.message||'网络错误';
+    failWrap.appendChild(failIcon);
+    failWrap.appendChild(failTitle);
+    failWrap.appendChild(failDesc);
+    el.appendChild(failWrap);
+  }}
 document.addEventListener('click',function(e){
   var dropdown=document.getElementById('searchDropdown');
   var wrapper=document.querySelector('.search-wrapper');
@@ -2228,11 +2659,36 @@ async function loadDashboard(){
   try{
     var s = await apiGet('/api/schedule');
     if(s._status){
-      var ss=s._status, h='<div style=\"display:grid;grid-template-columns:auto 1fr;gap:3px 10px;align-items:center\">';
-      if(ss.transfer_next) h+='<span style=\"display:flex;align-items:center;gap:5px;white-space:nowrap;color:var(--text3);font-size:12px\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><use href=\"#icon-transfer\"/></svg> 转存</span><span style=\"text-align:right;color:var(--text2);white-space:nowrap;font-size:12px;font-weight:500\">'+ss.transfer_next.slice(5)+'</span>';
-      if(ss.expired_check_next) h+='<span style=\"display:flex;align-items:center;gap:5px;white-space:nowrap;color:var(--text3);font-size:12px\"><svg width=\"13\" height=\"13\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"><use href=\"#icon-refresh\"/></svg> 检测</span><span style=\"text-align:right;color:var(--text2);white-space:nowrap;font-size:12px;font-weight:500\">'+ss.expired_check_next.slice(5)+'</span>';
-      h+='</div>';
-      document.getElementById('dashNext').innerHTML = h||'暂无调度';
+      var ss=s._status;
+      var dashNextEl = document.getElementById('dashNext');
+      dashNextEl.textContent = '';
+      var gridDiv = document.createElement('div');
+      gridDiv.style.cssText = 'display:grid;grid-template-columns:auto 1fr;gap:3px 10px;align-items:center';
+      if(ss.transfer_next){
+        var tLabel = document.createElement('span');
+        tLabel.style.cssText = 'display:flex;align-items:center;gap:5px;white-space:nowrap;color:var(--text3);font-size:12px';
+        tLabel.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-transfer"/></svg> 转存';
+        var tVal = document.createElement('span');
+        tVal.style.cssText = 'text-align:right;color:var(--text2);white-space:nowrap;font-size:12px;font-weight:500';
+        tVal.textContent = ss.transfer_next.slice(5);
+        gridDiv.appendChild(tLabel);
+        gridDiv.appendChild(tVal);
+      }
+      if(ss.expired_check_next){
+        var eLabel = document.createElement('span');
+        eLabel.style.cssText = 'display:flex;align-items:center;gap:5px;white-space:nowrap;color:var(--text3);font-size:12px';
+        eLabel.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-refresh"/></svg> 检测';
+        var eVal = document.createElement('span');
+        eVal.style.cssText = 'text-align:right;color:var(--text2);white-space:nowrap;font-size:12px;font-weight:500';
+        eVal.textContent = ss.expired_check_next.slice(5);
+        gridDiv.appendChild(eLabel);
+        gridDiv.appendChild(eVal);
+      }
+      if(ss.transfer_next || ss.expired_check_next){
+        dashNextEl.appendChild(gridDiv);
+      } else {
+        dashNextEl.textContent = '暂无调度';
+      }
     }
     var stats = await apiGet('/api/dashboard/stats');
     var todayEl = document.getElementById('dashToday');
@@ -2264,6 +2720,13 @@ async function loadDashboard(){
     }
     try{var v=await apiGet('/version');if(v.version)document.getElementById('headerVersion').textContent='v'+v.version}catch(e){}
   }catch(e){}
+  finally{
+    // 骨架屏 → 真实内容
+    var sk = document.getElementById('dashSkeleton');
+    var ct = document.getElementById('dashContent');
+    if(sk) sk.style.display = 'none';
+    if(ct) ct.style.display = 'grid';
+  }
 }
 
 // ============ Init ============
