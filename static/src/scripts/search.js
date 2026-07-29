@@ -119,7 +119,7 @@ document.addEventListener('click',function(e){
 async function transferOne(btn){
   var title = btn.dataset.title;
   var url = btn.dataset.url;
-  var savepath = localStorage.getItem('search_path')||'/批量转存/手动搜索存';
+  var savepath = APP_PATHS.search||'/批量转存/手动搜索存';
   btn.disabled=true; btn.textContent='转存中...';
   try{
     var r = await apiPost('/api/transfer_one',{title:title, shareurl:url, savepath:savepath});

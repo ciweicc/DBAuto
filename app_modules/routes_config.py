@@ -151,7 +151,7 @@ class ConfigRouteMixin:
             action = body.get("action", "save")
 
             if action == "save":
-                for section in ("transfer", "expired_check", "douban_wish"):
+                for section in ("transfer", "expired_check", "douban_wish", "savepaths"):
                     if section in body:
                         section_data = body[section]
                         if section not in settings:
@@ -186,6 +186,18 @@ class ConfigRouteMixin:
                             if not ok:
                                 self._send_json({"success": False, "message": "{} directories: {}".format(section, msg)}, 400)
                                 return True
+
+                        # 转存路径配置
+                        if section == "savepaths":
+                            for pk in ("category_base", "search", "tmdb"):
+                                if pk in section_data:
+                                    ok, msg = validate_string(section_data[pk], min_len=1, max_len=500)
+                                    if not ok:
+                                        self._send_json({"success": False, "message": "savepaths.{}: {}".format(pk, msg)}, 400)
+                                        return True
+                                    if not section_data[pk].startswith("/"):
+                                        self._send_json({"success": False, "message": "savepaths.{}: 路径必须以 / 开头".format(pk)}, 400)
+                                        return True
 
                         # 豆瓣想看同步的保存路径和分类
                         if section == "douban_wish":

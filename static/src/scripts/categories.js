@@ -160,10 +160,11 @@ function toggleSubSched(btn){
 
 function getSelectedTasks(prefix){
   var tasks=[], seen=new Set();
+  var catBase = (APP_PATHS.category_base||'/影视').replace(/\/+$/,'')||'/影视';
   document.querySelectorAll('#'+prefix+' .chip.on').forEach(function(el){
     var k = el.dataset.path+'/'+el.dataset.type;
     if(seen.has(k))return; seen.add(k);
-    tasks.push({path:el.dataset.path, type:el.dataset.type, savepath:'/影视/'+el.dataset.gname, category:el.dataset.group});
+    tasks.push({path:el.dataset.path, type:el.dataset.type, savepath:catBase+'/'+el.dataset.gname, category:el.dataset.group});
   });
   return tasks;
 }

@@ -229,7 +229,7 @@ async function transferTmdbSelection(){
   // 构建转存任务 - 直接从 selected 中获取信息，不依赖当前页 items
   var mt = document.getElementById('tmdbMediaType').value;
   var category = mt === 'movie' ? 'movie' : 'tv';
-  var savepath = '/批量转存/TMDB';
+  var savepath = APP_PATHS.tmdb||'/批量转存/TMDB';
   var tasks = [];
   for(var i=0; i<ids.length; i++){
     var sel = tmdbState.selected[ids[i]];

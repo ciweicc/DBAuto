@@ -1136,6 +1136,13 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
     <div class="form-group" style="margin-bottom:0"><label>QAS Token</label><input type="password" id="cfg_qas_token" placeholder="留空不修改"></div>
   </div>
   <div class="card">
+    <div class="card-title">📁 转存路径</div>
+    <div class="form-group"><label>榜单分类路径前缀</label><input type="text" id="cfg_path_category_base" placeholder="/影视"></div>
+    <div style="font-size:12px;color:var(--text2);margin:-4px 0 8px;line-height:1.5">实际路径 = 前缀 + 分类名，如 /影视/电影、/影视/电视剧</div>
+    <div class="form-group"><label>搜索转存路径</label><input type="text" id="cfg_path_search" placeholder="/批量转存/手动搜索存"></div>
+    <div class="form-group" style="margin-bottom:0"><label>TMDB 转存路径</label><input type="text" id="cfg_path_tmdb" placeholder="/批量转存/TMDB"></div>
+  </div>
+  <div class="card">
     <div class="card-title">🔐 管理认证</div>
     <div class="form-group"><label>用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
     <div class="form-group" style="margin-bottom:0"><label>密码</label><input type="password" id="cfg_auth_pass" placeholder="留空不修改"></div>
@@ -1371,6 +1378,7 @@ var logBefore = [], logFilter = 'all', logPaused = false;
 var logPollInterval = 0;
 var sseConnected = false;
 var LOG_BEFORE_MAX = 500;
+var APP_PATHS = {category_base:'/影视', search:'/批量转存/手动搜索存', tmdb:'/批量转存/TMDB'};
 
 // ============ Toast ============
 function showToast(msg,ok,duration){
@@ -1607,10 +1615,11 @@ function toggleSubSched(btn){
 
 function getSelectedTasks(prefix){
   var tasks=[], seen=new Set();
+  var catBase = (APP_PATHS.category_base||'/影视').replace(/\/+$/,'')||'/影视';
   document.querySelectorAll('#'+prefix+' .chip.on').forEach(function(el){
     var k = el.dataset.path+'/'+el.dataset.type;
     if(seen.has(k))return; seen.add(k);
-    tasks.push({path:el.dataset.path, type:el.dataset.type, savepath:'/影视/'+el.dataset.gname, category:el.dataset.group});
+    tasks.push({path:el.dataset.path, type:el.dataset.type, savepath:catBase+'/'+el.dataset.gname, category:el.dataset.group});
   });
   return tasks;
 }
@@ -1888,6 +1897,11 @@ async function checkExpired(){
 async function loadSchedule(){
   try{
     var d = await apiGet('/api/schedule');
+    if(d.savepaths){
+      APP_PATHS.category_base = d.savepaths.category_base||'/影视';
+      APP_PATHS.search = d.savepaths.search||'/批量转存/手动搜索存';
+      APP_PATHS.tmdb = d.savepaths.tmdb||'/批量转存/TMDB';
+    }
     if(d.transfer){
       document.getElementById('schedTOn').checked = !!d.transfer.enabled;
       document.getElementById('schedLimit').value = d.transfer.limit||5;
@@ -2179,6 +2193,11 @@ document.getElementById('cfg_tmdb_api_key').value='';
 document.getElementById('cfg_tmdb_base_url').value=cfg.tmdb_base_url||'';
 // 加载想看同步设置
 try{var s=await apiGet('/api/schedule');
+if(s.savepaths){
+  document.getElementById('cfg_path_category_base').value=s.savepaths.category_base||'/影视';
+  document.getElementById('cfg_path_search').value=s.savepaths.search||'/批量转存/手动搜索存';
+  document.getElementById('cfg_path_tmdb').value=s.savepaths.tmdb||'/批量转存/TMDB';
+}
 if(s.douban_wish){
 document.getElementById('cfg_wish_savepath').value=s.douban_wish.savepath||'/批量转存/想看';
 var wishCats=s.douban_wish.category;
@@ -2213,8 +2232,14 @@ else showToast(d.message||'保存失败',false);
 // 保存想看同步设置
 var wishCats=[];document.querySelectorAll('#wishCategoryChips .chip.on').forEach(function(c){wishCats.push(c.dataset.cat)});
 var wishAccounts=collectWishAccounts();
-var wishCfg={action:'save',douban_wish:{enabled:document.getElementById('cfg_wish_enabled_chip').classList.contains('on'),savepath:document.getElementById('cfg_wish_savepath').value.trim(),category:wishCats.length?wishCats:['movie'],accounts:wishAccounts}};
+var savepaths={category_base:document.getElementById('cfg_path_category_base').value.trim()||'/影视',
+             search:document.getElementById('cfg_path_search').value.trim()||'/批量转存/手动搜索存',
+             tmdb:document.getElementById('cfg_path_tmdb').value.trim()||'/批量转存/TMDB'};
+var wishCfg={action:'save',douban_wish:{enabled:document.getElementById('cfg_wish_enabled_chip').classList.contains('on'),savepath:document.getElementById('cfg_wish_savepath').value.trim(),category:wishCats.length?wishCats:['movie'],accounts:wishAccounts},savepaths:savepaths};
 await apiPost('/api/schedule',wishCfg);
+APP_PATHS.category_base=savepaths.category_base;
+APP_PATHS.search=savepaths.search;
+APP_PATHS.tmdb=savepaths.tmdb;
 }catch(e){showToast('保存失败',false)}
 }
 
@@ -2449,7 +2474,7 @@ async function transferTmdbSelection(){
   // 构建转存任务 - 直接从 selected 中获取信息，不依赖当前页 items
   var mt = document.getElementById('tmdbMediaType').value;
   var category = mt === 'movie' ? 'movie' : 'tv';
-  var savepath = '/批量转存/TMDB';
+  var savepath = APP_PATHS.tmdb||'/批量转存/TMDB';
   var tasks = [];
   for(var i=0; i<ids.length; i++){
     var sel = tmdbState.selected[ids[i]];
@@ -2645,7 +2670,7 @@ document.addEventListener('click',function(e){
 async function transferOne(btn){
   var title = btn.dataset.title;
   var url = btn.dataset.url;
-  var savepath = localStorage.getItem('search_path')||'/批量转存/手动搜索存';
+  var savepath = APP_PATHS.search||'/批量转存/手动搜索存';
   btn.disabled=true; btn.textContent='转存中...';
   try{
     var r = await apiPost('/api/transfer_one',{title:title, shareurl:url, savepath:savepath});

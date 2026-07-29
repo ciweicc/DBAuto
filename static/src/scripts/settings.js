@@ -11,6 +11,11 @@ document.getElementById('cfg_tmdb_api_key').value='';
 document.getElementById('cfg_tmdb_base_url').value=cfg.tmdb_base_url||'';
 // 加载想看同步设置
 try{var s=await apiGet('/api/schedule');
+if(s.savepaths){
+  document.getElementById('cfg_path_category_base').value=s.savepaths.category_base||'/影视';
+  document.getElementById('cfg_path_search').value=s.savepaths.search||'/批量转存/手动搜索存';
+  document.getElementById('cfg_path_tmdb').value=s.savepaths.tmdb||'/批量转存/TMDB';
+}
 if(s.douban_wish){
 document.getElementById('cfg_wish_savepath').value=s.douban_wish.savepath||'/批量转存/想看';
 var wishCats=s.douban_wish.category;
@@ -45,8 +50,14 @@ else showToast(d.message||'保存失败',false);
 // 保存想看同步设置
 var wishCats=[];document.querySelectorAll('#wishCategoryChips .chip.on').forEach(function(c){wishCats.push(c.dataset.cat)});
 var wishAccounts=collectWishAccounts();
-var wishCfg={action:'save',douban_wish:{enabled:document.getElementById('cfg_wish_enabled_chip').classList.contains('on'),savepath:document.getElementById('cfg_wish_savepath').value.trim(),category:wishCats.length?wishCats:['movie'],accounts:wishAccounts}};
+var savepaths={category_base:document.getElementById('cfg_path_category_base').value.trim()||'/影视',
+             search:document.getElementById('cfg_path_search').value.trim()||'/批量转存/手动搜索存',
+             tmdb:document.getElementById('cfg_path_tmdb').value.trim()||'/批量转存/TMDB'};
+var wishCfg={action:'save',douban_wish:{enabled:document.getElementById('cfg_wish_enabled_chip').classList.contains('on'),savepath:document.getElementById('cfg_wish_savepath').value.trim(),category:wishCats.length?wishCats:['movie'],accounts:wishAccounts},savepaths:savepaths};
 await apiPost('/api/schedule',wishCfg);
+APP_PATHS.category_base=savepaths.category_base;
+APP_PATHS.search=savepaths.search;
+APP_PATHS.tmdb=savepaths.tmdb;
 }catch(e){showToast('保存失败',false)}
 }
 

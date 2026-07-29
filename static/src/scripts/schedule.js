@@ -2,6 +2,11 @@
 async function loadSchedule(){
   try{
     var d = await apiGet('/api/schedule');
+    if(d.savepaths){
+      APP_PATHS.category_base = d.savepaths.category_base||'/影视';
+      APP_PATHS.search = d.savepaths.search||'/批量转存/手动搜索存';
+      APP_PATHS.tmdb = d.savepaths.tmdb||'/批量转存/TMDB';
+    }
     if(d.transfer){
       document.getElementById('schedTOn').checked = !!d.transfer.enabled;
       document.getElementById('schedLimit').value = d.transfer.limit||5;

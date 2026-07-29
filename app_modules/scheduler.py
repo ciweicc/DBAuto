@@ -1,7 +1,7 @@
 import time, traceback
 from datetime import datetime, timedelta
 from threading import Thread, Lock, Event
-from config import load_settings, ConfigManager, LOCAL_TZ
+from config import load_settings, ConfigManager, LOCAL_TZ, CATEGORIES
 from douban import get_douban_list, get_douban_wishlist
 from transfer import run_transfer, check_expired_tasks, fix_expired_tasks, is_in_qas, build_transfer_tasks, is_transfer_running
 from storage import add_exec_record
@@ -82,6 +82,15 @@ def _run_scheduled_transfer():
         tasks = list(t.get("tasks", []))
         limit = t.get("limit", 5)
         filters = t.get("filters", {})
+        # 榜单任务 savepath 以 savepaths.category_base 运行时配置为准（覆盖 tasks 中烘焙值）
+        sp_cfg = settings.get("savepaths", {})
+        cat_base = (sp_cfg.get("category_base") or "/影视").rstrip("/") or "/影视"
+        for tk in tasks:
+            if tk.get("_wish"):
+                continue
+            gname = CATEGORIES.get(tk.get("category", ""), {}).get("name")
+            if gname:
+                tk["savepath"] = "{}/{}".format(cat_base, gname)
         # 获取豆瓣想看列表作为额外任务来源
         wish_cfg = settings.get("douban_wish", {})
         if wish_cfg.get("enabled"):
