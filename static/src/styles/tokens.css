@@ -1,26 +1,28 @@
 /* ========================================
    DBAuto Design Tokens
    CSS Custom Properties for theming
+   Flat / Admin style — subdued solid surfaces, tight radius, no glow.
    ======================================== */
 
 :root {
   /* Background */
-  --bg: #0a0a0f;
-  --bg-deep: #05050a;
+  --bg: #0d0d10;
+  --bg-deep: #08080b;
 
-  /* Card */
-  --card: rgba(255, 255, 255, 0.06);
+  /* Card (solid surfaces) */
+  --card: #16161a;
+  --card-2: #1c1c22;
 
   /* Border (3 levels) */
   --border: rgba(255, 255, 255, 0.08);
-  --border2: rgba(255, 255, 255, 0.1);
-  --border3: rgba(255, 255, 255, 0.15);
+  --border2: rgba(255, 255, 255, 0.12);
+  --border3: rgba(255, 255, 255, 0.18);
 
   /* Text (4 levels) */
-  --text: #ffffff;
-  --text2: rgba(255, 255, 255, 0.65);
+  --text: #f2f2f5;
+  --text2: rgba(255, 255, 255, 0.62);
   --text3: rgba(255, 255, 255, 0.4);
-  --text4: rgba(255, 255, 255, 0.25);
+  --text4: rgba(255, 255, 255, 0.22);
 
   /* Accent */
   --accent: #0a84ff;
@@ -47,26 +49,34 @@
   --status-skipped: var(--orange);
   --status-pending: var(--text3);
 
-  /* Border Radius */
-  --radius: 20px;
-  --radius-sm: 14px;
-  --radius-xs: 10px;
-  --radius-lg: 24px;
-  --radius-xl: 28px;
+  /* Border Radius (tight, admin style) */
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-xs: 4px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
 
-  /* Blur */
-  --blur: saturate(180%) blur(24px);
-  --blur-xl: saturate(200%) blur(40px);
+  /* Blur (disabled — flat surfaces) */
+  --blur: none;
+  --blur-xl: none;
 
-  /* Shadow */
-  --shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.2);
-  --shadow-glow: 0 0 40px rgba(10, 132, 255, 0.15);
+  /* Shadow (minimal — no glow) */
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: none;
+  --shadow-glow: none;
 
   /* Font */
   --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
   --mono: "SF Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+
+  /* Font sizes (denser base) */
+  --fs-base: 13px;
+  --fs-sm: 12px;
+  --fs-lg: 14px;
+
+  /* Card inner padding */
+  --card-pad: 12px;
 
   /* Spacing */
   --space-xs: 4px;
@@ -77,25 +87,27 @@
   --space-2xl: 24px;
   --space-3xl: 32px;
 
-  /* Animation */
-  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Animation (no bounce, no entrance) */
+  --transition-fast: 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.4, 0, 0.2, 1);
+  --enter-anim: none;
 }
 
 /* ===== Light Theme ===== */
 [data-theme="light"] {
-  --bg: #f5f5f7;
-  --bg-deep: #ebebef;
-  --card: rgba(255, 255, 255, 0.85);
-  --border: rgba(0, 0, 0, 0.06);
-  --border2: rgba(0, 0, 0, 0.1);
-  --border3: rgba(0, 0, 0, 0.15);
+  --bg: #f2f2f7;
+  --bg-deep: #e6e6ec;
+  --card: #ffffff;
+  --card-2: #fafafc;
+  --border: rgba(0, 0, 0, 0.08);
+  --border2: rgba(0, 0, 0, 0.12);
+  --border3: rgba(0, 0, 0, 0.18);
   --text: #1c1c1e;
   --text2: rgba(0, 0, 0, 0.55);
-  --text3: rgba(0, 0, 0, 0.35);
-  --text4: rgba(0, 0, 0, 0.2);
+  --text3: rgba(0, 0, 0, 0.38);
+  --text4: rgba(0, 0, 0, 0.22);
   --accent: #007aff;
   --accent2: #5856d6;
   --accent3: #8e8dff;
@@ -104,7 +116,7 @@
   --orange: #ff9500;
   --purple: #af52de;
   --cyan: #00a3ff;
-  --shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
-  --shadow-glow: 0 0 30px rgba(0, 122, 255, 0.12);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --shadow-sm: none;
+  --shadow-glow: none;
 }

@@ -1,7 +1,8 @@
 // ============ Schedule ============
 async function loadSchedule(){
   try{
-    var d = await apiGet('/api/schedule');
+    var d = SETTINGS_ALL || (SETTINGS_ALL = await apiGet('/api/settings/all'));
+    d = d.schedule || d;  // 兼容 /api/schedule 旧响应
     if(d.savepaths){
       APP_PATHS.category_base = d.savepaths.category_base||'/影视';
       APP_PATHS.search = d.savepaths.search||'/批量转存/手动搜索存';
@@ -34,11 +35,18 @@ async function loadSchedule(){
         document.getElementById('schedEHour').value=parseInt(e2[0])||0;
         document.getElementById('schedEMin').value=parseInt(e2[1])||0;}
       expiredDirEntries=(d.expired_check.directories&&d.expired_check.directories.length>0)?[...d.expired_check.directories]:[''];renderExpiredDirs();}
+    // 调度状态条：上次转存 / 上次检测
+    var st = d._status || {};
+    var lt = document.getElementById('schedLastTransfer');
+    var le = document.getElementById('schedLastExpired');
+    if(lt) lt.textContent = st.last_transfer ? String(st.last_transfer).slice(5) : '从未';
+    if(le) le.textContent = st.last_expired_check ? String(st.last_expired_check).slice(5) : '从未';
   }catch(e){showToast('加载调度失败',false)}
 }
 
 function autoSaveSchedule(){clearTimeout(autoSaveTimer);autoSaveTimer=setTimeout(saveSchedule,600)}
 async function saveSchedule(){
+  SETTINGS_ALL = null;  // 失效缓存，保存后 SSE 触发的刷新将拉取最新数据
   var tasks = getSelectedTasks('tabSchedule');
   var expiredDirs = expiredDirEntries.map(function(d){return d.trim()}).filter(function(d){return d});
 var body = {

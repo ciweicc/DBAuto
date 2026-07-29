@@ -116,7 +116,6 @@ function startLogPoll(interval, initLen, skipFirstSync){
   var firstSyncSkip=skipFirstSync||false;
   logPollInterval=pollInterval;
   logPollTimer = setInterval(async function(){
-    if(document.getElementById('logCard').style.display==='none')return;
     try{
       var d = await apiGet('/api/transfer/status');
       // 同步日志进度（仅当 SSE 断连时作为降级方案，避免与 SSE 重复）
@@ -182,7 +181,6 @@ async function checkRunningStatus(){
   try{
     var d = await apiGet('/api/transfer/status');
     if(d.running){
-      document.getElementById('logCard').style.display='block';
       document.getElementById('stopBtn').style.display='inline-block';
       var initLen=0;
       if(d.progress&&d.progress.length>0){logBefore=[];for(var i=0;i<d.progress.length;i++)addLog(d.progress[i]);initLen=d.progress.length}
@@ -192,7 +190,7 @@ async function checkRunningStatus(){
 }
 async function checkExpired(){
   if(logPollTimer){clearInterval(logPollTimer);logPollTimer=null;logPollInterval=0}
-  document.getElementById('logCard').style.display='block'; logBefore=[]; document.getElementById('log').textContent='';
+  logBefore=[]; document.getElementById('log').textContent='';
   addLog('正在检测失效链接...');
   try{
     var d = await apiGet('/api/check_expired');

@@ -1,7 +1,10 @@
 // ============ Settings ============
 function openSettings(){switchTab('settings')}
 async function loadConfig(){
-  try{var cfg=await apiGet('/api/config');
+  try{
+    var all = SETTINGS_ALL || (SETTINGS_ALL = await apiGet('/api/settings/all'));
+    var cfg = all.config || {};
+    var s = all.schedule || {};
     document.getElementById('cfg_pansou').value=cfg.pansou||'';
     document.getElementById('cfg_qas').value=cfg.qas||'';
 document.getElementById('cfg_qas_token').value='';
@@ -10,7 +13,6 @@ document.getElementById('cfg_auth_pass').value='';
 document.getElementById('cfg_tmdb_api_key').value='';
 document.getElementById('cfg_tmdb_base_url').value=cfg.tmdb_base_url||'';
 // 加载想看同步设置
-try{var s=await apiGet('/api/schedule');
 if(s.savepaths){
   document.getElementById('cfg_path_category_base').value=s.savepaths.category_base||'/影视';
   document.getElementById('cfg_path_search').value=s.savepaths.search||'/批量转存/手动搜索存';
@@ -27,7 +29,6 @@ var wishAccounts=s.douban_wish.accounts||[];
 if(!wishAccounts.length&&cfg.douban_uid){wishAccounts=[{uid:cfg.douban_uid,cookie:'',name:''}]}
 renderWishAccounts(wishAccounts);
 }
-}catch(e){}
 
   }catch(e){showToast('加载配置失败',false)}
 }
@@ -36,6 +37,7 @@ try{var d=await apiGet('/api/refresh_douban');showToast(d.message||'已刷新',t
 catch(e){showToast('刷新失败',false)}
 }
 async function saveConfig(silent=false){
+SETTINGS_ALL = null;  // 失效缓存，保存后 SSE 触发的 loadConfig 将拉取最新数据
 var cfg={pansou:document.getElementById('cfg_pansou').value.trim(),
 qas:document.getElementById('cfg_qas').value.trim(),
 qas_token:document.getElementById('cfg_qas_token').value,

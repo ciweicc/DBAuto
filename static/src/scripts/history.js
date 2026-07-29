@@ -54,69 +54,112 @@ function _makeEmptyState(iconId, title, descHTML) {
   return wrapper;
 }
 
+// ---- 紧凑表格渲染 + 排序 ----
+var execHistorySort = {key:'time', dir:'desc'};
+function statusClass(st){
+  if(st==='ok'||st==='done') return 'ok';
+  if(st==='fail'||st==='error') return 'fail';
+  if(st==='partial') return 'partial';
+  return 'none';
+}
+function typeLabel(t){
+  if(t==='transfer') return '转存';
+  if(t==='expired_check') return '检测';
+  if(t==='config') return '配置';
+  return t||'';
+}
+function resultScore(h){
+  var ok=(h.data&&h.data.ok)||0, fail=(h.data&&h.data.failed)||0, skip=(h.data&&h.data.skipped)||0;
+  return ok+fail+skip;
+}
+function resultBadges(h){
+  if(h.type==='transfer'){
+    var ok=(h.data&&h.data.ok)||0, fail=(h.data&&h.data.failed)||0, skip=(h.data&&h.data.skipped)||0;
+    return '<span class="badge-ok">成功 '+ok+'</span> <span class="badge-fail">失败 '+fail+'</span> <span class="badge-skip">跳过 '+skip+'</span>';
+  }
+  if(h.type==='expired_check'){
+    var n=(h.data&&h.data.expired)?h.data.expired.length:0;
+    return n>0 ? '<span class="badge-fail">失效 '+n+'</span>' : '<span class="badge-ok">全部正常</span>';
+  }
+  return '<span style="color:var(--text3)">—</span>';
+}
+function getSortedFiltered(){
+  var filtered = execHistoryFilter==='all'
+    ? execHistoryData.filter(function(h){return h.type!=='history'&&h.type!=='schedule'})
+    : execHistoryData.filter(function(h){return h.type===execHistoryFilter});
+  var k=execHistorySort.key, dir=execHistorySort.dir==='asc'?1:-1;
+  var order={ok:3,partial:2,fail:1,none:0};
+  filtered = filtered.slice().sort(function(a,b){
+    var primary=0;
+    if(k==='time') primary=(a.time||'').localeCompare(b.time||'');
+    else if(k==='result') primary=resultScore(a)-resultScore(b);
+    else if(k==='status') primary=(order[statusClass(a.status)]||0)-(order[statusClass(b.status)]||0);
+    if(primary!==0) return primary*dir;
+    return (b.time||'').localeCompare(a.time||''); // 同序时最新在前
+  });
+  return filtered;
+}
+function toggleSort(key){
+  if(execHistorySort.key===key) execHistorySort.dir = execHistorySort.dir==='asc'?'desc':'asc';
+  else { execHistorySort.key=key; execHistorySort.dir='desc'; }
+  renderExecHistory();
+}
 function renderExecHistory(){
   var el = document.getElementById('execHistoryList');
-  var filtered = execHistoryFilter==='all'?execHistoryData.filter(function(h){return h.type!=='history'&&h.type!=='schedule'}).slice():execHistoryData.filter(function(h){return h.type===execHistoryFilter});
   el.textContent='';
-  if(!filtered.length){
+  var data = getSortedFiltered();
+  if(!data.length){
     el.appendChild(_makeEmptyState('icon-clock','还没有执行记录','去「手动转存」选择一个榜单开始吧<br>每次转存和检测都会记录在这里'));
     return;
   }
-  filtered.reverse().forEach(function(h){
-    var iconId='icon-transfer',cls='transfer',tn='转存';
-    if(h.type==='expired_check'){iconId='icon-refresh';cls='expired';tn='检测'}
-    else if(h.type==='config'){iconId='icon-settings';cls='config';tn='配置'}
-    var hasDetail = h.data && (h.data.results || h.data.expired);
+  var table = document.createElement('table');
+  table.className = 'data-table';
+  table.id = 'execHistoryTable';
+  var thead = document.createElement('thead');
+  var htr = document.createElement('tr');
+  var cols = [{k:null,t:'状态'},{k:null,t:'类型'},{k:null,t:'详情'},{k:'result',t:'成功/失败/跳过'},{k:'time',t:'时间'}];
+  cols.forEach(function(c){
+    var th = document.createElement('th');
+    th.textContent = c.t;
+    if(c.k){
+      th.setAttribute('data-sort', c.k);
+      var ind = document.createElement('span'); ind.className='sort-ind';
+      if(execHistorySort.key===c.k) ind.textContent = execHistorySort.dir==='asc'?'▲':'▼';
+      th.appendChild(ind);
+      th.addEventListener('click', function(){ toggleSort(c.k); });
+    }
+    htr.appendChild(th);
+  });
+  thead.appendChild(htr); table.appendChild(thead);
+  var tbody = document.createElement('tbody');
+  data.forEach(function(h){
     var hid = String(h.id);
-
-    var item = document.createElement('div');
-    item.className = 'hist-item';
-    if(hasDetail) item.style.cursor = 'pointer';
-    item.id = 'hist_' + hid;
-
-    var iconDiv = document.createElement('div');
-    iconDiv.className = 'hist-icon ' + cls;
-    iconDiv.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#'+iconId+'"/></svg>';
-
-    var infoDiv = document.createElement('div');
-    infoDiv.className = 'hist-info';
-    var titleDiv = document.createElement('div');
-    titleDiv.className = 'hist-title';
-    titleDiv.textContent = h.detail;
-    var metaDiv = document.createElement('div');
-    metaDiv.className = 'hist-meta';
-    metaDiv.textContent = tn + (hasDetail ? ' · 点击查看详情' : '');
-    infoDiv.appendChild(titleDiv);
-    infoDiv.appendChild(metaDiv);
-
-    var timeDiv = document.createElement('div');
-    timeDiv.className = 'hist-time';
-    timeDiv.textContent = h.time;
-
-    item.appendChild(iconDiv);
-    item.appendChild(infoDiv);
-    item.appendChild(timeDiv);
-    item.addEventListener('click', function(){ toggleHistDetail(hid); });
-    el.appendChild(item);
-
-    if(hasDetail){
-      var detailDiv = document.createElement('div');
-      detailDiv.className = 'hist-detail';
-      detailDiv.id = 'hist_detail_' + hid;
-      detailDiv.style.cssText = 'display:none;padding:0 16px 16px 60px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)';
-      detailDiv.innerHTML = renderHistDetailContent(h);
-      el.appendChild(detailDiv);
+    var tr = document.createElement('tr');
+    tr.className = 'hist-row'; tr.setAttribute('data-id', hid);
+    var td1 = document.createElement('td');
+    td1.innerHTML = '<span class="status-dot-cell '+statusClass(h.status)+'" title="'+esc(h.status||'')+'"></span>';
+    var td2 = document.createElement('td'); td2.className='hist-type'; td2.textContent = typeLabel(h.type);
+    var td3 = document.createElement('td'); td3.className='hist-detail-cell'; td3.textContent = h.detail||'';
+    var td4 = document.createElement('td'); td4.innerHTML = resultBadges(h);
+    var td5 = document.createElement('td'); td5.className='hist-time'; td5.textContent = h.time||'';
+    [td1,td2,td3,td4,td5].forEach(function(td){ tr.appendChild(td); });
+    tr.addEventListener('click', function(){ toggleHistDetail(hid); });
+    tbody.appendChild(tr);
+    if(h.data && (h.data.results || h.data.expired)){
+      var dtr = document.createElement('tr');
+      dtr.className = 'hist-detail-row'; dtr.id = 'hist_detail_'+hid; dtr.style.display='none';
+      var dtd = document.createElement('td'); dtd.colSpan = 5; dtd.innerHTML = renderHistDetailContent(h);
+      dtr.appendChild(dtd); tbody.appendChild(dtr);
     }
   });
+  table.appendChild(tbody); el.appendChild(table);
   if(histMore){
     var moreDiv = document.createElement('div');
     moreDiv.style.cssText = 'text-align:center;padding:12px;margin-top:6px';
     var moreBtn = document.createElement('button');
-    moreBtn.className = 'btn btn-outline btn-sm';
-    moreBtn.textContent = '加载更多';
+    moreBtn.className = 'btn btn-outline btn-sm'; moreBtn.textContent = '加载更多';
     moreBtn.addEventListener('click', loadMoreHistory);
-    moreDiv.appendChild(moreBtn);
-    el.appendChild(moreDiv);
+    moreDiv.appendChild(moreBtn); el.appendChild(moreDiv);
   }
 }
 function renderHistDetailContent(h){
@@ -158,14 +201,7 @@ function renderHistDetailContent(h){
 function toggleHistDetail(id){
   var detailEl = document.getElementById('hist_detail_'+id);
   if(!detailEl) return;
-  var itemEl = document.getElementById('hist_'+id);
-  if(detailEl.style.display === 'none'){
-    detailEl.style.display = 'block';
-    if(itemEl) itemEl.style.borderBottom = 'none';
-  }else{
-    detailEl.style.display = 'none';
-    if(itemEl) itemEl.style.borderBottom = '';
-  }
+  detailEl.style.display = (detailEl.style.display === 'none' || detailEl.style.display === '') ? 'table-row' : 'none';
 }
 function filterHist(type,btn){
   execHistoryFilter=type;

@@ -1,40 +1,38 @@
 // ============ Dashboard ============
 async function loadDashboard(){
   try{
-    var s = await apiGet('/api/schedule');
-    if(s._status){
-      var ss=s._status;
-      var dashNextEl = document.getElementById('dashNext');
-      dashNextEl.textContent = '';
-      var gridDiv = document.createElement('div');
-      gridDiv.style.cssText = 'display:grid;grid-template-columns:auto 1fr;gap:3px 10px;align-items:center';
-      if(ss.transfer_next){
-        var tLabel = document.createElement('span');
-        tLabel.style.cssText = 'display:flex;align-items:center;gap:5px;white-space:nowrap;color:var(--text3);font-size:12px';
-        tLabel.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-transfer"/></svg> 转存';
-        var tVal = document.createElement('span');
-        tVal.style.cssText = 'text-align:right;color:var(--text2);white-space:nowrap;font-size:12px;font-weight:500';
-        tVal.textContent = ss.transfer_next.slice(5);
-        gridDiv.appendChild(tLabel);
-        gridDiv.appendChild(tVal);
-      }
-      if(ss.expired_check_next){
-        var eLabel = document.createElement('span');
-        eLabel.style.cssText = 'display:flex;align-items:center;gap:5px;white-space:nowrap;color:var(--text3);font-size:12px';
-        eLabel.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-refresh"/></svg> 检测';
-        var eVal = document.createElement('span');
-        eVal.style.cssText = 'text-align:right;color:var(--text2);white-space:nowrap;font-size:12px;font-weight:500';
-        eVal.textContent = ss.expired_check_next.slice(5);
-        gridDiv.appendChild(eLabel);
-        gridDiv.appendChild(eVal);
-      }
-      if(ss.transfer_next || ss.expired_check_next){
-        dashNextEl.appendChild(gridDiv);
-      } else {
-        dashNextEl.textContent = '暂无调度';
-      }
+    var d = await apiGet('/api/dashboard/all');
+    var s = d.schedule_status || {};
+    var dashNextEl = document.getElementById('dashNext');
+    dashNextEl.textContent = '';
+    var gridDiv = document.createElement('div');
+    gridDiv.style.cssText = 'display:grid;grid-template-columns:auto 1fr;gap:3px 10px;align-items:center';
+    if(s.transfer_next){
+      var tLabel = document.createElement('span');
+      tLabel.style.cssText = 'display:flex;align-items:center;gap:5px;white-space:nowrap;color:var(--text3);font-size:12px';
+      tLabel.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-transfer"/></svg> 转存';
+      var tVal = document.createElement('span');
+      tVal.style.cssText = 'text-align:right;color:var(--text2);white-space:nowrap;font-size:12px;font-weight:500';
+      tVal.textContent = s.transfer_next.slice(5);
+      gridDiv.appendChild(tLabel);
+      gridDiv.appendChild(tVal);
     }
-    var stats = await apiGet('/api/dashboard/stats');
+    if(s.expired_check_next){
+      var eLabel = document.createElement('span');
+      eLabel.style.cssText = 'display:flex;align-items:center;gap:5px;white-space:nowrap;color:var(--text3);font-size:12px';
+      eLabel.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-refresh"/></svg> 检测';
+      var eVal = document.createElement('span');
+      eVal.style.cssText = 'text-align:right;color:var(--text2);white-space:nowrap;font-size:12px;font-weight:500';
+      eVal.textContent = s.expired_check_next.slice(5);
+      gridDiv.appendChild(eLabel);
+      gridDiv.appendChild(eVal);
+    }
+    if(s.transfer_next || s.expired_check_next){
+      dashNextEl.appendChild(gridDiv);
+    } else {
+      dashNextEl.textContent = '暂无调度';
+    }
+    var stats = d.stats || {};
     var todayEl = document.getElementById('dashToday');
     if(stats.today_count){animateNumber(todayEl,stats.today_count,800)}else{todayEl.textContent='-'}
     animateNumber(document.getElementById('dash7OK'),stats.week_ok||0,900);
@@ -63,7 +61,7 @@ async function loadDashboard(){
       textEl.style.cssText='color:var(--text);font-size:16px;font-weight:600';
       timeEl.textContent='上次转存';
     }
-    try{var v=await apiGet('/version');if(v.version)document.getElementById('headerVersion').textContent='v'+v.version}catch(e){}
+    if(d.version) document.getElementById('headerVersion').textContent='v'+d.version;
   }catch(e){}
   finally{
     // 骨架屏 → 真实内容

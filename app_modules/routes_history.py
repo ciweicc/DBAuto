@@ -1,8 +1,101 @@
 # routes_history.py — 历史记录管理路由 Mixin
+import os
 import time
 from storage import load_history, save_history, load_exec_history, clear_exec_history
 from utils import log, sse_broadcast
 from validator import validate_string, validate_list
+from scheduler import schedule_status
+
+
+def compute_dashboard_stats():
+    """汇总仪表盘所需统计：今日转存、近 7 天成功/失败/总数、每日明细、上次状态。"""
+    data = load_exec_history()
+    today_str = time.strftime("%Y-%m-%d")
+    week_ago = time.time() - 7 * 86400
+    today_count = 0
+    ok7 = 0
+    fail7 = 0
+    total7 = 0
+    daily = {}
+    last_transfer = None
+    last_status = "-"
+    for h in data:
+        h_time = h.get("time", "")
+        h_type = h.get("type", "")
+        if h_time.startswith(today_str) and h_type != "expired_check":
+            today_count += 1
+        try:
+            h_ts = time.mktime(time.strptime(h_time, "%Y-%m-%d %H:%M:%S"))
+            if h_ts >= week_ago:
+                total7 += 1
+                d = h.get("data", {})
+                okc = 0
+                failc = 0
+                if isinstance(d, dict):
+                    okc = d.get("ok", 0)
+                    failc = d.get("failed", 0)
+                    ok7 += okc
+                    fail7 += failc
+                day = h_time[:10]
+                if day not in daily:
+                    daily[day] = {"ok": 0, "fail": 0, "total": 0}
+                daily[day]["ok"] += okc
+                daily[day]["fail"] += failc
+                daily[day]["total"] += 1
+        except (ValueError, OverflowError):
+            pass
+        if h_type != "expired_check":
+            if not last_transfer:
+                last_transfer = h
+                d = h.get("data", {})
+                if isinstance(d, dict):
+                    ok = d.get("ok", 0)
+                    fail = d.get("failed", 0)
+                    skip = d.get("skipped", 0)
+                    if ok > 0 and fail == 0:
+                        last_status = "success"
+                    elif ok > 0 and fail > 0:
+                        last_status = "partial"
+                    elif fail > 0 and ok == 0:
+                        last_status = "fail"
+                    else:
+                        last_status = "none"
+                else:
+                    last_status = "none"
+    # 近 7 天每日明细（含 0 值，按日期升序）
+    daily_list = []
+    now = time.time()
+    for i in range(6, -1, -1):
+        dd = time.strftime("%Y-%m-%d", time.localtime(now - i * 86400))
+        rec = daily.get(dd, {"ok": 0, "fail": 0, "total": 0})
+        daily_list.append({
+            "date": dd[5:],
+            "ok": rec["ok"],
+            "fail": rec["fail"],
+            "total": rec["total"]
+        })
+    return {
+        "today_count": today_count,
+        "week_ok": ok7,
+        "week_fail": fail7,
+        "week_total": total7,
+        "daily": daily_list,
+        "last_status": last_status,
+        "last_time": last_transfer.get("time", "") if last_transfer else ""
+    }
+
+
+def read_version():
+    """读取 VERSION 文件（与 /version 接口复用同一逻辑）。"""
+    version = "1.1.0"
+    version_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
+    if os.path.isfile(version_path):
+        try:
+            with open(version_path, "r") as f:
+                version = f.read().strip()
+        except Exception:
+            pass
+    return version
 
 
 class HistoryRouteMixin:
@@ -10,79 +103,15 @@ class HistoryRouteMixin:
 
     def _handle_history_get(self, route):
         if route == "/api/dashboard/stats":
-            data = load_exec_history()
-            today_str = time.strftime("%Y-%m-%d")
-            week_ago = time.time() - 7 * 86400
-            today_count = 0
-            ok7 = 0
-            fail7 = 0
-            total7 = 0
-            daily = {}
-            last_transfer = None
-            last_status = "-"
-            for h in data:
-                h_time = h.get("time", "")
-                h_type = h.get("type", "")
-                if h_time.startswith(today_str) and h_type != "expired_check":
-                    today_count += 1
-                try:
-                    h_ts = time.mktime(time.strptime(h_time, "%Y-%m-%d %H:%M:%S"))
-                    if h_ts >= week_ago:
-                        total7 += 1
-                        d = h.get("data", {})
-                        okc = 0
-                        failc = 0
-                        if isinstance(d, dict):
-                            okc = d.get("ok", 0)
-                            failc = d.get("failed", 0)
-                            ok7 += okc
-                            fail7 += failc
-                        day = h_time[:10]
-                        if day not in daily:
-                            daily[day] = {"ok": 0, "fail": 0, "total": 0}
-                        daily[day]["ok"] += okc
-                        daily[day]["fail"] += failc
-                        daily[day]["total"] += 1
-                except (ValueError, OverflowError):
-                    pass
-                if h_type != "expired_check":
-                    if not last_transfer:
-                        last_transfer = h
-                        d = h.get("data", {})
-                        if isinstance(d, dict):
-                            ok = d.get("ok", 0)
-                            fail = d.get("failed", 0)
-                            skip = d.get("skipped", 0)
-                            if ok > 0 and fail == 0:
-                                last_status = "success"
-                            elif ok > 0 and fail > 0:
-                                last_status = "partial"
-                            elif fail > 0 and ok == 0:
-                                last_status = "fail"
-                            else:
-                                last_status = "none"
-                        else:
-                            last_status = "none"
-            # 近 7 天每日明细（含 0 值，按日期升序）
-            daily_list = []
-            now = time.time()
-            for i in range(6, -1, -1):
-                dd = time.strftime("%Y-%m-%d", time.localtime(now - i * 86400))
-                rec = daily.get(dd, {"ok": 0, "fail": 0, "total": 0})
-                daily_list.append({
-                    "date": dd[5:],
-                    "ok": rec["ok"],
-                    "fail": rec["fail"],
-                    "total": rec["total"]
-                })
+            self._send_json(compute_dashboard_stats())
+            return True
+
+        if route == "/api/dashboard/all":
+            # 首屏聚合：仪表盘统计 + 调度状态 + 版本号，减少首屏 GET 数
             self._send_json({
-                "today_count": today_count,
-                "week_ok": ok7,
-                "week_fail": fail7,
-                "week_total": total7,
-                "daily": daily_list,
-                "last_status": last_status,
-                "last_time": last_transfer.get("time", "") if last_transfer else ""
+                "stats": compute_dashboard_stats(),
+                "schedule_status": dict(schedule_status),
+                "version": read_version()
             })
             return True
 

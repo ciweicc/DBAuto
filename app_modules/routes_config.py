@@ -20,47 +20,65 @@ def _format_next(time_str, cron_str, interval_hours=0, last_run=None):
     return None
 
 
+def build_config_payload():
+    """组装 /api/config 脱敏响应。"""
+    cfg = load_config()
+    masked = {}
+    for k, v in cfg.items():
+        if k in ("qas_token", "auth_pass", "douban_cookie", "tmdb_api_key"):
+            masked[k] = "***" if v else ""
+        else:
+            masked[k] = v
+    return masked
+
+
+def build_schedule_payload():
+    """组装 /api/schedule 响应（含 _status / _next_runs，脱敏豆瓣多账号 cookie）。"""
+    settings = load_settings()
+    with schedule_lock:
+        status = dict(schedule_status)
+    t = settings.get("transfer", {})
+    e = settings.get("expired_check", {})
+    result = dict(settings)
+    # 脱敏豆瓣多账号 cookie
+    dw = result.get("douban_wish", {})
+    if dw and isinstance(dw.get("accounts"), list):
+        masked_accounts = []
+        for acc in dw["accounts"]:
+            ma = dict(acc)
+            if ma.get("cookie"):
+                ma["cookie"] = "***"
+            masked_accounts.append(ma)
+        result["douban_wish"] = dict(dw)
+        result["douban_wish"]["accounts"] = masked_accounts
+    result["_status"] = status
+    result["_next_runs"] = {
+        "transfer": _format_next(t.get("time"), t.get("cron"), t.get("interval_hours", 0),
+                                  status.get("last_transfer")) if t.get("enabled") else None,
+        "expired_check": _format_next(e.get("time"), e.get("cron"), e.get("interval_hours", 0),
+                                       status.get("last_expired_check")) if e.get("enabled") else None,
+    }
+    return result
+
+
 class ConfigRouteMixin:
     """系统配置 & 调度管理相关路由"""
 
     def _handle_config_get(self, route):
         if route == "/api/config":
-            cfg = load_config()
-            masked = {}
-            for k, v in cfg.items():
-                if k in ("qas_token", "auth_pass", "douban_cookie", "tmdb_api_key"):
-                    masked[k] = "***" if v else ""
-                else:
-                    masked[k] = v
-            self._send_json(masked)
+            self._send_json(build_config_payload())
             return True
 
         if route == "/api/schedule":
-            settings = load_settings()
-            with schedule_lock:
-                status = dict(schedule_status)
-            t = settings.get("transfer", {})
-            e = settings.get("expired_check", {})
-            result = dict(settings)
-            # 脱敏豆瓣多账号 cookie
-            dw = result.get("douban_wish", {})
-            if dw and isinstance(dw.get("accounts"), list):
-                masked_accounts = []
-                for acc in dw["accounts"]:
-                    ma = dict(acc)
-                    if ma.get("cookie"):
-                        ma["cookie"] = "***"
-                    masked_accounts.append(ma)
-                result["douban_wish"] = dict(dw)
-                result["douban_wish"]["accounts"] = masked_accounts
-            result["_status"] = status
-            result["_next_runs"] = {
-                "transfer": _format_next(t.get("time"), t.get("cron"), t.get("interval_hours", 0),
-                                          status.get("last_transfer")) if t.get("enabled") else None,
-                "expired_check": _format_next(e.get("time"), e.get("cron"), e.get("interval_hours", 0),
-                                               status.get("last_expired_check")) if e.get("enabled") else None,
-            }
-            self._send_json(result)
+            self._send_json(build_schedule_payload())
+            return True
+
+        if route == "/api/settings/all":
+            # 首屏聚合：配置 + 调度，供设置页/调度页共用（首屏 GET 由 2 个降为 1 个）
+            self._send_json({
+                "config": build_config_payload(),
+                "schedule": build_schedule_payload()
+            })
             return True
 
         if route == "/api/refresh_douban":

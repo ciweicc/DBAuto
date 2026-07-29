@@ -13,26 +13,28 @@
 /* ========================================
    DBAuto Design Tokens
    CSS Custom Properties for theming
+   Flat / Admin style — subdued solid surfaces, tight radius, no glow.
    ======================================== */
 
 :root {
   /* Background */
-  --bg: #0a0a0f;
-  --bg-deep: #05050a;
+  --bg: #0d0d10;
+  --bg-deep: #08080b;
 
-  /* Card */
-  --card: rgba(255, 255, 255, 0.06);
+  /* Card (solid surfaces) */
+  --card: #16161a;
+  --card-2: #1c1c22;
 
   /* Border (3 levels) */
   --border: rgba(255, 255, 255, 0.08);
-  --border2: rgba(255, 255, 255, 0.1);
-  --border3: rgba(255, 255, 255, 0.15);
+  --border2: rgba(255, 255, 255, 0.12);
+  --border3: rgba(255, 255, 255, 0.18);
 
   /* Text (4 levels) */
-  --text: #ffffff;
-  --text2: rgba(255, 255, 255, 0.65);
+  --text: #f2f2f5;
+  --text2: rgba(255, 255, 255, 0.62);
   --text3: rgba(255, 255, 255, 0.4);
-  --text4: rgba(255, 255, 255, 0.25);
+  --text4: rgba(255, 255, 255, 0.22);
 
   /* Accent */
   --accent: #0a84ff;
@@ -59,26 +61,34 @@
   --status-skipped: var(--orange);
   --status-pending: var(--text3);
 
-  /* Border Radius */
-  --radius: 20px;
-  --radius-sm: 14px;
-  --radius-xs: 10px;
-  --radius-lg: 24px;
-  --radius-xl: 28px;
+  /* Border Radius (tight, admin style) */
+  --radius: 8px;
+  --radius-sm: 6px;
+  --radius-xs: 4px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
 
-  /* Blur */
-  --blur: saturate(180%) blur(24px);
-  --blur-xl: saturate(200%) blur(40px);
+  /* Blur (disabled — flat surfaces) */
+  --blur: none;
+  --blur-xl: none;
 
-  /* Shadow */
-  --shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
-  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.2);
-  --shadow-glow: 0 0 40px rgba(10, 132, 255, 0.15);
+  /* Shadow (minimal — no glow) */
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --shadow-sm: none;
+  --shadow-glow: none;
 
   /* Font */
   --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
   --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
   --mono: "SF Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
+
+  /* Font sizes (denser base) */
+  --fs-base: 13px;
+  --fs-sm: 12px;
+  --fs-lg: 14px;
+
+  /* Card inner padding */
+  --card-pad: 12px;
 
   /* Spacing */
   --space-xs: 4px;
@@ -89,25 +99,27 @@
   --space-2xl: 24px;
   --space-3xl: 32px;
 
-  /* Animation */
-  --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-normal: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
-  --transition-slow: 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
-  --ease-bounce: cubic-bezier(0.34, 1.56, 0.64, 1);
+  /* Animation (no bounce, no entrance) */
+  --transition-fast: 0.12s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-normal: 0.18s cubic-bezier(0.4, 0, 0.2, 1);
+  --transition-slow: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-bounce: cubic-bezier(0.4, 0, 0.2, 1);
+  --enter-anim: none;
 }
 
 /* ===== Light Theme ===== */
 [data-theme="light"] {
-  --bg: #f5f5f7;
-  --bg-deep: #ebebef;
-  --card: rgba(255, 255, 255, 0.85);
-  --border: rgba(0, 0, 0, 0.06);
-  --border2: rgba(0, 0, 0, 0.1);
-  --border3: rgba(0, 0, 0, 0.15);
+  --bg: #f2f2f7;
+  --bg-deep: #e6e6ec;
+  --card: #ffffff;
+  --card-2: #fafafc;
+  --border: rgba(0, 0, 0, 0.08);
+  --border2: rgba(0, 0, 0, 0.12);
+  --border3: rgba(0, 0, 0, 0.18);
   --text: #1c1c1e;
   --text2: rgba(0, 0, 0, 0.55);
-  --text3: rgba(0, 0, 0, 0.35);
-  --text4: rgba(0, 0, 0, 0.2);
+  --text3: rgba(0, 0, 0, 0.38);
+  --text4: rgba(0, 0, 0, 0.22);
   --accent: #007aff;
   --accent2: #5856d6;
   --accent3: #8e8dff;
@@ -116,188 +128,169 @@
   --orange: #ff9500;
   --purple: #af52de;
   --cyan: #00a3ff;
-  --shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.04);
-  --shadow-glow: 0 0 30px rgba(0, 122, 255, 0.12);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  --shadow-sm: none;
+  --shadow-glow: none;
 }
 /* Tokens are defined in tokens.css (loaded before this file).
-   This file only contains component styles that reference the tokens. */
+   Flat / Admin component styles. No glassmorphism, no entrance animations. */
 
-*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth;-webkit-text-size-adjust:100%}
 body{
   font-family:var(--font);background:var(--bg);color:var(--text);
   min-height:100vh;min-height:100dvh;-webkit-font-smoothing:antialiased;line-height:1.5;
-  overflow-x:hidden;
+  font-size:var(--fs-base);overflow:hidden;
 }
-body::before{
-  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
-  background:
-    radial-gradient(ellipse 80% 50% at 20% -10%,rgba(10,132,255,.18) 0%,transparent 60%),
-    radial-gradient(ellipse 60% 40% at 90% 20%,rgba(191,90,242,.12) 0%,transparent 55%),
-    radial-gradient(ellipse 70% 50% at 50% 120%,rgba(48,209,88,.08) 0%,transparent 60%),
-    radial-gradient(ellipse 50% 40% at 100% 80%,rgba(100,210,255,.06) 0%,transparent 50%);
-}
-body::after{
-  content:'';position:fixed;inset:0;pointer-events:none;z-index:0;
-  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.06'/%3E%3C/svg%3E");
-  opacity:.6;mix-blend-mode:overlay;
-}
-@keyframes auroraFloat{
-  0%,100%{transform:translate(0,0) scale(1)}
-  33%{transform:translate(30px,-20px) scale(1.05)}
-  66%{transform:translate(-20px,15px) scale(.98)}
-}
-.aurora-glow{position:fixed;inset:0;pointer-events:none;z-index:0;overflow:hidden}
-.aurora-glow::before,.aurora-glow::after{
-  content:'';position:absolute;width:600px;height:600px;border-radius:50%;filter:blur(120px);opacity:.15;
-  animation:auroraFloat 20s ease-in-out infinite;
-}
-.aurora-glow::before{
-  background:radial-gradient(circle,rgba(10,132,255,.5) 0%,transparent 70%);
-  top:-200px;left:-100px;
-}
-.aurora-glow::after{
-  background:radial-gradient(circle,rgba(191,90,242,.4) 0%,transparent 70%);
-  bottom:-200px;right:-100px;animation-delay:-10s;
-}
-.app{max-width:860px;margin:0 auto;padding:16px 20px;padding-bottom:100px;position:relative;z-index:1;
-  opacity:0;
-  animation:appFadeIn .6s ease forwards;animation-delay:.1s;
-}
-@keyframes appFadeIn{to{opacity:1}}
 
-/* Header */
-.header{
-  position:sticky;top:0;z-index:100;display:flex;justify-content:space-between;align-items:center;
-  padding:14px 0;margin-bottom:16px;
-  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
-  background-color:rgba(0,0,0,.35);
-  animation:slideDown .6s var(--ease-bounce) both;animation-delay:.15s;
+/* =========================================================
+   Layout: three columns (sidebar | content | log panel)
+   ========================================================= */
+.app{
+  display:grid;
+  grid-template-columns:220px minmax(0,1fr) 380px;
+  height:100vh;height:100dvh;
+  max-width:none;margin:0;padding:0;position:relative;z-index:1;
+  background:var(--bg);
 }
-@keyframes slideDown{from{opacity:0;transform:translateY(-12px)}to{opacity:1;transform:translateY(0)}}
-[data-theme="light"] .header{background-color:rgba(242,242,247,.7)}
-.header h1{font-size:28px;font-weight:700;letter-spacing:-.5px;font-family:var(--font-display);
-  background:linear-gradient(135deg,rgba(255,255,255,.95) 0%,rgba(100,210,255,.9) 40%,rgba(191,90,242,.85) 100%);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-  position:relative;
+.sidebar{
+  width:220px;background:var(--bg-deep);border-right:1px solid var(--border);
+  display:flex;flex-direction:column;overflow-y:auto;padding:14px 10px;gap:4px;
 }
-.header h1::after{
-  content:'';position:absolute;bottom:-4px;left:0;width:40%;height:2px;border-radius:2px;
-  background:linear-gradient(90deg,var(--accent),var(--purple),transparent);
+.brand{
+  display:flex;align-items:center;gap:9px;font-size:14px;font-weight:700;
+  font-family:var(--font-display);color:var(--text);padding:6px 8px 14px;letter-spacing:-.2px;
+  white-space:nowrap;overflow:hidden;
 }
-[data-theme="light"] .header h1{
-  background:linear-gradient(135deg,rgba(28,28,30,.9) 0%,rgba(0,122,255,.85) 40%,rgba(175,82,222,.8) 100%);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
+.brand .brand-logo{
+  width:26px;height:26px;border-radius:7px;flex-shrink:0;
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
+  display:flex;align-items:center;justify-content:center;color:#fff;
 }
-.header-btns{display:flex;gap:6px}
+.brand .brand-logo svg{width:16px;height:16px}
+.brand .brand-ver{font-size:11px;font-weight:500;color:var(--text3);margin-left:auto}
+.side-nav{display:flex;flex-direction:column;gap:2px}
+.side-nav-item{
+  display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  padding:9px 10px;border-radius:var(--radius-sm);border:1px solid transparent;
+  background:transparent;color:var(--text2);font-size:13px;font-weight:500;
+  cursor:pointer;font-family:var(--font);
+  transition:background var(--transition-fast),color var(--transition-fast),box-shadow var(--transition-fast);
+}
+.side-nav-item svg{width:18px;height:18px;flex-shrink:0;opacity:.85}
+.side-nav-item:hover{background:var(--card);color:var(--text)}
+.side-nav-item.active{
+  background:var(--card);color:var(--text);border-color:var(--border);
+  box-shadow:inset 2px 0 0 var(--accent);
+}
+.side-nav-sep{height:1px;background:var(--border);margin:8px 6px}
+.side-foot{margin-top:auto;padding:10px 8px 2px;font-size:11px;color:var(--text3);line-height:1.6}
+
+.main{display:flex;flex-direction:column;min-width:0;overflow:hidden}
+.topbar{
+  display:flex;align-items:center;gap:10px;padding:9px 16px;
+  border-bottom:1px solid var(--border);background:var(--bg);flex-shrink:0;
+}
+.topbar .side-toggle{display:none}
+.topbar .search-wrapper{flex:1;max-width:440px}
+.topbar .topbar-spacer{flex:1}
+.content{
+  flex:1;overflow-y:auto;padding:16px 20px;
+  max-width:1440px;width:100%;margin:0 auto;
+}
+.page{display:none}
+.page.active{display:block}
+
+/* Persistent log panel (right column) */
+.log-panel{
+  background:var(--card-2);border-left:1px solid var(--border);
+  overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;
+}
+.log-panel-head{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  font-size:13px;font-weight:600;color:var(--text2);font-family:var(--font-display);
+}
+.log-panel .log-card{margin-bottom:0}
+
+/* Schedule status bar */
+.sched-status-bar{
+  display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--text2);
+  margin-bottom:12px;padding:9px 12px;background:var(--card);
+  border:1px solid var(--border);border-radius:var(--radius);
+}
+.sched-status-bar b{color:var(--text);font-weight:600;font-variant-numeric:tabular-nums}
+
+/* =========================================================
+   Search
+   ========================================================= */
 .icon-btn{
-  width:40px;height:40px;border-radius:12px;border:1px solid var(--border);
-  background:var(--card);color:var(--text2);cursor:pointer;font-size:17px;
+  width:36px;height:36px;border-radius:var(--radius-sm);border:1px solid var(--border);
+  background:var(--card);color:var(--text2);cursor:pointer;font-size:16px;
   display:flex;align-items:center;justify-content:center;
-  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
-  transition:all var(--transition-normal);position:relative;overflow:hidden;
+  transition:background var(--transition-fast),border-color var(--transition-fast),color var(--transition-fast);
 }
-.icon-btn::before{
-  content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(10,132,255,.1),rgba(191,90,242,.1));
-  opacity:0;transition:opacity var(--transition-normal);
-}
-.icon-btn:hover{background:rgba(10,132,255,.08);border-color:var(--accent);color:var(--accent);
-  transform:translateY(-2px);box-shadow:0 6px 20px rgba(10,132,255,.2);
-}
-.icon-btn:hover::before{opacity:1}
-.icon-btn:active{transform:translateY(0) scale(.95)}
+.icon-btn:hover{background:var(--card-2);border-color:var(--border2);color:var(--text)}
+.icon-btn:active{transform:scale(.95)}
 
 .search-box{
-  position:relative;flex:1;max-width:380px;height:40px;display:flex;align-items:center;cursor:text;
-  background:rgba(255,255,255,.04);border:1px solid var(--border);border-radius:20px;
-  padding:0 14px;transition:all var(--transition-normal);
-  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  position:relative;flex:1;max-width:440px;height:36px;display:flex;align-items:center;cursor:text;
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);
+  padding:0 12px;transition:border-color var(--transition-fast),box-shadow var(--transition-fast);
 }
-.search-box:hover{background:rgba(255,255,255,.07);border-color:var(--border2);
-  box-shadow:0 2px 12px rgba(0,0,0,.1);
-}
-.search-box:focus-within{border-color:var(--accent);background:rgba(10,132,255,.06);
-  box-shadow:0 0 0 3px rgba(10,132,255,.2),0 4px 20px rgba(10,132,255,.12);
-  transform: translateY(-1px);
-}
-.search-icon{color:var(--text3);margin-right:10px;flex-shrink:0;
-  transition:all var(--transition-normal);
-}
-.search-box:focus-within .search-icon{color:var(--accent);transform:scale(1.1);}
+.search-box:hover{border-color:var(--border2)}
+.search-box:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.18)}
+.search-icon{color:var(--text3);margin-right:8px;flex-shrink:0}
+.search-box:focus-within .search-icon{color:var(--accent)}
 .search-box input[type=text]{
-  flex:1;border:none;background:transparent;color:var(--text);font-size:14px;
+  flex:1;border:none;background:transparent;color:var(--text);font-size:13px;
   outline:none;font-family:var(--font);height:100%;padding:0;width:auto;
-  border-radius:0;
 }
 .search-box input::placeholder{color:var(--text3)}
-.search-box input:focus{box-shadow:none;border-color:transparent}
 .search-clear{
-  width:20px;height:20px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  width:18px;height:18px;border-radius:50%;display:flex;align-items:center;justify-content:center;
   cursor:pointer;color:var(--text3);opacity:0;visibility:hidden;
-  transition:all var(--transition-fast);
+  transition:opacity var(--transition-fast);
 }
-.search-clear:hover{background:rgba(255,255,255,.1);color:var(--text);}
-.search-box.has-value .search-clear{opacity:1;visibility:visible;}
+.search-clear:hover{background:rgba(255,255,255,.1);color:var(--text)}
+.search-box.has-value .search-clear{opacity:1;visibility:visible}
 
-.search-wrapper{position:relative;flex:1;max-width:380px}
+.search-wrapper{position:relative;flex:1;max-width:440px}
 .search-dropdown{
-  position:absolute;top:100%;left:0;right:0;margin-top:8px;
+  position:absolute;top:100%;left:0;right:0;margin-top:6px;
   background:var(--card);border:1px solid var(--border2);border-radius:var(--radius);
-  box-shadow:0 12px 32px rgba(0,0,0,.25),0 0 0 1px rgba(255,255,255,.04);
-  max-height:320px;overflow-y:auto;
-  z-index:1000;display:none;opacity:0;transform:translateY(-8px);
-  transition:all var(--transition-normal);
-  -webkit-backdrop-filter:var(--blur-xl);backdrop-filter:var(--blur-xl);
+  box-shadow:var(--shadow);max-height:320px;overflow-y:auto;
+  z-index:1000;display:none;opacity:0;transform:translateY(-6px);
+  transition:opacity var(--transition-fast),transform var(--transition-fast);
 }
 .search-dropdown.show{display:block;opacity:1;transform:translateY(0)}
 .search-dropdown .search-item{
   display:flex;align-items:center;justify-content:space-between;
-  padding:12px 16px;border-bottom:1px solid var(--border);
-  transition:all var(--transition-fast);cursor:pointer;
+  padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;
+  transition:background var(--transition-fast);
 }
 .search-dropdown .search-item:last-child{border-bottom:none}
-.search-dropdown .search-item:hover{background:rgba(10,132,255,.08);padding-left:20px;}
-.search-dropdown .search-item:active{background:rgba(10,132,255,.12)}
+.search-dropdown .search-item:hover{background:rgba(10,132,255,.08);padding-left:18px}
 .search-dropdown .search-item .search-item-title{
   font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-size:14px;color:var(--text);
+  font-size:13px;color:var(--text);
 }
-.search-dropdown .search-item .search-item-source{
-  font-size:12px;color:var(--text3);margin-top:2px;
-}
+.search-dropdown .search-item .search-item-source{font-size:11px;color:var(--text3);margin-top:2px}
 
-/* Dashboard */
-.dash{display:grid;grid-template-columns:1.2fr 1fr 1fr 1.3fr;gap:12px;margin-bottom:20px}
+/* =========================================================
+   Dashboard
+   ========================================================= */
+.dash{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
 .dcard{
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
-  padding:16px 18px;text-align:left;position:relative;overflow:hidden;
-  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
-  transition:all var(--transition-normal);
-  animation:cardIn .6s var(--ease-bounce) both;
+  padding:12px 14px;text-align:left;position:relative;overflow:hidden;
+  transition:border-color var(--transition-fast);
 }
-.dcard:nth-child(1){animation-delay:.2s}
-.dcard:nth-child(2){animation-delay:.28s}
-.dcard:nth-child(3){animation-delay:.36s}
-.dcard:nth-child(4){animation-delay:.44s}
-@keyframes cardIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-.dcard::before{
-  content:'';position:absolute;top:0;left:0;right:0;height:2px;
-  background:linear-gradient(90deg,transparent,rgba(10,132,255,.6),rgba(191,90,242,.6),transparent);
-  opacity:0;transition:opacity var(--transition-normal);
-}
-.dcard:hover{
-  transform:translateY(-3px);border-color:var(--border2);
-  box-shadow:var(--shadow-glow);
-}
-.dcard:hover::before{opacity:1}
+.dcard:hover{border-color:var(--border2)}
 .dcard-bg-icon{
-  position:absolute;right:-8px;bottom:-8px;width:72px;height:72px;opacity:.06;
-  transform:rotate(-8deg);transition:all var(--transition-slow);
+  position:absolute;right:-6px;bottom:-6px;width:56px;height:56px;opacity:.05;
+  transform:rotate(-8deg);pointer-events:none;
 }
-.dcard:hover .dcard-bg-icon{opacity:.1;transform:rotate(0deg) scale(1.1)}
-.dcard .num{font-size:32px;font-weight:700;color:var(--text);font-family:var(--font-display);
+.dcard .num{font-size:22px;font-weight:700;color:var(--text);font-family:var(--font-display);
   font-variant-numeric:tabular-nums;line-height:1.2;position:relative;z-index:1;
   display:flex;align-items:center;gap:8px;
 }
@@ -306,406 +299,217 @@ body::after{
 .dcard .num.purple{color:var(--purple)}
 .status-dot{
   width:8px;height:8px;border-radius:50%;background:var(--green);
-  box-shadow:0 0 8px rgba(48,209,88,.6);
-  animation:pulse 2s ease-in-out infinite;
+  box-shadow:0 0 6px rgba(48,209,88,.5);
+  animation:pulse 2s ease-in-out infinite;flex-shrink:0;
 }
-.status-dot.red{background:var(--red);box-shadow:0 0 8px rgba(255,69,58,.6)}
-.status-dot.orange{background:var(--orange);box-shadow:0 0 8px rgba(255,159,10,.6)}
-@keyframes pulse{
-  0%,100%{opacity:1;transform:scale(1)}
-  50%{opacity:.6;transform:scale(1.2)}
-}
-.dcard-wide .num{font-size:14px;font-weight:500;color:var(--text2);line-height:1.6}
+.status-dot.red{background:var(--red);box-shadow:0 0 6px rgba(255,69,58,.5)}
+.status-dot.orange{background:var(--orange);box-shadow:0 0 6px rgba(255,159,10,.5)}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.2)}}
+.dcard-wide .num{font-size:13px;font-weight:500;color:var(--text2);line-height:1.6}
 .dcard-wide .num span{font-weight:600;font-size:inherit}
 .dcard-wide .num .ok{color:var(--green)}.dcard-wide .num .fail{color:var(--red)}
 /* 近 7 天可视化：柱状图 + 成功率环形图 */
 .dash7-viz{display:flex;align-items:flex-end;gap:12px;margin:2px 0 12px}
 .dash7-chart{flex:1;display:flex;align-items:flex-end;gap:5px;height:44px;min-width:0}
-.dash7-bar{flex:1;min-width:0;border-radius:4px 4px 0 0;opacity:.92;
-  transition:height .6s var(--ease-bounce);background:var(--text4)}
+.dash7-bar{flex:1;min-width:0;border-radius:4px 4px 0 0;opacity:.92;background:var(--text4)}
 .dash7-bar:hover{opacity:1}
 .dash7-donut{position:relative;width:48px;height:48px;flex-shrink:0}
 .dash7-donut svg{width:100%;height:100%}
 .donut-bg{fill:none;stroke:var(--border2);stroke-width:5}
 .donut-fill{fill:none;stroke:var(--green);stroke-width:5;stroke-linecap:round;
-  transform:rotate(-90deg);transform-origin:50% 50%;
-  transition:stroke-dashoffset .6s var(--ease-bounce)}
+  transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset .6s var(--ease-bounce)}
 .donut-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
   font-size:11px;font-weight:700;color:var(--text);font-family:var(--font-display)}
-@media(max-width:640px){
-  .dash{grid-template-columns:repeat(2,1fr);gap:10px}
-  .dcard{padding:14px}
-  .dcard .num{font-size:26px}
-  .dcard-wide{grid-column:1/-1}
-  .dcard-wide .num{font-size:13px}
-}
-@media(prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
-}
 
-/* Segmented Control */
-.tabs{display:flex;background:rgba(255,255,255,.04);border-radius:16px;padding:5px;margin-bottom:20px;
-  position:relative;border:1px solid var(--border);
-  animation:fadeUp .6s var(--ease-bounce) both;animation-delay:.5s;
-}
-@keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
-[data-theme="light"] .tabs{background:rgba(0,0,0,.03)}
-.tab-btn{flex:1;padding:12px 10px;text-align:center;font-size:14px;font-weight:600;
-  cursor:pointer;color:var(--text3);border-radius:12px;border:none;background:transparent;
-  letter-spacing:-.2px;white-space:nowrap;position:relative;z-index:1;
-  transition:color .35s cubic-bezier(.4,0,.2,1),transform .25s cubic-bezier(.34,1.4,.64,1);
-  font-family:var(--font-display);
-}
-.tab-btn:hover{color:var(--text);transform:translateY(-1px)}
-.tab-btn:active{transform:translateY(0) scale(.96)}
-.tab-btn.active{color:#fff;font-weight:700;letter-spacing:-.3px;
-  text-shadow:0 1px 2px rgba(0,0,0,.25),0 0 20px rgba(255,255,255,.1);
-}
-.tab-indicator{
-  position:absolute;top:5px;bottom:5px;border-radius:12px;
-  background:
-    radial-gradient(ellipse 120% 80% at 50% 0%,rgba(255,255,255,.28) 0%,transparent 55%),
-    linear-gradient(135deg,var(--accent) 0%,var(--accent2) 45%,var(--purple) 100%);
-  box-shadow:
-    0 6px 24px rgba(10,132,255,.35),
-    0 2px 10px rgba(94,92,230,.25),
-    0 0 0 1px rgba(255,255,255,.08) inset,
-    0 1px 0 rgba(255,255,255,.18) inset,
-    0 -1px 0 rgba(0,0,0,.15) inset;
-  transition:transform .5s cubic-bezier(.34,1.4,.64,1),width .5s cubic-bezier(.34,1.4,.64,1);
-  pointer-events:none;overflow:hidden;
-}
-.tab-indicator::before{
-  content:'';position:absolute;inset:0;border-radius:inherit;
-  background:
-    radial-gradient(circle at 20% 30%,rgba(255,255,255,.2) 0%,transparent 40%),
-    radial-gradient(circle at 80% 70%,rgba(191,90,242,.3) 0%,transparent 50%);
-  opacity:.6;pointer-events:none;
-  animation:tabGlow 4s ease-in-out infinite;
-}
-.tab-indicator::after{
-  content:'';position:absolute;inset:0;border-radius:inherit;
-  background-image:url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.8' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.12'/%3E%3C/svg%3E");
-  opacity:.5;mix-blend-mode:overlay;pointer-events:none;
-}
-@keyframes tabGlow{
-  0%,100%{opacity:.4;transform:scale(1)}
-  50%{opacity:.7;transform:scale(1.02)}
-}
-
-/* Tab Content */
-.tab-content{display:none}
-.tab-content.active{display:block;animation:tabSlideIn .4s var(--ease-bounce)}
-@keyframes tabSlideIn{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
-
-/* Card */
+/* =========================================================
+   Card
+   ========================================================= */
 .card{
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
-  padding:20px;margin-bottom:16px;position:relative;overflow:hidden;
-  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
-  transition:all var(--transition-normal);
-  animation:cardSlideUp .5s var(--ease-bounce) both;
+  padding:var(--card-pad);margin-bottom:12px;position:relative;
 }
-.card:nth-of-type(1){animation-delay:.55s}
-.card:nth-of-type(2){animation-delay:.62s}
-.card:nth-of-type(3){animation-delay:.69s}
-.card:nth-of-type(4){animation-delay:.76s}
-@keyframes cardSlideUp{from{opacity:0;transform:translateY(20px)}to{opacity:1;transform:translateY(0)}}
-.card::before{
-  content:'';position:absolute;top:0;left:24px;width:40px;height:3px;border-radius:0 0 3px 3px;
-  background:linear-gradient(90deg,var(--accent),var(--purple));opacity:.6;
-}
-.card.movie::before{background:linear-gradient(90deg,var(--accent),var(--cyan))}
-.card.tv::before{background:linear-gradient(90deg,var(--purple),var(--accent3))}
-.card.variety::before{background:linear-gradient(90deg,var(--orange),var(--red))}
-.card:hover{
-  border-color:var(--border2);transform:translateY(-2px);
-  box-shadow:var(--shadow),var(--shadow-glow);
-}
-.card-title{font-size:17px;font-weight:600;color:var(--text);margin-bottom:16px;display:flex;align-items:center;gap:10px;
-  font-family:var(--font-display);letter-spacing:-.3px;
+.card.grid-3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;align-items:start}
+.card.grid-3 .card{margin-bottom:0}
+.card-title{font-size:14px;font-weight:600;color:var(--text);margin-bottom:12px;display:flex;align-items:center;gap:8px;
+  font-family:var(--font-display);letter-spacing:-.2px;
 }
 .card-title svg{color:var(--accent)}
-.card-title .ic,.hist-icon .ic{display:inline;vertical-align:middle;margin-right:6px}
-.card-title .badge{font-size:11px;padding:3px 10px;border-radius:20px;
-  background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:600;
-  font-family:var(--font-display);
-}
+.card-title .ic,.hist-icon .ic{display:inline;vertical-align:middle;margin-right:4px}
+.card-title .badge{font-size:11px;padding:2px 9px;border-radius:20px;
+  background:var(--accent);color:#fff;font-weight:600;font-family:var(--font-display)}
 .sub-title{font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px;margin-top:14px;display:flex;align-items:center;gap:8px;
-  font-family:var(--font-display);
-}
+  font-family:var(--font-display)}
 .sub-title:first-child{margin-top:0}
 .sel-all{font-size:11px;color:var(--accent);cursor:pointer;font-weight:600;margin-left:auto;
-  padding:4px 10px;border-radius:8px;transition:all var(--transition-fast);
-}
-.sel-all:hover{background:rgba(10,132,255,.1);text-decoration:none}
+  padding:4px 10px;border-radius:8px;transition:background var(--transition-fast)}
+.sel-all:hover{background:rgba(10,132,255,.1)}
 
 /* Chips */
-.chips{display:flex;flex-wrap:wrap;gap:8px}
-.chip{padding:8px 16px;border-radius:12px;background:rgba(255,255,255,.03);border:1px solid var(--border);
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{padding:7px 14px;border-radius:var(--radius-sm);background:var(--card-2);border:1px solid var(--border);
   cursor:pointer;font-size:13px;font-weight:500;color:var(--text2);user-select:none;
-  transition:all var(--transition-normal);position:relative;overflow:hidden;
-}
-[data-theme="light"] .chip{background:rgba(0,0,0,.02)}
-.chip:hover{background:rgba(10,132,255,.08);border-color:rgba(10,132,255,.3);
-  transform:translateY(-1px);color:var(--accent);
-}
-.chip.on{background:linear-gradient(135deg,rgba(48,209,88,.18),rgba(10,132,255,.1));
-  border-color:rgba(48,209,88,.5);color:var(--green);font-weight:600;
-  box-shadow:0 2px 8px rgba(48,209,88,.15);
-}
-
+  transition:background var(--transition-fast),border-color var(--transition-fast),color var(--transition-fast)}
+.chip:hover{background:var(--card);border-color:var(--border2);color:var(--text)}
+.chip.on{background:rgba(48,209,88,.12);border-color:rgba(48,209,88,.45);color:var(--green);font-weight:600}
 
 /* Input */
-input[type=number]{padding:9px 12px;border-radius:var(--radius-xs);border:1px solid var(--border);
-  background:rgba(255,255,255,.03);color:var(--text);font-size:14px;width:72px;text-align:center;font-weight:600;
-  transition:all var(--transition-normal);font-family:var(--font-display);font-variant-numeric:tabular-nums;
-}
+input[type=number]{padding:8px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);
+  background:var(--card-2);color:var(--text);font-size:13px;width:64px;text-align:center;font-weight:600;
+  transition:border-color var(--transition-fast);font-family:var(--font-display);font-variant-numeric:tabular-nums}
 input[type=number]:hover{border-color:var(--border2)}
 input[type=range]{-webkit-appearance:none;appearance:none;height:6px;border-radius:3px;
-  background:rgba(255,255,255,.1);outline:none;cursor:pointer;flex:1;max-width:200px;
-}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:18px;height:18px;border-radius:50%;
-  background:linear-gradient(135deg,var(--accent),var(--accent2));cursor:pointer;
-  box-shadow:0 2px 8px rgba(10,132,255,.4);transition:transform var(--transition-fast);
-}
-input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.2)}
-input[type=range]::-moz-range-thumb{width:18px;height:18px;border-radius:50%;border:none;
-  background:linear-gradient(135deg,var(--accent),var(--accent2));cursor:pointer;
-  box-shadow:0 2px 8px rgba(10,132,255,.4);
-}
+  background:rgba(255,255,255,.12);outline:none;cursor:pointer;flex:1;max-width:200px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--accent);cursor:pointer;box-shadow:0 0 0 3px rgba(10,132,255,.18);transition:transform var(--transition-fast)}
+input[type=range]::-webkit-slider-thumb:hover{transform:scale(1.15)}
+input[type=range]::-moz-range-thumb{width:16px;height:16px;border-radius:50%;border:none;background:var(--accent);cursor:pointer}
 input[type=range]:disabled{opacity:.5;cursor:not-allowed}
-input[type=text],input[type=password]{width:100%;padding:13px 16px;border-radius:var(--radius-sm);border:1px solid var(--border);
-  background:rgba(255,255,255,.03);color:var(--text);font-size:14px;
-  transition:all var(--transition-normal);
-}
+input[type=text],input[type=password]{width:100%;padding:11px 14px;border-radius:var(--radius-sm);border:1px solid var(--border);
+  background:var(--card-2);color:var(--text);font-size:13px;transition:border-color var(--transition-fast)}
 input[type=text]:hover,input[type=password]:hover{border-color:var(--border2)}
-input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 4px rgba(10,132,255,.15),0 0 20px rgba(10,132,255,.1)}
-input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:rgba(255,255,255,.01)}
+input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.15)}
+input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--card-2)}
 
 /* Buttons */
-.btn{padding:13px 26px;border-radius:var(--radius-sm);border:none;cursor:pointer;font-size:14px;font-weight:600;
-  font-family:var(--font-display);transition:all var(--transition-normal);position:relative;overflow:hidden;
-  letter-spacing:-.2px;
-}
-.btn::before{
-  content:'';position:absolute;inset:0;border-radius:inherit;
-  background:linear-gradient(135deg,rgba(255,255,255,.2),rgba(255,255,255,0));
-  transform:translateX(-100%);transition:transform .6s ease;pointer-events:none;
-}
-.btn:hover::before{transform:translateX(100%)}
-.btn:hover{transform:translateY(-2px)}
+.btn{padding:10px 20px;border-radius:var(--radius-sm);border:none;cursor:pointer;font-size:13px;font-weight:600;
+  font-family:var(--font-display);transition:background var(--transition-fast),filter var(--transition-fast),transform var(--transition-fast);
+  letter-spacing:-.1px}
+.btn:hover{transform:translateY(-1px)}
 .btn:active{transform:translateY(0) scale(.97)}
-.btn-primary{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;
-  box-shadow:0 4px 16px rgba(10,132,255,.3);
-}
-.btn-primary:hover{filter:brightness(1.08);box-shadow:0 8px 28px rgba(10,132,255,.4)}
-.btn-sm{padding:8px 16px;font-size:13px;border-radius:12px;font-weight:600}
-.btn-danger{background:rgba(255,69,58,.1);color:var(--red);border:1px solid rgba(255,69,58,.25)}
-.btn-danger:hover{background:rgba(255,69,58,.18);border-color:rgba(255,69,58,.4);
-  box-shadow:0 4px 16px rgba(255,69,58,.2);
-}
+.btn-primary{background:var(--accent);color:#fff}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-sm{padding:7px 13px;font-size:12px;border-radius:var(--radius-sm);font-weight:600}
+.btn-danger{background:rgba(255,69,58,.12);color:var(--red);border:1px solid rgba(255,69,58,.25)}
+.btn-danger:hover{background:rgba(255,69,58,.2);border-color:rgba(255,69,58,.4)}
 .btn-outline{background:transparent;border:1px solid var(--border);color:var(--text2)}
-.btn-outline:hover{background:rgba(255,255,255,.06);border-color:var(--border2);color:var(--text)}
+.btn-outline:hover{background:var(--card-2);border-color:var(--border2);color:var(--text)}
 .btn-dashed{border-style:dashed;border-color:var(--border3)}
 .btn-dashed:hover{background:rgba(10,132,255,.06);border-color:var(--accent);color:var(--accent)}
-.btn:disabled{opacity:.45;cursor:not-allowed;transform:none;box-shadow:none;filter:grayscale(.3)}
+.btn:disabled{opacity:.45;cursor:not-allowed;transform:none;filter:grayscale(.3)}
 .btn:disabled:hover{transform:none;filter:grayscale(.3)}
 
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
 /* Toggle */
-.toggle{position:relative;width:48px;height:28px;display:inline-block;cursor:pointer;flex-shrink:0}
+.toggle{position:relative;width:44px;height:26px;display:inline-block;cursor:pointer;flex-shrink:0}
 .toggle input{opacity:0;width:0;height:0;position:absolute}
-.toggle .slider{position:absolute;inset:0;background:rgba(255,255,255,.1);border-radius:14px;transition:background .3s cubic-bezier(.4,0,.2,1),box-shadow .3s ease}
-.toggle .slider:before{content:'';position:absolute;width:22px;height:22px;left:3px;top:3px;
-  background:#fff;border-radius:50%;transition:transform .35s cubic-bezier(.34,1.56,.64,1);box-shadow:0 2px 6px rgba(0,0,0,.25)}
+.toggle .slider{position:absolute;inset:0;background:rgba(255,255,255,.12);border-radius:13px;transition:background .25s cubic-bezier(.4,0,.2,1),box-shadow .25s ease}
+.toggle .slider:before{content:'';position:absolute;width:20px;height:20px;left:3px;top:3px;
+  background:#fff;border-radius:50%;transition:transform .3s cubic-bezier(.4,0,.2,1);box-shadow:0 1px 3px rgba(0,0,0,.25)}
 .toggle input:checked+.slider{background:var(--green);box-shadow:0 0 0 3px rgba(48,209,88,.15)}
-.toggle input:checked+.slider:before{transform:translateX(20px)}
+.toggle input:checked+.slider:before{transform:translateX(18px)}
 .toggle:active .slider:before{transform:scale(.92)}
-.toggle input:checked:active .slider:before{transform:translateX(20px) scale(.92)}
+.toggle input:checked:active .slider:before{transform:translateX(18px) scale(.92)}
 
 /* Sched row */
 .sched-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.sched-row:last-child{margin-bottom:0}
 
 /* Filter */
 .filter-tabs{display:flex;gap:6px;margin-bottom:12px}
-.filter-tab{padding:6px 14px;border-radius:20px;border:1px solid var(--border);
-  background:rgba(255,255,255,.03);cursor:pointer;font-size:13px;color:var(--text3);font-weight:500}
+.filter-tab{padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);
+  background:var(--card-2);cursor:pointer;font-size:12px;color:var(--text3);font-weight:500;transition:all var(--transition-fast)}
+.filter-tab:hover{color:var(--text2)}
 .filter-tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 
 /* Ring Progress */
-.ring-progress{
-  width:52px;height:52px;position:relative;flex-shrink:0;
-}
+.ring-progress{width:46px;height:46px;position:relative;flex-shrink:0}
 .ring-progress svg{width:100%;height:100%;transform:rotate(-90deg)}
-.ring-bg{
-  fill:none;stroke:rgba(255,255,255,.08);stroke-width:4;
-}
-.ring-fill{
-  fill:none;stroke:url(#ringGradient);stroke-width:4;stroke-linecap:round;
-  stroke-dasharray:113;stroke-dashoffset:113;
-  transition:stroke-dashoffset .5s var(--ease-bounce);
-  filter:drop-shadow(0 0 6px rgba(10,132,255,.5));
-}
-.ring-text{
-  position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  font-size:11px;font-weight:700;font-family:var(--font-display);
-  font-variant-numeric:tabular-nums;
-}
+.ring-bg{fill:none;stroke:rgba(255,255,255,.08);stroke-width:4}
+.ring-fill{fill:none;stroke:url(#ringGradient);stroke-width:4;stroke-linecap:round;
+  stroke-dasharray:113;stroke-dashoffset:113;transition:stroke-dashoffset .5s var(--ease-bounce)}
+.ring-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;font-family:var(--font-display);font-variant-numeric:tabular-nums}
 [data-theme="light"] .ring-bg{stroke:rgba(0,0,0,.08)}
 
 /* Progress */
-.progress-wrap{height:6px;background:rgba(255,255,255,.05);border-radius:3px;overflow:hidden;margin:14px 0;
-  position:relative;display:none;
-}
-.progress-wrap::before{
-  content:'';position:absolute;inset:0;border-radius:3px;
-  background:linear-gradient(90deg,transparent,rgba(255,255,255,.1),transparent);
-  animation:progressShine 2s ease-in-out infinite;
-}
-@keyframes progressShine{
-  0%{transform:translateX(-100%)}100%{transform:translateX(100%)}
-}
-.progress-fill{height:100%;border-radius:3px;background:linear-gradient(90deg,var(--accent),var(--cyan),var(--green));
-  transition:width .4s var(--ease-bounce);position:relative;
-}
-.progress-fill::after{
-  content:'';position:absolute;inset:0;border-radius:3px;
-  background:linear-gradient(90deg,transparent,rgba(255,255,255,.3),transparent);
-  animation:progressShine 1.5s ease-in-out infinite;
-}
-.progress-stats{display:flex;gap:16px;flex-wrap:wrap;margin-bottom:14px}
-.progress-stat{font-size:13px;color:var(--text3);font-family:var(--font-display);font-weight:500}
+.progress-stats{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+.progress-stat{font-size:12px;color:var(--text3);font-family:var(--font-display);font-weight:500}
 .progress-stat span{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
 
 /* Log */
 .log-box{
-  background:linear-gradient(180deg,rgba(0,0,0,.6),rgba(0,0,0,.4));
-  border:1px solid var(--border);border-radius:var(--radius);padding:16px;
-  max-height:380px;overflow-y:auto;font-family:var(--mono);font-size:12.5px;line-height:1.9;
+  background:var(--bg-deep);border:1px solid var(--border);border-radius:var(--radius);
+  padding:12px;max-height:340px;overflow-y:auto;font-family:var(--mono);font-size:12px;line-height:1.8;
   white-space:pre-wrap;color:var(--text2);position:relative;
 }
-.log-box::before{
-  content:'TERMINAL';position:absolute;top:10px;right:14px;
-  font-size:10px;font-weight:700;letter-spacing:1.5px;color:var(--text4);
-  font-family:var(--font-display);
-}
-.log-line{padding:2px 0;opacity:0;animation:logLineIn .3s ease forwards}
+.log-box::before{content:'TERMINAL';position:absolute;top:8px;right:12px;
+  font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--text4);font-family:var(--font-display)}
+.log-line{padding:1px 0;opacity:0;animation:logLineIn .25s ease forwards}
 @keyframes logLineIn{to{opacity:1}}
 .log-box .ok{color:var(--green)}.log-box .sk{color:var(--text3)}.log-box .er{color:var(--red)}.log-box .inf{color:var(--cyan)}
-.log-pause{
-  position:sticky;bottom:10px;float:right;padding:6px 14px;border-radius:10px;
-  background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;
-  font-size:11px;cursor:pointer;font-family:var(--font-display);font-weight:600;border:none;z-index:5;
-  box-shadow:0 4px 12px rgba(10,132,255,.3);transition:all var(--transition-fast);
-}
-.log-pause:hover{transform:translateY(-1px);box-shadow:0 6px 16px rgba(10,132,255,.4)}
+.log-pause{position:sticky;bottom:8px;float:right;padding:5px 12px;border-radius:var(--radius-sm);
+  background:var(--accent);color:#fff;font-size:11px;cursor:pointer;font-family:var(--font-display);font-weight:600;border:none;z-index:5}
+.log-pause:hover{filter:brightness(1.08)}
 
 /* History */
-.hist-item{padding:14px;border-radius:var(--radius-sm);background:rgba(255,255,255,.02);
-  margin-bottom:8px;display:flex;align-items:center;gap:14px;border:1px solid var(--border);
-  transition:all var(--transition-normal);cursor:pointer;position:relative;overflow:hidden;
-}
-.hist-item::before{
-  content:'';position:absolute;left:0;top:0;bottom:0;width:3px;
-  background:linear-gradient(180deg,var(--accent),var(--purple));
-  opacity:0;transition:opacity var(--transition-normal);
-}
-.hist-item:hover{
-  background:rgba(255,255,255,.04);border-color:var(--border2);
-  transform:translateX(4px);
-}
-.hist-item:hover::before{opacity:1}
-.hist-icon{width:42px;height:42px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;
-  transition:all var(--transition-normal);
-}
-.hist-item:hover .hist-icon{transform:scale(1.08)}
-.hist-icon.transfer{background:linear-gradient(135deg,rgba(10,132,255,.15),rgba(100,210,255,.1));color:var(--accent)}
-.hist-icon.expired{background:linear-gradient(135deg,rgba(255,159,10,.15),rgba(255,69,58,.1));color:var(--orange)}
-.hist-icon.cleanup{background:linear-gradient(135deg,rgba(255,69,58,.15),rgba(191,90,242,.1));color:var(--red)}
-.hist-icon.config{background:linear-gradient(135deg,rgba(48,209,88,.15),rgba(100,210,255,.1));color:var(--green)}
+.hist-item{padding:12px;border-radius:var(--radius-sm);background:var(--card-2);
+  margin-bottom:8px;display:flex;align-items:center;gap:12px;border:1px solid var(--border);
+  transition:background var(--transition-fast),border-color var(--transition-fast);cursor:pointer}
+.hist-item:hover{background:var(--card);border-color:var(--border2)}
+.hist-icon{width:40px;height:40px;border-radius:var(--radius-sm);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0}
+.hist-item:hover .hist-icon{transform:scale(1.05)}
+.hist-icon.transfer{background:rgba(10,132,255,.15);color:var(--accent)}
+.hist-icon.expired{background:rgba(255,159,10,.15);color:var(--orange)}
+.hist-icon.cleanup{background:rgba(255,69,58,.15);color:var(--red)}
+.hist-icon.config{background:rgba(48,209,88,.15);color:var(--green)}
 .hist-info{flex:1;min-width:0}
-.hist-title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
-.hist-meta{font-size:12px;color:var(--text3);margin-top:3px}
+.hist-title{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px}
+.hist-meta{font-size:12px;color:var(--text3);margin-top:2px}
 .hist-time{font-size:12px;color:var(--text3);white-space:nowrap;font-variant-numeric:tabular-nums}
-.hist-detail{border-left:3px solid var(--border);margin-left:22px}
+.hist-detail{border-left:3px solid var(--border);margin-left:20px;padding-left:12px;font-size:12px;color:var(--text2)}
 
 /* Skeleton */
 .skeleton{height:32px;border-radius:8px;background:rgba(255,255,255,.03);animation:shimmer 1.5s ease-in-out infinite}
 .skeleton-row{height:54px;border-radius:14px;background:rgba(255,255,255,.03);animation:shimmer 1.5s ease-in-out infinite;margin-bottom:8px}
 .skeleton-text{height:14px;border-radius:4px;background:rgba(255,255,255,.03);animation:shimmer 1.5s ease-in-out infinite}
-@keyframes shimmer{
-  0%{background-position:-200% 0}
-  100%{background-position:200% 0}
-}
+@keyframes shimmer{0%{background-position:-200% 0}100%{background-position:200% 0}}
 .skeleton,.skeleton-row,.skeleton-text{
   background:linear-gradient(90deg,rgba(255,255,255,.02) 25%,rgba(255,255,255,.06) 50%,rgba(255,255,255,.02) 75%);
   background-size:200% 100%;
 }
 
 /* Empty State */
-.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px 24px;text-align:center;
-  animation:fadeInUp .5s var(--ease-bounce);
-}
-@keyframes fadeInUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
-.empty-state .empty-icon{width:64px;height:64px;color:var(--text4);margin-bottom:16px;opacity:.5;
-  transition:all var(--transition-slow);
-}
-.empty-state:hover .empty-icon{transform:scale(1.1) rotate(-5deg);opacity:.7}
-.empty-state .empty-title{font-size:16px;font-weight:600;color:var(--text2);margin-bottom:8px;
-  font-family:var(--font-display);letter-spacing:-.2px;
-}
-.empty-state .empty-desc{font-size:13px;color:var(--text3);line-height:1.7}
-.empty-state .empty-action{margin-top:20px}
+.empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px 20px;text-align:center}
+.empty-state .empty-icon{width:56px;height:56px;color:var(--text4);margin-bottom:14px;opacity:.5}
+.empty-state .empty-title{font-size:15px;font-weight:600;color:var(--text2);margin-bottom:6px;font-family:var(--font-display);letter-spacing:-.2px}
+.empty-state .empty-desc{font-size:12px;color:var(--text3);line-height:1.7}
+.empty-state .empty-action{margin-top:18px}
 
 /* Dir */
 .dir-item{display:flex;gap:8px;margin-bottom:8px}.dir-item input{flex:1}
 .dir-del{width:30px;height:30px;display:flex;align-items:center;justify-content:center;
   background:rgba(255,69,58,.08);border:1px solid rgba(255,69,58,.15);color:var(--red);
-  border-radius:8px;cursor:pointer;font-size:18px;flex-shrink:0}
+  border-radius:var(--radius-sm);cursor:pointer;font-size:18px;flex-shrink:0}
 
 /* Sheet (Bottom Modal) */
 .sheet-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:1000;display:none;
-  align-items:flex-end;justify-content:center;backdrop-filter:blur(8px);
-}
+  align-items:flex-end;justify-content:center}
 .sheet-overlay.show{display:flex;animation:overlayFadeIn .2s ease}
 @keyframes overlayFadeIn{from{opacity:0}to{opacity:1}}
-.sheet{
-  background:var(--card);border:1px solid var(--border);border-radius:var(--radius-xl) var(--radius-xl) 0 0;
-  width:100%;max-width:520px;max-height:85vh;overflow-y:auto;padding:24px 20px 20px;
-  -webkit-backdrop-filter:var(--blur-xl);backdrop-filter:var(--blur-xl);
-  animation:sheetSlideUp .4s var(--ease-bounce);
-}
+.sheet{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-xl) var(--radius-xl) 0 0;
+  width:100%;max-width:520px;max-height:85vh;overflow-y:auto;padding:20px 18px 18px}
 @keyframes sheetSlideUp{from{transform:translateY(100%) scale(.95);opacity:0}to{transform:translateY(0) scale(1);opacity:1}}
-.sheet-handle{width:36px;height:5px;border-radius:3px;background:var(--border3);margin:0 auto 16px;opacity:.5}
-.sheet h3{font-size:20px;font-weight:700;margin-bottom:20px;color:var(--text);font-family:var(--font-display);
-  letter-spacing:-.3px;display:flex;align-items:center;gap:10px;
-}
-.sheet h3::before{
-  content:'';width:4px;height:20px;border-radius:2px;
-  background:linear-gradient(180deg,var(--accent),var(--purple));
-}
-.section-title{font-size:11px;color:var(--text3);font-weight:700;margin:20px 0 10px;text-transform:uppercase;letter-spacing:1px;
-font-family:var(--font-display);display:flex;align-items:center;gap:8px;
-}
-.section-title::before{
-  content:'';width:6px;height:6px;border-radius:50%;background:var(--accent);
-}
-.form-group{margin-bottom:16px}.form-group label{display:block;font-size:13px;color:var(--text2);margin-bottom:6px;font-weight:600;font-family:var(--font-display)}
+.sheet-handle{width:36px;height:5px;border-radius:3px;background:var(--border3);margin:0 auto 14px;opacity:.5}
+.sheet h3{font-size:18px;font-weight:700;margin-bottom:18px;color:var(--text);font-family:var(--font-display);
+  letter-spacing:-.3px;display:flex;align-items:center;gap:10px}
+.sheet h3::before{content:'';width:4px;height:18px;border-radius:2px;background:linear-gradient(180deg,var(--accent),var(--purple))}
+.section-title{font-size:11px;color:var(--text3);font-weight:700;margin:18px 0 10px;text-transform:uppercase;letter-spacing:1px;
+  font-family:var(--font-display);display:flex;align-items:center;gap:8px}
+.section-title::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent)}
+.form-group{margin-bottom:14px}.form-group label{display:block;font-size:13px;color:var(--text2);margin-bottom:6px;font-weight:600;font-family:var(--font-display)}
 
 /* Toast */
 #toastContainer{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:10px;align-items:center;pointer-events:none}
-.toast{position:relative;transform:none;padding:14px 22px;
-  border-radius:var(--radius-sm);font-size:14px;font-weight:600;opacity:0;
+.toast{position:relative;transform:none;padding:11px 18px;
+  border-radius:var(--radius-sm);font-size:13px;font-weight:600;opacity:0;
   background:var(--card);border:1px solid var(--border2);color:var(--text);
-  -webkit-backdrop-filter:var(--blur-xl);backdrop-filter:var(--blur-xl);
-  transition:all var(--transition-normal);box-shadow:var(--shadow),var(--shadow-glow);
-  display:flex;align-items:center;gap:var(--space-md);min-width:240px;justify-content:center;
-  animation:toastIn .4s var(--ease-bounce);font-family:var(--font-display);
+  transition:opacity var(--transition-fast),transform var(--transition-fast);
+  box-shadow:var(--shadow);display:flex;align-items:center;gap:var(--space-md);min-width:220px;justify-content:center;
+  font-family:var(--font-display);
 }
-@keyframes toastIn{0%{opacity:0;transform:translateY(-30px) scale(.9)}100%{opacity:1;transform:translateY(0) scale(1)}}
-@keyframes toastOut{to{opacity:0;transform:translateY(-20px) scale(.95)}}
+@keyframes toastIn{0%{opacity:0;transform:translateY(-24px) scale(.95)}100%{opacity:1;transform:translateY(0) scale(1)}}
+@keyframes toastOut{to{opacity:0;transform:translateY(-16px) scale(.96)}}
 .toast.show{opacity:1}
 .toast.toast-out{animation:toastOut .3s ease forwards}
 .toast.ok{border-color:rgba(48,209,88,.4);background:linear-gradient(135deg,rgba(48,209,88,.15),var(--card))}
@@ -718,87 +522,117 @@ font-family:var(--font-display);display:flex;align-items:center;gap:8px;
 
 /* Confirm Dialog */
 .confirm-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2000;display:none;
-  align-items:center;justify-content:center;backdrop-filter:blur(8px);
-}
+  align-items:center;justify-content:center}
 .confirm-overlay.show{display:flex;animation:overlayFadeIn .2s ease}
-.confirm-box{
-  background:var(--card);border:1px solid var(--border2);border-radius:var(--radius-lg);
-  width:340px;max-width:92%;padding:28px 24px 24px;text-align:center;
-  -webkit-backdrop-filter:var(--blur-xl);backdrop-filter:var(--blur-xl);
-  box-shadow:var(--shadow),0 0 60px rgba(0,0,0,.3);
-  animation:confirmIn .4s var(--ease-bounce);
-}
-@keyframes confirmIn{from{opacity:0;transform:scale(.85)}to{opacity:1;transform:scale(1)}}
-.confirm-icon{width:56px;height:56px;border-radius:50%;margin:0 auto 16px;
-  display:flex;align-items:center;justify-content:center;
-  background:linear-gradient(135deg,rgba(255,69,58,.15),rgba(255,159,10,.1));
-}
-.confirm-icon svg{width:28px;height:28px;color:var(--red)}
-.confirm-box h3{font-size:18px;font-weight:700;margin-bottom:10px;color:var(--text);font-family:var(--font-display)}
-.confirm-box p{font-size:14px;color:var(--text3);margin-bottom:24px;line-height:1.6}
+.confirm-box{background:var(--card);border:1px solid var(--border2);border-radius:var(--radius-lg);
+  width:340px;max-width:92%;padding:24px 22px 22px;text-align:center;box-shadow:var(--shadow);
+  animation:confirmIn .4s var(--ease-bounce)}
+@keyframes confirmIn{from{opacity:0;transform:scale(.9)}to{opacity:1;transform:scale(1)}}
+.confirm-icon{width:52px;height:52px;border-radius:50%;margin:0 auto 14px;
+  display:flex;align-items:center;justify-content:center;background:rgba(255,69,58,.12)}
+.confirm-icon svg{width:26px;height:26px;color:var(--red)}
+.confirm-box h3{font-size:17px;font-weight:700;margin-bottom:8px;color:var(--text);font-family:var(--font-display)}
+.confirm-box p{font-size:13px;color:var(--text3);margin-bottom:20px;line-height:1.6}
 .confirm-box .confirm-actions{display:flex;gap:10px}
 .confirm-box .confirm-actions .btn{flex:1}
 
 /* Scrollbar */
 ::-webkit-scrollbar{width:8px;height:8px}
 ::-webkit-scrollbar-track{background:transparent}
-::-webkit-scrollbar-thumb{
-  background:rgba(255,255,255,.1);border-radius:4px;
-  transition:background .2s ease;
-}
+::-webkit-scrollbar-thumb{background:rgba(255,255,255,.12);border-radius:4px;transition:background .2s ease}
 ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.2)}
 ::-webkit-scrollbar-thumb:active{background:rgba(255,255,255,.3)}
-[data-theme="light"] ::-webkit-scrollbar-thumb{background:rgba(0,0,0,.1)}
-[data-theme="light"] ::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.18)}
+[data-theme="light"] ::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12)}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover{background:rgba(0,0,0,.2)}
 
 /* Select */
-.select{padding:7px 8px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:14px;font-family:var(--font);cursor:pointer}
+.select{padding:6px 8px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--card-2);color:var(--text);font-size:13px;font-family:var(--font);cursor:pointer}
 .select:focus{outline:none;border-color:var(--accent)}
-.input-sm{width:70px;padding:7px 8px;border-radius:8px;border:1px solid var(--border);background:rgba(255,255,255,.04);color:var(--text);font-size:14px;font-family:var(--font)}
+.input-sm{width:64px;padding:6px 8px;border-radius:var(--radius-xs);border:1px solid var(--border);background:var(--card-2);color:var(--text);font-size:13px;font-family:var(--font)}
 .input-sm:focus{outline:none;border-color:var(--accent)}
 
+/* Data Table (compact, dense) */
+.data-table{width:100%;border-collapse:collapse;font-size:13px;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.data-table thead th{text-align:left;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;
+  padding:9px 12px;background:var(--card-2);border-bottom:1px solid var(--border);cursor:default;white-space:nowrap;position:sticky;top:0}
+.data-table thead th[data-sort]{cursor:pointer;user-select:none}
+.data-table thead th[data-sort]:hover{color:var(--text)}
+.data-table thead th .sort-ind{color:var(--accent);margin-left:4px;font-size:10px}
+.data-table tbody td{padding:9px 12px;border-bottom:1px solid var(--border);vertical-align:middle;color:var(--text)}
+.data-table tbody tr:last-child td{border-bottom:none}
+.data-table tbody tr:hover td{background:var(--card-2)}
+.data-table .hist-type{color:var(--text2);font-weight:500;white-space:nowrap}
+.data-table .hist-detail-cell{max-width:480px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text2)}
+.data-table .hist-time{color:var(--text3);white-space:nowrap;font-variant-numeric:tabular-nums}
+.data-table .badge-ok{color:var(--green);font-weight:600}
+.data-table .badge-fail{color:var(--red);font-weight:600}
+.data-table .badge-skip{color:var(--orange);font-weight:600}
+.hist-row{cursor:pointer}
+.hist-detail-row td{background:var(--bg-deep);color:var(--text2);font-size:12px;line-height:1.7}
+.status-dot-cell{display:inline-block;width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.status-dot-cell.ok{background:var(--green)}.status-dot-cell.fail{background:var(--red)}.status-dot-cell.partial{background:var(--orange)}.status-dot-cell.none{background:var(--text3)}
+
 /* Bottom Nav (Mobile) */
-.bottom-nav{
-  display:none;position:fixed;bottom:0;left:0;right:0;z-index:100;
-  background:var(--card);backdrop-filter:var(--blur-xl);-webkit-backdrop-filter:var(--blur-xl);
-  border-top:1px solid var(--border);padding:8px 12px;
-  padding-bottom:calc(8px + env(safe-area-inset-bottom, 0px));
-}
+.bottom-nav{display:none;position:fixed;bottom:0;left:0;right:0;z-index:100;
+  background:var(--card);border-top:1px solid var(--border);padding:8px 12px;
+  padding-bottom:calc(8px + env(safe-area-inset-bottom, 0px))}
 .bottom-nav-inner{display:flex;justify-content:space-around;align-items:center;max-width:500px;margin:0 auto}
-.nav-item{
-  display:flex;flex-direction:column;align-items:center;gap:3px;
-  padding:6px 16px;border-radius:12px;cursor:pointer;
-  color:var(--text3);transition:all var(--transition-normal);
-}
+.nav-item{display:flex;flex-direction:column;align-items:center;gap:3px;
+  padding:6px 16px;border-radius:var(--radius-sm);cursor:pointer;color:var(--text3);transition:all var(--transition-fast)}
 .nav-item svg{width:22px;height:22px}
 .nav-item span{font-size:10px;font-weight:600;font-family:var(--font-display)}
 .nav-item.active{color:var(--accent);background:rgba(10,132,255,.1)}
 .nav-item.active svg{filter:drop-shadow(0 0 6px rgba(10,132,255,.4))}
 
-/* Responsive */
+/* Floating log toggle (mobile / collapsed) */
+.log-fab{display:none;position:fixed;right:16px;bottom:calc(16px + env(safe-area-inset-bottom, 0px));z-index:150;
+  width:48px;height:48px;border-radius:50%;background:var(--accent);color:#fff;border:none;cursor:pointer;
+  align-items:center;justify-content:center;box-shadow:var(--shadow)}
+.log-fab svg{width:22px;height:22px}
+
+/* =========================================================
+   Responsive
+   ========================================================= */
+@media(max-width:1024px){
+  .app{grid-template-columns:1fr}
+  .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:300;transform:translateX(-100%);
+    transition:transform var(--transition-normal);box-shadow:var(--shadow)}
+  .sidebar.open{transform:none}
+  .log-panel{position:fixed;right:0;top:0;bottom:0;width:360px;max-width:88vw;z-index:300;
+    transform:translateX(100%);transition:transform var(--transition-normal)}
+  .log-panel.open{transform:none}
+  .topbar .side-toggle{display:flex}
+  .log-fab{display:flex}
+  .overlay-scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:250;display:none}
+  .overlay-scrim.show{display:block}
+}
 @media(max-width:640px){
-  .app{padding:12px 14px;padding-bottom:calc(90px + env(safe-area-inset-bottom, 0px))}
-  .header h1{font-size:22px}
-  .sched-row{display:grid;grid-template-columns:1fr;gap:8px}
-  .sched-row > *{width:100%}
+  body{overflow:hidden}
+  .content{padding:12px 14px;padding-bottom:calc(84px + env(safe-area-inset-bottom, 0px))}
+  .topbar h1,.topbar .topbar-title{display:none}
   .tabs{display:none}
   .bottom-nav{display:block}
-
-  /* Touch target optimization: minimum 44px touch targets */
-  .chip{padding:10px 18px;min-height:44px;display:inline-flex;align-items:center}
-  .icon-btn{width:44px;height:44px}
-  .toggle{width:52px;height:32px}
-  .toggle .slider:before{width:26px;height:26px;top:3px;left:3px}
+  .log-panel{width:100%;max-width:100%;top:auto;bottom:0;height:72vh;transform:translateY(100%);border-left:none;border-top:1px solid var(--border)}
+  .log-panel.open{transform:none}
+  .dash{grid-template-columns:repeat(2,1fr);gap:10px}
+  .dcard .num{font-size:20px}
+  .dcard-wide{grid-column:1/-1}
+  .card.grid-3{grid-template-columns:1fr}
+  /* Touch target optimization */
+  .chip{padding:10px 16px;min-height:42px;display:inline-flex;align-items:center}
+  .icon-btn{width:42px;height:42px}
+  .toggle{width:50px;height:30px}
+  .toggle .slider:before{width:24px;height:24px;top:3px;left:3px}
   .toggle input:checked+.slider:before{transform:translateX(20px)}
-  .btn{padding:14px 28px;min-height:44px;display:inline-flex;align-items:center;justify-content:center}
-  .btn-sm{padding:10px 18px;min-height:36px}
-  .filter-tab{padding:8px 16px;min-height:36px;display:inline-flex;align-items:center}
-  .nav-item{padding:8px 18px;min-height:48px}
+  .btn{padding:12px 22px;min-height:42px;display:inline-flex;align-items:center;justify-content:center}
+  .btn-sm{padding:9px 16px;min-height:34px}
+  .filter-tab{padding:7px 14px;min-height:34px;display:inline-flex;align-items:center}
+  .nav-item{padding:8px 18px;min-height:46px}
   .sel-all{padding:6px 12px;min-height:32px;display:inline-flex;align-items:center}
   .dir-del{width:36px;height:36px;min-width:36px}
-  .log-pause{padding:8px 16px;min-height:36px}
-  input[type="number"]{min-height:40px}
-  .select,.input-sm{min-height:40px}
+  .log-pause{padding:7px 14px;min-height:34px}
+  input[type="number"]{min-height:38px}
+  .select,.input-sm{min-height:38px}
 }
 @media(max-width:480px){
   .search-wrapper{display:none}
@@ -806,84 +640,75 @@ font-family:var(--font-display);display:flex;align-items:center;gap:8px;
   .search-toggle-btn{display:flex !important}
 }
 .search-toggle-btn{display:none}
-.sheet{padding-bottom:calc(20px + env(safe-area-inset-bottom, 0px))}
-#toastContainer{top:calc(20px + env(safe-area-inset-top, 0px))}
 
 /* Light theme fixes */
 [data-theme="light"] .log-box{background:#f0f0f5;color:#333}
 [data-theme="light"] .log-box .ok{color:#0d8420}[data-theme="light"] .log-box .sk{color:#666}[data-theme="light"] .log-box .er{color:#d32f2f}[data-theme="light"] .log-box .inf{color:#0288d1}
-[data-theme="light"] body::before{
-  background:radial-gradient(ellipse at 20% 0%,rgba(10,132,255,.06) 0%,transparent 50%),
-             radial-gradient(ellipse at 80% 100%,rgba(191,90,242,.04) 0%,transparent 50%)}
 [data-theme="light"] ::-webkit-scrollbar-track{background:rgba(0,0,0,.03)}
 
 /* ===== TMDB Page ===== */
-.tmdb-filter-bar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:16px}
+.tmdb-filter-bar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:14px}
 .tmdb-filter-group{display:flex;flex-direction:column;gap:4px}
 .tmdb-filter-group label{font-size:11px;font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
-.tmdb-select{padding:8px 12px;border-radius:var(--radius-xs);border:1px solid var(--border);
-background:rgba(255,255,255,.03);color:var(--text);font-size:13px;font-weight:500;
-transition:all var(--transition-normal);cursor:pointer;min-width:100px}
+.tmdb-select{padding:7px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);
+  background:var(--card-2);color:var(--text);font-size:13px;font-weight:500;transition:border-color var(--transition-fast);cursor:pointer;min-width:100px}
 [data-theme="light"] .tmdb-select{background:rgba(0,0,0,.02)}
 .tmdb-select:hover{border-color:rgba(10,132,255,.3);color:var(--accent)}
 .tmdb-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.15)}
 .tmdb-genre-chips{display:flex;flex-wrap:wrap;gap:6px;max-height:200px;overflow-y:auto;padding:4px 0}
 .tmdb-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px}
+@media(max-width:1200px){.tmdb-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:900px){.tmdb-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
-@media(max-width:640px){.tmdb-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:760px){.tmdb-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:480px){.tmdb-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 .tmdb-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
-overflow:hidden;cursor:pointer;transition:all var(--transition-normal);position:relative;
-display:flex;flex-direction:column}
-.tmdb-card:hover{transform:translateY(-4px);border-color:rgba(10,132,255,.4);
-box-shadow:0 8px 24px rgba(0,0,0,.2)}
+  overflow:hidden;cursor:pointer;transition:border-color var(--transition-fast),transform var(--transition-fast);position:relative;display:flex;flex-direction:column}
+.tmdb-card:hover{transform:translateY(-3px);border-color:rgba(10,132,255,.4)}
 .tmdb-card.selected{border-color:var(--green);box-shadow:0 0 0 2px rgba(48,209,88,.4)}
 .tmdb-card.selected::after{content:'✓';position:absolute;top:8px;right:8px;
-width:28px;height:28px;border-radius:50%;background:var(--green);color:#fff;
-display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700;z-index:2}
-.tmdb-poster{width:100%;aspect-ratio:2/3;object-fit:cover;background:rgba(255,255,255,.03);
-display:block;transition:transform .3s var(--ease-bounce)}
+  width:26px;height:26px;border-radius:50%;background:var(--green);color:#fff;
+  display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;z-index:2}
+.tmdb-poster{width:100%;aspect-ratio:2/3;object-fit:cover;background:rgba(255,255,255,.03);display:block;transition:transform .3s var(--ease-bounce)}
 .tmdb-card:hover .tmdb-poster{transform:scale(1.05)}
 .tmdb-poster-wrap{overflow:hidden;position:relative}
 .tmdb-poster-wrap::after{content:'';position:absolute;bottom:0;left:0;right:0;height:60px;
-background:linear-gradient(transparent,rgba(0,0,0,.8));pointer-events:none}
+  background:linear-gradient(transparent,rgba(0,0,0,.8));pointer-events:none}
 .tmdb-rating-badge{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.7);
-color:#fbbf24;padding:3px 8px;border-radius:8px;font-size:12px;font-weight:700;
-backdrop-filter:blur(4px);z-index:1;display:flex;align-items:center;gap:3px}
+  color:#fbbf24;padding:3px 8px;border-radius:var(--radius-xs);font-size:12px;font-weight:700;z-index:1;display:flex;align-items:center;gap:3px}
 .tmdb-info{padding:12px;flex:1;display:flex;flex-direction:column;gap:4px}
-.tmdb-title{font-size:14px;font-weight:600;color:var(--text);line-height:1.3;
-display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
+.tmdb-title{font-size:13px;font-weight:600;color:var(--text);line-height:1.3;
+  display:-webkit-box;-webkit-line-clamp:1;-webkit-box-orient:vertical;overflow:hidden}
 .tmdb-meta{font-size:12px;color:var(--text2);display:flex;gap:8px;align-items:center}
 .tmdb-overview{font-size:11px;color:var(--text2);line-height:1.5;margin-top:4px;
-display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;opacity:.8}
-.tmdb-loading{display:flex;justify-content:center;align-items:center;padding:60px 0;
-color:var(--text2);font-size:14px;gap:8px}
-.tmdb-empty{text-align:center;padding:60px 0;color:var(--text2);font-size:14px}
-.tmdb-pagination{display:flex;justify-content:center;gap:12px;align-items:center;margin-top:20px}
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;opacity:.8}
+.tmdb-loading{display:flex;justify-content:center;align-items:center;padding:60px 0;color:var(--text2);font-size:13px;gap:8px}
+.tmdb-empty{text-align:center;padding:60px 0;color:var(--text2);font-size:13px}
+.tmdb-pagination{display:flex;justify-content:center;gap:12px;align-items:center;margin-top:18px}
 .tmdb-sel-bar{
-  position:fixed;bottom:0;left:0;right:0;z-index:200;max-width:860px;margin:0 auto;
+  position:fixed;bottom:0;left:220px;right:380px;z-index:200;margin:0;
   background:var(--card);border:1px solid var(--border);border-bottom:none;
   border-radius:var(--radius-xl) var(--radius-xl) 0 0;
-  padding:12px 20px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;
-  backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);
-  box-shadow:0 -4px 24px rgba(0,0,0,.3);
+  padding:10px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;
+  box-shadow:0 -2px 16px rgba(0,0,0,.2);
   transform:translateY(120%);opacity:0;pointer-events:none;
-  transition:transform .4s var(--ease-bounce),opacity .3s ease}
-.tmdb-sel-bar.active{transform:translateY(0);opacity:1;pointer-events:auto;
-  border-color:rgba(48,209,88,.4);box-shadow:0 -4px 24px rgba(0,0,0,.3),0 -4px 16px rgba(48,209,88,.1)}
-.tmdb-sel-count{font-size:14px;font-weight:600;color:var(--green)}
+  transition:transform .35s var(--ease-bounce),opacity .3s ease}
+.tmdb-sel-bar.active{transform:translateY(0);opacity:1;pointer-events:auto;border-color:rgba(48,209,88,.4)}
+.tmdb-sel-count{font-size:13px;font-weight:600;color:var(--green)}
 .tmdb-key-warning{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);
-border-radius:var(--radius);padding:12px 16px;margin-bottom:16px;font-size:13px;
-color:#fbbf24;display:flex;gap:8px;align-items:center}
-.tmdb-loading .spinner{width:24px;height:24px;border:3px solid var(--border);border-top-color:var(--accent);
-border-radius:50%;animation:tmdbSpin .8s linear infinite}
+  border-radius:var(--radius);padding:10px 14px;margin-bottom:14px;font-size:12px;color:#fbbf24;display:flex;gap:8px;align-items:center}
+.tmdb-loading .spinner{width:22px;height:22px;border:3px solid var(--border);border-top-color:var(--accent);border-radius:50%;animation:tmdbSpin .8s linear infinite}
 @keyframes tmdbSpin{to{transform:rotate(360deg)}}
+
+@media(max-width:1024px){.tmdb-sel-bar{left:0;right:0}}
+@media(max-width:640px){.tmdb-sel-bar{bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
+
+@media(prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
+}
 </style>
 </head>
 <body>
 <body>
-<div class="aurora-glow"></div>
-<div class="app">
 
 <!-- Icons Sprite -->
 <svg style="display:none">
@@ -917,350 +742,375 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
   <symbol id="icon-empty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
 </svg>
 
-<!-- Header -->
-<div class="header">
-  <h1>豆瓣自动转存 <span id="headerVersion" style="font-size:12px;font-weight:400;color:var(--text3);margin-left:6px">v1.1.0</span></h1>
-  <div class="header-btns">
-    <div class="search-wrapper">
-      <div class="search-box" id="searchBox" onclick="document.getElementById('searchInput').focus()">
-        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg>
-        <input type="text" id="searchInput" placeholder="搜索资源..." title="搜索资源（Ctrl/⌘ + K 聚焦）" oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()">
-        <svg class="search-clear" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" onclick="clearSearch()"><use href="#icon-x-circle"/></svg>
-      </div>
-      <div class="search-dropdown" id="searchDropdown">
-        <div id="searchResults"></div>
-      </div>
-    </div>
-    <button class="icon-btn search-toggle-btn" onclick="toggleMobileSearch()" title="搜索"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg></button>
-    <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="切换主题"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-moon"/></svg></button>
-    
-  </div>
-</div>
+<!-- App shell: sidebar | content | log panel -->
+<div class="app">
 
-<!-- Dashboard -->
-<div class="dash" id="dashSkeleton">
-  <div class="dcard"><div class="skeleton" style="height:48px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
-  <div class="dcard"><div class="skeleton" style="height:48px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
-  <div class="dcard"><div class="skeleton" style="height:48px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
-  <div class="dcard dcard-wide"><div class="skeleton" style="height:48px;margin-bottom:8px"></div><div class="skeleton-text" style="width:40%"></div></div>
-</div>
-<div class="dash" id="dashContent" style="display:none">
-  <div class="dcard">
-    <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--accent)"><path d="M12 5v14"/><path d="M5 12h14"/><path d="m16 9-3-3-3 3"/><path d="m8 15-3 3 3-3"/></svg>
-    <div class="num blue"><span id="dashToday">-</span></div>
-    <div class="lbl">今日转存</div>
-  </div>
-  <div class="dcard">
-    <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--purple)"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-    <div class="num" style="font-size:13px;color:var(--text2);line-height:1.5;font-weight:500" id="dashNext">加载中...</div>
-    <div class="lbl">下次调度</div>
-  </div>
-  <div class="dcard">
-    <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--green)"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-    <div class="num" id="dashLastStatus" style="font-size:16px;gap:6px"><span class="status-dot" id="dashStatusDot" style="display:none"></span><span id="dashStatusText">-</span></div>
-    <div class="lbl" id="dashLastTime">上次转存</div>
-  </div>
-  <div class="dcard dcard-wide">
-    <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--cyan)"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-    <div class="dash7-viz">
-      <div class="dash7-chart" id="dash7Chart"></div>
-      <div class="dash7-donut">
-        <svg viewBox="0 0 44 44">
-          <circle class="donut-bg" cx="22" cy="22" r="18"></circle>
-          <circle class="donut-fill" cx="22" cy="22" r="18" id="dash7Donut"></circle>
-        </svg>
-        <div class="donut-text" id="dash7Rate">0%</div>
-      </div>
+  <!-- Sidebar -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-movie"/></svg></div>
+      <span>豆瓣自动转存</span>
+      <span class="brand-ver" id="headerVersion">v1.1.0</span>
     </div>
-    <div class="num"><span class="ok" id="dash7OK">0</span> 成功 / <span class="fail" id="dash7Fail">0</span> 失败</div>
-    <div class="lbl">近 7 天共 <span id="dash7Total" style="color:var(--text);font-weight:600">0</span> 次</div>
-  </div>
-</div>
-<!-- /Dashboard -->
+    <nav class="side-nav">
+      <button class="side-nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg>仪表盘</button>
+      <button class="side-nav-item" data-tab="manual" onclick="switchTab('manual')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-transfer"/></svg>手动转存</button>
+      <button class="side-nav-item" data-tab="schedule" onclick="switchTab('schedule')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg>定时任务</button>
+      <button class="side-nav-item" data-tab="tmdb" onclick="switchTab('tmdb')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-tv"/></svg>TMDB</button>
+      <button class="side-nav-item" data-tab="history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg>执行历史</button>
+      <button class="side-nav-item" data-tab="settings" onclick="switchTab('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-settings"/></svg>设置</button>
+    </nav>
+    <div class="side-foot" id="sideFoot"></div>
+  </aside>
 
-<!-- Tabs -->
-<div class="tabs" id="mainTabs">
-  <div class="tab-indicator" id="tabIndicator"></div>
-  <button class="tab-btn active" onclick="switchTab('manual')">手动转存</button>
-  <button class="tab-btn" onclick="switchTab('schedule')">定时任务</button>
-<button class="tab-btn" onclick="switchTab('tmdb')">TMDB</button>
-  <button class="tab-btn" onclick="switchTab('history')">执行历史</button>
-<button class="tab-btn" onclick="switchTab('settings')">设置</button>
-</div>
-
-<!-- ===== 手动转存 ===== -->
-<div class="tab-content active" id="tabManual">
-  <div class="card movie">
-    <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-movie"/></svg> 电影</div>
-    <div id="catsMovie"></div>
-  </div>
-  <div class="card tv">
-    <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-tv"/></svg> 电视剧</div>
-    <div id="catsTV"></div>
-  </div>
-  <div class="card variety">
-    <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg> 综艺</div>
-    <div id="catsVariety"></div>
-  </div>
-  <div class="card">
-    <div class="row">
-      <span style="color:var(--text2)">每次最多</span>
-      <input type="number" id="limit" value="5" min="1" max="50">
-      <span style="color:var(--text2)">条</span>
-      <button class="btn btn-primary" onclick="startTransfer()" title="开始转存（Ctrl/⌘ + Enter）">开始转存</button>
-      <button class="btn btn-outline btn-sm" onclick="checkExpired()">检测失效链接</button>
-      <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="syncToSchedule()">同步到定时任务</button>
-    </div>
-    <div class="sched-row" style="margin-top:10px">
-      <span style="color:var(--text2)">最低评分</span>
-      <input type="range" id="manualFilterRating" min="0" max="10" step="0.5" value="0" onchange="updateManualFilterRating()">
-      <span id="manualFilterRatingVal" style="width:30px;text-align:right;color:var(--accent)">0</span>
-    </div>
-    <div class="sched-row">
-      <span style="color:var(--text2)">排序方式</span>
-      <select id="manualFilterSort" class="select">
-        <option value="rating">按评分</option>
-        <option value="year">按年份</option>
-      </select>
-    </div>
-    <div class="sched-row">
-      <span style="color:var(--text2)">年份范围</span>
-      <input type="number" id="manualFilterYearFrom" placeholder="起始" min="1900" max="2100" class="input-sm">
-      <span style="color:var(--text3)">-</span>
-      <input type="number" id="manualFilterYearTo" placeholder="结束" min="1900" max="2100" class="input-sm">
-    </div>
-  </div>
-  <div class="card" id="logCard" style="display:none">
-    <div class="card-title" style="justify-content:space-between">
-      <div style="display:flex;align-items:center;gap:14px">
-        <div class="ring-progress" id="ringProgress">
-          <svg viewBox="0 0 44 44">
-            <circle class="ring-bg" cx="22" cy="22" r="18"/>
-            <circle class="ring-fill" cx="22" cy="22" r="18" id="ringFill"/>
-          </svg>
-          <div class="ring-text" id="ringText">0%</div>
+  <!-- Main column -->
+  <div class="main">
+    <div class="topbar">
+      <button class="icon-btn side-toggle" onclick="toggleSidebar()" title="菜单"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+      <div class="search-wrapper">
+        <div class="search-box" id="searchBox" onclick="document.getElementById('searchInput').focus()">
+          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg>
+          <input type="text" id="searchInput" placeholder="搜索资源..." title="搜索资源（Ctrl/⌘ + K 聚焦）" oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()">
+          <svg class="search-clear" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" onclick="clearSearch()"><use href="#icon-x-circle"/></svg>
         </div>
-        <div>
-          <div style="font-size:16px;font-weight:700;font-family:var(--font-display)">执行日志</div>
-          <div style="font-size:12px;color:var(--text3);margin-top:2px" id="ringSubtitle">准备开始...</div>
+        <div class="search-dropdown" id="searchDropdown">
+          <div id="searchResults"></div>
         </div>
       </div>
-      <div style="display:flex;gap:6px">
-        <button class="btn btn-sm btn-outline" id="soundBtn" onclick="toggleSound()" title="操作音效"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg></button>
-        <button class="btn btn-sm btn-danger" id="stopBtn" onclick="stopTransfer()">停止</button>
-        <button class="btn btn-sm btn-outline" id="pauseBtn" onclick="togglePause()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-pause"/></svg></button>
+      <div class="topbar-spacer"></div>
+      <button class="icon-btn search-toggle-btn" onclick="toggleMobileSearch()" title="搜索"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg></button>
+      <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="切换主题"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-moon"/></svg></button>
+    </div>
+
+    <div class="content">
+
+      <!-- ===== 仪表盘 ===== -->
+      <section class="page active" id="pageDashboard">
+        <div class="dash" id="dashSkeleton">
+          <div class="dcard"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
+          <div class="dcard"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
+          <div class="dcard"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
+          <div class="dcard dcard-wide"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:40%"></div></div>
+        </div>
+        <div class="dash" id="dashContent" style="display:none">
+          <div class="dcard">
+            <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--accent)"><path d="M12 5v14"/><path d="M5 12h14"/><path d="m16 9-3-3-3 3"/><path d="m8 15-3 3 3-3"/></svg>
+            <div class="num blue"><span id="dashToday">-</span></div>
+            <div class="lbl">今日转存</div>
+          </div>
+          <div class="dcard">
+            <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--purple)"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <div class="num" style="font-size:13px;color:var(--text2);line-height:1.5;font-weight:500" id="dashNext">加载中...</div>
+            <div class="lbl">下次调度</div>
+          </div>
+          <div class="dcard">
+            <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--green)"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <div class="num" id="dashLastStatus" style="font-size:16px;gap:6px"><span class="status-dot" id="dashStatusDot" style="display:none"></span><span id="dashStatusText">-</span></div>
+            <div class="lbl" id="dashLastTime">上次转存</div>
+          </div>
+          <div class="dcard dcard-wide">
+            <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--cyan)"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+            <div class="dash7-viz">
+              <div class="dash7-chart" id="dash7Chart"></div>
+              <div class="dash7-donut">
+                <svg viewBox="0 0 44 44">
+                  <circle class="donut-bg" cx="22" cy="22" r="18"></circle>
+                  <circle class="donut-fill" cx="22" cy="22" r="18" id="dash7Donut"></circle>
+                </svg>
+                <div class="donut-text" id="dash7Rate">0%</div>
+              </div>
+            </div>
+            <div class="num"><span class="ok" id="dash7OK">0</span> 成功 / <span class="fail" id="dash7Fail">0</span> 失败</div>
+            <div class="lbl">近 7 天共 <span id="dash7Total" style="color:var(--text);font-weight:600">0</span> 次</div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 手动转存 ===== -->
+      <section class="page" id="tabManual">
+        <div class="card movie">
+          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-movie"/></svg> 电影</div>
+          <div id="catsMovie"></div>
+        </div>
+        <div class="card tv">
+          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-tv"/></svg> 电视剧</div>
+          <div id="catsTV"></div>
+        </div>
+        <div class="card variety">
+          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg> 综艺</div>
+          <div id="catsVariety"></div>
+        </div>
+        <div class="card">
+          <div class="row">
+            <span style="color:var(--text2)">每次最多</span>
+            <input type="number" id="limit" value="5" min="1" max="50">
+            <span style="color:var(--text2)">条</span>
+            <button class="btn btn-primary" onclick="startTransfer()" title="开始转存（Ctrl/⌘ + Enter）">开始转存</button>
+            <button class="btn btn-outline btn-sm" onclick="checkExpired()">检测失效链接</button>
+            <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="syncToSchedule()">同步到定时任务</button>
+          </div>
+          <div class="sched-row" style="margin-top:10px">
+            <span style="color:var(--text2)">最低评分</span>
+            <input type="range" id="manualFilterRating" min="0" max="10" step="0.5" value="0" onchange="updateManualFilterRating()">
+            <span id="manualFilterRatingVal" style="width:30px;text-align:right;color:var(--accent)">0</span>
+          </div>
+          <div class="sched-row">
+            <span style="color:var(--text2)">排序方式</span>
+            <select id="manualFilterSort" class="select">
+              <option value="rating">按评分</option>
+              <option value="year">按年份</option>
+            </select>
+          </div>
+          <div class="sched-row">
+            <span style="color:var(--text2)">年份范围</span>
+            <input type="number" id="manualFilterYearFrom" placeholder="起始" min="1900" max="2100" class="input-sm">
+            <span style="color:var(--text3)">-</span>
+            <input type="number" id="manualFilterYearTo" placeholder="结束" min="1900" max="2100" class="input-sm">
+          </div>
+        </div>
+      </section>
+
+      <!-- ===== 定时任务 ===== -->
+      <section class="page" id="tabSchedule">
+        <div class="sched-status-bar" id="schedStatusBar">
+          <span>上次转存：<b id="schedLastTransfer">-</b></span>
+          <span>上次检测：<b id="schedLastExpired">-</b></span>
+        </div>
+        <div class="card">
+          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-movie"/></svg> 电影</div>
+          <div id="schedCatsMovie"></div>
+        </div>
+        <div class="card">
+          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-tv"/></svg> 电视剧</div>
+          <div id="schedCatsTV"></div>
+        </div>
+        <div class="card">
+          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg> 综艺</div>
+          <div id="schedCatsVariety"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">转存设置</div>
+          <div class="sched-row">
+            <label class="toggle"><input type="checkbox" id="schedTOn" onchange="autoSaveSchedule()"><span class="slider"></span></label>
+            <span style="color:var(--text2)">启用</span>
+            <span style="color:var(--text2);margin-left:8px">上限</span>
+            <input type="number" id="schedLimit" value="5" min="1" max="50" onchange="autoSaveSchedule()">
+            <span style="color:var(--text2)">条</span>
+            <span style="color:var(--text2);margin-left:8px">时间</span>
+            <select id="schedTHour" onchange="autoSaveSchedule()" class="select"></select>
+            <span style="color:var(--text3)">:</span>
+            <select id="schedTMin" onchange="autoSaveSchedule()" class="select"></select>
+          </div>
+          <div class="sched-row" style="margin-top:8px">
+            <span style="color:var(--text2)">最低评分</span>
+            <input type="range" id="filterRating" min="0" max="10" step="0.5" value="0" onchange="updateFilterRating(); autoSaveSchedule()">
+            <span id="filterRatingVal" style="width:30px;text-align:right;color:var(--accent)">0</span>
+          </div>
+          <div class="sched-row">
+            <span style="color:var(--text2)">排序方式</span>
+            <select id="filterSort" onchange="autoSaveSchedule()" class="select">
+              <option value="rating">按评分</option>
+              <option value="year">按年份</option>
+            </select>
+          </div>
+          <div class="sched-row">
+            <span style="color:var(--text2)">年份范围</span>
+            <input type="number" id="filterYearFrom" placeholder="起始" min="1900" max="2100" onchange="autoSaveSchedule()" class="input-sm">
+            <span style="color:var(--text3)">-</span>
+            <input type="number" id="filterYearTo" placeholder="结束" min="1900" max="2100" onchange="autoSaveSchedule()" class="input-sm">
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-title">失效检测</div>
+          <div class="sched-row">
+            <label class="toggle"><input type="checkbox" id="schedEOn" onchange="autoSaveSchedule()"><span class="slider"></span></label>
+            <span style="color:var(--text2)">启用</span>
+            <span style="color:var(--text2);margin-left:8px">时间</span>
+            <select id="schedEHour" onchange="autoSaveSchedule()" class="select"></select>
+            <span style="color:var(--text3)">:</span>
+            <select id="schedEMin" onchange="autoSaveSchedule()" class="select"></select>
+          </div>
+          <div id="expiredDirList" style="margin-top:10px"></div>
+          <button class="btn btn-outline btn-sm" style="margin-top:8px;border-style:dashed" onclick="addExpiredDir()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加目录</button>
+        </div>
+      </section>
+
+      <!-- ===== TMDB ===== -->
+      <section class="page" id="tabTmdb">
+        <div id="tmdbKeyWarning" class="tmdb-key-warning" style="display:none">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L8 2 3 7v4a6 6 0 0 0 6 6 6 6 0 0 0 6-6V7l-5-5-2.29 1.86z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+          <span>未配置 TMDB API Key，请在「设置」页面填入后保存</span>
+        </div>
+
+        <div class="card">
+          <div class="card-title" style="justify-content:space-between">
+            <span><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg> TMDB 数据源</span>
+            <button class="btn btn-outline btn-sm" onclick="refreshTmdbCache()">刷新缓存</button>
+          </div>
+
+          <div class="tmdb-filter-bar">
+            <div class="tmdb-filter-group">
+              <label>分类</label>
+              <select class="tmdb-select" id="tmdbMediaType" onchange="onTmdbFilterChange()">
+                <option value="movie">电影</option>
+                <option value="tv">电视剧</option>
+              </select>
+            </div>
+            <div class="tmdb-filter-group">
+              <label>榜单类型</label>
+              <select class="tmdb-select" id="tmdbListType" onchange="onTmdbFilterChange()"></select>
+            </div>
+            <div class="tmdb-filter-group">
+              <label>地区/语言</label>
+              <select class="tmdb-select" id="tmdbRegion" onchange="onTmdbFilterChange()"></select>
+            </div>
+            <div class="tmdb-filter-group">
+              <label>排序</label>
+              <select class="tmdb-select" id="tmdbSort" onchange="onTmdbFilterChange()">
+                <option value="popularity.desc">按热度</option>
+                <option value="vote_average.desc">按评分</option>
+                <option value="release_date.desc">按时间</option>
+                <option value="vote_count.desc">按投票数</option>
+              </select>
+            </div>
+            <div class="tmdb-filter-group">
+              <label>最低评分</label>
+              <input type="number" id="tmdbMinRating" min="0" max="10" step="0.5" value="0" style="width:80px" onchange="onTmdbFilterChange()">
+            </div>
+            <div class="tmdb-filter-group">
+              <label>年份</label>
+              <input type="number" id="tmdbYear" min="1900" max="2030" placeholder="全部" style="width:90px" onchange="onTmdbFilterChange()">
+            </div>
+          </div>
+
+          <div class="form-group" style="margin-bottom:12px">
+            <label>类型筛选</label>
+            <div class="tmdb-genre-chips" id="tmdbGenreChips"></div>
+          </div>
+        </div>
+
+        <div class="tmdb-sel-bar" id="tmdbSelBar">
+          <div class="tmdb-sel-count" id="tmdbSelCount">已选 0 部</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-outline btn-sm" onclick="clearTmdbSelection()">清空选择</button>
+            <button class="btn btn-primary btn-sm" onclick="transferTmdbSelection()">开始转存</button>
+          </div>
+        </div>
+
+        <div id="tmdbGrid" class="tmdb-grid"></div>
+
+        <div class="tmdb-pagination" id="tmdbPagination" style="display:none">
+          <button class="btn btn-outline btn-sm" id="tmdbPrevBtn" onclick="tmdbPrevPage()">上一页</button>
+          <span id="tmdbPageInfo" style="font-size:13px;color:var(--text2);font-weight:600"></span>
+          <button class="btn btn-outline btn-sm" id="tmdbNextBtn" onclick="tmdbNextPage()">下一页</button>
+        </div>
+      </section>
+
+      <!-- ===== 执行历史 ===== -->
+      <section class="page" id="tabHistory">
+        <div class="card">
+          <div class="card-title" style="justify-content:space-between">执行历史 <div><button class="btn btn-sm btn-outline" onclick="clearExecHistory()" style="margin-right:6px">清除</button><button class="btn btn-sm btn-outline" onclick="exportHistory()">导出</button></div></div>
+          <div class="filter-tabs">
+            <span class="filter-tab active" onclick="filterHist('all',this)">全部</span>
+            <span class="filter-tab" onclick="filterHist('transfer',this)">转存</span>
+            <span class="filter-tab" onclick="filterHist('expired_check',this)">检测</span>
+            <span class="filter-tab" onclick="filterHist('config',this)">配置</span>
+          </div>
+          <div id="execHistoryList"><div class="empty-state" style="padding:32px 20px"><div class="empty-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-clock"/></svg></div><div class="empty-title">加载中...</div><div class="empty-desc">正在获取执行记录</div></div></div>
+        </div>
+      </section>
+
+      <!-- ===== 设置 ===== -->
+      <section class="page" id="tabSettings">
+        <div class="card">
+          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg> 搜索服务</div>
+          <div class="form-group"><label>PanSou 地址</label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">🎬 TMDB 数据源</div>
+          <div class="form-group" style="margin-bottom:0"><label>API Key</label><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"></div>
+          <div class="form-group" style="margin-top:8px"><label>API 地址（可选）</label><input type="text" id="cfg_tmdb_base_url" placeholder="留空自动切换 api.tmdb.org / api.themoviedb.org"></div>
+          <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.5">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">TMDB 官网</a> 申请 API Key。系统自动尝试短域名访问，无需代理</div>
+        </div>
+        <div class="card">
+          <div class="card-title">📦 转存服务</div>
+          <div class="form-group"><label>QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
+          <div class="form-group" style="margin-bottom:0"><label>QAS Token</label><input type="password" id="cfg_qas_token" placeholder="留空不修改"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">📁 转存路径</div>
+          <div class="form-group"><label>榜单分类路径前缀</label><input type="text" id="cfg_path_category_base" placeholder="/影视"></div>
+          <div style="font-size:12px;color:var(--text2);margin:-4px 0 8px;line-height:1.5">实际路径 = 前缀 + 分类名，如 /影视/电影、/影视/电视剧</div>
+          <div class="form-group"><label>搜索转存路径</label><input type="text" id="cfg_path_search" placeholder="/批量转存/手动搜索存"></div>
+          <div class="form-group" style="margin-bottom:0"><label>TMDB 转存路径</label><input type="text" id="cfg_path_tmdb" placeholder="/批量转存/TMDB"></div>
+        </div>
+        <div class="card">
+          <div class="card-title">🔐 管理认证</div>
+          <div class="form-group"><label>用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
+          <div class="form-group" style="margin-bottom:0"><label>密码</label><input type="password" id="cfg_auth_pass" placeholder="留空不修改"></div>
+        </div>
+        <div class="card">
+          <div class="card-title" style="justify-content:space-between">🎬 豆瓣想看同步 <a href="https://www.douban.com/" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="text-decoration:none">打开豆瓣 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-left:2px"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
+          <div id="wishAccountsList" style="display:flex;flex-direction:column;gap:8px"></div>
+          <button class="btn btn-outline btn-sm" onclick="addWishAccount()" style="margin-top:2px;border-style:dashed"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加豆瓣账号</button>
+          <div class="form-group" style="margin-top:12px"><label>保存路径</label><input type="text" id="cfg_wish_savepath" placeholder="/批量转存/想看"></div>
+          <div class="form-group"><label>分类</label><div class="chips" id="wishCategoryChips" style="margin-top:4px"><span class="chip" data-cat="movie" onclick="toggleWishCat(this)">电影</span><span class="chip" data-cat="tv" onclick="toggleWishCat(this)">电视剧</span></div></div>
+          <div style="border-top:1px solid var(--border);margin:4px 0 8px"></div>
+          <div class="sched-row" style="margin-top:4px">
+            <span class="chip" id="cfg_wish_enabled_chip" onclick="toggleWishEnabled(this)">启用想看同步</span>
+            <button class="btn btn-outline btn-sm" onclick="refreshDoubanCache()">刷新榜单缓存</button>
+          </div>
+        </div>
+        <div class="card">
+          <div class="row" style="justify-content:flex-end">
+            <button class="btn btn-primary btn-sm" onclick="saveConfig(false)">保存设置</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+
+  <!-- Log panel (persistent) -->
+  <aside class="log-panel" id="logPanel">
+    <div class="card log-card" id="logCard">
+      <div class="card-title" style="justify-content:space-between">
+        <div style="display:flex;align-items:center;gap:14px">
+          <div class="ring-progress" id="ringProgress">
+            <svg viewBox="0 0 44 44">
+              <circle class="ring-bg" cx="22" cy="22" r="18"/>
+              <circle class="ring-fill" cx="22" cy="22" r="18" id="ringFill"/>
+            </svg>
+            <div class="ring-text" id="ringText">0%</div>
+          </div>
+          <div>
+            <div style="font-size:15px;font-weight:700;font-family:var(--font-display)">执行日志</div>
+            <div style="font-size:12px;color:var(--text3);margin-top:2px" id="ringSubtitle">准备开始...</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn btn-sm btn-outline" id="soundBtn" onclick="toggleSound()" title="操作音效"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg></button>
+          <button class="btn btn-sm btn-danger" id="stopBtn" onclick="stopTransfer()" style="display:none">停止</button>
+          <button class="btn btn-sm btn-outline" id="pauseBtn" onclick="togglePause()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-pause"/></svg></button>
+        </div>
       </div>
-    </div>
-    <div class="progress-stats">
-      <div class="progress-stat">已搜 <span id="stSearched">0</span></div>
-      <div class="progress-stat"><span style="color:var(--green)">成功 <span id="stOK">0</span></span></div>
-      <div class="progress-stat">跳过 <span id="stSkip">0</span></div>
-      <div class="progress-stat"><span style="color:var(--red)">失败 <span id="stFail">0</span></span></div>
-      <div class="progress-stat">共 <span id="stTotal">0</span></div>
-    </div>
-    <div class="filter-tabs" style="margin-bottom:8px">
-      <span class="filter-tab active" onclick="setLogFilter(this,'all')">全部</span>
-      <span class="filter-tab" onclick="setLogFilter(this,'ok')">成功</span>
-      <span class="filter-tab" onclick="setLogFilter(this,'skip')">跳过</span>
-      <span class="filter-tab" onclick="setLogFilter(this,'fail')">失败</span>
-    </div>
-    <div class="log-box" id="log"><div class="empty-state" style="padding:32px 20px"><div class="empty-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-play"/></svg></div><div class="empty-title">准备就绪</div><div class="empty-desc">选择榜单并点击「开始转存」<br>进度和日志将会实时显示在这里</div></div></div>
-  </div>
-</div>
-
-<!-- ===== 定时任务 ===== -->
-<div class="tab-content" id="tabSchedule">
-  <div class="card">
-    <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-movie"/></svg> 电影</div>
-    <div id="schedCatsMovie"></div>
-  </div>
-  <div class="card">
-    <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-tv"/></svg> 电视剧</div>
-    <div id="schedCatsTV"></div>
-  </div>
-  <div class="card">
-    <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg> 综艺</div>
-    <div id="schedCatsVariety"></div>
-  </div>
-  <div class="card">
-    <div class="card-title">转存设置</div>
-    <div class="sched-row">
-      <label class="toggle"><input type="checkbox" id="schedTOn" onchange="autoSaveSchedule()"><span class="slider"></span></label>
-      <span style="color:var(--text2)">启用</span>
-      <span style="color:var(--text2);margin-left:8px">上限</span>
-      <input type="number" id="schedLimit" value="5" min="1" max="50" onchange="autoSaveSchedule()">
-      <span style="color:var(--text2)">条</span>
-      <span style="color:var(--text2);margin-left:8px">时间</span>
-      <select id="schedTHour" onchange="autoSaveSchedule()" class="select"></select>
-      <span style="color:var(--text3)">:</span>
-      <select id="schedTMin" onchange="autoSaveSchedule()" class="select"></select>
-    </div>
-    <div class="sched-row" style="margin-top:8px">
-      <span style="color:var(--text2)">最低评分</span>
-      <input type="range" id="filterRating" min="0" max="10" step="0.5" value="0" onchange="updateFilterRating(); autoSaveSchedule()">
-      <span id="filterRatingVal" style="width:30px;text-align:right;color:var(--accent)">0</span>
-    </div>
-    <div class="sched-row">
-      <span style="color:var(--text2)">排序方式</span>
-      <select id="filterSort" onchange="autoSaveSchedule()" class="select">
-        <option value="rating">按评分</option>
-        <option value="year">按年份</option>
-      </select>
-    </div>
-    <div class="sched-row">
-      <span style="color:var(--text2)">年份范围</span>
-      <input type="number" id="filterYearFrom" placeholder="起始" min="1900" max="2100" onchange="autoSaveSchedule()" class="input-sm">
-      <span style="color:var(--text3)">-</span>
-      <input type="number" id="filterYearTo" placeholder="结束" min="1900" max="2100" onchange="autoSaveSchedule()" class="input-sm">
-    </div>
-  </div>
-  <div class="card">
-    <div class="card-title">失效检测</div>
-    <div class="sched-row">
-      <label class="toggle"><input type="checkbox" id="schedEOn" onchange="autoSaveSchedule()"><span class="slider"></span></label>
-      <span style="color:var(--text2)">启用</span>
-      <span style="color:var(--text2);margin-left:8px">时间</span>
-      <select id="schedEHour" onchange="autoSaveSchedule()" class="select"></select>
-      <span style="color:var(--text3)">:</span>
-      <select id="schedEMin" onchange="autoSaveSchedule()" class="select"></select>
-    </div>
-    <div id="expiredDirList" style="margin-top:10px"></div>
-    <button class="btn btn-outline btn-sm" style="margin-top:8px;border-style:dashed" onclick="addExpiredDir()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加目录</button>
-  </div>
-</div>
-
-<!-- ===== 执行历史 ===== -->
-<div class="tab-content" id="tabHistory">
-  <div class="card">
-    <div class="card-title" style="justify-content:space-between">执行历史 <div><button class="btn btn-sm btn-outline" onclick="clearExecHistory()" style="margin-right:6px">清除</button><button class="btn btn-sm btn-outline" onclick="exportHistory()">导出</button></div></div>
-    <div class="filter-tabs">
-      <span class="filter-tab active" onclick="filterHist('all',this)">全部</span>
-      <span class="filter-tab" onclick="filterHist('transfer',this)">转存</span>
-      <span class="filter-tab" onclick="filterHist('expired_check',this)">检测</span>
-      <span class="filter-tab" onclick="filterHist('config',this)">配置</span>
-    </div>
-    <div id="execHistoryList"><div class="empty-state" style="padding:32px 20px"><div class="empty-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-clock"/></svg></div><div class="empty-title">加载中...</div><div class="empty-desc">正在获取执行记录</div></div></div>
-  </div>
-</div>
-
-<!-- ===== 设置 ===== -->
-<div class="tab-content" id="tabSettings">
-  <div class="card">
-    <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg> 搜索服务</div>
-    <div class="form-group"><label>PanSou 地址</label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"></div>
-  </div>
-  <div class="card">
-    <div class="card-title">🎬 TMDB 数据源</div>
-    <div class="form-group" style="margin-bottom:0"><label>API Key</label><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"></div>
-    <div class="form-group" style="margin-top:8px"><label>API 地址（可选）</label><input type="text" id="cfg_tmdb_base_url" placeholder="留空自动切换 api.tmdb.org / api.themoviedb.org"></div>
-    <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.5">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">TMDB 官网</a> 申请 API Key。系统自动尝试短域名访问，无需代理</div>
-  </div>
-  <div class="card">
-    <div class="card-title">📦 转存服务</div>
-    <div class="form-group"><label>QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
-    <div class="form-group" style="margin-bottom:0"><label>QAS Token</label><input type="password" id="cfg_qas_token" placeholder="留空不修改"></div>
-  </div>
-  <div class="card">
-    <div class="card-title">📁 转存路径</div>
-    <div class="form-group"><label>榜单分类路径前缀</label><input type="text" id="cfg_path_category_base" placeholder="/影视"></div>
-    <div style="font-size:12px;color:var(--text2);margin:-4px 0 8px;line-height:1.5">实际路径 = 前缀 + 分类名，如 /影视/电影、/影视/电视剧</div>
-    <div class="form-group"><label>搜索转存路径</label><input type="text" id="cfg_path_search" placeholder="/批量转存/手动搜索存"></div>
-    <div class="form-group" style="margin-bottom:0"><label>TMDB 转存路径</label><input type="text" id="cfg_path_tmdb" placeholder="/批量转存/TMDB"></div>
-  </div>
-  <div class="card">
-    <div class="card-title">🔐 管理认证</div>
-    <div class="form-group"><label>用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
-    <div class="form-group" style="margin-bottom:0"><label>密码</label><input type="password" id="cfg_auth_pass" placeholder="留空不修改"></div>
-  </div>
-  <div class="card">
-    <div class="card-title" style="justify-content:space-between">🎬 豆瓣想看同步 <a href="https://www.douban.com/" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="text-decoration:none">打开豆瓣 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-left:2px"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
-    <div id="wishAccountsList" style="display:flex;flex-direction:column;gap:8px"></div>
-    <button class="btn btn-outline btn-sm" onclick="addWishAccount()" style="margin-top:2px;border-style:dashed"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加豆瓣账号</button>
-    <div class="form-group" style="margin-top:12px"><label>保存路径</label><input type="text" id="cfg_wish_savepath" placeholder="/批量转存/想看"></div>
-    <div class="form-group"><label>分类</label><div class="chips" id="wishCategoryChips" style="margin-top:4px"><span class="chip" data-cat="movie" onclick="toggleWishCat(this)">电影</span><span class="chip" data-cat="tv" onclick="toggleWishCat(this)">电视剧</span></div></div>
-    <div style="border-top:1px solid var(--border);margin:4px 0 8px"></div>
-    <div class="sched-row" style="margin-top:4px">
-      <span class="chip" id="cfg_wish_enabled_chip" onclick="toggleWishEnabled(this)">启用想看同步</span>
-      <button class="btn btn-outline btn-sm" onclick="refreshDoubanCache()">刷新榜单缓存</button>
-    </div>
-  </div>
-  <div class="card">
-    <div class="row" style="justify-content:flex-end">
-      <button class="btn btn-primary btn-sm" onclick="saveConfig(false)">保存设置</button>
-    </div>
-  </div>
-</div>
-
-<!-- ===== TMDB ===== -->
-<div class="tab-content" id="tabTmdb">
-  <div id="tmdbKeyWarning" class="tmdb-key-warning" style="display:none">
-    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L8 2 3 7v4a6 6 0 0 0 6 6 6 6 0 0 0 6-6V7l-5-5-2.29 1.86z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-    <span>未配置 TMDB API Key，请在「设置」页面填入后保存</span>
-  </div>
-
-  <div class="card">
-    <div class="card-title" style="justify-content:space-between">
-      <span><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg> TMDB 数据源</span>
-      <button class="btn btn-outline btn-sm" onclick="refreshTmdbCache()">刷新缓存</button>
-    </div>
-
-    <div class="tmdb-filter-bar">
-      <div class="tmdb-filter-group">
-        <label>分类</label>
-        <select class="tmdb-select" id="tmdbMediaType" onchange="onTmdbFilterChange()">
-          <option value="movie">电影</option>
-          <option value="tv">电视剧</option>
-        </select>
+      <div class="progress-stats">
+        <div class="progress-stat">已搜 <span id="stSearched">0</span></div>
+        <div class="progress-stat"><span style="color:var(--green)">成功 <span id="stOK">0</span></span></div>
+        <div class="progress-stat">跳过 <span id="stSkip">0</span></div>
+        <div class="progress-stat"><span style="color:var(--red)">失败 <span id="stFail">0</span></span></div>
+        <div class="progress-stat">共 <span id="stTotal">0</span></div>
       </div>
-      <div class="tmdb-filter-group">
-        <label>榜单类型</label>
-        <select class="tmdb-select" id="tmdbListType" onchange="onTmdbFilterChange()"></select>
+      <div class="filter-tabs" style="margin-bottom:8px">
+        <span class="filter-tab active" onclick="setLogFilter(this,'all')">全部</span>
+        <span class="filter-tab" onclick="setLogFilter(this,'ok')">成功</span>
+        <span class="filter-tab" onclick="setLogFilter(this,'skip')">跳过</span>
+        <span class="filter-tab" onclick="setLogFilter(this,'fail')">失败</span>
       </div>
-      <div class="tmdb-filter-group">
-        <label>地区/语言</label>
-        <select class="tmdb-select" id="tmdbRegion" onchange="onTmdbFilterChange()"></select>
-      </div>
-      <div class="tmdb-filter-group">
-        <label>排序</label>
-        <select class="tmdb-select" id="tmdbSort" onchange="onTmdbFilterChange()">
-          <option value="popularity.desc">按热度</option>
-          <option value="vote_average.desc">按评分</option>
-          <option value="release_date.desc">按时间</option>
-          <option value="vote_count.desc">按投票数</option>
-        </select>
-      </div>
-      <div class="tmdb-filter-group">
-        <label>最低评分</label>
-        <input type="number" id="tmdbMinRating" min="0" max="10" step="0.5" value="0" style="width:80px" onchange="onTmdbFilterChange()">
-      </div>
-      <div class="tmdb-filter-group">
-        <label>年份</label>
-        <input type="number" id="tmdbYear" min="1900" max="2030" placeholder="全部" style="width:90px" onchange="onTmdbFilterChange()">
-      </div>
+      <div class="log-box" id="log"><div class="empty-state" style="padding:32px 20px"><div class="empty-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-play"/></svg></div><div class="empty-title">准备就绪</div><div class="empty-desc">选择榜单并点击「开始转存」<br>进度和日志将会实时显示在这里</div></div></div>
     </div>
+  </aside>
 
-    <div class="form-group" style="margin-bottom:12px">
-      <label>类型筛选</label>
-      <div class="tmdb-genre-chips" id="tmdbGenreChips"></div>
-    </div>
-  </div>
-
-  <div class="tmdb-sel-bar" id="tmdbSelBar">
-    <div class="tmdb-sel-count" id="tmdbSelCount">已选 0 部</div>
-    <div style="display:flex;gap:8px">
-      <button class="btn btn-outline btn-sm" onclick="clearTmdbSelection()">清空选择</button>
-      <button class="btn btn-primary btn-sm" onclick="transferTmdbSelection()">开始转存</button>
-    </div>
-  </div>
-
-  <div id="tmdbGrid" class="tmdb-grid"></div>
-
-  <div class="tmdb-pagination" id="tmdbPagination" style="display:none">
-    <button class="btn btn-outline btn-sm" id="tmdbPrevBtn" onclick="tmdbPrevPage()">上一页</button>
-    <span id="tmdbPageInfo" style="font-size:13px;color:var(--text2);font-weight:600"></span>
-    <button class="btn btn-outline btn-sm" id="tmdbNextBtn" onclick="tmdbNextPage()">下一页</button>
-  </div>
-</div>
 </div>
 
 <!-- Bottom Navigation (Mobile) -->
@@ -1275,7 +1125,7 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
       <span>定时</span>
     </div>
     <div class="nav-item" onclick="switchTab('tmdb')">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/></svg>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
       <span>TMDB</span>
     </div>
     <div class="nav-item" onclick="switchTab('history')">
@@ -1288,6 +1138,12 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
     </div>
   </div>
 </nav>
+
+<!-- Floating log toggle (mobile / collapsed) -->
+<button class="log-fab" id="logFab" onclick="toggleLogPanel()" title="执行日志"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
+
+<!-- Scrim for mobile drawers -->
+<div class="overlay-scrim" id="overlayScrim" onclick="closeDrawers()"></div>
 
 <!-- Toast Container -->
 <div id="toastContainer"></div>
@@ -1404,6 +1260,7 @@ var logPollInterval = 0;
 var sseConnected = false;
 var LOG_BEFORE_MAX = 500;
 var APP_PATHS = {category_base:'/影视', search:'/批量转存/手动搜索存', tmdb:'/批量转存/TMDB'};
+var SETTINGS_ALL = null;  // 缓存 /api/settings/all，调度页与设置页共用，避免重复请求
 
 // ============ Sound (操作音效) ============
 // 使用 Web Audio API 合成短音效，无需外部音频资源
@@ -1514,39 +1371,44 @@ function resolveConfirm(result){
   if(_confirmResolve){_confirmResolve(result);_confirmResolve=null}
 }
 
-// ============ Tab ============
-function updateTabIndicator(){
-  var tabs = document.getElementById('mainTabs');
-  var indicator = document.getElementById('tabIndicator');
-  var activeBtn = tabs.querySelector('.tab-btn.active');
-  if(!indicator||!activeBtn)return;
-  var tabsRect = tabs.getBoundingClientRect();
-  var btnRect = activeBtn.getBoundingClientRect();
-  indicator.style.width = btnRect.width + 'px';
-  indicator.style.transform = 'translateX(' + (btnRect.left - tabsRect.left) + 'px)';
-}
+// ============ Tab / Navigation ============
+var currentTab = 'dashboard';
+// 页面容器 id 映射：手动/定时/历史保持原 id（categories/schedule/transfer/history.js 依赖）
+var PAGE_IDS = {
+  dashboard: 'pageDashboard',
+  manual: 'tabManual',
+  schedule: 'tabSchedule',
+  tmdb: 'tabTmdb',
+  history: 'tabHistory',
+  settings: 'tabSettings'
+};
+var PAGES = ['dashboard', 'manual', 'schedule', 'tmdb', 'history', 'settings'];
+var BOTTOM_NAV = ['manual', 'schedule', 'tmdb', 'history', 'settings'];
+
 function switchTab(tab){
   currentTab = tab;
-  var idx = tab==='manual'?0:tab==='schedule'?1:tab==='tmdb'?2:tab==='history'?3:4;
-  document.querySelectorAll('.tab-btn').forEach(function(b,i){
-    b.classList.toggle('active', i===idx);
+  // 页面显隐
+  PAGES.forEach(function(p){
+    var el = document.getElementById(PAGE_IDS[p]);
+    if(el) el.classList.toggle('active', p === tab);
   });
-  var navItems = document.querySelectorAll('.bottom-nav .nav-item');
-  navItems.forEach(function(n,i){
-    n.classList.toggle('active', i===idx);
+  // 侧边栏联动
+  document.querySelectorAll('.side-nav-item').forEach(function(b){
+    b.classList.toggle('active', b.getAttribute('data-tab') === tab);
   });
-  document.getElementById('tabManual').classList.toggle('active', tab==='manual');
-  document.getElementById('tabSchedule').classList.toggle('active', tab==='schedule');
-  document.getElementById('tabHistory').classList.toggle('active', tab==='history');
-  document.getElementById('tabTmdb').classList.toggle('active', tab==='tmdb');
-  document.getElementById('tabSettings').classList.toggle('active', tab==='settings');
-  updateTabIndicator();
-  if(tab==='schedule')loadSchedule();
-  if(tab==='history')loadExecHistory();
-  if(tab==='tmdb')initTmdbPage();
-  if(tab==='settings')loadConfig();
+  // 底部导航联动（dashboard 不在底部栏）
+  var navIdx = BOTTOM_NAV.indexOf(tab);
+  document.querySelectorAll('.bottom-nav .nav-item').forEach(function(n, i){
+    n.classList.toggle('active', i === navIdx);
+  });
+  // 关闭移动端抽屉
+  closeDrawers();
+  // 按需加载
+  if(tab === 'schedule') loadSchedule();
+  if(tab === 'history') loadExecHistory();
+  if(tab === 'tmdb') initTmdbPage();
+  if(tab === 'settings') loadConfig();
 }
-
 // ============ Categories ============
 function _makeChip(id, path, type, group, gname, label, onClick) {
   var chip = document.createElement('span');
@@ -1745,8 +1607,7 @@ async function startTransfer(){
     year_from: parseInt(document.getElementById('manualFilterYearFrom').value)||0,
     year_to: parseInt(document.getElementById('manualFilterYearTo').value)||0
   };
-  // 提前清空日志，避免 SSE 早期日志被竞态清除
-  document.getElementById('logCard').style.display='block';
+  // 提前清空日志，避免 SSE 早期日志被竞态清除（日志面板常驻，无需切换显隐）
   logBefore=[]; document.getElementById('log').textContent='';
   addLog('[开始转存]');
   playSound('click');
@@ -1889,7 +1750,6 @@ function startLogPoll(interval, initLen, skipFirstSync){
   var firstSyncSkip=skipFirstSync||false;
   logPollInterval=pollInterval;
   logPollTimer = setInterval(async function(){
-    if(document.getElementById('logCard').style.display==='none')return;
     try{
       var d = await apiGet('/api/transfer/status');
       // 同步日志进度（仅当 SSE 断连时作为降级方案，避免与 SSE 重复）
@@ -1955,7 +1815,6 @@ async function checkRunningStatus(){
   try{
     var d = await apiGet('/api/transfer/status');
     if(d.running){
-      document.getElementById('logCard').style.display='block';
       document.getElementById('stopBtn').style.display='inline-block';
       var initLen=0;
       if(d.progress&&d.progress.length>0){logBefore=[];for(var i=0;i<d.progress.length;i++)addLog(d.progress[i]);initLen=d.progress.length}
@@ -1965,7 +1824,7 @@ async function checkRunningStatus(){
 }
 async function checkExpired(){
   if(logPollTimer){clearInterval(logPollTimer);logPollTimer=null;logPollInterval=0}
-  document.getElementById('logCard').style.display='block'; logBefore=[]; document.getElementById('log').textContent='';
+  logBefore=[]; document.getElementById('log').textContent='';
   addLog('正在检测失效链接...');
   try{
     var d = await apiGet('/api/check_expired');
@@ -1992,7 +1851,8 @@ async function checkExpired(){
 // ============ Schedule ============
 async function loadSchedule(){
   try{
-    var d = await apiGet('/api/schedule');
+    var d = SETTINGS_ALL || (SETTINGS_ALL = await apiGet('/api/settings/all'));
+    d = d.schedule || d;  // 兼容 /api/schedule 旧响应
     if(d.savepaths){
       APP_PATHS.category_base = d.savepaths.category_base||'/影视';
       APP_PATHS.search = d.savepaths.search||'/批量转存/手动搜索存';
@@ -2025,11 +1885,18 @@ async function loadSchedule(){
         document.getElementById('schedEHour').value=parseInt(e2[0])||0;
         document.getElementById('schedEMin').value=parseInt(e2[1])||0;}
       expiredDirEntries=(d.expired_check.directories&&d.expired_check.directories.length>0)?[...d.expired_check.directories]:[''];renderExpiredDirs();}
+    // 调度状态条：上次转存 / 上次检测
+    var st = d._status || {};
+    var lt = document.getElementById('schedLastTransfer');
+    var le = document.getElementById('schedLastExpired');
+    if(lt) lt.textContent = st.last_transfer ? String(st.last_transfer).slice(5) : '从未';
+    if(le) le.textContent = st.last_expired_check ? String(st.last_expired_check).slice(5) : '从未';
   }catch(e){showToast('加载调度失败',false)}
 }
 
 function autoSaveSchedule(){clearTimeout(autoSaveTimer);autoSaveTimer=setTimeout(saveSchedule,600)}
 async function saveSchedule(){
+  SETTINGS_ALL = null;  // 失效缓存，保存后 SSE 触发的刷新将拉取最新数据
   var tasks = getSelectedTasks('tabSchedule');
   var expiredDirs = expiredDirEntries.map(function(d){return d.trim()}).filter(function(d){return d});
 var body = {
@@ -2135,69 +2002,112 @@ function _makeEmptyState(iconId, title, descHTML) {
   return wrapper;
 }
 
+// ---- 紧凑表格渲染 + 排序 ----
+var execHistorySort = {key:'time', dir:'desc'};
+function statusClass(st){
+  if(st==='ok'||st==='done') return 'ok';
+  if(st==='fail'||st==='error') return 'fail';
+  if(st==='partial') return 'partial';
+  return 'none';
+}
+function typeLabel(t){
+  if(t==='transfer') return '转存';
+  if(t==='expired_check') return '检测';
+  if(t==='config') return '配置';
+  return t||'';
+}
+function resultScore(h){
+  var ok=(h.data&&h.data.ok)||0, fail=(h.data&&h.data.failed)||0, skip=(h.data&&h.data.skipped)||0;
+  return ok+fail+skip;
+}
+function resultBadges(h){
+  if(h.type==='transfer'){
+    var ok=(h.data&&h.data.ok)||0, fail=(h.data&&h.data.failed)||0, skip=(h.data&&h.data.skipped)||0;
+    return '<span class="badge-ok">成功 '+ok+'</span> <span class="badge-fail">失败 '+fail+'</span> <span class="badge-skip">跳过 '+skip+'</span>';
+  }
+  if(h.type==='expired_check'){
+    var n=(h.data&&h.data.expired)?h.data.expired.length:0;
+    return n>0 ? '<span class="badge-fail">失效 '+n+'</span>' : '<span class="badge-ok">全部正常</span>';
+  }
+  return '<span style="color:var(--text3)">—</span>';
+}
+function getSortedFiltered(){
+  var filtered = execHistoryFilter==='all'
+    ? execHistoryData.filter(function(h){return h.type!=='history'&&h.type!=='schedule'})
+    : execHistoryData.filter(function(h){return h.type===execHistoryFilter});
+  var k=execHistorySort.key, dir=execHistorySort.dir==='asc'?1:-1;
+  var order={ok:3,partial:2,fail:1,none:0};
+  filtered = filtered.slice().sort(function(a,b){
+    var primary=0;
+    if(k==='time') primary=(a.time||'').localeCompare(b.time||'');
+    else if(k==='result') primary=resultScore(a)-resultScore(b);
+    else if(k==='status') primary=(order[statusClass(a.status)]||0)-(order[statusClass(b.status)]||0);
+    if(primary!==0) return primary*dir;
+    return (b.time||'').localeCompare(a.time||''); // 同序时最新在前
+  });
+  return filtered;
+}
+function toggleSort(key){
+  if(execHistorySort.key===key) execHistorySort.dir = execHistorySort.dir==='asc'?'desc':'asc';
+  else { execHistorySort.key=key; execHistorySort.dir='desc'; }
+  renderExecHistory();
+}
 function renderExecHistory(){
   var el = document.getElementById('execHistoryList');
-  var filtered = execHistoryFilter==='all'?execHistoryData.filter(function(h){return h.type!=='history'&&h.type!=='schedule'}).slice():execHistoryData.filter(function(h){return h.type===execHistoryFilter});
   el.textContent='';
-  if(!filtered.length){
+  var data = getSortedFiltered();
+  if(!data.length){
     el.appendChild(_makeEmptyState('icon-clock','还没有执行记录','去「手动转存」选择一个榜单开始吧<br>每次转存和检测都会记录在这里'));
     return;
   }
-  filtered.reverse().forEach(function(h){
-    var iconId='icon-transfer',cls='transfer',tn='转存';
-    if(h.type==='expired_check'){iconId='icon-refresh';cls='expired';tn='检测'}
-    else if(h.type==='config'){iconId='icon-settings';cls='config';tn='配置'}
-    var hasDetail = h.data && (h.data.results || h.data.expired);
+  var table = document.createElement('table');
+  table.className = 'data-table';
+  table.id = 'execHistoryTable';
+  var thead = document.createElement('thead');
+  var htr = document.createElement('tr');
+  var cols = [{k:null,t:'状态'},{k:null,t:'类型'},{k:null,t:'详情'},{k:'result',t:'成功/失败/跳过'},{k:'time',t:'时间'}];
+  cols.forEach(function(c){
+    var th = document.createElement('th');
+    th.textContent = c.t;
+    if(c.k){
+      th.setAttribute('data-sort', c.k);
+      var ind = document.createElement('span'); ind.className='sort-ind';
+      if(execHistorySort.key===c.k) ind.textContent = execHistorySort.dir==='asc'?'▲':'▼';
+      th.appendChild(ind);
+      th.addEventListener('click', function(){ toggleSort(c.k); });
+    }
+    htr.appendChild(th);
+  });
+  thead.appendChild(htr); table.appendChild(thead);
+  var tbody = document.createElement('tbody');
+  data.forEach(function(h){
     var hid = String(h.id);
-
-    var item = document.createElement('div');
-    item.className = 'hist-item';
-    if(hasDetail) item.style.cursor = 'pointer';
-    item.id = 'hist_' + hid;
-
-    var iconDiv = document.createElement('div');
-    iconDiv.className = 'hist-icon ' + cls;
-    iconDiv.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#'+iconId+'"/></svg>';
-
-    var infoDiv = document.createElement('div');
-    infoDiv.className = 'hist-info';
-    var titleDiv = document.createElement('div');
-    titleDiv.className = 'hist-title';
-    titleDiv.textContent = h.detail;
-    var metaDiv = document.createElement('div');
-    metaDiv.className = 'hist-meta';
-    metaDiv.textContent = tn + (hasDetail ? ' · 点击查看详情' : '');
-    infoDiv.appendChild(titleDiv);
-    infoDiv.appendChild(metaDiv);
-
-    var timeDiv = document.createElement('div');
-    timeDiv.className = 'hist-time';
-    timeDiv.textContent = h.time;
-
-    item.appendChild(iconDiv);
-    item.appendChild(infoDiv);
-    item.appendChild(timeDiv);
-    item.addEventListener('click', function(){ toggleHistDetail(hid); });
-    el.appendChild(item);
-
-    if(hasDetail){
-      var detailDiv = document.createElement('div');
-      detailDiv.className = 'hist-detail';
-      detailDiv.id = 'hist_detail_' + hid;
-      detailDiv.style.cssText = 'display:none;padding:0 16px 16px 60px;border-bottom:1px solid var(--border);background:rgba(255,255,255,.02)';
-      detailDiv.innerHTML = renderHistDetailContent(h);
-      el.appendChild(detailDiv);
+    var tr = document.createElement('tr');
+    tr.className = 'hist-row'; tr.setAttribute('data-id', hid);
+    var td1 = document.createElement('td');
+    td1.innerHTML = '<span class="status-dot-cell '+statusClass(h.status)+'" title="'+esc(h.status||'')+'"></span>';
+    var td2 = document.createElement('td'); td2.className='hist-type'; td2.textContent = typeLabel(h.type);
+    var td3 = document.createElement('td'); td3.className='hist-detail-cell'; td3.textContent = h.detail||'';
+    var td4 = document.createElement('td'); td4.innerHTML = resultBadges(h);
+    var td5 = document.createElement('td'); td5.className='hist-time'; td5.textContent = h.time||'';
+    [td1,td2,td3,td4,td5].forEach(function(td){ tr.appendChild(td); });
+    tr.addEventListener('click', function(){ toggleHistDetail(hid); });
+    tbody.appendChild(tr);
+    if(h.data && (h.data.results || h.data.expired)){
+      var dtr = document.createElement('tr');
+      dtr.className = 'hist-detail-row'; dtr.id = 'hist_detail_'+hid; dtr.style.display='none';
+      var dtd = document.createElement('td'); dtd.colSpan = 5; dtd.innerHTML = renderHistDetailContent(h);
+      dtr.appendChild(dtd); tbody.appendChild(dtr);
     }
   });
+  table.appendChild(tbody); el.appendChild(table);
   if(histMore){
     var moreDiv = document.createElement('div');
     moreDiv.style.cssText = 'text-align:center;padding:12px;margin-top:6px';
     var moreBtn = document.createElement('button');
-    moreBtn.className = 'btn btn-outline btn-sm';
-    moreBtn.textContent = '加载更多';
+    moreBtn.className = 'btn btn-outline btn-sm'; moreBtn.textContent = '加载更多';
     moreBtn.addEventListener('click', loadMoreHistory);
-    moreDiv.appendChild(moreBtn);
-    el.appendChild(moreDiv);
+    moreDiv.appendChild(moreBtn); el.appendChild(moreDiv);
   }
 }
 function renderHistDetailContent(h){
@@ -2239,14 +2149,7 @@ function renderHistDetailContent(h){
 function toggleHistDetail(id){
   var detailEl = document.getElementById('hist_detail_'+id);
   if(!detailEl) return;
-  var itemEl = document.getElementById('hist_'+id);
-  if(detailEl.style.display === 'none'){
-    detailEl.style.display = 'block';
-    if(itemEl) itemEl.style.borderBottom = 'none';
-  }else{
-    detailEl.style.display = 'none';
-    if(itemEl) itemEl.style.borderBottom = '';
-  }
+  detailEl.style.display = (detailEl.style.display === 'none' || detailEl.style.display === '') ? 'table-row' : 'none';
 }
 function filterHist(type,btn){
   execHistoryFilter=type;
@@ -2279,7 +2182,10 @@ async function clearExecHistory(){
 // ============ Settings ============
 function openSettings(){switchTab('settings')}
 async function loadConfig(){
-  try{var cfg=await apiGet('/api/config');
+  try{
+    var all = SETTINGS_ALL || (SETTINGS_ALL = await apiGet('/api/settings/all'));
+    var cfg = all.config || {};
+    var s = all.schedule || {};
     document.getElementById('cfg_pansou').value=cfg.pansou||'';
     document.getElementById('cfg_qas').value=cfg.qas||'';
 document.getElementById('cfg_qas_token').value='';
@@ -2288,7 +2194,6 @@ document.getElementById('cfg_auth_pass').value='';
 document.getElementById('cfg_tmdb_api_key').value='';
 document.getElementById('cfg_tmdb_base_url').value=cfg.tmdb_base_url||'';
 // 加载想看同步设置
-try{var s=await apiGet('/api/schedule');
 if(s.savepaths){
   document.getElementById('cfg_path_category_base').value=s.savepaths.category_base||'/影视';
   document.getElementById('cfg_path_search').value=s.savepaths.search||'/批量转存/手动搜索存';
@@ -2305,7 +2210,6 @@ var wishAccounts=s.douban_wish.accounts||[];
 if(!wishAccounts.length&&cfg.douban_uid){wishAccounts=[{uid:cfg.douban_uid,cookie:'',name:''}]}
 renderWishAccounts(wishAccounts);
 }
-}catch(e){}
 
   }catch(e){showToast('加载配置失败',false)}
 }
@@ -2314,6 +2218,7 @@ try{var d=await apiGet('/api/refresh_douban');showToast(d.message||'已刷新',t
 catch(e){showToast('刷新失败',false)}
 }
 async function saveConfig(silent=false){
+SETTINGS_ALL = null;  // 失效缓存，保存后 SSE 触发的 loadConfig 将拉取最新数据
 var cfg={pansou:document.getElementById('cfg_pansou').value.trim(),
 qas:document.getElementById('cfg_qas').value.trim(),
 qas_token:document.getElementById('cfg_qas_token').value,
@@ -2586,9 +2491,8 @@ async function transferTmdbSelection(){
     }
   }
   if(!tasks.length){showToast('未找到选中项',false);return}
-  // 提前清空日志并切换 tab，避免 SSE 早期日志被竞态清除
+  // 提前清空日志并切换 tab，避免 SSE 早期日志被竞态清除（日志面板常驻）
   switchTab('manual');
-  document.getElementById('logCard').style.display='block';
   logBefore=[]; document.getElementById('log').textContent='';
   addLog('[开始转存 TMDB 选中内容]');
   try{
@@ -2778,40 +2682,38 @@ async function transferOne(btn){
 // ============ Dashboard ============
 async function loadDashboard(){
   try{
-    var s = await apiGet('/api/schedule');
-    if(s._status){
-      var ss=s._status;
-      var dashNextEl = document.getElementById('dashNext');
-      dashNextEl.textContent = '';
-      var gridDiv = document.createElement('div');
-      gridDiv.style.cssText = 'display:grid;grid-template-columns:auto 1fr;gap:3px 10px;align-items:center';
-      if(ss.transfer_next){
-        var tLabel = document.createElement('span');
-        tLabel.style.cssText = 'display:flex;align-items:center;gap:5px;white-space:nowrap;color:var(--text3);font-size:12px';
-        tLabel.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-transfer"/></svg> 转存';
-        var tVal = document.createElement('span');
-        tVal.style.cssText = 'text-align:right;color:var(--text2);white-space:nowrap;font-size:12px;font-weight:500';
-        tVal.textContent = ss.transfer_next.slice(5);
-        gridDiv.appendChild(tLabel);
-        gridDiv.appendChild(tVal);
-      }
-      if(ss.expired_check_next){
-        var eLabel = document.createElement('span');
-        eLabel.style.cssText = 'display:flex;align-items:center;gap:5px;white-space:nowrap;color:var(--text3);font-size:12px';
-        eLabel.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-refresh"/></svg> 检测';
-        var eVal = document.createElement('span');
-        eVal.style.cssText = 'text-align:right;color:var(--text2);white-space:nowrap;font-size:12px;font-weight:500';
-        eVal.textContent = ss.expired_check_next.slice(5);
-        gridDiv.appendChild(eLabel);
-        gridDiv.appendChild(eVal);
-      }
-      if(ss.transfer_next || ss.expired_check_next){
-        dashNextEl.appendChild(gridDiv);
-      } else {
-        dashNextEl.textContent = '暂无调度';
-      }
+    var d = await apiGet('/api/dashboard/all');
+    var s = d.schedule_status || {};
+    var dashNextEl = document.getElementById('dashNext');
+    dashNextEl.textContent = '';
+    var gridDiv = document.createElement('div');
+    gridDiv.style.cssText = 'display:grid;grid-template-columns:auto 1fr;gap:3px 10px;align-items:center';
+    if(s.transfer_next){
+      var tLabel = document.createElement('span');
+      tLabel.style.cssText = 'display:flex;align-items:center;gap:5px;white-space:nowrap;color:var(--text3);font-size:12px';
+      tLabel.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-transfer"/></svg> 转存';
+      var tVal = document.createElement('span');
+      tVal.style.cssText = 'text-align:right;color:var(--text2);white-space:nowrap;font-size:12px;font-weight:500';
+      tVal.textContent = s.transfer_next.slice(5);
+      gridDiv.appendChild(tLabel);
+      gridDiv.appendChild(tVal);
     }
-    var stats = await apiGet('/api/dashboard/stats');
+    if(s.expired_check_next){
+      var eLabel = document.createElement('span');
+      eLabel.style.cssText = 'display:flex;align-items:center;gap:5px;white-space:nowrap;color:var(--text3);font-size:12px';
+      eLabel.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-refresh"/></svg> 检测';
+      var eVal = document.createElement('span');
+      eVal.style.cssText = 'text-align:right;color:var(--text2);white-space:nowrap;font-size:12px;font-weight:500';
+      eVal.textContent = s.expired_check_next.slice(5);
+      gridDiv.appendChild(eLabel);
+      gridDiv.appendChild(eVal);
+    }
+    if(s.transfer_next || s.expired_check_next){
+      dashNextEl.appendChild(gridDiv);
+    } else {
+      dashNextEl.textContent = '暂无调度';
+    }
+    var stats = d.stats || {};
     var todayEl = document.getElementById('dashToday');
     if(stats.today_count){animateNumber(todayEl,stats.today_count,800)}else{todayEl.textContent='-'}
     animateNumber(document.getElementById('dash7OK'),stats.week_ok||0,900);
@@ -2840,7 +2742,7 @@ async function loadDashboard(){
       textEl.style.cssText='color:var(--text);font-size:16px;font-weight:600';
       timeEl.textContent='上次转存';
     }
-    try{var v=await apiGet('/version');if(v.version)document.getElementById('headerVersion').textContent='v'+v.version}catch(e){}
+    if(d.version) document.getElementById('headerVersion').textContent='v'+d.version;
   }catch(e){}
   finally{
     // 骨架屏 → 真实内容
@@ -2885,75 +2787,96 @@ function renderDash7Viz(stats){
 
 // ============ Init ============
 function initTimeSelects(){
-  var hours=['schedTHour','schedEHour'];
-  var mins=['schedTMin','schedEMin'];
-  for(var h=0;h<hours.length;h++){
-    var sel=document.getElementById(hours[h]);
-    if(sel)for(var i=0;i<24;i++){var o=document.createElement('option');o.value=i;o.textContent=String(i).padStart(2,'0');sel.appendChild(o)}
+  var hours = ['schedTHour', 'schedEHour'];
+  var mins = ['schedTMin', 'schedEMin'];
+  for(var h = 0; h < hours.length; h++){
+    var sel = document.getElementById(hours[h]);
+    if(sel) for(var i = 0; i < 24; i++){ var o = document.createElement('option'); o.value = i; o.textContent = String(i).padStart(2, '0'); sel.appendChild(o); }
   }
-  for(var m=0;m<mins.length;m++){
-    var sel2=document.getElementById(mins[m]);
-    if(sel2)for(var i=0;i<60;i+=5){var o2=document.createElement('option');o2.value=i;o2.textContent=String(i).padStart(2,'0');sel2.appendChild(o2)}
+  for(var m = 0; m < mins.length; m++){
+    var sel2 = document.getElementById(mins[m]);
+    if(sel2) for(var i = 0; i < 60; i += 5){ var o2 = document.createElement('option'); o2.value = i; o2.textContent = String(i).padStart(2, '0'); sel2.appendChild(o2); }
   }
+}
+
+function initLayout(){
+  // 侧边栏抽屉 / 日志面板抽屉的开合由内联 onclick 调用
+  // toggleSidebar / toggleLogPanel / closeDrawers 实现。
+  // 这里设定底部版本信息（如需要可扩展）。
 }
 
 async function init(){
   initTheme(); initTimeSelects(); updateSoundBtn(); initShortcuts();
-  try{C = await apiGet('/api/categories')}
-  catch(e){showToast('认证失败，请重新登录',false);setTimeout(function(){location.href='/login.html'},1500);return}
+  try{ C = await apiGet('/api/categories'); }
+  catch(e){ showToast('认证失败，请重新登录', false); setTimeout(function(){ location.href = '/login.html'; }, 1500); return; }
   parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
   checkRunningStatus(); loadDashboard();
-  updateTabIndicator();
-  window.addEventListener('resize', updateTabIndicator);
+  initLayout();
   initSSE();
 }
 
-var sseRetryDelay=5000;
+// ---- 抽屉 / 日志面板开合（移动端） ----
+function toggleSidebar(){
+  var s = document.querySelector('.sidebar');
+  if(!s) return;
+  toggleScrim(s.classList.toggle('open'));
+}
+function toggleLogPanel(){
+  var p = document.getElementById('logPanel');
+  if(!p) return;
+  toggleScrim(p.classList.toggle('open'));
+}
+function closeDrawers(){
+  var s = document.querySelector('.sidebar'); if(s) s.classList.remove('open');
+  var p = document.getElementById('logPanel'); if(p) p.classList.remove('open');
+  var sc = document.getElementById('overlayScrim'); if(sc) sc.classList.remove('show');
+}
+function toggleScrim(show){
+  var sc = document.getElementById('overlayScrim');
+  if(!sc) return;
+  if(show) sc.classList.add('show'); else sc.classList.remove('show');
+}
+
+var sseRetryDelay = 5000;
 function initSSE(){
   if(!window.EventSource) return;
   var es = new EventSource('/api/sse');
-  es.onopen=function(){
-    sseConnected=true;
-    sseRetryDelay=5000;
-    if(logPollTimer&&logPollInterval===3000){
-      clearInterval(logPollTimer);startLogPoll(10000);
+  es.onopen = function(){
+    sseConnected = true;
+    sseRetryDelay = 5000;
+    if(logPollTimer && logPollInterval === 3000){
+      clearInterval(logPollTimer); startLogPoll(10000);
     }
   };
-  es.addEventListener('schedule_update', function(){
-    loadDashboard();
-  });
-  es.addEventListener('config_update', function(){
-    loadConfig();
-  });
-  es.addEventListener('history_update', function(){
-    loadExecHistory();
-  });
+  es.addEventListener('schedule_update', function(){ SETTINGS_ALL = null; loadDashboard(); });
+  es.addEventListener('config_update', function(){ SETTINGS_ALL = null; loadConfig(); });
+  es.addEventListener('history_update', function(){ loadExecHistory(); });
   es.addEventListener('transfer_progress', function(e){
-    var d=JSON.parse(e.data);
+    var d = JSON.parse(e.data);
     if(d.stats){
-      document.getElementById('stSearched').textContent=d.stats.searched||0;
-      document.getElementById('stOK').textContent=d.stats.ok||0;
-      document.getElementById('stSkip').textContent=d.stats.skipped||0;
-      document.getElementById('stFail').textContent=d.stats.failed||0;
-      document.getElementById('stTotal').textContent=d.stats.total||0;
+      document.getElementById('stSearched').textContent = d.stats.searched || 0;
+      document.getElementById('stOK').textContent = d.stats.ok || 0;
+      document.getElementById('stSkip').textContent = d.stats.skipped || 0;
+      document.getElementById('stFail').textContent = d.stats.failed || 0;
+      document.getElementById('stTotal').textContent = d.stats.total || 0;
       updateProgress(d.stats);
     }
-    if(d.running)document.getElementById('stopBtn').style.display='inline-block';
-    else document.getElementById('stopBtn').style.display='none';
+    if(d.running) document.getElementById('stopBtn').style.display = 'inline-block';
+    else document.getElementById('stopBtn').style.display = 'none';
   });
   es.addEventListener('log', function(e){
-    var d=JSON.parse(e.data);
-    if(d.line)addLog(d.line);
+    var d = JSON.parse(e.data);
+    if(d.line) addLog(d.line);
   });
   es.onerror = function(){
     es.close();
-    sseConnected=false;
-    if(logPollTimer&&logPollInterval===10000){
+    sseConnected = false;
+    if(logPollTimer && logPollInterval === 10000){
       // SSE 断连，切换到 3s 轮询；首次仅对齐游标，不重复添加已有日志
-      clearInterval(logPollTimer);startLogPoll(3000, 0, true);
+      clearInterval(logPollTimer); startLogPoll(3000, 0, true);
     }
     setTimeout(initSSE, sseRetryDelay);
-    sseRetryDelay=Math.min(sseRetryDelay*2, 30000);
+    sseRetryDelay = Math.min(sseRetryDelay * 2, 30000);
   };
 }
 // 全局快捷键：Ctrl/⌘+K 聚焦搜索、Ctrl/⌘+Enter 开始转存、Esc 关闭弹窗
@@ -2982,9 +2905,8 @@ function initShortcuts(){
       if(tag === 'INPUT' && e.target.id !== 'searchInput') return;
       if(currentTab === 'manual'){
         e.preventDefault();
-        var logCard = document.getElementById('logCard');
         var stopBtn = document.getElementById('stopBtn');
-        var running = logCard && logCard.style.display !== 'none' && stopBtn && stopBtn.style.display !== 'none';
+        var running = stopBtn && stopBtn.style.display !== 'none';
         if(!running) startTransfer();
       }
     }
