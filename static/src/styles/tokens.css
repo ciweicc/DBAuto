@@ -9,10 +9,10 @@
   --bg-deep: #05050a;
 
   /* Card */
-  --card: rgba(255, 255, 255, 0.04);
+  --card: rgba(255, 255, 255, 0.06);
 
   /* Border (3 levels) */
-  --border: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.08);
   --border2: rgba(255, 255, 255, 0.1);
   --border3: rgba(255, 255, 255, 0.15);
 

@@ -21,10 +21,10 @@
   --bg-deep: #05050a;
 
   /* Card */
-  --card: rgba(255, 255, 255, 0.04);
+  --card: rgba(255, 255, 255, 0.06);
 
   /* Border (3 levels) */
-  --border: rgba(255, 255, 255, 0.06);
+  --border: rgba(255, 255, 255, 0.08);
   --border2: rgba(255, 255, 255, 0.1);
   --border3: rgba(255, 255, 255, 0.15);
 
@@ -318,6 +318,20 @@ body::after{
 .dcard-wide .num{font-size:14px;font-weight:500;color:var(--text2);line-height:1.6}
 .dcard-wide .num span{font-weight:600;font-size:inherit}
 .dcard-wide .num .ok{color:var(--green)}.dcard-wide .num .fail{color:var(--red)}
+/* 近 7 天可视化：柱状图 + 成功率环形图 */
+.dash7-viz{display:flex;align-items:flex-end;gap:12px;margin:2px 0 12px}
+.dash7-chart{flex:1;display:flex;align-items:flex-end;gap:5px;height:44px;min-width:0}
+.dash7-bar{flex:1;min-width:0;border-radius:4px 4px 0 0;opacity:.92;
+  transition:height .6s var(--ease-bounce);background:var(--text4)}
+.dash7-bar:hover{opacity:1}
+.dash7-donut{position:relative;width:48px;height:48px;flex-shrink:0}
+.dash7-donut svg{width:100%;height:100%}
+.donut-bg{fill:none;stroke:var(--border2);stroke-width:5}
+.donut-fill{fill:none;stroke:var(--green);stroke-width:5;stroke-linecap:round;
+  transform:rotate(-90deg);transform-origin:50% 50%;
+  transition:stroke-dashoffset .6s var(--ease-bounce)}
+.donut-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;color:var(--text);font-family:var(--font-display)}
 @media(max-width:640px){
   .dash{grid-template-columns:repeat(2,1fr);gap:10px}
   .dcard{padding:14px}
@@ -910,7 +924,7 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
     <div class="search-wrapper">
       <div class="search-box" id="searchBox" onclick="document.getElementById('searchInput').focus()">
         <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg>
-        <input type="text" id="searchInput" placeholder="搜索资源..." oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()">
+        <input type="text" id="searchInput" placeholder="搜索资源..." title="搜索资源（Ctrl/⌘ + K 聚焦）" oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()">
         <svg class="search-clear" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" onclick="clearSearch()"><use href="#icon-x-circle"/></svg>
       </div>
       <div class="search-dropdown" id="searchDropdown">
@@ -948,6 +962,16 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
   </div>
   <div class="dcard dcard-wide">
     <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--cyan)"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+    <div class="dash7-viz">
+      <div class="dash7-chart" id="dash7Chart"></div>
+      <div class="dash7-donut">
+        <svg viewBox="0 0 44 44">
+          <circle class="donut-bg" cx="22" cy="22" r="18"></circle>
+          <circle class="donut-fill" cx="22" cy="22" r="18" id="dash7Donut"></circle>
+        </svg>
+        <div class="donut-text" id="dash7Rate">0%</div>
+      </div>
+    </div>
     <div class="num"><span class="ok" id="dash7OK">0</span> 成功 / <span class="fail" id="dash7Fail">0</span> 失败</div>
     <div class="lbl">近 7 天共 <span id="dash7Total" style="color:var(--text);font-weight:600">0</span> 次</div>
   </div>
@@ -983,7 +1007,7 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
       <span style="color:var(--text2)">每次最多</span>
       <input type="number" id="limit" value="5" min="1" max="50">
       <span style="color:var(--text2)">条</span>
-      <button class="btn btn-primary" onclick="startTransfer()">开始转存</button>
+      <button class="btn btn-primary" onclick="startTransfer()" title="开始转存（Ctrl/⌘ + Enter）">开始转存</button>
       <button class="btn btn-outline btn-sm" onclick="checkExpired()">检测失效链接</button>
       <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="syncToSchedule()">同步到定时任务</button>
     </div>
@@ -1022,6 +1046,7 @@ border-radius:50%;animation:tmdbSpin .8s linear infinite}
         </div>
       </div>
       <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-outline" id="soundBtn" onclick="toggleSound()" title="操作音效"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg></button>
         <button class="btn btn-sm btn-danger" id="stopBtn" onclick="stopTransfer()">停止</button>
         <button class="btn btn-sm btn-outline" id="pauseBtn" onclick="togglePause()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-pause"/></svg></button>
       </div>
@@ -1380,6 +1405,75 @@ var sseConnected = false;
 var LOG_BEFORE_MAX = 500;
 var APP_PATHS = {category_base:'/影视', search:'/批量转存/手动搜索存', tmdb:'/批量转存/TMDB'};
 
+// ============ Sound (操作音效) ============
+// 使用 Web Audio API 合成短音效，无需外部音频资源
+// 音效默认开启，可通过 localStorage 'soundEnabled' 关闭
+var SoundEnabled = localStorage.getItem('soundEnabled');
+SoundEnabled = (SoundEnabled === null) ? true : (SoundEnabled === 'true');
+var _audioCtx = null;
+
+function _getAudioCtx(){
+  if(!_audioCtx){
+    try{ _audioCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+    catch(e){ return null; }
+  }
+  // 浏览器自动播放策略：用户手势后需恢复 AudioContext
+  if(_audioCtx && _audioCtx.state === 'suspended'){ _audioCtx.resume().catch(function(){}); }
+  return _audioCtx;
+}
+
+function _beep(freq, duration, type, gainVal, when){
+  var ctx = _getAudioCtx();
+  if(!ctx) return;
+  var t0 = ctx.currentTime + (when || 0);
+  var osc = ctx.createOscillator();
+  var g = ctx.createGain();
+  osc.type = type || 'sine';
+  osc.frequency.setValueAtTime(freq, t0);
+  g.gain.setValueAtTime(0.0001, t0);
+  g.gain.linearRampToValueAtTime(gainVal || 0.18, t0 + 0.01);
+  g.gain.exponentialRampToValueAtTime(0.0001, t0 + duration);
+  osc.connect(g); g.connect(ctx.destination);
+  osc.start(t0); osc.stop(t0 + duration + 0.02);
+}
+
+// name: 'success' | 'error' | 'click'
+function playSound(name){
+  if(!SoundEnabled) return;
+  try{
+    if(name === 'success'){
+      _beep(660, 0.12, 'sine', 0.18, 0);
+      _beep(880, 0.16, 'sine', 0.16, 0.10);
+    } else if(name === 'error'){
+      _beep(220, 0.20, 'sawtooth', 0.12, 0);
+      _beep(160, 0.26, 'sawtooth', 0.10, 0.07);
+    } else if(name === 'click'){
+      _beep(440, 0.05, 'triangle', 0.10, 0);
+    }
+  }catch(e){}
+}
+
+function setSoundEnabled(v){
+  SoundEnabled = !!v;
+  localStorage.setItem('soundEnabled', SoundEnabled ? 'true' : 'false');
+  updateSoundBtn();
+}
+
+function toggleSound(){
+  setSoundEnabled(!SoundEnabled);
+  showToast(SoundEnabled ? '已开启操作音效' : '已关闭操作音效', true);
+}
+
+var _SOUND_ICON_ON = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>';
+var _SOUND_ICON_OFF = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5 6 9H2v6h4l5 4z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>';
+
+function updateSoundBtn(){
+  var btn = document.getElementById('soundBtn');
+  if(!btn) return;
+  btn.innerHTML = SoundEnabled ? _SOUND_ICON_ON : _SOUND_ICON_OFF;
+  btn.title = SoundEnabled ? '操作音效：开' : '操作音效：关';
+  btn.style.opacity = SoundEnabled ? '1' : '0.55';
+}
 // ============ Toast ============
 function showToast(msg,ok,duration){
   var container=document.getElementById('toastContainer');
@@ -1655,6 +1749,7 @@ async function startTransfer(){
   document.getElementById('logCard').style.display='block';
   logBefore=[]; document.getElementById('log').textContent='';
   addLog('[开始转存]');
+  playSound('click');
   try{
     var d = await apiPost('/api/transfer',{tasks:tasks,limit:limit,filters:filters});
     if(d.success){
@@ -1817,7 +1912,8 @@ function startLogPoll(interval, initLen, skipFirstSync){
         updateProgress(d.stats);
       }
       if(!d.running&&logPollTimer){clearInterval(logPollTimer);logPollTimer=null;logPollInterval=0;
-        document.getElementById('stopBtn').style.display='none';addLog('全部完成');}
+        document.getElementById('stopBtn').style.display='none';addLog('全部完成');
+        if(d.stats&&(d.stats.failed||0)>0)playSound('error');else playSound('success');}
     }catch(e){}
   },pollInterval);
 }
@@ -2721,6 +2817,7 @@ async function loadDashboard(){
     animateNumber(document.getElementById('dash7OK'),stats.week_ok||0,900);
     animateNumber(document.getElementById('dash7Fail'),stats.week_fail||0,900);
     animateNumber(document.getElementById('dash7Total'),stats.week_total||0,1000);
+    renderDash7Viz(stats);
     var dotEl = document.getElementById('dashStatusDot');
     var textEl = document.getElementById('dashStatusText');
     var timeEl = document.getElementById('dashLastTime');
@@ -2754,6 +2851,38 @@ async function loadDashboard(){
   }
 }
 
+// 近 7 天柱状图 + 成功率环形图
+function renderDash7Viz(stats){
+  var chartEl = document.getElementById('dash7Chart');
+  if(chartEl && stats.daily && stats.daily.length){
+    chartEl.textContent='';
+    var maxTotal = 1;
+    for(var i=0;i<stats.daily.length;i++){ if(stats.daily[i].total>maxTotal) maxTotal=stats.daily[i].total; }
+    for(var j=0;j<stats.daily.length;j++){
+      var d = stats.daily[j];
+      var bar = document.createElement('div');
+      bar.className='dash7-bar';
+      var h = Math.round(d.total/maxTotal*100);
+      bar.style.height = (h<5?5:h) + '%';
+      bar.title = d.date + '　成功 '+d.ok+' / 失败 '+d.fail;
+      if(d.ok===0 && d.fail>0) bar.style.background='var(--red)';
+      else if(d.fail>0) bar.style.background='linear-gradient(180deg,var(--green),var(--orange))';
+      else if(d.ok>0) bar.style.background='var(--green)';
+      else bar.style.background='var(--text4)';
+      chartEl.appendChild(bar);
+    }
+  }
+  var rate = (stats.week_total||0)>0 ? Math.round((stats.week_ok||0)/stats.week_total*100) : 0;
+  var donut = document.getElementById('dash7Donut');
+  if(donut){
+    var circ = 2*Math.PI*18;
+    donut.style.strokeDasharray = circ;
+    donut.style.strokeDashoffset = circ*(1-rate/100);
+  }
+  var rateEl = document.getElementById('dash7Rate');
+  if(rateEl) rateEl.textContent = rate + '%';
+}
+
 // ============ Init ============
 function initTimeSelects(){
   var hours=['schedTHour','schedEHour'];
@@ -2769,7 +2898,7 @@ function initTimeSelects(){
 }
 
 async function init(){
-  initTheme(); initTimeSelects();
+  initTheme(); initTimeSelects(); updateSoundBtn(); initShortcuts();
   try{C = await apiGet('/api/categories')}
   catch(e){showToast('认证失败，请重新登录',false);setTimeout(function(){location.href='/login.html'},1500);return}
   parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
@@ -2827,6 +2956,41 @@ function initSSE(){
     sseRetryDelay=Math.min(sseRetryDelay*2, 30000);
   };
 }
+// 全局快捷键：Ctrl/⌘+K 聚焦搜索、Ctrl/⌘+Enter 开始转存、Esc 关闭弹窗
+function initShortcuts(){
+  document.addEventListener('keydown', function(e){
+    // Esc：关闭确认框 / Sheet
+    if(e.key === 'Escape'){
+      var overlays = document.querySelectorAll('.confirm-overlay.show, .sheet-overlay.show');
+      if(overlays.length){
+        overlays.forEach(function(o){ o.classList.remove('show'); });
+        e.preventDefault();
+      }
+      return;
+    }
+    // Ctrl/⌘ + K：聚焦搜索框
+    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k'){
+      e.preventDefault();
+      var sb = document.getElementById('searchInput');
+      if(sb){ sb.focus(); sb.select(); }
+      return;
+    }
+    // Ctrl/⌘ + Enter：开始转存（手动页，且未在编辑设置表单时）
+    if((e.ctrlKey || e.metaKey) && e.key === 'Enter'){
+      var tag = (e.target && e.target.tagName) ? e.target.tagName : '';
+      if(tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if(tag === 'INPUT' && e.target.id !== 'searchInput') return;
+      if(currentTab === 'manual'){
+        e.preventDefault();
+        var logCard = document.getElementById('logCard');
+        var stopBtn = document.getElementById('stopBtn');
+        var running = logCard && logCard.style.display !== 'none' && stopBtn && stopBtn.style.display !== 'none';
+        if(!running) startTransfer();
+      }
+    }
+  });
+}
+
 init();
 </script>
 </body>

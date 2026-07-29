@@ -19,6 +19,7 @@ JS_CONTENT=$(cat \
   "$SRC_DIR/scripts/animation.js" \
   "$SRC_DIR/scripts/theme.js" \
   "$SRC_DIR/scripts/globals.js" \
+  "$SRC_DIR/scripts/sound.js" \
   "$SRC_DIR/scripts/toast.js" \
   "$SRC_DIR/scripts/confirm.js" \
   "$SRC_DIR/scripts/tabs.js" \

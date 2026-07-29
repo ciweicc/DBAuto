@@ -13,6 +13,7 @@ async function startTransfer(){
   document.getElementById('logCard').style.display='block';
   logBefore=[]; document.getElementById('log').textContent='';
   addLog('[开始转存]');
+  playSound('click');
   try{
     var d = await apiPost('/api/transfer',{tasks:tasks,limit:limit,filters:filters});
     if(d.success){

@@ -17,6 +17,7 @@ class HistoryRouteMixin:
             ok7 = 0
             fail7 = 0
             total7 = 0
+            daily = {}
             last_transfer = None
             last_status = "-"
             for h in data:
@@ -29,9 +30,19 @@ class HistoryRouteMixin:
                     if h_ts >= week_ago:
                         total7 += 1
                         d = h.get("data", {})
+                        okc = 0
+                        failc = 0
                         if isinstance(d, dict):
-                            ok7 += d.get("ok", 0)
-                            fail7 += d.get("failed", 0)
+                            okc = d.get("ok", 0)
+                            failc = d.get("failed", 0)
+                            ok7 += okc
+                            fail7 += failc
+                        day = h_time[:10]
+                        if day not in daily:
+                            daily[day] = {"ok": 0, "fail": 0, "total": 0}
+                        daily[day]["ok"] += okc
+                        daily[day]["fail"] += failc
+                        daily[day]["total"] += 1
                 except (ValueError, OverflowError):
                     pass
                 if h_type != "expired_check":
@@ -52,11 +63,24 @@ class HistoryRouteMixin:
                                 last_status = "none"
                         else:
                             last_status = "none"
+            # 近 7 天每日明细（含 0 值，按日期升序）
+            daily_list = []
+            now = time.time()
+            for i in range(6, -1, -1):
+                dd = time.strftime("%Y-%m-%d", time.localtime(now - i * 86400))
+                rec = daily.get(dd, {"ok": 0, "fail": 0, "total": 0})
+                daily_list.append({
+                    "date": dd[5:],
+                    "ok": rec["ok"],
+                    "fail": rec["fail"],
+                    "total": rec["total"]
+                })
             self._send_json({
                 "today_count": today_count,
                 "week_ok": ok7,
                 "week_fail": fail7,
                 "week_total": total7,
+                "daily": daily_list,
                 "last_status": last_status,
                 "last_time": last_transfer.get("time", "") if last_transfer else ""
             })

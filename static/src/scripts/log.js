@@ -139,7 +139,8 @@ function startLogPoll(interval, initLen, skipFirstSync){
         updateProgress(d.stats);
       }
       if(!d.running&&logPollTimer){clearInterval(logPollTimer);logPollTimer=null;logPollInterval=0;
-        document.getElementById('stopBtn').style.display='none';addLog('全部完成');}
+        document.getElementById('stopBtn').style.display='none';addLog('全部完成');
+        if(d.stats&&(d.stats.failed||0)>0)playSound('error');else playSound('success');}
     }catch(e){}
   },pollInterval);
 }

@@ -11,8 +11,8 @@
 </script>
 <style>
 :root {
-  --bg:#0a0a0f; --bg-deep:#05050a; --card:rgba(255,255,255,.04);
-  --border:rgba(255,255,255,.06); --border2:rgba(255,255,255,.1); --border3:rgba(255,255,255,.15);
+  --bg:#0a0a0f; --bg-deep:#05050a; --card:rgba(255,255,255,.06);
+  --border:rgba(255,255,255,.08); --border2:rgba(255,255,255,.1); --border3:rgba(255,255,255,.15);
   --text:#ffffff; --text2:rgba(255,255,255,.65); --text3:rgba(255,255,255,.4); --text4:rgba(255,255,255,.25);
   --accent:#0a84ff; --accent2:#5e5ce6; --accent3:#8585ff;
   --green:#30d158; --red:#ff453a; --orange:#ff9f0a; --purple:#bf5af2; --cyan:#64d2ff;
@@ -243,6 +243,13 @@ body::after{
   margin-top:var(--space-2xl);text-align:center;font-size:12px;color:var(--text4);
   animation:fadeUp .8s var(--ease-bounce) both;animation-delay:.4s;
 }
+.login-last{
+  margin-top:var(--space-lg);text-align:center;font-size:12px;color:var(--text3);
+  display:none;align-items:center;justify-content:center;gap:6px;
+  animation:fadeUp .8s var(--ease-bounce) both;animation-delay:.3s;
+}
+.login-last.show{display:flex}
+.login-last svg{width:14px;height:14px;color:var(--text3);flex-shrink:0}
 @keyframes fadeUp{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
 
 @media(max-width:480px){
@@ -317,6 +324,7 @@ body::after{
     <button class="btn" id="btn" onclick="login()">登 录</button>
     <div class="error" id="error"></div>
   </div>
+  <p class="login-last" id="loginLast"></p>
   <p class="login-footer">安全登录 · 数据本地加密存储</p>
 </div>
 
@@ -341,6 +349,63 @@ initTheme();
 
 function focusPass(){document.getElementById('pass').focus()}
 
+var lockTimer = null;
+
+// 显示上次登录时间 / IP（本地缓存，下次访问登录页时提示）
+function showLastLogin(){
+  try{
+    var raw = localStorage.getItem('dbauto_last_login');
+    if(!raw) return;
+    var rec = JSON.parse(raw);
+    if(!rec || !rec.time) return;
+    var el = document.getElementById('loginLast');
+    if(!el) return;
+    el.textContent = '';
+    var icon = document.createElementNS('http://www.w3.org/2000/svg','svg');
+    icon.setAttribute('viewBox','0 0 24 24');
+    icon.setAttribute('fill','none');
+    icon.setAttribute('stroke','currentColor');
+    icon.setAttribute('stroke-width','2');
+    icon.setAttribute('stroke-linecap','round');
+    icon.setAttribute('stroke-linejoin','round');
+    var use = document.createElementNS('http://www.w3.org/2000/svg','use');
+    use.setAttribute('href','#icon-clock');
+    icon.appendChild(use);
+    el.appendChild(icon);
+    var span = document.createElement('span');
+    var txt = '上次登录：' + rec.time;
+    if(rec.ip) txt += ' · ' + rec.ip;
+    span.textContent = txt;
+    el.appendChild(span);
+    el.classList.add('show');
+  }catch(e){}
+}
+
+// 锁定倒计时
+function startLockCountdown(wait){
+  var btn = document.getElementById('btn');
+  var err = document.getElementById('error');
+  if(lockTimer){clearInterval(lockTimer);lockTimer=null}
+  btn.disabled = true;
+  var left = wait || 300;
+  function fmt(s){var m=Math.floor(s/60),sec=s%60;return m+' 分 '+(sec<10?'0':'')+sec+' 秒'}
+  function tick(){
+    if(left<=0){
+      if(lockTimer){clearInterval(lockTimer);lockTimer=null}
+      err.classList.remove('show');
+      btn.disabled=false;
+      btn.innerHTML='登 录';
+      return;
+    }
+    err.textContent='尝试次数过多，账号已锁定，请 '+fmt(left)+' 后重试';
+    err.classList.add('show');
+    btn.innerHTML='已锁定 '+fmt(left);
+    left--;
+  }
+  tick();
+  lockTimer=setInterval(tick,1000);
+}
+
 function togglePass(){
   passVisible = !passVisible;
   var input = document.getElementById('pass');
@@ -356,6 +421,7 @@ if(localStorage.getItem('auth_token')){
     else localStorage.removeItem('auth_token');
   });
 }
+showLastLogin();
 
 async function login(){
   var user = document.getElementById('user').value.trim();
@@ -363,24 +429,30 @@ async function login(){
   var btn = document.getElementById('btn');
   var err = document.getElementById('error');
   var success = false;
-  
+
   err.classList.remove('show');
   if(!user){err.textContent='请输入用户名';err.classList.add('show');return}
   if(!pass){err.textContent='请输入密码';err.classList.add('show');return}
-  
-  btn.disabled = true; 
+
+  btn.disabled = true;
   btn.innerHTML = '<span class="spinner"></span> 登录中...';
-  
+
   try{
     var r = await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username:user,password:pass})});
     var d = await r.json();
     if(d.success){
       success = true;
+      if(d.last_login){localStorage.setItem('dbauto_last_login', JSON.stringify(d.last_login))}
       btn.innerHTML = '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg> 登录成功';
       localStorage.setItem('auth_token',d.token);
       setTimeout(function(){location.href='/'},500);
-    }else{
-      err.textContent = d.message||'登录失败，请检查用户名和密码';
+    } else if(r.status === 429){
+      startLockCountdown(d.wait || 300);
+    } else {
+      var remain = (typeof d.remaining === 'number') ? d.remaining : null;
+      var msg = d.message || '登录失败，请检查用户名和密码';
+      if(remain !== null && remain > 0){ msg += '（还剩 ' + remain + ' 次尝试机会）'; }
+      err.textContent = msg;
       err.classList.add('show');
     }
   }catch(e){
@@ -388,7 +460,7 @@ async function login(){
     err.classList.add('show');
   }
   if(!success){
-    btn.disabled = false; 
+    btn.disabled = false;
     btn.innerHTML = '登 录';
   }
 }

@@ -40,6 +40,7 @@ async function loadDashboard(){
     animateNumber(document.getElementById('dash7OK'),stats.week_ok||0,900);
     animateNumber(document.getElementById('dash7Fail'),stats.week_fail||0,900);
     animateNumber(document.getElementById('dash7Total'),stats.week_total||0,1000);
+    renderDash7Viz(stats);
     var dotEl = document.getElementById('dashStatusDot');
     var textEl = document.getElementById('dashStatusText');
     var timeEl = document.getElementById('dashLastTime');
@@ -71,5 +72,37 @@ async function loadDashboard(){
     if(sk) sk.style.display = 'none';
     if(ct) ct.style.display = 'grid';
   }
+}
+
+// 近 7 天柱状图 + 成功率环形图
+function renderDash7Viz(stats){
+  var chartEl = document.getElementById('dash7Chart');
+  if(chartEl && stats.daily && stats.daily.length){
+    chartEl.textContent='';
+    var maxTotal = 1;
+    for(var i=0;i<stats.daily.length;i++){ if(stats.daily[i].total>maxTotal) maxTotal=stats.daily[i].total; }
+    for(var j=0;j<stats.daily.length;j++){
+      var d = stats.daily[j];
+      var bar = document.createElement('div');
+      bar.className='dash7-bar';
+      var h = Math.round(d.total/maxTotal*100);
+      bar.style.height = (h<5?5:h) + '%';
+      bar.title = d.date + '　成功 '+d.ok+' / 失败 '+d.fail;
+      if(d.ok===0 && d.fail>0) bar.style.background='var(--red)';
+      else if(d.fail>0) bar.style.background='linear-gradient(180deg,var(--green),var(--orange))';
+      else if(d.ok>0) bar.style.background='var(--green)';
+      else bar.style.background='var(--text4)';
+      chartEl.appendChild(bar);
+    }
+  }
+  var rate = (stats.week_total||0)>0 ? Math.round((stats.week_ok||0)/stats.week_total*100) : 0;
+  var donut = document.getElementById('dash7Donut');
+  if(donut){
+    var circ = 2*Math.PI*18;
+    donut.style.strokeDasharray = circ;
+    donut.style.strokeDashoffset = circ*(1-rate/100);
+  }
+  var rateEl = document.getElementById('dash7Rate');
+  if(rateEl) rateEl.textContent = rate + '%';
 }
 

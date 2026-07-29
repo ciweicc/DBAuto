@@ -1,13 +1,14 @@
 # auth.py — 认证管理
-import os, secrets, time
+import os, secrets, time, json
 from threading import Lock
-from config import ConfigManager
+from config import ConfigManager, DATA_DIR
 from utils import log, verify_password, hash_password
 
 TOKEN_TTL = 86400
 LOGIN_MAX_ATTEMPTS = 5
 LOGIN_WINDOW = 60
 LOGIN_LOCK_DURATION = 300
+LAST_LOGIN_FILE = os.path.join(DATA_DIR, "last_login.json")
 
 _TRUST_PROXY = os.environ.get("TRUST_PROXY", "").lower() in ("1", "true", "yes")
 
@@ -60,15 +61,36 @@ class AuthManager:
                 del self._tokens[t]
             return token in self._tokens
 
-    def login(self, username, password):
+    def login(self, username, password, ip=None):
         if username == self._config.auth_user and self._verify_pass(password, self._config.auth_pass):
             token = self._gen_token()
             with self._token_lock:
                 self._tokens[token] = {"user": username, "time": time.time()}
             log("登录成功: {}".format(username))
-            return token
+            last = self._save_last_login(ip)
+            return token, last
         log("登录失败: {}".format(username))
+        return None, None
+
+    def _load_last_login(self):
+        try:
+            if os.path.exists(LAST_LOGIN_FILE):
+                with open(LAST_LOGIN_FILE, "r", encoding="utf-8") as f:
+                    return json.load(f)
+        except Exception:
+            pass
         return None
+
+    def _save_last_login(self, ip):
+        try:
+            rec = {"time": time.strftime("%Y-%m-%d %H:%M:%S"), "ip": ip or "unknown"}
+            os.makedirs(DATA_DIR, exist_ok=True)
+            with open(LAST_LOGIN_FILE, "w", encoding="utf-8") as f:
+                json.dump(rec, f, ensure_ascii=False)
+            return rec
+        except Exception as e:
+            log("保存上次登录记录失败: {}".format(e))
+            return None
 
     def _verify_pass(self, password, stored):
         if not stored:
@@ -104,15 +126,15 @@ class AuthManager:
                 self._login_attempts[ip] = {"count": 0, "first": now, "locked": 0}
             r = self._login_attempts[ip]
             if r["locked"] > now:
-                return False, int(r["locked"] - now)
+                return False, int(r["locked"] - now), 0
             if now - r["first"] > LOGIN_WINDOW:
                 r["count"] = 0
                 r["first"] = now
             r["count"] += 1
             if r["count"] >= LOGIN_MAX_ATTEMPTS:
                 r["locked"] = now + LOGIN_LOCK_DURATION
-                return False, LOGIN_LOCK_DURATION
-            return True, 0
+                return False, LOGIN_LOCK_DURATION, 0
+            return True, 0, LOGIN_MAX_ATTEMPTS - r["count"]
 
     @staticmethod
     def get_client_ip(handler):
@@ -140,8 +162,8 @@ def _check_auth(handler):
     return _get_auth_manager().check_auth(handler)
 
 
-def _do_login(username, password):
-    return _get_auth_manager().login(username, password)
+def _do_login(username, password, ip=None):
+    return _get_auth_manager().login(username, password, ip)
 
 
 def hash_auth_password(password):

@@ -196,6 +196,20 @@ body::after{
 .dcard-wide .num{font-size:14px;font-weight:500;color:var(--text2);line-height:1.6}
 .dcard-wide .num span{font-weight:600;font-size:inherit}
 .dcard-wide .num .ok{color:var(--green)}.dcard-wide .num .fail{color:var(--red)}
+/* 近 7 天可视化：柱状图 + 成功率环形图 */
+.dash7-viz{display:flex;align-items:flex-end;gap:12px;margin:2px 0 12px}
+.dash7-chart{flex:1;display:flex;align-items:flex-end;gap:5px;height:44px;min-width:0}
+.dash7-bar{flex:1;min-width:0;border-radius:4px 4px 0 0;opacity:.92;
+  transition:height .6s var(--ease-bounce);background:var(--text4)}
+.dash7-bar:hover{opacity:1}
+.dash7-donut{position:relative;width:48px;height:48px;flex-shrink:0}
+.dash7-donut svg{width:100%;height:100%}
+.donut-bg{fill:none;stroke:var(--border2);stroke-width:5}
+.donut-fill{fill:none;stroke:var(--green);stroke-width:5;stroke-linecap:round;
+  transform:rotate(-90deg);transform-origin:50% 50%;
+  transition:stroke-dashoffset .6s var(--ease-bounce)}
+.donut-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;color:var(--text);font-family:var(--font-display)}
 @media(max-width:640px){
   .dash{grid-template-columns:repeat(2,1fr);gap:10px}
   .dcard{padding:14px}

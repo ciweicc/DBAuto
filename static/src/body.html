@@ -41,7 +41,7 @@
     <div class="search-wrapper">
       <div class="search-box" id="searchBox" onclick="document.getElementById('searchInput').focus()">
         <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg>
-        <input type="text" id="searchInput" placeholder="搜索资源..." oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()">
+        <input type="text" id="searchInput" placeholder="搜索资源..." title="搜索资源（Ctrl/⌘ + K 聚焦）" oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()">
         <svg class="search-clear" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" onclick="clearSearch()"><use href="#icon-x-circle"/></svg>
       </div>
       <div class="search-dropdown" id="searchDropdown">
@@ -79,6 +79,16 @@
   </div>
   <div class="dcard dcard-wide">
     <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--cyan)"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+    <div class="dash7-viz">
+      <div class="dash7-chart" id="dash7Chart"></div>
+      <div class="dash7-donut">
+        <svg viewBox="0 0 44 44">
+          <circle class="donut-bg" cx="22" cy="22" r="18"></circle>
+          <circle class="donut-fill" cx="22" cy="22" r="18" id="dash7Donut"></circle>
+        </svg>
+        <div class="donut-text" id="dash7Rate">0%</div>
+      </div>
+    </div>
     <div class="num"><span class="ok" id="dash7OK">0</span> 成功 / <span class="fail" id="dash7Fail">0</span> 失败</div>
     <div class="lbl">近 7 天共 <span id="dash7Total" style="color:var(--text);font-weight:600">0</span> 次</div>
   </div>
@@ -114,7 +124,7 @@
       <span style="color:var(--text2)">每次最多</span>
       <input type="number" id="limit" value="5" min="1" max="50">
       <span style="color:var(--text2)">条</span>
-      <button class="btn btn-primary" onclick="startTransfer()">开始转存</button>
+      <button class="btn btn-primary" onclick="startTransfer()" title="开始转存（Ctrl/⌘ + Enter）">开始转存</button>
       <button class="btn btn-outline btn-sm" onclick="checkExpired()">检测失效链接</button>
       <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="syncToSchedule()">同步到定时任务</button>
     </div>
@@ -153,6 +163,7 @@
         </div>
       </div>
       <div style="display:flex;gap:6px">
+        <button class="btn btn-sm btn-outline" id="soundBtn" onclick="toggleSound()" title="操作音效"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg></button>
         <button class="btn btn-sm btn-danger" id="stopBtn" onclick="stopTransfer()">停止</button>
         <button class="btn btn-sm btn-outline" id="pauseBtn" onclick="togglePause()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-pause"/></svg></button>
       </div>

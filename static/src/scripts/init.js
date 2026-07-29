@@ -13,7 +13,7 @@ function initTimeSelects(){
 }
 
 async function init(){
-  initTheme(); initTimeSelects();
+  initTheme(); initTimeSelects(); updateSoundBtn(); initShortcuts();
   try{C = await apiGet('/api/categories')}
   catch(e){showToast('认证失败，请重新登录',false);setTimeout(function(){location.href='/login.html'},1500);return}
   parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
@@ -71,4 +71,39 @@ function initSSE(){
     sseRetryDelay=Math.min(sseRetryDelay*2, 30000);
   };
 }
+// 全局快捷键：Ctrl/⌘+K 聚焦搜索、Ctrl/⌘+Enter 开始转存、Esc 关闭弹窗
+function initShortcuts(){
+  document.addEventListener('keydown', function(e){
+    // Esc：关闭确认框 / Sheet
+    if(e.key === 'Escape'){
+      var overlays = document.querySelectorAll('.confirm-overlay.show, .sheet-overlay.show');
+      if(overlays.length){
+        overlays.forEach(function(o){ o.classList.remove('show'); });
+        e.preventDefault();
+      }
+      return;
+    }
+    // Ctrl/⌘ + K：聚焦搜索框
+    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k'){
+      e.preventDefault();
+      var sb = document.getElementById('searchInput');
+      if(sb){ sb.focus(); sb.select(); }
+      return;
+    }
+    // Ctrl/⌘ + Enter：开始转存（手动页，且未在编辑设置表单时）
+    if((e.ctrlKey || e.metaKey) && e.key === 'Enter'){
+      var tag = (e.target && e.target.tagName) ? e.target.tagName : '';
+      if(tag === 'TEXTAREA' || tag === 'SELECT') return;
+      if(tag === 'INPUT' && e.target.id !== 'searchInput') return;
+      if(currentTab === 'manual'){
+        e.preventDefault();
+        var logCard = document.getElementById('logCard');
+        var stopBtn = document.getElementById('stopBtn');
+        var running = logCard && logCard.style.display !== 'none' && stopBtn && stopBtn.style.display !== 'none';
+        if(!running) startTransfer();
+      }
+    }
+  });
+}
+
 init();

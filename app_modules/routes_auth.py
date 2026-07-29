@@ -17,9 +17,9 @@ class AuthRouteMixin:
     def _handle_auth_post(self, route, body):
         if route == "/api/login":
             ip = _client_ip(self)
-            ok, wait = _login_rate_check(ip)
+            ok, wait, remaining = _login_rate_check(ip)
             if not ok:
-                self._send_json({"success": False, "message": "too many attempts", "wait": wait}, 429)
+                self._send_json({"success": False, "message": "too many attempts", "wait": wait, "remaining": 0}, 429)
                 return True
 
             username = body.get("username", "")
@@ -27,20 +27,20 @@ class AuthRouteMixin:
 
             ok, msg = validate_string(username, min_len=1, max_len=100, allow_empty=False)
             if not ok:
-                self._send_json({"success": False, "message": "username: {}".format(msg)}, 400)
+                self._send_json({"success": False, "message": "username: {}".format(msg), "remaining": remaining}, 400)
                 return True
 
             ok, msg = validate_string(password, min_len=0, max_len=500, allow_empty=True)
             if not ok:
-                self._send_json({"success": False, "message": "password: {}".format(msg)}, 400)
+                self._send_json({"success": False, "message": "password: {}".format(msg), "remaining": remaining}, 400)
                 return True
 
-            token = _do_login(username, password)
+            token, last_login = _do_login(username, password, ip)
             if token:
-                self._send_json({"success": True, "token": token})
+                self._send_json({"success": True, "token": token, "last_login": last_login})
                 sse_broadcast("auth", {"status": "login", "user": username})
             else:
-                self._send_json({"success": False, "message": "invalid credentials"}, 401)
+                self._send_json({"success": False, "message": "invalid credentials", "remaining": remaining}, 401)
             return True
 
         return False
