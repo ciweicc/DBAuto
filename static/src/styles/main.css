@@ -152,10 +152,14 @@ body{
   transition:border-color var(--transition-fast);
 }
 .dcard:hover{border-color:var(--border2)}
-.dcard-bg-icon{
-  position:absolute;right:-6px;bottom:-6px;width:56px;height:56px;opacity:.05;
-  transform:rotate(-8deg);pointer-events:none;
+.dcard-icon{
+  position:absolute; top:10px; right:10px;
+  width:30px; height:30px;
+  border-radius:8px;
+  display:flex; align-items:center; justify-content:center;
+  pointer-events:none;
 }
+.dcard-icon svg{width:16px;height:16px}
 .dcard .num{font-size:22px;font-weight:700;color:var(--text);font-family:var(--font-display);
   font-variant-numeric:tabular-nums;line-height:1.2;position:relative;z-index:1;
   display:flex;align-items:center;gap:8px;

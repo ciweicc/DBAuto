@@ -5,12 +5,11 @@ var PAGE_IDS = {
   dashboard: 'pageDashboard',
   manual: 'tabManual',
   schedule: 'tabSchedule',
-  tmdb: 'tabTmdb',
   history: 'tabHistory',
   settings: 'tabSettings'
 };
-var PAGES = ['dashboard', 'manual', 'schedule', 'tmdb', 'history', 'settings'];
-var BOTTOM_NAV = ['manual', 'schedule', 'tmdb', 'history', 'settings'];
+var PAGES = ['dashboard', 'manual', 'schedule', 'history', 'settings'];
+var BOTTOM_NAV = ['manual', 'schedule', 'history', 'settings'];
 
 function switchTab(tab){
   currentTab = tab;
@@ -33,6 +32,6 @@ function switchTab(tab){
   // 按需加载
   if(tab === 'schedule') loadSchedule();
   if(tab === 'history') loadExecHistory();
-  if(tab === 'tmdb') initTmdbPage();
+  if(tab === 'dashboard') initTmdbPage();
   if(tab === 'settings') loadConfig();
 }

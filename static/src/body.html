@@ -20,6 +20,7 @@
   <symbol id="icon-tv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></symbol>
   <symbol id="icon-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
   <symbol id="icon-transfer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/><path d="m16 9-3-3-3 3"/><path d="m8 15-3 3 3-3"/></symbol>
+  <symbol id="icon-trending-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></symbol>
   <symbol id="icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
   <symbol id="icon-check-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></symbol>
   <symbol id="icon-x-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></symbol>
@@ -43,10 +44,9 @@
       <span class="brand-ver" id="headerVersion">v1.1.0</span>
     </div>
     <nav class="side-nav">
-      <button class="side-nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg>仪表盘</button>
+      <button class="side-nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg>概览</button>
       <button class="side-nav-item" data-tab="manual" onclick="switchTab('manual')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-transfer"/></svg>手动转存</button>
       <button class="side-nav-item" data-tab="schedule" onclick="switchTab('schedule')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg>定时任务</button>
-      <button class="side-nav-item" data-tab="tmdb" onclick="switchTab('tmdb')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-tv"/></svg>TMDB</button>
       <button class="side-nav-item" data-tab="history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg>执行历史</button>
       <button class="side-nav-item" data-tab="settings" onclick="switchTab('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-settings"/></svg>设置</button>
     </nav>
@@ -84,22 +84,22 @@
         </div>
         <div class="dash" id="dashContent" style="display:none">
           <div class="dcard">
-            <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--accent)"><path d="M12 5v14"/><path d="M5 12h14"/><path d="m16 9-3-3-3 3"/><path d="m8 15-3 3 3-3"/></svg>
+            <div class="dcard-icon" style="background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-download"/></svg></div>
             <div class="num blue"><span id="dashToday">-</span></div>
             <div class="lbl">今日转存</div>
           </div>
           <div class="dcard">
-            <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--purple)"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            <div class="dcard-icon" style="background:color-mix(in srgb,var(--purple) 14%,transparent);color:var(--purple)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg></div>
             <div class="num" style="font-size:13px;color:var(--text2);line-height:1.5;font-weight:500" id="dashNext">加载中...</div>
             <div class="lbl">下次调度</div>
           </div>
           <div class="dcard">
-            <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--green)"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+            <div class="dcard-icon" style="background:color-mix(in srgb,var(--green) 14%,transparent);color:var(--green)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg></div>
             <div class="num" id="dashLastStatus" style="font-size:16px;gap:6px"><span class="status-dot" id="dashStatusDot" style="display:none"></span><span id="dashStatusText">-</span></div>
             <div class="lbl" id="dashLastTime">上次转存</div>
           </div>
           <div class="dcard dcard-wide">
-            <svg class="dcard-bg-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="color:var(--cyan)"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+            <div class="dcard-icon" style="background:color-mix(in srgb,var(--cyan) 14%,transparent);color:var(--cyan)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-trending-up"/></svg></div>
             <div class="dash7-viz">
               <div class="dash7-chart" id="dash7Chart"></div>
               <div class="dash7-donut">
@@ -114,7 +114,78 @@
             <div class="lbl">近 7 天共 <span id="dash7Total" style="color:var(--text);font-weight:600">0</span> 次</div>
           </div>
         </div>
-      </section>
+            <div class="tmdb-embed" style="margin-top:20px">
+
+          <div id="tmdbKeyWarning" class="tmdb-key-warning" style="display:none">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L8 2 3 7v4a6 6 0 0 0 6 6 6 6 0 0 0 6-6V7l-5-5-2.29 1.86z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            <span>未配置 TMDB API Key，请在「设置」页面填入后保存</span>
+          </div>
+
+          <div class="card">
+            <div class="card-title" style="justify-content:space-between">
+              <span><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg> TMDB 数据源</span>
+              <button class="btn btn-outline btn-sm" onclick="refreshTmdbCache()">刷新缓存</button>
+            </div>
+
+            <div class="tmdb-filter-bar">
+              <div class="tmdb-filter-group">
+                <label>分类</label>
+                <select class="tmdb-select" id="tmdbMediaType" onchange="onTmdbFilterChange()">
+                  <option value="movie">电影</option>
+                  <option value="tv">电视剧</option>
+                </select>
+              </div>
+              <div class="tmdb-filter-group">
+                <label>榜单类型</label>
+                <select class="tmdb-select" id="tmdbListType" onchange="onTmdbFilterChange()"></select>
+              </div>
+              <div class="tmdb-filter-group">
+                <label>地区/语言</label>
+                <select class="tmdb-select" id="tmdbRegion" onchange="onTmdbFilterChange()"></select>
+              </div>
+              <div class="tmdb-filter-group">
+                <label>排序</label>
+                <select class="tmdb-select" id="tmdbSort" onchange="onTmdbFilterChange()">
+                  <option value="popularity.desc">按热度</option>
+                  <option value="vote_average.desc">按评分</option>
+                  <option value="release_date.desc">按时间</option>
+                  <option value="vote_count.desc">按投票数</option>
+                </select>
+              </div>
+              <div class="tmdb-filter-group">
+                <label>最低评分</label>
+                <input type="number" id="tmdbMinRating" min="0" max="10" step="0.5" value="0" style="width:80px" onchange="onTmdbFilterChange()">
+              </div>
+              <div class="tmdb-filter-group">
+                <label>年份</label>
+                <input type="number" id="tmdbYear" min="1900" max="2030" placeholder="全部" style="width:90px" onchange="onTmdbFilterChange()">
+              </div>
+            </div>
+
+            <div class="form-group" style="margin-bottom:12px">
+              <label>类型筛选</label>
+              <div class="tmdb-genre-chips" id="tmdbGenreChips"></div>
+            </div>
+          </div>
+
+          <div class="tmdb-sel-bar" id="tmdbSelBar">
+            <div class="tmdb-sel-count" id="tmdbSelCount">已选 0 部</div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-outline btn-sm" onclick="clearTmdbSelection()">清空选择</button>
+              <button class="btn btn-primary btn-sm" onclick="transferTmdbSelection()">开始转存</button>
+            </div>
+          </div>
+
+          <div id="tmdbGrid" class="tmdb-grid"></div>
+
+          <div class="tmdb-pagination" id="tmdbPagination" style="display:none">
+            <button class="btn btn-outline btn-sm" id="tmdbPrevBtn" onclick="tmdbPrevPage()">上一页</button>
+            <span id="tmdbPageInfo" style="font-size:13px;color:var(--text2);font-weight:600"></span>
+            <button class="btn btn-outline btn-sm" id="tmdbNextBtn" onclick="tmdbNextPage()">下一页</button>
+          </div>
+      
+      </div>
+</section>
 
       <!-- ===== 手动转存 ===== -->
       <section class="page" id="tabManual">
@@ -225,76 +296,7 @@
         </div>
       </section>
 
-      <!-- ===== TMDB ===== -->
-      <section class="page" id="tabTmdb">
-        <div id="tmdbKeyWarning" class="tmdb-key-warning" style="display:none">
-          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L8 2 3 7v4a6 6 0 0 0 6 6 6 6 0 0 0 6-6V7l-5-5-2.29 1.86z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span>未配置 TMDB API Key，请在「设置」页面填入后保存</span>
-        </div>
-
-        <div class="card">
-          <div class="card-title" style="justify-content:space-between">
-            <span><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg> TMDB 数据源</span>
-            <button class="btn btn-outline btn-sm" onclick="refreshTmdbCache()">刷新缓存</button>
-          </div>
-
-          <div class="tmdb-filter-bar">
-            <div class="tmdb-filter-group">
-              <label>分类</label>
-              <select class="tmdb-select" id="tmdbMediaType" onchange="onTmdbFilterChange()">
-                <option value="movie">电影</option>
-                <option value="tv">电视剧</option>
-              </select>
-            </div>
-            <div class="tmdb-filter-group">
-              <label>榜单类型</label>
-              <select class="tmdb-select" id="tmdbListType" onchange="onTmdbFilterChange()"></select>
-            </div>
-            <div class="tmdb-filter-group">
-              <label>地区/语言</label>
-              <select class="tmdb-select" id="tmdbRegion" onchange="onTmdbFilterChange()"></select>
-            </div>
-            <div class="tmdb-filter-group">
-              <label>排序</label>
-              <select class="tmdb-select" id="tmdbSort" onchange="onTmdbFilterChange()">
-                <option value="popularity.desc">按热度</option>
-                <option value="vote_average.desc">按评分</option>
-                <option value="release_date.desc">按时间</option>
-                <option value="vote_count.desc">按投票数</option>
-              </select>
-            </div>
-            <div class="tmdb-filter-group">
-              <label>最低评分</label>
-              <input type="number" id="tmdbMinRating" min="0" max="10" step="0.5" value="0" style="width:80px" onchange="onTmdbFilterChange()">
-            </div>
-            <div class="tmdb-filter-group">
-              <label>年份</label>
-              <input type="number" id="tmdbYear" min="1900" max="2030" placeholder="全部" style="width:90px" onchange="onTmdbFilterChange()">
-            </div>
-          </div>
-
-          <div class="form-group" style="margin-bottom:12px">
-            <label>类型筛选</label>
-            <div class="tmdb-genre-chips" id="tmdbGenreChips"></div>
-          </div>
-        </div>
-
-        <div class="tmdb-sel-bar" id="tmdbSelBar">
-          <div class="tmdb-sel-count" id="tmdbSelCount">已选 0 部</div>
-          <div style="display:flex;gap:8px">
-            <button class="btn btn-outline btn-sm" onclick="clearTmdbSelection()">清空选择</button>
-            <button class="btn btn-primary btn-sm" onclick="transferTmdbSelection()">开始转存</button>
-          </div>
-        </div>
-
-        <div id="tmdbGrid" class="tmdb-grid"></div>
-
-        <div class="tmdb-pagination" id="tmdbPagination" style="display:none">
-          <button class="btn btn-outline btn-sm" id="tmdbPrevBtn" onclick="tmdbPrevPage()">上一页</button>
-          <span id="tmdbPageInfo" style="font-size:13px;color:var(--text2);font-weight:600"></span>
-          <button class="btn btn-outline btn-sm" id="tmdbNextBtn" onclick="tmdbNextPage()">下一页</button>
-        </div>
-      </section>
+      
 
       <!-- ===== 执行历史 ===== -->
       <section class="page" id="tabHistory">
@@ -413,10 +415,6 @@
     <div class="nav-item" onclick="switchTab('schedule')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       <span>定时</span>
-    </div>
-    <div class="nav-item" onclick="switchTab('tmdb')">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg>
-      <span>TMDB</span>
     </div>
     <div class="nav-item" onclick="switchTab('history')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>

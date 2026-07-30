@@ -23,7 +23,7 @@ async function init(){
   try{ C = await apiGet('/api/categories'); }
   catch(e){ showToast('认证失败，请重新登录', false); setTimeout(function(){ location.href = '/login.html'; }, 1500); return; }
   parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
-  checkRunningStatus(); loadDashboard();
+  checkRunningStatus(); loadDashboard(); initTmdbPage();
   initLayout();
   initSSE();
 }

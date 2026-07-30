@@ -68,7 +68,7 @@ with sync_playwright() as p:
     print("log-panel box:", box(".log-panel"))
     print("app grid columns:", page.eval_on_selector(".app", "el => getComputedStyle(el).gridTemplateColumns"))
 
-    tabs = ["dashboard", "manual", "schedule", "tmdb", "history", "settings"]
+    tabs = ["dashboard", "manual", "schedule", "history", "settings"]
     results = {}
     for t in tabs:
         page.click(f'.side-nav-item[data-tab="{t}"]')
