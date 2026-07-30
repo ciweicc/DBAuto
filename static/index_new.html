@@ -317,13 +317,6 @@ body{
 .dash7-chart{flex:1;display:flex;align-items:flex-end;gap:5px;height:44px;min-width:0}
 .dash7-bar{flex:1;min-width:0;border-radius:4px 4px 0 0;opacity:.92;background:var(--text4)}
 .dash7-bar:hover{opacity:1}
-.dash7-donut{position:relative;width:48px;height:48px;flex-shrink:0}
-.dash7-donut svg{width:100%;height:100%}
-.donut-bg{fill:none;stroke:var(--border2);stroke-width:5}
-.donut-fill{fill:none;stroke:var(--green);stroke-width:5;stroke-linecap:round;
-  transform:rotate(-90deg);transform-origin:50% 50%;transition:stroke-dashoffset .6s var(--ease-bounce)}
-.donut-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  font-size:11px;font-weight:700;color:var(--text);font-family:var(--font-display)}
 
 /* =========================================================
    Card
@@ -730,6 +723,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   <symbol id="icon-play" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></symbol>
   <symbol id="icon-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></symbol>
   <symbol id="icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
+  <symbol id="icon-cloud-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></symbol>
   <symbol id="icon-movie" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="7" y1="3" x2="7" y2="21"/><line x1="17" y1="3" x2="17" y2="21"/><line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="17" x2="21" y2="17"/></symbol>
   <symbol id="icon-tv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></symbol>
   <symbol id="icon-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
@@ -753,7 +747,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   <!-- Sidebar -->
   <aside class="sidebar">
     <div class="brand">
-      <div class="brand-logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-movie"/></svg></div>
+      <div class="brand-logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-cloud-download"/></svg></div>
       <span>豆瓣自动转存</span>
       <span class="brand-ver" id="headerVersion">v1.1.0</span>
     </div>
@@ -816,13 +810,6 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
             <div class="dcard-icon" style="background:color-mix(in srgb,var(--cyan) 14%,transparent);color:var(--cyan)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-trending-up"/></svg></div>
             <div class="dash7-viz">
               <div class="dash7-chart" id="dash7Chart"></div>
-              <div class="dash7-donut">
-                <svg viewBox="0 0 44 44">
-                  <circle class="donut-bg" cx="22" cy="22" r="18"></circle>
-                  <circle class="donut-fill" cx="22" cy="22" r="18" id="dash7Donut"></circle>
-                </svg>
-                <div class="donut-text" id="dash7Rate">0%</div>
-              </div>
             </div>
             <div class="num"><span class="ok" id="dash7OK">0</span> 成功 / <span class="fail" id="dash7Fail">0</span> 失败</div>
             <div class="lbl">近 7 天共 <span id="dash7Total" style="color:var(--text);font-weight:600">0</span> 次</div>
@@ -2775,15 +2762,6 @@ function renderDash7Viz(stats){
       chartEl.appendChild(bar);
     }
   }
-  var rate = (stats.week_total||0)>0 ? Math.round((stats.week_ok||0)/stats.week_total*100) : 0;
-  var donut = document.getElementById('dash7Donut');
-  if(donut){
-    var circ = 2*Math.PI*18;
-    donut.style.strokeDasharray = circ;
-    donut.style.strokeDashoffset = circ*(1-rate/100);
-  }
-  var rateEl = document.getElementById('dash7Rate');
-  if(rateEl) rateEl.textContent = rate + '%';
 }
 
 // ============ Init ============

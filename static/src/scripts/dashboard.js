@@ -93,14 +93,5 @@ function renderDash7Viz(stats){
       chartEl.appendChild(bar);
     }
   }
-  var rate = (stats.week_total||0)>0 ? Math.round((stats.week_ok||0)/stats.week_total*100) : 0;
-  var donut = document.getElementById('dash7Donut');
-  if(donut){
-    var circ = 2*Math.PI*18;
-    donut.style.strokeDasharray = circ;
-    donut.style.strokeDashoffset = circ*(1-rate/100);
-  }
-  var rateEl = document.getElementById('dash7Rate');
-  if(rateEl) rateEl.textContent = rate + '%';
 }
 
