@@ -57,7 +57,7 @@ body{
 
 .login-logo{
   width:64px;height:64px;border-radius:var(--radius-lg);margin-bottom:var(--space-2xl);
-  background:linear-gradient(135deg,var(--accent),var(--purple));
+  background:linear-gradient(135deg,var(--accent),var(--accent2));
   display:flex;align-items:center;justify-content:center;
   box-shadow:var(--shadow);
   position:relative;overflow:hidden;
@@ -222,11 +222,15 @@ body{
     <line x1="7" y1="3" x2="7" y2="21"/><line x1="17" y1="3" x2="17" y2="21"/>
     <line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="17" x2="21" y2="17"/>
   </symbol>
+  <symbol id="icon-cloud-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/>
+    <path d="M12 12v9"/><path d="m8 17 4 4 4-4"/>
+  </symbol>
 </svg>
 
 <div class="login-wrap">
   <div class="login-logo">
-    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg>
+    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-cloud-download"/></svg>
   </div>
   <div class="login-card">
     <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="切换主题"><span class="icon icon-20"><svg><use href="#icon-moon"/></svg></span></button>
