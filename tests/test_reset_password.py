@@ -1,8 +1,9 @@
 """P1 密码重置测试：从标准输入读取、拒绝命令行参数、空密码校验。"""
 import sys
 import io
+import os
 
-sys.path.insert(0, "app_modules")
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app_modules"))
 
 import reset_password
 
