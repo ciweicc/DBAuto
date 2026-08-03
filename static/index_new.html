@@ -317,6 +317,16 @@ body{
 .dcard-wide .num{font-size:13px;font-weight:500;color:var(--text2);line-height:1.6}
 .dcard-wide .num span{font-weight:600;font-size:inherit}
 .dcard-wide .num .ok{color:var(--green)}.dcard-wide .num .fail{color:var(--red)}
+
+/* 页面标题 + 设置页模块化网格 */
+.page-head{margin-bottom:18px}
+.page-head h1{margin:0 0 4px;font-size:20px;font-weight:700;font-family:var(--font-display);color:var(--text)}
+.page-head p{margin:0;font-size:13px;color:var(--text3);line-height:1.5}
+.module-overview{margin-bottom:18px}
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:4px}
+.settings-grid .card{margin:0}
+.card.save-card{grid-column:1/-1;display:flex;align-items:center;padding:14px 18px}
+
 /* 近 7 天可视化：柱状图 + 成功率环形图 */
 .dash7-viz{display:flex;align-items:flex-end;gap:12px;margin:2px 0 12px}
 .dash7-chart{flex:1;display:flex;align-items:flex-end;gap:5px;height:44px;min-width:0}
@@ -766,12 +776,11 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
       <span class="brand-ver" id="headerVersion">v1.1.0</span>
     </div>
     <nav class="side-nav">
-      <button class="side-nav-item active" data-tab="dashboard" onclick="switchTab('dashboard')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-dashboard"/></svg>概览</button>
+      <button class="side-nav-item active" data-tab="tmdb" onclick="switchTab('tmdb')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg>TMDB</button>
       <button class="side-nav-item" data-tab="manual" onclick="switchTab('manual')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>手动转存</button>
       <button class="side-nav-item" data-tab="schedule" onclick="switchTab('schedule')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg>定时任务</button>
       <button class="side-nav-item" data-tab="history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg>执行历史</button>
       <button class="side-nav-item" data-tab="settings" onclick="switchTab('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-settings"/></svg>设置</button>
-      <button class="side-nav-item" data-tab="tmdb" onclick="switchTab('tmdb')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg>资源浏览</button>
     </nav>
     <div class="side-foot" id="sideFoot"></div>
   </aside>
@@ -797,43 +806,12 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 
     <div class="content">
 
-      <!-- ===== 仪表盘 ===== -->
-      <section class="page active" id="pageDashboard">
-        <div class="dash" id="dashSkeleton">
-          <div class="dcard"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
-          <div class="dcard"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
-          <div class="dcard"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
-          <div class="dcard dcard-wide"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:40%"></div></div>
-        </div>
-        <div class="dash" id="dashContent" style="display:none">
-          <div class="dcard">
-            <div class="dcard-icon" style="background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-download"/></svg></div>
-            <div class="num blue"><span id="dashToday">-</span></div>
-            <div class="lbl">今日转存</div>
-          </div>
-          <div class="dcard">
-            <div class="dcard-icon" style="background:color-mix(in srgb,var(--purple) 14%,transparent);color:var(--purple)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg></div>
-            <div class="num" style="font-size:13px;color:var(--text2);line-height:1.5;font-weight:500" id="dashNext">加载中...</div>
-            <div class="lbl">下次调度</div>
-          </div>
-          <div class="dcard">
-            <div class="dcard-icon" style="background:color-mix(in srgb,var(--green) 14%,transparent);color:var(--green)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg></div>
-            <div class="num" id="dashLastStatus" style="font-size:16px;gap:6px"><span class="status-dot" id="dashStatusDot" style="display:none"></span><span id="dashStatusText">-</span></div>
-            <div class="lbl" id="dashLastTime">上次转存</div>
-          </div>
-          <div class="dcard dcard-wide">
-            <div class="dcard-icon" style="background:color-mix(in srgb,var(--cyan) 14%,transparent);color:var(--cyan)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-trending-up"/></svg></div>
-            <div class="dash7-viz">
-              <div class="dash7-chart" id="dash7Chart"></div>
-            </div>
-            <div class="num"><span class="ok" id="dash7OK">0</span> 成功 / <span class="fail" id="dash7Fail">0</span> 失败</div>
-            <div class="lbl">近 7 天共 <span id="dash7Total" style="color:var(--text);font-weight:600">0</span> 次</div>
-          </div>
-        </div>
-      </section>
-
       <!-- ===== 资源浏览（TMDB） ===== -->
-      <section class="page" id="pageTmdb">
+      <section class="page active" id="pageTmdb">
+        <div class="page-head">
+          <h1>TMDB 资源浏览</h1>
+          <p>浏览热门影视，按需筛选并一键转存到网盘</p>
+        </div>
             <div class="tmdb-embed" style="margin-top:20px">
 
           <div id="tmdbKeyWarning" class="tmdb-key-warning" style="display:none">
@@ -1034,48 +1012,91 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 
       <!-- ===== 设置 ===== -->
       <section class="page" id="tabSettings">
-        <div class="card">
-          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg> 搜索服务</div>
-          <div class="form-group"><label>PanSou 地址</label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"></div>
+        <div class="page-head">
+          <h1>设置</h1>
+          <p>配置数据源、转存服务与同步选项，运行状态一并在此查看</p>
         </div>
-        <div class="card">
-          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-movie"/></svg> TMDB 数据源</div>
-          <div class="form-group" style="margin-bottom:0"><label>API Key</label><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"></div>
-          <div class="form-group" style="margin-top:8px"><label>API 地址（可选）</label><input type="text" id="cfg_tmdb_base_url" placeholder="留空自动切换 api.tmdb.org / api.themoviedb.org"></div>
-          <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.5">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">TMDB 官网</a> 申请 API Key。系统自动尝试短域名访问，无需代理</div>
-        </div>
-        <div class="card">
-          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-transfer"/></svg> 转存服务</div>
-          <div class="form-group"><label>QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
-          <div class="form-group" style="margin-bottom:0"><label>QAS Token</label><input type="password" id="cfg_qas_token" placeholder="留空不修改"></div>
-        </div>
-        <div class="card">
-          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-folder"/></svg> 转存路径</div>
-          <div class="form-group"><label>榜单分类路径前缀</label><input type="text" id="cfg_path_category_base" placeholder="/影视"></div>
-          <div style="font-size:12px;color:var(--text2);margin:-4px 0 8px;line-height:1.5">实际路径 = 前缀 + 分类名，如 /影视/电影、/影视/电视剧</div>
-          <div class="form-group"><label>搜索转存路径</label><input type="text" id="cfg_path_search" placeholder="/批量转存/手动搜索存"></div>
-          <div class="form-group" style="margin-bottom:0"><label>TMDB 转存路径</label><input type="text" id="cfg_path_tmdb" placeholder="/批量转存/TMDB"></div>
-        </div>
-        <div class="card">
-          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-lock"/></svg> 管理认证</div>
-          <div class="form-group"><label>用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
-          <div class="form-group" style="margin-bottom:0"><label>密码</label><input type="password" id="cfg_auth_pass" placeholder="留空不修改"></div>
-        </div>
-        <div class="card">
-          <div class="card-title" style="justify-content:space-between"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-cloud-download"/></svg> 豆瓣想看同步 <a href="https://www.douban.com/" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="text-decoration:none">打开豆瓣 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-left:2px"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
-          <div id="wishAccountsList" style="display:flex;flex-direction:column;gap:8px"></div>
-          <button class="btn btn-outline btn-sm" onclick="addWishAccount()" style="margin-top:2px;border-style:dashed"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加豆瓣账号</button>
-          <div class="form-group" style="margin-top:12px"><label>保存路径</label><input type="text" id="cfg_wish_savepath" placeholder="/批量转存/想看"></div>
-          <div class="form-group"><label>分类</label><div class="chips" id="wishCategoryChips" style="margin-top:4px"><span class="chip" data-cat="movie" onclick="toggleWishCat(this)">电影</span><span class="chip" data-cat="tv" onclick="toggleWishCat(this)">电视剧</span></div></div>
-          <div style="border-top:1px solid var(--border);margin:4px 0 8px"></div>
-          <div class="sched-row" style="margin-top:4px">
-            <span class="chip" id="cfg_wish_enabled_chip" onclick="toggleWishEnabled(this)">启用想看同步</span>
-            <button class="btn btn-outline btn-sm" onclick="refreshDoubanCache()">刷新榜单缓存</button>
+
+        <!-- 运行概览（由概览页并入） -->
+        <div class="card module-overview">
+          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-dashboard"/></svg> 运行概览</div>
+          <div class="dash" id="dashSkeleton">
+            <div class="dcard"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
+            <div class="dcard"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
+            <div class="dcard"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
+            <div class="dcard dcard-wide"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:40%"></div></div>
+          </div>
+          <div class="dash" id="dashContent" style="display:none">
+            <div class="dcard">
+              <div class="dcard-icon" style="background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-download"/></svg></div>
+              <div class="num blue"><span id="dashToday">-</span></div>
+              <div class="lbl">今日转存</div>
+            </div>
+            <div class="dcard">
+              <div class="dcard-icon" style="background:color-mix(in srgb,var(--purple) 14%,transparent);color:var(--purple)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg></div>
+              <div class="num" style="font-size:13px;color:var(--text2);line-height:1.5;font-weight:500" id="dashNext">加载中...</div>
+              <div class="lbl">下次调度</div>
+            </div>
+            <div class="dcard">
+              <div class="dcard-icon" style="background:color-mix(in srgb,var(--green) 14%,transparent);color:var(--green)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg></div>
+              <div class="num" id="dashLastStatus" style="font-size:16px;gap:6px"><span class="status-dot" id="dashStatusDot" style="display:none"></span><span id="dashStatusText">-</span></div>
+              <div class="lbl" id="dashLastTime">上次转存</div>
+            </div>
+            <div class="dcard dcard-wide">
+              <div class="dcard-icon" style="background:color-mix(in srgb,var(--cyan) 14%,transparent);color:var(--cyan)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-trending-up"/></svg></div>
+              <div class="dash7-viz">
+                <div class="dash7-chart" id="dash7Chart"></div>
+              </div>
+              <div class="num"><span class="ok" id="dash7OK">0</span> 成功 / <span class="fail" id="dash7Fail">0</span> 失败</div>
+              <div class="lbl">近 7 天共 <span id="dash7Total" style="color:var(--text);font-weight:600">0</span> 次</div>
+            </div>
           </div>
         </div>
-        <div class="card">
-          <div class="row" style="justify-content:flex-end">
-            <button class="btn btn-primary btn-sm" onclick="saveConfig(false)">保存设置</button>
+
+        <div class="settings-grid">
+          <div class="card">
+            <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-search"/></svg> 搜索服务</div>
+            <div class="form-group"><label>PanSou 地址</label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg> TMDB 数据源</div>
+            <div class="form-group" style="margin-bottom:0"><label>API Key</label><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"></div>
+            <div class="form-group" style="margin-top:8px"><label>API 地址（可选）</label><input type="text" id="cfg_tmdb_base_url" placeholder="留空自动切换 api.tmdb.org / api.themoviedb.org"></div>
+            <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.5">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">TMDB 官网</a> 申请 API Key。系统自动尝试短域名访问，无需代理</div>
+          </div>
+          <div class="card">
+            <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-transfer"/></svg> 转存服务</div>
+            <div class="form-group"><label>QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
+            <div class="form-group" style="margin-bottom:0"><label>QAS Token</label><input type="password" id="cfg_qas_token" placeholder="留空不修改"></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg> 转存路径</div>
+            <div class="form-group"><label>榜单分类路径前缀</label><input type="text" id="cfg_path_category_base" placeholder="/影视"></div>
+            <div style="font-size:12px;color:var(--text2);margin:-4px 0 8px;line-height:1.5">实际路径 = 前缀 + 分类名，如 /影视/电影、/影视/电视剧</div>
+            <div class="form-group"><label>搜索转存路径</label><input type="text" id="cfg_path_search" placeholder="/批量转存/手动搜索存"></div>
+            <div class="form-group" style="margin-bottom:0"><label>TMDB 转存路径</label><input type="text" id="cfg_path_tmdb" placeholder="/批量转存/TMDB"></div>
+          </div>
+          <div class="card">
+            <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-lock"/></svg> 管理认证</div>
+            <div class="form-group"><label>用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
+            <div class="form-group" style="margin-bottom:0"><label>密码</label><input type="password" id="cfg_auth_pass" placeholder="留空不修改"></div>
+          </div>
+          <div class="card">
+            <div class="card-title" style="justify-content:space-between"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-cloud-download"/></svg> 豆瓣想看同步 <a href="https://www.douban.com/" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="text-decoration:none">打开豆瓣 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-left:2px"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
+            <div id="wishAccountsList" style="display:flex;flex-direction:column;gap:8px"></div>
+            <button class="btn btn-outline btn-sm" onclick="addWishAccount()" style="margin-top:2px;border-style:dashed"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加豆瓣账号</button>
+            <div class="form-group" style="margin-top:12px"><label>保存路径</label><input type="text" id="cfg_wish_savepath" placeholder="/批量转存/想看"></div>
+            <div class="form-group"><label>分类</label><div class="chips" id="wishCategoryChips" style="margin-top:4px"><span class="chip" data-cat="movie" onclick="toggleWishCat(this)">电影</span><span class="chip" data-cat="tv" onclick="toggleWishCat(this)">电视剧</span></div></div>
+            <div style="border-top:1px solid var(--border);margin:4px 0 8px"></div>
+            <div class="sched-row" style="margin-top:4px">
+              <span class="chip" id="cfg_wish_enabled_chip" onclick="toggleWishEnabled(this)">启用想看同步</span>
+              <button class="btn btn-outline btn-sm" onclick="refreshDoubanCache()">刷新榜单缓存</button>
+            </div>
+          </div>
+          <div class="card save-card">
+            <div class="row" style="justify-content:flex-end;width:100%">
+              <button class="btn btn-primary btn-sm" onclick="saveConfig(false)">保存设置</button>
+            </div>
           </div>
         </div>
       </section>
@@ -1128,11 +1149,11 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 <!-- Bottom Navigation (Mobile) -->
 <nav class="bottom-nav">
   <div class="bottom-nav-inner">
-    <div class="nav-item active" onclick="switchTab('dashboard')">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
-      <span>概览</span>
+    <div class="nav-item active" onclick="switchTab('tmdb')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="7" y1="3" x2="7" y2="21"/><line x1="17" y1="3" x2="17" y2="21"/><line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="17" x2="21" y2="17"/></svg>
+      <span>TMDB</span>
     </div>
-    <div class="nav-item active" onclick="switchTab('manual')">
+    <div class="nav-item" onclick="switchTab('manual')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/><path d="m16 9-3-3-3 3"/><path d="m8 15-3 3 3-3"/></svg>
       <span>转存</span>
     </div>
@@ -1147,10 +1168,6 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
     <div class="nav-item" onclick="switchTab('settings')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
       <span>设置</span>
-    </div>
-    <div class="nav-item" onclick="switchTab('tmdb')">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="7" y1="3" x2="7" y2="21"/><line x1="17" y1="3" x2="17" y2="21"/><line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="17" x2="21" y2="17"/></svg>
-      <span>资源</span>
     </div>
   </div>
 </nav>
@@ -1178,7 +1195,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 
 <script>
 // ===== DBAuto frontend bundle =====
-// sha:3168745
+// sha:d00a0b9
 // 由 build.sh 拼接生成（模块化源文件合并为单文件）。
 // 注意：不使用 IIFE 包裹。页面大量使用内联 onclick/onchange 事件处理器，
 // 这些处理器在全局作用域查找被调用的函数；若包进 IIFE 会导致函数不可见、按钮点击失效。
@@ -1408,19 +1425,18 @@ function resolveConfirm(result){
 
 // ===== module: tabs.js =====
 // ============ Tab / Navigation ============
-var currentTab = 'dashboard';
+var currentTab = 'tmdb';
 // 页面容器 id 映射：手动/定时/历史保持原 id（categories/schedule/transfer/history.js 依赖）
 var PAGE_IDS = {
-  dashboard: 'pageDashboard',
+  tmdb: 'pageTmdb',
   manual: 'tabManual',
   schedule: 'tabSchedule',
   history: 'tabHistory',
-  settings: 'tabSettings',
-  tmdb: 'pageTmdb'
+  settings: 'tabSettings'
 };
-var PAGES = ['dashboard', 'manual', 'schedule', 'history', 'settings', 'tmdb'];
-// 底部导航与 BOTTOM_NAV 顺序保持一致：概览 / 转存 / 定时 / 历史 / 设置 / 资源
-var BOTTOM_NAV = ['dashboard', 'manual', 'schedule', 'history', 'settings', 'tmdb'];
+var PAGES = ['tmdb', 'manual', 'schedule', 'history', 'settings'];
+// 底部导航与 BOTTOM_NAV 顺序保持一致：TMDB / 转存 / 定时 / 历史 / 设置
+var BOTTOM_NAV = ['tmdb', 'manual', 'schedule', 'history', 'settings'];
 
 function switchTab(tab){
   currentTab = tab;
@@ -2862,8 +2878,9 @@ async function init(){
   try{ C = await apiGet('/api/categories'); }
   catch(e){ showToast('认证失败，请重新登录', false); setTimeout(function(){ location.href = '/login.html'; }, 1500); return; }
   parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
-  checkRunningStatus(); loadDashboard(); initTmdbPage();
+  checkRunningStatus(); loadDashboard();
   initLayout();
+  switchTab(currentTab);
   initSSE();
 }
 

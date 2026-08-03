@@ -183,6 +183,16 @@ body{
 .dcard-wide .num{font-size:13px;font-weight:500;color:var(--text2);line-height:1.6}
 .dcard-wide .num span{font-weight:600;font-size:inherit}
 .dcard-wide .num .ok{color:var(--green)}.dcard-wide .num .fail{color:var(--red)}
+
+/* 页面标题 + 设置页模块化网格 */
+.page-head{margin-bottom:18px}
+.page-head h1{margin:0 0 4px;font-size:20px;font-weight:700;font-family:var(--font-display);color:var(--text)}
+.page-head p{margin:0;font-size:13px;color:var(--text3);line-height:1.5}
+.module-overview{margin-bottom:18px}
+.settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:4px}
+.settings-grid .card{margin:0}
+.card.save-card{grid-column:1/-1;display:flex;align-items:center;padding:14px 18px}
+
 /* 近 7 天可视化：柱状图 + 成功率环形图 */
 .dash7-viz{display:flex;align-items:flex-end;gap:12px;margin:2px 0 12px}
 .dash7-chart{flex:1;display:flex;align-items:flex-end;gap:5px;height:44px;min-width:0}

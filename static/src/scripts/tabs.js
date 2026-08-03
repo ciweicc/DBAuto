@@ -1,17 +1,16 @@
 // ============ Tab / Navigation ============
-var currentTab = 'dashboard';
+var currentTab = 'tmdb';
 // 页面容器 id 映射：手动/定时/历史保持原 id（categories/schedule/transfer/history.js 依赖）
 var PAGE_IDS = {
-  dashboard: 'pageDashboard',
+  tmdb: 'pageTmdb',
   manual: 'tabManual',
   schedule: 'tabSchedule',
   history: 'tabHistory',
-  settings: 'tabSettings',
-  tmdb: 'pageTmdb'
+  settings: 'tabSettings'
 };
-var PAGES = ['dashboard', 'manual', 'schedule', 'history', 'settings', 'tmdb'];
-// 底部导航与 BOTTOM_NAV 顺序保持一致：概览 / 转存 / 定时 / 历史 / 设置 / 资源
-var BOTTOM_NAV = ['dashboard', 'manual', 'schedule', 'history', 'settings', 'tmdb'];
+var PAGES = ['tmdb', 'manual', 'schedule', 'history', 'settings'];
+// 底部导航与 BOTTOM_NAV 顺序保持一致：TMDB / 转存 / 定时 / 历史 / 设置
+var BOTTOM_NAV = ['tmdb', 'manual', 'schedule', 'history', 'settings'];
 
 function switchTab(tab){
   currentTab = tab;
