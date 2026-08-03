@@ -22,9 +22,11 @@ JS_FILES=(
 )
 
 # 构建指纹：记录对应提交 sha，便于回溯产物版本（不含时间戳，避免每次构建产生无意义 diff）
-_git_sha=$(git -C "$SRC_DIR" rev-parse --short HEAD 2>/dev/null)
+# 注意：git 调用可能因运行环境（CI/沙箱/无仓库）返回非 0；加 `|| true` 兜底，
+# 避免 `set -e` 在赋值语句处直接中断构建导致产物未生成。
+_git_sha=$(git -C "$SRC_DIR" rev-parse --short HEAD 2>/dev/null || true)
 if [ -z "$_git_sha" ]; then
-  _git_sha=$(git rev-parse --short HEAD 2>/dev/null)
+  _git_sha=$(git rev-parse --short HEAD 2>/dev/null || true)
 fi
 FINGERPRINT="sha:${_git_sha:-unknown}"
 
@@ -62,10 +64,9 @@ cat >> "$DIST_FILE" << BUILD_EOF
 <script>
 // ===== DBAuto frontend bundle =====
 // $FINGERPRINT
-// 由 build.sh 拼接生成。整体包进 IIFE：各模块共享同一作用域、互不污染 window 全局。
-// 注：此处有意不加 'use strict'，避免对隐式全局变量的依赖在无前端测试覆盖时引发运行时报错；
-//     待补充前端测试后再行启用。
-(function(){
+// 由 build.sh 拼接生成（模块化源文件合并为单文件）。
+// 注意：不使用 IIFE 包裹。页面大量使用内联 onclick/onchange 事件处理器，
+// 这些处理器在全局作用域查找被调用的函数；若包进 IIFE 会导致函数不可见、按钮点击失效。
 BUILD_EOF
 
 for f in "${JS_FILES[@]}"; do
@@ -80,7 +81,6 @@ for f in "${JS_FILES[@]}"; do
 done
 
 cat >> "$DIST_FILE" << 'BUILD_EOF'
-})();
 </script>
 </body>
 </html>

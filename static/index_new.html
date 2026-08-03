@@ -1153,11 +1153,10 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 
 <script>
 // ===== DBAuto frontend bundle =====
-// sha:unknown
-// 由 build.sh 拼接生成。整体包进 IIFE：各模块共享同一作用域、互不污染 window 全局。
-// 注：此处有意不加 'use strict'，避免对隐式全局变量的依赖在无前端测试覆盖时引发运行时报错；
-//     待补充前端测试后再行启用。
-(function(){
+// sha:63bab66
+// 由 build.sh 拼接生成（模块化源文件合并为单文件）。
+// 注意：不使用 IIFE 包裹。页面大量使用内联 onclick/onchange 事件处理器，
+// 这些处理器在全局作用域查找被调用的函数；若包进 IIFE 会导致函数不可见、按钮点击失效。
 // ===== module: auth.js =====
 // ============ Auth ============
 var TOKEN = localStorage.getItem('auth_token')||'';
@@ -2937,7 +2936,6 @@ function initShortcuts(){
 
 init();
 
-})();
 </script>
 </body>
 </html>
