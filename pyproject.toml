@@ -1,0 +1,7 @@
+[tool.pytest.ini_options]
+# 测试目录与模块搜索路径；使 `pytest` 可从任意 cwd 运行。
+testpaths = ["tests"]
+pythonpath = ["app_modules"]
+# 仅收集 test_*.py 单元测试；仓库内 *_test.py 为依赖 playwright / 实时服务的
+# E2E / 冒烟测试，需另行安装 playwright 并下载浏览器后单独运行，不纳入默认 CI。
+python_files = ["test_*.py"]

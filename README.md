@@ -41,22 +41,37 @@ docker pull ghcr.io/ciweicc/dbauto:latest
 
 ### 忘记密码
 
-如果忘记登录密码，可以通过以下命令重置（无需进入容器）：
+如果忘记登录密码，可以通过以下命令重置（无需进入容器）。
+
+> 出于安全考虑，密码**不再作为命令行参数传入**（会泄露到 shell 历史与进程列表），
+> 改为从标准输入读取。
+
+**方式一：管道传入（推荐，适合脚本 / 自动化）**
 
 ```bash
-docker run --rm \
+echo 'your_new_password' | docker run --rm -i \
   -v /opt/douban-history:/data/douban-history \
   ghcr.io/ciweicc/dbauto:latest \
-  --reset-password your_new_password
+  --reset-password
 ```
 
-> 请将 `/opt/douban-history` 替换为你实际的数据目录挂载路径，`your_new_password` 替换为新密码。
-> 重置后使用新密码登录即可，原有配置和数据不受影响。
-
-如果容器正在运行，也可以用 `docker exec`：
+**方式二：交互式（不回显）**
 
 ```bash
-docker exec -it dbauto python reset_password.py your_new_password
+docker run --rm -it \
+  -v /opt/douban-history:/data/douban-history \
+  ghcr.io/ciweicc/dbauto:latest \
+  --reset-password
+```
+
+> 请将 `/opt/douban-history` 替换为你实际的数据目录挂载路径。
+> 重置后使用新密码登录即可，原有配置和数据不受影响。
+
+如果容器正在运行，也可以用 `docker exec`（同样从标准输入读取）：
+
+```bash
+echo 'your_new_password' | docker exec -i dbauto python reset_password.py
+# 或交互式：docker exec -it dbauto python reset_password.py
 ```
 
 > 也可使用 `docker-compose up -d`，详见 [docker-compose.yml](docker-compose.yml)。

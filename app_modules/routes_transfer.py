@@ -6,7 +6,7 @@ from transfer import (
     transfer_status, transfer_lock, search_pansou,
     check_expired_tasks, update_expired_task, validate_share_link, fix_expired_tasks,
     run_transfer, add_and_run, transfer_one, VIDEO_SUB, TV_REPLACE, build_transfer_tasks,
-    is_transfer_running,
+    is_transfer_running, get_recent_tasks,
 )
 from storage import load_history, save_history
 from utils import log, sse_broadcast, log_progress
@@ -25,7 +25,8 @@ class TransferRouteMixin:
             with transfer_lock:
                 status = dict(transfer_status)
                 status["progress"] = list(log_progress)
-                self._send_json(status)
+                status["tasks"] = get_recent_tasks()
+            self._send_json(status)
             return True
 
         if route == "/api/search":

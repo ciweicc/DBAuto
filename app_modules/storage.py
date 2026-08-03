@@ -154,6 +154,31 @@ def save_history(h):
             conn.commit()
 
 
+def upsert_history_item(title, info):
+    """单条增量写入历史（P0 优化）：替代 save_history 的整表 DELETE+INSERT。
+
+    仅对该 title 做 INSERT OR REPLACE，并同步更新内存缓存（若存在），
+    避免历史表随条目增长而每次全量重写。
+    """
+    global _history_cache
+    if isinstance(info, dict):
+        date = info.get("date", "")
+        status = info.get("status", "")
+        category = info.get("category", "")
+    else:
+        date = status = category = ""
+    with _history_lock:
+        with _db_lock:
+            conn = _get_db()
+            conn.execute(
+                "INSERT OR REPLACE INTO transfer_history (title, date, status, category) VALUES (?, ?, ?, ?)",
+                (title, date, status, category)
+            )
+            conn.commit()
+        if _history_cache is not None:
+            _history_cache[title] = {"date": date, "status": status, "category": category}
+
+
 def load_exec_history():
     global _exec_cache
     with _exec_lock:

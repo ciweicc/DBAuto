@@ -1152,6 +1152,13 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 </div>
 
 <script>
+// ===== DBAuto frontend bundle =====
+// sha:unknown
+// 由 build.sh 拼接生成。整体包进 IIFE：各模块共享同一作用域、互不污染 window 全局。
+// 注：此处有意不加 'use strict'，避免对隐式全局变量的依赖在无前端测试覆盖时引发运行时报错；
+//     待补充前端测试后再行启用。
+(function(){
+// ===== module: auth.js =====
 // ============ Auth ============
 var TOKEN = localStorage.getItem('auth_token')||'';
 if(!TOKEN){location.href='/login.html'}
@@ -1184,6 +1191,8 @@ else throw e
 }
 }
 
+
+// ===== module: animation.js =====
 // ============ Animation Utils ============
 function easeOutCubic(t){return 1-Math.pow(1-t,3)}
 function animateNumber(el, target, duration){
@@ -1203,6 +1212,8 @@ function animateNumber(el, target, duration){
   requestAnimationFrame(step);
 }
 
+
+// ===== module: theme.js =====
 // ============ Theme ============
 function initTheme(){
   var t = localStorage.getItem('theme')||'dark';
@@ -1243,6 +1254,8 @@ function toggleTheme(){
   themeBtnEl.appendChild(themeSvg);
 }
 
+
+// ===== module: globals.js =====
 // ============ Global ============
 var C = {}, currentTab = 'manual', execHistoryData = [], execHistoryFilter = 'all';
 var expiredDirEntries = [], autoSaveTimer = null, logPollTimer = null;
@@ -1253,6 +1266,8 @@ var LOG_BEFORE_MAX = 500;
 var APP_PATHS = {category_base:'/影视', search:'/批量转存/手动搜索存', tmdb:'/批量转存/TMDB'};
 var SETTINGS_ALL = null;  // 缓存 /api/settings/all，调度页与设置页共用，避免重复请求
 
+
+// ===== module: sound.js =====
 // ============ Sound (操作音效) ============
 // 使用 Web Audio API 合成短音效，无需外部音频资源
 // 音效默认开启，可通过 localStorage 'soundEnabled' 关闭
@@ -1322,6 +1337,8 @@ function updateSoundBtn(){
   btn.title = SoundEnabled ? '操作音效：开' : '操作音效：关';
   btn.style.opacity = SoundEnabled ? '1' : '0.55';
 }
+
+// ===== module: toast.js =====
 // ============ Toast ============
 function showToast(msg,ok,duration){
   var container=document.getElementById('toastContainer');
@@ -1345,6 +1362,8 @@ function showToast(msg,ok,duration){
   },dur);
 }
 
+
+// ===== module: confirm.js =====
 // ============ Confirm Dialog ============
 var _confirmResolve=null;
 function showConfirm(title,desc,confirmText,cancelText){
@@ -1362,6 +1381,8 @@ function resolveConfirm(result){
   if(_confirmResolve){_confirmResolve(result);_confirmResolve=null}
 }
 
+
+// ===== module: tabs.js =====
 // ============ Tab / Navigation ============
 var currentTab = 'dashboard';
 // 页面容器 id 映射：手动/定时/历史保持原 id（categories/schedule/transfer/history.js 依赖）
@@ -1399,6 +1420,8 @@ function switchTab(tab){
   if(tab === 'dashboard') initTmdbPage();
   if(tab === 'settings') loadConfig();
 }
+
+// ===== module: categories.js =====
 // ============ Categories ============
 function _makeChip(id, path, type, group, gname, label, onClick) {
   var chip = document.createElement('span');
@@ -1586,6 +1609,8 @@ function syncToSchedule(){
   showToast('已同步到定时任务',true);
 }
 
+
+// ===== module: transfer.js =====
 // ============ Transfer ============
 async function startTransfer(){
   var tasks = getSelectedTasks('tabManual');
@@ -1622,6 +1647,8 @@ async function stopTransfer(){
   if(logPollTimer){clearInterval(logPollTimer);logPollTimer=null;logPollInterval=0}
 }
 
+
+// ===== module: log.js =====
 // ============ Log ============
 function esc(s){
   if(s==null)return'';
@@ -1838,6 +1865,8 @@ async function checkExpired(){
   }catch(e){addLog('检测失败: '+e.message)}
 }
 
+
+// ===== module: schedule.js =====
 // ============ Schedule ============
 async function loadSchedule(){
   try{
@@ -1936,6 +1965,8 @@ function renderExpiredDirs(){
 function addExpiredDir(){expiredDirEntries.push('');renderExpiredDirs();autoSaveSchedule()}
 function removeExpiredDir(i){expiredDirEntries.splice(i,1);if(!expiredDirEntries.length)expiredDirEntries=[''];renderExpiredDirs();autoSaveSchedule()}
 
+
+// ===== module: history.js =====
 // ============ Exec History ============
 var histPage=0, histMore=true;
 async function loadExecHistory(){
@@ -2169,6 +2200,8 @@ async function clearExecHistory(){
   }catch(e){showToast('清空失败',false)}
 }
 
+
+// ===== module: settings.js =====
 // ============ Settings ============
 function openSettings(){switchTab('settings')}
 async function loadConfig(){
@@ -2234,6 +2267,8 @@ APP_PATHS.tmdb=savepaths.tmdb;
 }catch(e){showToast('保存失败',false)}
 }
 
+
+// ===== module: tmdb.js =====
 // ============ TMDB Page ============
 var tmdbState = {
   page: 1,
@@ -2539,6 +2574,8 @@ async function refreshTmdbCache(){
   }catch(e){showToast('刷新失败',false)}
 }
 
+
+// ===== module: search.js =====
 // ============ Search ============
 var searchTimer=null;var searchAbort=null;
 function toggleMobileSearch(){
@@ -2669,6 +2706,8 @@ async function transferOne(btn){
   }catch(e){showToast('请求失败',false); btn.disabled=false; btn.textContent='转存'}
 }
 
+
+// ===== module: dashboard.js =====
 // ============ Dashboard ============
 async function loadDashboard(){
   try{
@@ -2766,6 +2805,8 @@ function renderDash7Viz(stats){
   }
 }
 
+
+// ===== module: init.js =====
 // ============ Init ============
 function initTimeSelects(){
   var hours = ['schedTHour', 'schedEHour'];
@@ -2895,6 +2936,8 @@ function initShortcuts(){
 }
 
 init();
+
+})();
 </script>
 </body>
 </html>

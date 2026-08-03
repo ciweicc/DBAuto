@@ -30,10 +30,10 @@ class TestAuthManager:
         ip = "192.168.1.100"
         # 前 4 次允许
         for i in range(4):
-            ok, wait = mgr.check_login_rate(ip)
+            ok, wait, _ = mgr.check_login_rate(ip)
             assert ok is True
         # 第 5 次锁定
-        ok, wait = mgr.check_login_rate(ip)
+        ok, wait, _ = mgr.check_login_rate(ip)
         assert ok is False
         assert wait > 0
 
@@ -41,12 +41,12 @@ class TestAuthManager:
         mgr = AuthManager.get_instance()
         ip = "10.0.0.50"
         # 模拟窗口过期后重置
-        ok, _ = mgr.check_login_rate(ip)
+        ok, _, _ = mgr.check_login_rate(ip)
         assert ok is True
         # 手动设置旧时间戳
         with mgr._login_lock:
             mgr._login_attempts[ip]["first"] = 0
-        ok, _ = mgr.check_login_rate(ip)
+        ok, _, _ = mgr.check_login_rate(ip)
         assert ok is True
 
     def test_token_generation_and_check(self):

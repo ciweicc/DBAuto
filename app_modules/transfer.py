@@ -1,14 +1,17 @@
 # transfer.py — 转存执行、PanSou 搜索、QAS 交互、失效检测、目录清理
-import time, re
+import time, re, uuid, copy
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
-from threading import Lock, get_ident, enumerate as enumerate_threads, local
+from threading import Lock, get_ident, enumerate as enumerate_threads, local, Thread
 from config import ConfigManager, load_settings, LOCAL_TZ
 from utils import http_get, http_post, log, TTLCache, clear_progress, sse_broadcast
-from storage import load_history, save_history, add_exec_record, update_exec_record
+from storage import load_history, add_exec_record, update_exec_record, upsert_history_item
 from douban import get_douban_list
 
 SEARCH_CONCURRENCY = 3
+# 转存阶段并发数（受 QAS 速率限制约束，保守取 2）。
+# 调大可提升大批量转存吞吐，但可能触发 QAS 限流，请按需评估。
+TRANSFER_CONCURRENCY = 2
 
 VIDEO_SUB = r".*?\.(mp4|mkv|avi|ts|rmvb|flv|mov|srt|ass|ssa|sub|idx)"
 TV_REPLACE = "{TASKNAME}.{SXX}E{E}.{EXT}"
@@ -22,6 +25,106 @@ _pansou_cache = TTLCache(ttl=600, max_size=200)
 
 _qas_cache = set()
 _qas_cache_lock = Lock()
+
+# ---------------------------------------------------------------------------
+# P1 任务状态子系统：以 task_id 隔离状态，避免全局单状态互相覆盖 / SSE 串台
+# ---------------------------------------------------------------------------
+# 任务注册表：最近任务（进行中 + 刚结束），用于可观测性。
+# 进行中的任务直接引用 transfer_status 同一对象（实时更新）；结束替换为不可变快照。
+transfer_tasks = {}
+_tasks_lock = Lock()
+_MAX_TASKS = 20
+
+# 调度器排队：当前有任务运行时，定时转存入队，结束后续跑（替代"硬跳过"）
+_scheduled_queue = []
+_scheduled_queue_lock = Lock()
+
+
+def _is_running_locked():
+    """持 transfer_lock 时调用：当前是否有活跃转存任务；若线程已死则自动重置。"""
+    if not transfer_status.get("running"):
+        return False
+    tid = transfer_status.get("thread_id")
+    if tid is None:
+        return False
+    for t in enumerate_threads():
+        if t.ident == tid and t.is_alive():
+            return True
+    transfer_status["running"] = False
+    transfer_status["thread_id"] = None
+    transfer_status["stop"] = False
+    log("检测到转存线程已结束，自动重置状态")
+    return False
+
+
+def is_transfer_running(run_type=None):
+    """是否正在运行。run_type 给定时仅统计该类型（如 'transfer'）。"""
+    with transfer_lock:
+        if not _is_running_locked():
+            return False
+        if run_type and transfer_status.get("run_type") != run_type:
+            return False
+        return True
+
+
+def _register_running_task(task_id):
+    """把当前 transfer_status（已写入 task_id/run_type）登记为进行中任务。"""
+    with _tasks_lock:
+        transfer_tasks[task_id] = transfer_status  # 进行中：引用同一对象，便于实时观测
+        _prune_finished_locked()
+
+
+def _snapshot_finish(task_id):
+    """任务结束：把进行中引用替换为不可变快照（深拷贝，避免 stats 等嵌套字段被后续任务污染）。"""
+    with _tasks_lock:
+        if transfer_tasks.get(task_id) is not None:
+            snap = copy.deepcopy(transfer_status)
+            snap["running"] = False
+            transfer_tasks[task_id] = snap
+        _prune_finished_locked()
+
+
+def _prune_finished_locked():
+    if len(transfer_tasks) <= _MAX_TASKS:
+        return
+    finished = [t for t in transfer_tasks.values() if not t.get("running")]
+    finished.sort(key=lambda t: t.get("start_time", ""))
+    for t in finished[: len(transfer_tasks) - _MAX_TASKS]:
+        transfer_tasks.pop(t.get("task_id"), None)
+
+
+def get_recent_tasks(limit=20):
+    """返回最近任务列表（快照），按开始时间倒序。"""
+    with _tasks_lock:
+        items = [dict(t) for t in transfer_tasks.values()]
+    items.sort(key=lambda t: t.get("start_time", ""), reverse=True)
+    return items[:limit]
+
+
+def enqueue_scheduled_transfer(uniq, limit):
+    """调度触发的转存：忙则入队，空闲则直接启动。返回 'started' 或 'queued'。"""
+    with transfer_lock:
+        if not _is_running_locked():
+            Thread(target=run_transfer, args=(uniq, limit), daemon=True).start()
+            return "started"
+    with _scheduled_queue_lock:
+        _scheduled_queue.append((uniq, limit))
+    return "queued"
+
+
+def _drain_pending_scheduled():
+    """当前任务结束时调用：若队列中有排队的定时转存则启动下一个。"""
+    with _scheduled_queue_lock:
+        if not _scheduled_queue:
+            return
+        uniq, limit = _scheduled_queue.pop(0)
+    if is_transfer_running():
+        # 仍有任务在跑（如手动转存），重新入队，等其结束再 drain
+        with _scheduled_queue_lock:
+            _scheduled_queue.insert(0, (uniq, limit))
+        return
+    Thread(target=run_transfer, args=(uniq, limit), daemon=True).start()
+
 
 def _get_pansou_client():
     cfg = ConfigManager.get_instance()
@@ -80,9 +183,10 @@ def search_pansou(keyword, category="movie"):
     cached = _pansou_cache.get("{}:{}".format(category, keyword))
     if cached is not None:
         return cached
+    client = _get_pansou_client()
+    last_err = None
     for attempt in range(2):
         try:
-            client = _get_pansou_client()
             data = client.search(keyword)
             results = data.get("data", {}).get("merged_by_type", {}).get("quark", [])
             if not isinstance(results, list):
@@ -104,12 +208,14 @@ def search_pansou(keyword, category="movie"):
             _pansou_cache.set("{}:{}".format(category, keyword), formatted_results)
             return formatted_results
         except Exception as e:
+            last_err = e
             if attempt == 0:
                 log("PanSou 重试: {}".format(e))
-                time.sleep(2)
+                time.sleep(1.5)
             else:
                 log("PanSou 错误: {}".format(e))
-                return []
+    # 不再静默 return []，抛出让调用方把真实原因透传到执行历史
+    raise RuntimeError("PanSou 搜索失败 ({}): {}".format(keyword, last_err)) from last_err
 
 def validate_share_link(url):
     try:
@@ -147,6 +253,7 @@ def add_and_run(title, shareurl, savepath, pattern="", replace=""):
 def transfer_one(title, shareurl, savepath, pattern="", replace="", category="movie"):
     """单条转存，正确管理 transfer_status 状态"""
     tid = get_ident()
+    task_id = uuid.uuid4().hex
     with transfer_lock:
         transfer_status.update({
             "running": True,
@@ -154,9 +261,12 @@ def transfer_one(title, shareurl, savepath, pattern="", replace="", category="mo
             "start_time": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             "stats": {"searched": 0, "ok": 0, "skipped": 0, "failed": 0, "total": 1},
             "thread_id": tid,
-            "stop": False
+            "stop": False,
+            "task_id": task_id,
+            "run_type": "transfer_one"
         })
         clear_progress()
+    _register_running_task(task_id)
     try:
         res = add_and_run(title, shareurl, savepath, pattern, replace)
         with transfer_lock:
@@ -167,11 +277,9 @@ def transfer_one(title, shareurl, savepath, pattern="", replace="", category="mo
             else:
                 transfer_status["stats"]["failed"] += 1
             sse_broadcast("transfer_progress", dict(transfer_status))
-        # 更新历史记录
-        history = load_history()
-        history[title] = {"date": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d"),
-                          "status": res["status"], "category": category}
-        save_history(history)
+        # 更新历史记录（单条增量写入，不再全量 load+save）
+        upsert_history_item(title, {"date": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d"),
+                                    "status": res["status"], "category": category})
         return res
     finally:
         with transfer_lock:
@@ -179,6 +287,7 @@ def transfer_one(title, shareurl, savepath, pattern="", replace="", category="mo
             transfer_status["stop"] = False
             transfer_status["thread_id"] = None
             sse_broadcast("transfer_progress", dict(transfer_status))
+        _snapshot_finish(task_id)
 
 EXPIRED_CHECK_CONCURRENCY = 5
 
@@ -262,6 +371,7 @@ def update_expired_task(task, new_url):
 def fix_expired_tasks():
     global transfer_status
     tid = get_ident()
+    task_id = uuid.uuid4().hex
     with transfer_lock:
         transfer_status.update({
             "running": True,
@@ -269,9 +379,12 @@ def fix_expired_tasks():
             "summary": "fix_expired",
             "start_time": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S"),
             "stats": {"searched": 0, "ok": 0, "skipped": 0, "failed": 0, "total": 0},
-            "stop": False
+            "stop": False,
+            "task_id": task_id,
+            "run_type": "fix_expired"
         })
         clear_progress()
+    _register_running_task(task_id)
     expired = []
     fixed = 0
     failed = 0
@@ -360,48 +473,108 @@ def fix_expired_tasks():
             transfer_status["stats"]["ok"] = fixed
             transfer_status["stats"]["failed"] = failed
             sse_broadcast("transfer_progress", dict(transfer_status))
+        _snapshot_finish(task_id)
+        _drain_pending_scheduled()
 
 def _clean_title(title):
     return re.sub(r'[^\u4e00-\u9fff0-9a-zA-Z]', '', title).lower()
+
+# 归一化辅助：剥离年份 / 季 / 分辨率，得到"核心标题"
+_YEAR_PAT = re.compile(r'(?:19|20)\d{2}')
+_SEASON_PAT = re.compile(r'(?:s\d+|season\s*\d+|第\s*[0-9零一二三四五六七八九十]+\s*季)', re.I)
+_RES_PAT = re.compile(r'(?:1080|720|2160)p|\b4k\b', re.I)
+
+
+def _core_title(title):
+    s = _clean_title(title)
+    s = _YEAR_PAT.sub('', s)
+    s = _SEASON_PAT.sub('', s)
+    s = _RES_PAT.sub('', s)
+    return s
+
+
+def _extract_meta(title):
+    """从标题中提取年份与季（用于区分同名不同年/不同季的作品）"""
+    s = _clean_title(title)
+    ym = _YEAR_PAT.search(s)
+    year = ym.group(0) if ym else None
+    sm = _SEASON_PAT.search(s)
+    season = re.sub(r'\s+', '', sm.group(0)).lower() if sm else None
+    return year, season
+
 
 def _build_history_index(history, qas_cache=None):
     index = {
         "exact": set(history.keys()),
         "clean": set()
     }
+    items = []
     for k in history:
-        index["clean"].add(_clean_title(k))
-    index["items"] = [(k, _clean_title(k)) for k in history]
+        ck = _clean_title(k)
+        items.append((k, ck, _core_title(k)) + _extract_meta(k))
+        index["clean"].add(ck)
+    index["items"] = items
     if qas_cache:
-        index["qas_clean"] = set()
+        qitems = []
         for name in qas_cache:
-            index["qas_clean"].add(_clean_title(name))
-        index["qas_items"] = [(name, _clean_title(name)) for name in qas_cache]
+            cn = _clean_title(name)
+            qitems.append((name, cn, _core_title(name)) + _extract_meta(name))
+        index["qas_items"] = qitems
     else:
-        index["qas_clean"] = set()
         index["qas_items"] = []
     return index
+
+
+def _match_one(t_clean, t_core, t_year, t_season, cand_clean, cand_core, cand_year, cand_season):
+    """单条候选匹配（P0 优化：规范化主标题 + 年份/季，约束子串防误判）
+
+    匹配优先级：
+      1) clean 精确相等；
+      2) 核心标题相同且年份/季不冲突（同一作品的不同写法/分辨率）；
+      3) 受约束的包含匹配（短名是长名的一部分），但用双门槛
+         （短名长度 ≥ 4 且长度差 ≥ 2，且核心也互为包含），
+         避免"阿凡达"误吞"阿凡达2"、"速度与激情"误吞"速度与激情9"
+         等续集/系列数字差异导致的误判。
+    """
+    if t_clean == cand_clean:
+        return True
+    if t_core and t_core == cand_core:
+        if t_year and cand_year and t_year != cand_year:
+            return False
+        if t_season and cand_season and t_season != cand_season:
+            return False
+        return True
+    if len(t_clean) >= 4 and len(cand_clean) >= 4:
+        if (t_clean in cand_clean or cand_clean in t_clean) and abs(len(cand_clean) - len(t_clean)) >= 2:
+            if t_core in cand_core or cand_core in t_core:
+                return True
+    return False
+
 
 def _find_in_history(title, history, index=None):
     if title in history:
         return True
+    t_clean = _clean_title(title)
+    t_core = _core_title(title)
+    t_year, t_season = _extract_meta(title)
     if index:
         if title in index["exact"]:
             return True
-        title_clean = _clean_title(title)
-        if title_clean in index["clean"]:
+        if t_clean in index["clean"]:
             return True
-        for k, k_clean in index["items"]:
-            if title_clean == k_clean or (len(title_clean) >= 3 and title_clean in k_clean) or (len(k_clean) >= 3 and k_clean in title_clean):
+        for (k, k_clean, k_core, k_year, k_season) in index["items"]:
+            if _match_one(t_clean, t_core, t_year, t_season, k_clean, k_core, k_year, k_season):
                 return True
-        for name, name_clean in index["qas_items"]:
-            if title_clean == name_clean or (len(title_clean) >= 3 and title_clean in name_clean) or (len(name_clean) >= 3 and name_clean in title_clean):
+        for (name, n_clean, n_core, n_year, n_season) in index["qas_items"]:
+            if _match_one(t_clean, t_core, t_year, t_season, n_clean, n_core, n_year, n_season):
                 return True
         return False
-    title_clean = _clean_title(title)
+    # 退化路径（无 index）：保持相同约束规则
     for k in history:
         k_clean = _clean_title(k)
-        if title_clean == k_clean or (len(title_clean) >= 3 and title_clean in k_clean) or (len(k_clean) >= 3 and k_clean in title_clean):
+        k_core = _core_title(k)
+        k_year, k_season = _extract_meta(k)
+        if _match_one(t_clean, t_core, t_year, t_season, k_clean, k_core, k_year, k_season):
             return True
     return False
 
@@ -438,35 +611,20 @@ def build_transfer_tasks(tasks_config, filters=None):
     log("共获取 {} 条".format(len(uniq)))
     return uniq
 
-def is_transfer_running():
-    with transfer_lock:
-        if not transfer_status.get("running"):
-            return False
-        tid = transfer_status.get("thread_id")
-        if tid is None:
-            return False
-        for t in enumerate_threads():
-            if t.ident == tid and t.is_alive():
-                return True
-        transfer_status["running"] = False
-        transfer_status["thread_id"] = None
-        transfer_status["stop"] = False
-        log("检测到转存线程已结束，自动重置状态")
-        return False
-
 def _search_single_task(task):
     title = task["title"]
     try:
         log("搜索: {}".format(title))
         sr = search_pansou(title)
-        return task, sr
+        return task, sr, None
     except Exception as e:
         log("搜索异常 {}: {}".format(title, e))
-        return task, []
+        return task, [], str(e)
 
 def run_transfer(task_list, limit):
     global transfer_status
     tid = get_ident()
+    task_id = uuid.uuid4().hex
     exec_record_id = None
     try:
         rec = add_exec_record("transfer", "开始转存 ({} 条)".format(len(task_list)), "running")
@@ -477,7 +635,9 @@ def run_transfer(task_list, limit):
         transfer_status.update({"running": True, "summary": None,
                                 "start_time": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d %H:%M:%S"),
                                 "stats": {"searched": 0, "ok": 0, "skipped": 0, "failed": 0, "total": len(task_list)},
-                                "thread_id": tid, "stop": False})
+                                "thread_id": tid, "stop": False,
+                                "task_id": task_id, "run_type": "transfer"})
+    _register_running_task(task_id)
     clear_progress()
     log("开始转存，上限{}".format(limit))
     history = load_history()
@@ -504,6 +664,7 @@ def run_transfer(task_list, limit):
         log("待搜索任务: {} 条，并发数: {}".format(len(pending_tasks), SEARCH_CONCURRENCY))
 
         search_results = {}
+        search_errors = {}
         with ThreadPoolExecutor(max_workers=SEARCH_CONCURRENCY) as executor:
             future_map = {executor.submit(_search_single_task, t): t for t in pending_tasks}
             for future in as_completed(future_map):
@@ -513,8 +674,9 @@ def run_transfer(task_list, limit):
                     log("任务已被用户终止，取消剩余搜索")
                     break
                 try:
-                    task, sr = future.result()
+                    task, sr, err = future.result()
                     search_results[task["title"]] = sr
+                    search_errors[task["title"]] = err
                     with transfer_lock:
                         transfer_status["stats"]["searched"] += 1
                         sse_broadcast("transfer_progress", dict(transfer_status))
@@ -522,60 +684,77 @@ def run_transfer(task_list, limit):
                     task = future_map[future]
                     log("搜索任务异常 {}: {}".format(task["title"], e))
                     search_results[task["title"]] = []
+                    search_errors[task["title"]] = str(e)
                     with transfer_lock:
                         transfer_status["stats"]["searched"] += 1
                         sse_broadcast("transfer_progress", dict(transfer_status))
 
         log("搜索完成，开始转存...")
 
-        for task in pending_tasks:
+        def _do_transfer(task):
+            """单条转存 worker（并发执行）。限额采用"先占位、失败回退"，
+            保证 limit = 最大成功数 的语义与串行版本一致。"""
+            nonlocal transferred
             if transfer_status.get("stop"):
-                log("任务已被用户终止")
-                break
-            if transferred >= limit:
-                log("已达上限: {}".format(limit))
-                break
-            title, savepath = task["title"], task["savepath"]
+                return {"title": task["title"], "status": "stopped", "msg": "stopped", "category": task.get("category", "")}
+            with transfer_lock:
+                if transferred >= limit:
+                    return {"title": task["title"], "status": "skipped", "msg": "limit", "category": task.get("category", "")}
+                transferred += 1
+            title = task["title"]
             category = task.get("category", "movie")
-
+            savepath = task["savepath"]
             sr = search_results.get(title, [])
             if not sr:
+                err = search_errors.get(title)
+                if err:
+                    log("搜索失败: {} ({})".format(title, err))
+                    return {"title": title, "status": "search_failed", "msg": err, "category": category}
                 log("未找到: {}".format(title))
-                results.append({"title": title, "status": "not_found", "msg": "not_found", "category": category})
                 with transfer_lock:
-                    transfer_status["stats"]["failed"] += 1
-                    sse_broadcast("transfer_progress", dict(transfer_status))
-                continue
-
+                    transferred -= 1
+                return {"title": title, "status": "not_found", "msg": "not_found", "category": category}
             chosen = sr[0]
             log("找到: {}".format(chosen.get("note", title)))
             pattern = VIDEO_SUB
             replace = TV_REPLACE if category == "tv" else ""
             res = add_and_run(title, chosen.get("url", ""), "{}/{}".format(savepath, title), pattern, replace)
             log("  {}".format(res["msg"]))
-            history[title] = {"date": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d"),
-                              "status": res["status"], "category": category}
-            results.append({"title": title, "status": res["status"], "msg": res["msg"], "category": category})
-            if res["status"] in ("ok", "done"):
-                transferred += 1
+            info = {"date": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d"),
+                    "status": res["status"], "category": category}
+            upsert_history_item(title, info)
+            if res["status"] not in ("ok", "done"):
                 with transfer_lock:
-                    transfer_status["stats"]["ok"] += 1
-                    sse_broadcast("transfer_progress", dict(transfer_status))
-            elif res["status"] == "exists":
-                with transfer_lock:
-                    transfer_status["stats"]["skipped"] += 1
-                    sse_broadcast("transfer_progress", dict(transfer_status))
-            else:
-                with transfer_lock:
-                    transfer_status["stats"]["failed"] += 1
-                    sse_broadcast("transfer_progress", dict(transfer_status))
+                    transferred -= 1
             time.sleep(3)
+            return {"title": title, "status": res["status"], "msg": res["msg"], "category": category}
+
+        with ThreadPoolExecutor(max_workers=TRANSFER_CONCURRENCY) as executor:
+            futures = {executor.submit(_do_transfer, t): t for t in pending_tasks}
+            for future in as_completed(futures):
+                if transfer_status.get("stop"):
+                    for f in futures:
+                        f.cancel()
+                    log("任务已被用户终止")
+                    break
+                r = future.result()
+                with transfer_lock:
+                    if r["status"] in ("ok", "done"):
+                        transfer_status["stats"]["ok"] += 1
+                    elif r["status"] in ("skipped", "exists", "limit", "stopped"):
+                        if r["status"] != "stopped":
+                            transfer_status["stats"]["skipped"] += 1
+                    elif r["status"] == "search_failed":
+                        transfer_status["stats"]["failed"] += 1
+                    else:
+                        transfer_status["stats"]["failed"] += 1
+                    sse_broadcast("transfer_progress", dict(transfer_status))
+                results.append(r)
     except Exception as e:
         error_msg = str(e)
         log("转存异常: {}".format(e))
         results.append({"title": "异常中断", "status": "error", "msg": error_msg})
     finally:
-        save_history(history)
         with transfer_lock:
             transfer_status["running"] = False
             transfer_status["stop"] = False
@@ -586,6 +765,8 @@ def run_transfer(task_list, limit):
                 "error": error_msg,
             }
             sse_broadcast("transfer_progress", dict(transfer_status))
+        _snapshot_finish(task_id)
+        _drain_pending_scheduled()
         log("转存完成: {} 条".format(transferred))
         if exec_record_id:
             ok_count = sum(1 for r in results if r.get("status") in ("ok", "done"))

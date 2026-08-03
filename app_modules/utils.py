@@ -1,5 +1,5 @@
 # utils.py — HTTP 工具、日志、SSE 广播、加密工具、通用缓存
-import json, logging, logging.handlers, time, hashlib, hmac, base64, os
+import json, logging, logging.handlers, time, hashlib, hmac, base64, os, random
 import requests
 from collections import deque
 from threading import Lock, local
@@ -196,6 +196,29 @@ _http_session_lock = Lock()
 HTTP_TIMEOUT_GET = 30
 HTTP_TIMEOUT_POST = 15
 HTTP_TIMEOUT_STREAM = 120
+# 单次请求重试总预算（秒）：防止上游抖动时无限重试形成"重试风暴"
+HTTP_RETRY_TOTAL = 12
+
+
+def _http_retryable(exc):
+    """判断 HTTP 异常是否值得重试：仅网络层错误 / 429 / 5xx（含 408）可重试；
+    4xx（如 400/401/403/404）通常不可重试，重试只会空耗时间。"""
+    if isinstance(exc, (requests.exceptions.Timeout,
+                        requests.exceptions.ConnectionError,
+                        requests.exceptions.ChunkedEncodingError,
+                        requests.exceptions.HTTPError)):
+        status = getattr(getattr(exc, "response", None), "status_code", None)
+        if status is None:
+            return True  # 网络层错误（超时 / 连接失败）可重试
+        return status in (408, 429) or status >= 500
+    return False
+
+
+def _http_backoff(attempt, base=1.0, cap=5.0):
+    """指数退避 + 随机抖动，避免客户端同步重试把压力瞬间打满服务端。"""
+    delay = min(base * (2 ** attempt), cap)
+    return delay / 2 + random.uniform(0, delay / 2)
+
 
 def _get_http_session():
     global _http_session
@@ -209,43 +232,54 @@ def _get_http_session():
             adapter = requests.adapters.HTTPAdapter(
                 pool_connections=20,
                 pool_maxsize=20,
-                max_retries=1
+                # 重试统一由下方 http_get/http_post 的退避逻辑掌控，避免适配器层叠加放大
+                max_retries=0
             )
             _http_session.mount("http://", adapter)
             _http_session.mount("https://", adapter)
         return _http_session
 
-def http_get(url, timeout=None, referer=None):
+def http_get(url, timeout=None, referer=None, retries=3):
     session = _get_http_session()
     headers = {}
     if referer:
         headers["Referer"] = referer
     t = timeout or HTTP_TIMEOUT_GET
-    for attempt in range(3):
+    start = time.monotonic()
+    for attempt in range(retries):
         try:
             resp = session.get(url, timeout=t, headers=headers)
             resp.raise_for_status()
             return resp.json()
         except requests.exceptions.RequestException as e:
-            if attempt < 2:
+            can_retry = attempt < retries - 1 and _http_retryable(e)
+            within_budget = (time.monotonic() - start) < HTTP_RETRY_TOTAL
+            if can_retry and within_budget:
                 log("HTTP GET 重试 {}: {}".format(attempt + 1, e))
-                time.sleep(2)
+                time.sleep(_http_backoff(attempt))
             else:
+                if _http_retryable(e) and not within_budget:
+                    log("HTTP GET 超过重试预算，放弃: {}".format(e))
                 raise
 
-def http_post(url, data, timeout=None):
+def http_post(url, data, timeout=None, retries=3):
     session = _get_http_session()
     t = timeout or HTTP_TIMEOUT_POST
-    for attempt in range(3):
+    start = time.monotonic()
+    for attempt in range(retries):
         try:
             resp = session.post(url, json=data, timeout=t)
             resp.raise_for_status()
             return resp.json()
         except requests.exceptions.RequestException as e:
-            if attempt < 2:
+            can_retry = attempt < retries - 1 and _http_retryable(e)
+            within_budget = (time.monotonic() - start) < HTTP_RETRY_TOTAL
+            if can_retry and within_budget:
                 log("HTTP POST 重试 {}: {}".format(attempt + 1, e))
-                time.sleep(2)
+                time.sleep(_http_backoff(attempt))
             else:
+                if _http_retryable(e) and not within_budget:
+                    log("HTTP POST 超过重试预算，放弃: {}".format(e))
                 raise
 
 def http_post_stream(url, data, timeout=None):

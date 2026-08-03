@@ -13,27 +13,20 @@ echo "Building DBAuto frontend..."
 # 读取 CSS
 CSS_CONTENT=$(cat "$SRC_DIR/styles/tokens.css" "$SRC_DIR/styles/main.css" 2>/dev/null || cat "$SRC_DIR/styles/main.css")
 
-# 读取 JS（按依赖顺序）
-JS_CONTENT=$(cat \
-  "$SRC_DIR/scripts/auth.js" \
-  "$SRC_DIR/scripts/animation.js" \
-  "$SRC_DIR/scripts/theme.js" \
-  "$SRC_DIR/scripts/globals.js" \
-  "$SRC_DIR/scripts/sound.js" \
-  "$SRC_DIR/scripts/toast.js" \
-  "$SRC_DIR/scripts/confirm.js" \
-  "$SRC_DIR/scripts/tabs.js" \
-  "$SRC_DIR/scripts/categories.js" \
-  "$SRC_DIR/scripts/transfer.js" \
-  "$SRC_DIR/scripts/log.js" \
-  "$SRC_DIR/scripts/schedule.js" \
-  "$SRC_DIR/scripts/history.js" \
-  "$SRC_DIR/scripts/settings.js" \
-  "$SRC_DIR/scripts/tmdb.js" \
-  "$SRC_DIR/scripts/search.js" \
-  "$SRC_DIR/scripts/dashboard.js" \
-  "$SRC_DIR/scripts/init.js" \
+# 读取 JS（按依赖顺序，顺序不可随意调整）
+# 依赖顺序：基础工具(auth/animation/theme/globals/sound) → UI 组件(toast/confirm/tabs/categories)
+#          → 业务模块(transfer/log/schedule/history/settings/tmdb/search/dashboard) → 入口(init)
+JS_FILES=(
+  auth animation theme globals sound toast confirm tabs categories
+  transfer log schedule history settings tmdb search dashboard init
 )
+
+# 构建指纹：记录对应提交 sha，便于回溯产物版本（不含时间戳，避免每次构建产生无意义 diff）
+_git_sha=$(git -C "$SRC_DIR" rev-parse --short HEAD 2>/dev/null)
+if [ -z "$_git_sha" ]; then
+  _git_sha=$(git rev-parse --short HEAD 2>/dev/null)
+fi
+FINGERPRINT="sha:${_git_sha:-unknown}"
 
 # 读取 HTML body
 BODY_CONTENT=$(cat "$SRC_DIR/body.html")
@@ -64,14 +57,30 @@ BUILD_EOF
 
 echo "$BODY_CONTENT" >> "$DIST_FILE"
 
-cat >> "$DIST_FILE" << 'BUILD_EOF'
+cat >> "$DIST_FILE" << BUILD_EOF
 
 <script>
+// ===== DBAuto frontend bundle =====
+// $FINGERPRINT
+// 由 build.sh 拼接生成。整体包进 IIFE：各模块共享同一作用域、互不污染 window 全局。
+// 注：此处有意不加 'use strict'，避免对隐式全局变量的依赖在无前端测试覆盖时引发运行时报错；
+//     待补充前端测试后再行启用。
+(function(){
 BUILD_EOF
 
-echo "$JS_CONTENT" >> "$DIST_FILE"
+for f in "${JS_FILES[@]}"; do
+  p="$SRC_DIR/scripts/$f.js"
+  if [ ! -f "$p" ]; then
+    echo "错误: 缺少前端模块 $p" >&2
+    exit 1
+  fi
+  echo "// ===== module: $f.js =====" >> "$DIST_FILE"
+  cat "$p" >> "$DIST_FILE"
+  echo "" >> "$DIST_FILE"
+done
 
 cat >> "$DIST_FILE" << 'BUILD_EOF'
+})();
 </script>
 </body>
 </html>

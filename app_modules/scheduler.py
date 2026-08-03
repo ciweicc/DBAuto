@@ -3,7 +3,7 @@ from datetime import datetime, timedelta
 from threading import Thread, Lock, Event
 from config import load_settings, ConfigManager, LOCAL_TZ, CATEGORIES
 from douban import get_douban_list, get_douban_wishlist
-from transfer import run_transfer, check_expired_tasks, fix_expired_tasks, is_in_qas, build_transfer_tasks, is_transfer_running
+from transfer import run_transfer, check_expired_tasks, fix_expired_tasks, is_in_qas, build_transfer_tasks, is_transfer_running, enqueue_scheduled_transfer
 from storage import add_exec_record
 from utils import log, http_post
 
@@ -134,15 +134,19 @@ def _run_scheduled_transfer():
             except Exception as e:
                 log("豆瓣想看列表加载失败: {}".format(e))
         if not tasks: return
-        if is_transfer_running():
-            log("定时转存跳过：已有转存任务正在运行")
-            return
-        log("定时转存开始")
         uniq = build_transfer_tasks(tasks, filters)
+        if not uniq:
+            log("定时转存：无新任务")
+            return
         log("定时转存: {} 条".format(len(uniq)))
         with schedule_lock:
             schedule_status["last_transfer"] = _now_local().strftime("%Y-%m-%d %H:%M:%S")
-        Thread(target=run_transfer, args=(uniq, limit), daemon=True).start()
+        # P1：忙则排队（不再硬跳过），结束后自动续跑
+        result = enqueue_scheduled_transfer(uniq, limit)
+        if result == "queued":
+            log("定时转存已排队（当前有任务运行），结束后自动执行")
+        else:
+            log("定时转存开始")
     except Exception as e:
         log("定时转存执行错误: {}".format(e))
         traceback.print_exc()
