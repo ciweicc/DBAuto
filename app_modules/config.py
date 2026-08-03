@@ -64,6 +64,7 @@ DEFAULT_CONFIG = {
     "douban_cookie": os.environ.get("DOUBAN_COOKIE", ""),
     "tmdb_api_key": os.environ.get("TMDB_API_KEY", ""),
     "tmdb_base_url": os.environ.get("TMDB_BASE_URL", ""),
+    "tmdb_proxy": os.environ.get("TMDB_PROXY", ""),
 }
 
 DEFAULT_SETTINGS = {

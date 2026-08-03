@@ -12,6 +12,9 @@ _tmdb_cache = {}
 _tmdb_lock = Lock()
 _TMDB_TTL = 1800  # 30 分钟
 _TMDB_CACHE_MAX = 50
+# 单次请求超时（秒）：原 15s 太长，网络抖动时会造成页面长时间空白；
+# 配合 failover 多地址快速切换，8s 足够且体验更好
+_TMDB_TIMEOUT = 8
 
 # 请求 session（复用连接池）
 _tmdb_session = requests.Session()
@@ -23,54 +26,66 @@ _TMDB_BACKUP = "https://api.themoviedb.org/3"
 _tmdb_current_url = _TMDB_PRIMARY
 
 
-def _tmdb_request(url):
-    """发起 TMDB API 请求，双地址自动切换 + SSL 容错"""
-    global _tmdb_current_url
-    last_err = None
-    for attempt in range(3):
+def _tmdb_request(url, proxies=None):
+    """发起单次 TMDB 请求，含一次 SSL 容错（关闭证书验证）。
+
+    说明：EOF 类握手失败（中间网络设备重置连接）发生在证书验证之前，
+    verify=False 无法解决，必须交由 _tmdb_request_with_failover 切换到其他地址。
+    因此本函数只对「证书链/系统根证书」类错误尝试关闭验证重试一次，其余错误直接上抛。
+    """
+    try:
+        resp = _tmdb_session.get(url, timeout=_TMDB_TIMEOUT, proxies=proxies)
+        resp.raise_for_status()
+        return resp.json()
+    except requests.exceptions.SSLError:
+        # 因系统缺根证书导致的证书验证失败：关闭验证重试一次
         try:
-            resp = _tmdb_session.get(url, timeout=15)
+            resp = _tmdb_session.get(url, timeout=_TMDB_TIMEOUT, verify=False, proxies=proxies)
             resp.raise_for_status()
             return resp.json()
-        except requests.exceptions.SSLError:
-            # SSL 错误：尝试禁用验证重试（代理场景）
-            try:
-                resp = _tmdb_session.get(url, timeout=15, verify=False)
-                resp.raise_for_status()
-                return resp.json()
-            except Exception as e2:
-                last_err = e2
-        except Exception as e:
-            last_err = e
-        if attempt < 2:
-            time.sleep(1)
-    raise last_err
+        except Exception as e2:
+            raise e2
+    except Exception as e:
+        raise e
 
 
 def _tmdb_request_with_failover(endpoint, params):
-    """带双地址故障转移的请求：主地址失败 → 备用地址 → 自定义地址"""
-    global _tmdb_current_url
-    custom = _get_base_url()
-    # 候选地址列表：当前地址优先，然后是其他地址
-    urls = []
-    base = _tmdb_current_url
+    """带故障转移的请求：短域名(api.tmdb.org)优先 → 长域名 → 自定义地址。
+
+    候选顺序固定为「短域名 → 长域名 → 自定义地址」，不把上次成功地址排到最前，
+    避免某次抖动把连接永久锁死在一个已变差的地址上（短域名国内通常更可达）。
+    每个地址只试一次，失败立即切换，缩短整体耗时。
+    """
+    custom = _get_base_url().rstrip("/")
+    proxies = _get_proxies()
     qs = "&".join("{}={}".format(k, v) for k, v in params.items())
-    urls.append("{}{}?{}".format(base, endpoint, qs))
-    # 添加备用地址（去重）
-    for alt in [_TMDB_PRIMARY, _TMDB_BACKUP, custom]:
-        alt = alt.rstrip("/")
-        if alt != base:
-            urls.append("{}{}?{}".format(alt, endpoint, qs))
+
+    # 候选地址：短域名优先，其次长域名、自定义地址；上次成功地址仅作兜底（不在前述列表中时）
+    candidates = [_TMDB_PRIMARY, _TMDB_BACKUP]
+    if custom:
+        candidates.append(custom)
+    cur = _tmdb_current_url.rstrip("/") if _tmdb_current_url else ""
+    if cur and cur not in candidates:
+        candidates.append(cur)
+    seen = set()
+    ordered = []
+    for c in candidates:
+        c = c.rstrip("/")
+        if c and c not in seen:
+            seen.add(c)
+            ordered.append(c)
+
     last_err = None
-    for url in urls:
+    for base in ordered:
+        url = "{}{}?{}".format(base, endpoint, qs)
         try:
-            data = _tmdb_request(url)
-            # 成功，更新当前地址
-            _tmdb_current_url = url.split("/3")[0] + "/3" if "/3" in url else _tmdb_current_url
+            data = _tmdb_request(url, proxies=proxies)
+            _tmdb_current_url = base  # 成功，记录为当前优选地址
             return data
         except Exception as e:
             last_err = e
-            log("TMDB 地址请求失败 {}: {}".format(url.split("?")[0], e))
+            host = url.split("?")[0]
+            log("TMDB 地址请求失败 {}: {}".format(host, e))
     raise last_err
 
 # 列表类型 → endpoint 映射
@@ -110,6 +125,26 @@ def _get_api_key():
 def _get_base_url():
     cfg = ConfigManager.get_instance().get_config()
     return cfg.get("tmdb_base_url", "").rstrip("/")
+
+
+def _get_proxies():
+    """返回 TMDB 请求使用的代理字典。
+
+    优先级：设置项 tmdb_proxy > 环境变量 HTTPS_PROXY / HTTP_PROXY。
+    国内网络访问 TMDB 官方域名常被干扰（TLS 握手被重置），
+    通过该字段配置一个可用代理（如 http://127.0.0.1:7890）即可正常访问。
+    返回 None 表示不使用代理（直连）。
+    """
+    cfg = ConfigManager.get_instance().get_config()
+    p = (cfg.get("tmdb_proxy") or "").strip()
+    if p:
+        return {"http": p, "https": p}
+    import os
+    env = (os.environ.get("HTTPS_PROXY") or os.environ.get("HTTP_PROXY") or
+           os.environ.get("https_proxy") or os.environ.get("http_proxy"))
+    if env:
+        return {"http": env, "https": env}
+    return None
 
 
 def _poster_url(path, size="w300"):

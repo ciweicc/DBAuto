@@ -12,6 +12,7 @@ document.getElementById('cfg_auth_user').value=cfg.auth_user||'';
 document.getElementById('cfg_auth_pass').value='';
 document.getElementById('cfg_tmdb_api_key').value='';
 document.getElementById('cfg_tmdb_base_url').value=cfg.tmdb_base_url||'';
+document.getElementById('cfg_tmdb_proxy').value=cfg.tmdb_proxy||'';
 // 加载想看同步设置
 if(s.savepaths){
   document.getElementById('cfg_path_category_base').value=s.savepaths.category_base||'/影视';
@@ -44,7 +45,8 @@ qas_token:document.getElementById('cfg_qas_token').value,
 auth_user:document.getElementById('cfg_auth_user').value.trim(),
 auth_pass:document.getElementById('cfg_auth_pass').value,
 tmdb_api_key:document.getElementById('cfg_tmdb_api_key').value,
-tmdb_base_url:document.getElementById('cfg_tmdb_base_url').value.trim()};
+tmdb_base_url:document.getElementById('cfg_tmdb_base_url').value.trim(),
+tmdb_proxy:document.getElementById('cfg_tmdb_proxy').value.trim()};
 try{
 var d=await apiPost('/api/config',cfg);
 if(d.success){if(!silent)showToast('设置已保存',true)}

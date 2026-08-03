@@ -1108,7 +1108,8 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
             <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg> TMDB 数据源</div>
             <div class="form-group" style="margin-bottom:0"><label>API Key</label><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"></div>
             <div class="form-group" style="margin-top:8px"><label>API 地址（可选）</label><input type="text" id="cfg_tmdb_base_url" placeholder="留空自动切换 api.tmdb.org / api.themoviedb.org"></div>
-            <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.5">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">TMDB 官网</a> 申请 API Key。系统自动尝试短域名访问，无需代理</div>
+            <div class="form-group" style="margin-top:8px"><label>代理（可选）</label><input type="text" id="cfg_tmdb_proxy" placeholder="如 http://127.0.0.1:7890，留空则直连"></div>
+            <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.5">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">TMDB 官网</a> 申请 API Key。国内网络访问 api.tmdb.org 常被干扰（TLS 握手失败），若榜单无法加载，请在此填写代理地址（如 Clash / V2Ray 的 HTTP 代理）</div>
           </div>
           <div class="card">
             <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-transfer"/></svg> 转存服务</div>
@@ -1241,7 +1242,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 
 <script>
 // ===== DBAuto frontend bundle =====
-// sha:7a157a6
+// sha:26bf2c7
 // 由 build.sh 拼接生成（模块化源文件合并为单文件）。
 // 注意：不使用 IIFE 包裹。页面大量使用内联 onclick/onchange 事件处理器，
 // 这些处理器在全局作用域查找被调用的函数；若包进 IIFE 会导致函数不可见、按钮点击失效。
@@ -2308,6 +2309,7 @@ document.getElementById('cfg_auth_user').value=cfg.auth_user||'';
 document.getElementById('cfg_auth_pass').value='';
 document.getElementById('cfg_tmdb_api_key').value='';
 document.getElementById('cfg_tmdb_base_url').value=cfg.tmdb_base_url||'';
+document.getElementById('cfg_tmdb_proxy').value=cfg.tmdb_proxy||'';
 // 加载想看同步设置
 if(s.savepaths){
   document.getElementById('cfg_path_category_base').value=s.savepaths.category_base||'/影视';
@@ -2340,7 +2342,8 @@ qas_token:document.getElementById('cfg_qas_token').value,
 auth_user:document.getElementById('cfg_auth_user').value.trim(),
 auth_pass:document.getElementById('cfg_auth_pass').value,
 tmdb_api_key:document.getElementById('cfg_tmdb_api_key').value,
-tmdb_base_url:document.getElementById('cfg_tmdb_base_url').value.trim()};
+tmdb_base_url:document.getElementById('cfg_tmdb_base_url').value.trim(),
+tmdb_proxy:document.getElementById('cfg_tmdb_proxy').value.trim()};
 try{
 var d=await apiPost('/api/config',cfg);
 if(d.success){if(!silent)showToast('设置已保存',true)}
@@ -2659,10 +2662,15 @@ async function loadTmdbList(){
     renderTmdbGrid();
     renderTmdbPagination();
     if(d.error){
-      grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">⚠ '+esc(d.error)+'</div>';
+      var msg = String(d.error);
+      var isNet = /SSL|EOF|Max retries|Connection|timed out|Timeout|ENOTFOUND|getaddrinfo/i.test(msg);
+      var hint = isNet
+        ? '<br><span style="font-size:12px;opacity:.75;line-height:1.6">无法连接 TMDB，多为网络/代理问题。请到「设置 → TMDB 数据源」填写代理地址（如 http://127.0.0.1:7890），或改用可访问的 API 地址。</span>'
+        : '';
+      grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">⚠ '+esc(msg)+hint+'</div>';
     }
   }catch(e){
-    grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">加载失败: '+esc(e.message||'')+'<br><span style="font-size:12px;opacity:.7">请检查 TMDB API Key 是否正确，以及网络是否能访问 themoviedb.org</span></div>';
+    grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">加载失败: '+esc(e.message||'')+'<br><span style="font-size:12px;opacity:.7">请检查 TMDB API Key 是否正确，以及网络是否能访问 themoviedb.org；若被网络限制，可在设置中配置代理。</span></div>';
   }
 }
 

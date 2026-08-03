@@ -296,10 +296,15 @@ async function loadTmdbList(){
     renderTmdbGrid();
     renderTmdbPagination();
     if(d.error){
-      grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">⚠ '+esc(d.error)+'</div>';
+      var msg = String(d.error);
+      var isNet = /SSL|EOF|Max retries|Connection|timed out|Timeout|ENOTFOUND|getaddrinfo/i.test(msg);
+      var hint = isNet
+        ? '<br><span style="font-size:12px;opacity:.75;line-height:1.6">无法连接 TMDB，多为网络/代理问题。请到「设置 → TMDB 数据源」填写代理地址（如 http://127.0.0.1:7890），或改用可访问的 API 地址。</span>'
+        : '';
+      grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">⚠ '+esc(msg)+hint+'</div>';
     }
   }catch(e){
-    grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">加载失败: '+esc(e.message||'')+'<br><span style="font-size:12px;opacity:.7">请检查 TMDB API Key 是否正确，以及网络是否能访问 themoviedb.org</span></div>';
+    grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">加载失败: '+esc(e.message||'')+'<br><span style="font-size:12px;opacity:.7">请检查 TMDB API Key 是否正确，以及网络是否能访问 themoviedb.org；若被网络限制，可在设置中配置代理。</span></div>';
   }
 }
 
