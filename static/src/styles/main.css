@@ -19,7 +19,7 @@ body{
   display:grid;
   grid-template-columns:220px minmax(0,1fr) 380px;
   height:100vh;height:100dvh;
-  max-width:none;margin:0;padding:0;position:relative;z-index:1;
+  max-width:none;margin:0;padding:0;position:relative;
   background:var(--bg);
 }
 .sidebar{
