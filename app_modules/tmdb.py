@@ -56,6 +56,7 @@ def _tmdb_request_with_failover(endpoint, params):
     避免某次抖动把连接永久锁死在一个已变差的地址上（短域名国内通常更可达）。
     每个地址只试一次，失败立即切换，缩短整体耗时。
     """
+    global _tmdb_current_url
     custom = _get_base_url().rstrip("/")
     proxies = _get_proxies()
     qs = "&".join("{}={}".format(k, v) for k, v in params.items())
