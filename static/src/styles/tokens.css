@@ -21,8 +21,8 @@
   /* Text (4 levels) */
   --text: #f2f2f5;
   --text2: rgba(255, 255, 255, 0.62);
-  --text3: rgba(255, 255, 255, 0.4);
-  --text4: rgba(255, 255, 255, 0.22);
+  --text3: rgba(255, 255, 255, 0.55);
+  --text4: rgba(255, 255, 255, 0.42);
 
   /* Accent */
   --accent: #0a84ff;
@@ -106,8 +106,8 @@
   --border3: rgba(0, 0, 0, 0.18);
   --text: #1c1c1e;
   --text2: rgba(0, 0, 0, 0.55);
-  --text3: rgba(0, 0, 0, 0.38);
-  --text4: rgba(0, 0, 0, 0.22);
+  --text3: rgba(0, 0, 0, 0.5);
+  --text4: rgba(0, 0, 0, 0.4);
   --accent: #007aff;
   --accent2: #5856d6;
   --accent3: #8e8dff;

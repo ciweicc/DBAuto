@@ -6,10 +6,12 @@ var PAGE_IDS = {
   manual: 'tabManual',
   schedule: 'tabSchedule',
   history: 'tabHistory',
-  settings: 'tabSettings'
+  settings: 'tabSettings',
+  tmdb: 'pageTmdb'
 };
-var PAGES = ['dashboard', 'manual', 'schedule', 'history', 'settings'];
-var BOTTOM_NAV = ['manual', 'schedule', 'history', 'settings'];
+var PAGES = ['dashboard', 'manual', 'schedule', 'history', 'settings', 'tmdb'];
+// 底部导航与 BOTTOM_NAV 顺序保持一致：概览 / 转存 / 定时 / 历史 / 设置 / 资源
+var BOTTOM_NAV = ['dashboard', 'manual', 'schedule', 'history', 'settings', 'tmdb'];
 
 function switchTab(tab){
   currentTab = tab;
@@ -18,20 +20,24 @@ function switchTab(tab){
     var el = document.getElementById(PAGE_IDS[p]);
     if(el) el.classList.toggle('active', p === tab);
   });
-  // 侧边栏联动
+  // 侧边栏联动（同时标记 aria-current 供屏幕阅读器识别）
   document.querySelectorAll('.side-nav-item').forEach(function(b){
-    b.classList.toggle('active', b.getAttribute('data-tab') === tab);
+    var on = b.getAttribute('data-tab') === tab;
+    b.classList.toggle('active', on);
+    if(on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
-  // 底部导航联动（dashboard 不在底部栏）
+  // 底部导航联动
   var navIdx = BOTTOM_NAV.indexOf(tab);
   document.querySelectorAll('.bottom-nav .nav-item').forEach(function(n, i){
-    n.classList.toggle('active', i === navIdx);
+    var on = i === navIdx;
+    n.classList.toggle('active', on);
+    if(on) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
   });
   // 关闭移动端抽屉
   closeDrawers();
   // 按需加载
   if(tab === 'schedule') loadSchedule();
   if(tab === 'history') loadExecHistory();
-  if(tab === 'dashboard') initTmdbPage();
+  if(tab === 'tmdb') initTmdbPage();
   if(tab === 'settings') loadConfig();
 }

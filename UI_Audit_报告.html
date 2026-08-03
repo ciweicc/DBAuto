@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>DBAuto 前端 UI 审计报告</title>
+<style>
+:root{
+  --bg:#0d0d10;--card:#16161a;--card-2:#1c1c22;--border:rgba(255,255,255,.08);--border2:rgba(255,255,255,.12);
+  --text:#f2f2f5;--text2:rgba(255,255,255,.62);--text3:rgba(255,255,255,.4);
+  --accent:#0a84ff;--green:#30d158;--red:#ff453a;--orange:#ff9f0a;--purple:#bf5af2;
+  --radius:10px;--radius-sm:6px;--space:12px;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+}
+[data-theme="light"]{--bg:#f2f2f7;--card:#fff;--card-2:#f4f4f8;--border:rgba(0,0,0,.08);--border2:rgba(0,0,0,.12);--text:#1c1c1e;--text2:rgba(0,0,0,.55);--text3:rgba(0,0,0,.4)}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:var(--font);background:var(--bg);color:var(--text);line-height:1.6;padding:32px 20px;max-width:960px;margin:0 auto}
+h1{font-size:24px;font-weight:700;letter-spacing:-.5px;margin-bottom:4px}
+.sub{color:var(--text3);font-size:13px;margin-bottom:24px}
+h2{font-size:17px;font-weight:700;margin:28px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+h3{font-size:14px;font-weight:600;margin:14px 0 6px;color:var(--text2)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:14px}
+.scorecard{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin:16px 0}
+.score{background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;text-align:center}
+.score .n{font-size:20px;font-weight:700}
+.score .l{font-size:11px;color:var(--text3);margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
+.pass{color:var(--green)}.warn{color:var(--orange)}.fail{color:var(--red)}
+table{width:100%;border-collapse:collapse;font-size:13px;margin:8px 0}
+th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--border);vertical-align:top}
+th{font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}
+.tag{display:inline-block;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;background:var(--card-2);border:1px solid var(--border);color:var(--text2)}
+.tag.hi{background:rgba(255,69,58,.12);color:var(--red);border-color:rgba(255,69,58,.25)}
+.tag.mid{background:rgba(255,159,10,.12);color:var(--orange);border-color:rgba(255,159,10,.25)}
+.tag.low{background:rgba(10,132,255,.12);color:var(--accent);border-color:rgba(10,132,255,.25)}
+code{font-family:ui-monospace,Consolas,monospace;font-size:12px;background:var(--card-2);padding:1px 6px;border-radius:4px;color:var(--accent)}
+ul{margin:6px 0 6px 18px}li{margin:4px 0}
+.sev-P0{color:var(--red);font-weight:700}.sev-P1{color:var(--orange);font-weight:700}.sev-P2{color:var(--accent);font-weight:700}
+.footer{margin-top:30px;color:var(--text3);font-size:12px;text-align:center}
+</style>
+</head>
+<body>
+<h1>DBAuto 前端 UI 审计报告</h1>
+<div class="sub">豆瓣自动转存管理后台 · 审计日期 2026-08-04 · 审计人 WorkBuddy（UI Audit）</div>
+
+<h2>总体评分</h2>
+<div class="scorecard">
+  <div class="score"><div class="n pass">强</div><div class="l">视觉风格</div></div>
+  <div class="score"><div class="n warn">中</div><div class="l">视觉层级</div></div>
+  <div class="score"><div class="n fail">弱</div><div class="l">无障碍</div></div>
+  <div class="score"><div class="n warn">中</div><div class="l">导航</div></div>
+  <div class="score"><div class="n pass">强</div><div class="l">可用性</div></div>
+</div>
+<p style="color:var(--text2);font-size:13px">基础扎实：设计 token 完整、深浅主题、骨架屏、<code>prefers-reduced-motion</code> 兜底、移动端触控目标（42px+）都到位。当前问题主要是「从好到精」的收尾，集中在<strong>可达性</strong>与<strong>一处导航缺口</strong>。</p>
+
+<h2>核心定位（Macro Bets / JTBD）</h2>
+<div class="card">
+  <h3>Jobs-to-be-done</h3>
+  <ul>
+    <li><b>用户：</b>影视资源管理者 · <b>场景：</b>本地/NAS 环境 · <b>目标：</b>把豆瓣/榜单资源自动转存到网盘 · <b>收益：</b>省去手动逐个检索</li>
+    <li><b>用户：</b>运维者 · <b>场景：</b>后台值守 · <b>目标：</b>监控调度与执行结果 · <b>收益：</b>实时掌握成功/失败</li>
+  </ul>
+  <h3>Macro Bet 对齐</h3>
+  <ul>
+    <li><span class="tag">efficiency</span> 三栏日志常驻 + 仪表盘，强于「效率」。</li>
+    <li><span class="tag">accuracy</span> 执行历史/状态点，支撑「准确性」。</li>
+  </ul>
+</div>
+
+<h2>优先级修复清单（按重要性排序）</h2>
+<table>
+  <thead><tr><th>#</th><th>问题</th><th>严重度</th><th>位置 / 框架依据</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>移动端底部导航缺失「概览」，用户进不去 Dashboard 页（两套 IA 不一致）</td><td><span class="sev-P0">P0</span></td><td><code>tabs.js:12</code> BOTTOM_NAV 无 dashboard · 31-navigation</td></tr>
+    <tr><td>2</td><td>按钮/导航/芯片无 <code>:focus-visible</code> 轮廓，键盘用户无焦点指示</td><td><span class="sev-P0">P0</span></td><td><code>index_new.html</code> .btn/.icon-btn/.side-nav-item · 27-accessibility</td></tr>
+    <tr><td>3</td><td>概览页塞入整个 TMDB 浏览器（6 下拉+网格+分页），认知过载</td><td><span class="sev-P1">P1</span></td><td><code>body.html</code> .tmdb-embed 在 #pageDashboard 内 · 22-cognitive-load</td></tr>
+    <tr><td>4</td><td>次要文字/占位符对比度低于 WCAG AA 4.5:1</td><td><span class="sev-P1">P1</span></td><td><code>--text3</code>.40 / <code>--text4</code>.22 · 27-accessibility</td></tr>
+    <tr><td>5</td><td>7 天柱状图默认色 <code>var(--text4)</code> 过淡，图表几乎不可读</td><td><span class="sev-P1">P1</span></td><td><code>index_new.html:319</code> .dash7-bar</td></tr>
+    <tr><td>6</td><td>登录页「上次登录」图标 <code>#icon-clock</code> 未在 sprite 定义 → 破图</td><td><span class="sev-P1">P1</span></td><td><code>login_new.html:303</code> vs sprite 194–229</td></tr>
+    <tr><td>7</td><td>主页面重复 <code>&lt;body&gt;</code> 标签，无效 HTML</td><td><span class="sev-P1">P1</span></td><td><code>index_new.html:707-708</code></td></tr>
+    <tr><td>8</td><td>搜索清除是 <code>&lt;svg onclick&gt;</code>，键盘不可操作；图标按钮缺 <code>aria-label</code></td><td><span class="sev-P2">P2</span></td><td><code>body.html:67</code> .search-clear · 27-accessibility</td></tr>
+    <tr><td>9</td><td>滑块轨道写死白 0.12，浅色模式近乎隐形</td><td><span class="sev-P2">P2</span></td><td><code>index_new.html:357</code> input[type=range]</td></tr>
+    <tr><td>10</td><td>图标语言不统一（SVG accent 色 vs emoji vs 网格图标）</td><td><span class="sev-P2">P2</span></td><td>设置页卡片标题 · 12-visual-style</td></tr>
+    <tr><td>11</td><td>Toast 无 <code>aria-live</code>，屏幕阅读器听不到提示</td><td><span class="sev-P2">P2</span></td><td><code>index_new.html:500</code> #toastContainer</td></tr>
+    <tr><td>12</td><td>三栏在 1025–1300px 偏挤，日志面板固定 380px 直到 ≤1024 才收起</td><td><span class="sev-P2">P2</span></td><td><code>index_new.html:593</code> @media(max-width:1024px)</td></tr>
+  </tbody>
+</table>
+
+<h2>分维度详查</h2>
+
+<h3>视觉层级（Visual Hierarchy）</h3>
+<div class="card">
+  <ul>
+    <li><span class="tag mid">warn</span> 概览页主从关系被 TMDB 浏览器稀释，落地页焦点分散（见 #3）。</li>
+    <li><span class="tag">pass</span> 统计卡数字大、标签小，层级清晰；状态点 + 环形进度表达到位。</li>
+    <li><span class="tag">pass</span> 标题用 <code>--font-display</code> + 负字距，区分度好。</li>
+  </ul>
+</div>
+
+<h3>视觉风格（Visual Style）</h3>
+<div class="card">
+  <ul>
+    <li><span class="tag">pass</span> 扁平 admin 风格、三档边框/四级文字 token、统一圆角与留白，体系一致。</li>
+    <li><span class="tag low">warn</span> 滑块轨道、图标风格、<code>color-mix</code> 无回退（见 #9/#10/#5）。</li>
+    <li><span class="tag low">warn</span> 图标 sprite 在 login/index/body 三处重复，应抽共享文件。</li>
+  </ul>
+</div>
+
+<h3>无障碍（Accessibility）</h3>
+<div class="card">
+  <ul>
+    <li><span class="tag hi">fail</span> 无 <code>:focus-visible</code> 全局焦点环（#2）。</li>
+    <li><span class="tag hi">fail</span> 次要文字/占位符对比度不足（#4）。</li>
+    <li><span class="tag mid">warn</span> 活动导航项仅用 <code>.active</code> 类，缺 <code>aria-current="page"</code>。</li>
+    <li><span class="tag">pass</span> 原生 input/toggle/range 可用性较好；<code>prefers-reduced-motion</code> 已全局兜底。</li>
+  </ul>
+</div>
+
+<h3>导航（Navigation）</h3>
+<div class="card">
+  <ul>
+    <li><span class="tag hi">fail</span> 桌面 5 项 / 移动 4 项，概览页在移动端不可达（#1）。</li>
+    <li><span class="tag">pass</span> 侧边栏 + 顶部搜索 + 移动端抽屉 + 遮罩，模式完整。</li>
+    <li><span class="tag low">warn</span> 中等屏三栏偏挤（#12）。</li>
+  </ul>
+</div>
+
+<h3>可用性（Usability）</h3>
+<div class="card">
+  <ul>
+    <li><span class="tag">pass</span> 实时日志、进度环、暂停/停止、筛选、Toast、确认弹窗反馈充分。</li>
+    <li><span class="tag mid">warn</span> 搜索下拉结果键盘可达性未确认；清除按钮键盘不可用（#8）。</li>
+    <li><span class="tag">pass</span> 登录含锁定倒计时、上次登录、密码显隐，防御与引导到位。</li>
+  </ul>
+</div>
+
+<h2>建议落地顺序</h2>
+<div class="card">
+  <ol>
+    <li><b>本周：</b>修 #1（移动端导航）、#2（焦点环）、#6/#7（两个 bug）。成本极低、收益最高。</li>
+    <li><b>下周：</b>#3（概览页减负）、#4（对比度）、#5（图表配色）。</li>
+    <li><b>打磨：</b>#8–#12 统一图标、滑块主题化、Toast aria-live、中等屏断点。</li>
+  </ol>
+</div>
+
+<div class="footer">生成自 UI Audit 技能 · 参考 Making UX Decisions (Tommy Geoco) · 报告仅含静态代码审计，未运行浏览器实测</div>
+</body>
+</html>

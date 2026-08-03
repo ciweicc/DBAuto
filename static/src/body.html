@@ -1,5 +1,3 @@
-<body>
-
 <!-- Icons Sprite -->
 <svg style="display:none">
   <defs>
@@ -18,6 +16,7 @@
   <symbol id="icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
   <symbol id="icon-cloud-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></symbol>
   <symbol id="icon-movie" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="7" y1="3" x2="7" y2="21"/><line x1="17" y1="3" x2="17" y2="21"/><line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="17" x2="21" y2="17"/></symbol>
+  <symbol id="icon-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></symbol>
   <symbol id="icon-tv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></symbol>
   <symbol id="icon-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
   <symbol id="icon-transfer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/><path d="m16 9-3-3-3 3"/><path d="m8 15-3 3 3-3"/></symbol>
@@ -52,6 +51,7 @@
       <button class="side-nav-item" data-tab="schedule" onclick="switchTab('schedule')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg>定时任务</button>
       <button class="side-nav-item" data-tab="history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg>执行历史</button>
       <button class="side-nav-item" data-tab="settings" onclick="switchTab('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-settings"/></svg>设置</button>
+      <button class="side-nav-item" data-tab="tmdb" onclick="switchTab('tmdb')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg>资源浏览</button>
     </nav>
     <div class="side-foot" id="sideFoot"></div>
   </aside>
@@ -59,20 +59,20 @@
   <!-- Main column -->
   <div class="main">
     <div class="topbar">
-      <button class="icon-btn side-toggle" onclick="toggleSidebar()" title="菜单"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+      <button class="icon-btn side-toggle" onclick="toggleSidebar()" title="菜单" aria-label="菜单"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
       <div class="search-wrapper">
         <div class="search-box" id="searchBox" onclick="document.getElementById('searchInput').focus()">
           <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg>
           <input type="text" id="searchInput" placeholder="搜索资源..." title="搜索资源（Ctrl/⌘ + K 聚焦）" oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()">
-          <svg class="search-clear" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" onclick="clearSearch()"><use href="#icon-x-circle"/></svg>
+          <button type="button" class="search-clear" aria-label="清除搜索" onclick="clearSearch()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg></button>
         </div>
         <div class="search-dropdown" id="searchDropdown">
           <div id="searchResults"></div>
         </div>
       </div>
       <div class="topbar-spacer"></div>
-      <button class="icon-btn search-toggle-btn" onclick="toggleMobileSearch()" title="搜索"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg></button>
-      <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="切换主题"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-moon"/></svg></button>
+      <button class="icon-btn search-toggle-btn" onclick="toggleMobileSearch()" title="搜索" aria-label="搜索"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg></button>
+      <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="切换主题" aria-label="切换主题"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-moon"/></svg></button>
     </div>
 
     <div class="content">
@@ -110,6 +110,10 @@
             <div class="lbl">近 7 天共 <span id="dash7Total" style="color:var(--text);font-weight:600">0</span> 次</div>
           </div>
         </div>
+      </section>
+
+      <!-- ===== 资源浏览（TMDB） ===== -->
+      <section class="page" id="pageTmdb">
             <div class="tmdb-embed" style="margin-top:20px">
 
           <div id="tmdbKeyWarning" class="tmdb-key-warning" style="display:none">
@@ -315,30 +319,30 @@
           <div class="form-group"><label>PanSou 地址</label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"></div>
         </div>
         <div class="card">
-          <div class="card-title">🎬 TMDB 数据源</div>
+          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-movie"/></svg> TMDB 数据源</div>
           <div class="form-group" style="margin-bottom:0"><label>API Key</label><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"></div>
           <div class="form-group" style="margin-top:8px"><label>API 地址（可选）</label><input type="text" id="cfg_tmdb_base_url" placeholder="留空自动切换 api.tmdb.org / api.themoviedb.org"></div>
           <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.5">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">TMDB 官网</a> 申请 API Key。系统自动尝试短域名访问，无需代理</div>
         </div>
         <div class="card">
-          <div class="card-title">📦 转存服务</div>
+          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-transfer"/></svg> 转存服务</div>
           <div class="form-group"><label>QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
           <div class="form-group" style="margin-bottom:0"><label>QAS Token</label><input type="password" id="cfg_qas_token" placeholder="留空不修改"></div>
         </div>
         <div class="card">
-          <div class="card-title">📁 转存路径</div>
+          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-folder"/></svg> 转存路径</div>
           <div class="form-group"><label>榜单分类路径前缀</label><input type="text" id="cfg_path_category_base" placeholder="/影视"></div>
           <div style="font-size:12px;color:var(--text2);margin:-4px 0 8px;line-height:1.5">实际路径 = 前缀 + 分类名，如 /影视/电影、/影视/电视剧</div>
           <div class="form-group"><label>搜索转存路径</label><input type="text" id="cfg_path_search" placeholder="/批量转存/手动搜索存"></div>
           <div class="form-group" style="margin-bottom:0"><label>TMDB 转存路径</label><input type="text" id="cfg_path_tmdb" placeholder="/批量转存/TMDB"></div>
         </div>
         <div class="card">
-          <div class="card-title">🔐 管理认证</div>
+          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-lock"/></svg> 管理认证</div>
           <div class="form-group"><label>用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
           <div class="form-group" style="margin-bottom:0"><label>密码</label><input type="password" id="cfg_auth_pass" placeholder="留空不修改"></div>
         </div>
         <div class="card">
-          <div class="card-title" style="justify-content:space-between">🎬 豆瓣想看同步 <a href="https://www.douban.com/" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="text-decoration:none">打开豆瓣 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-left:2px"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
+          <div class="card-title" style="justify-content:space-between"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-cloud-download"/></svg> 豆瓣想看同步 <a href="https://www.douban.com/" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="text-decoration:none">打开豆瓣 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-left:2px"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
           <div id="wishAccountsList" style="display:flex;flex-direction:column;gap:8px"></div>
           <button class="btn btn-outline btn-sm" onclick="addWishAccount()" style="margin-top:2px;border-style:dashed"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加豆瓣账号</button>
           <div class="form-group" style="margin-top:12px"><label>保存路径</label><input type="text" id="cfg_wish_savepath" placeholder="/批量转存/想看"></div>
@@ -377,7 +381,7 @@
           </div>
         </div>
         <div style="display:flex;gap:6px">
-          <button class="btn btn-sm btn-outline" id="soundBtn" onclick="toggleSound()" title="操作音效"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg></button>
+          <button class="btn btn-sm btn-outline" id="soundBtn" onclick="toggleSound()" title="操作音效" aria-label="操作音效"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg></button>
           <button class="btn btn-sm btn-danger" id="stopBtn" onclick="stopTransfer()" style="display:none">停止</button>
           <button class="btn btn-sm btn-outline" id="pauseBtn" onclick="togglePause()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-pause"/></svg></button>
         </div>
@@ -404,6 +408,10 @@
 <!-- Bottom Navigation (Mobile) -->
 <nav class="bottom-nav">
   <div class="bottom-nav-inner">
+    <div class="nav-item active" onclick="switchTab('dashboard')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>
+      <span>概览</span>
+    </div>
     <div class="nav-item active" onclick="switchTab('manual')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/><path d="m16 9-3-3-3 3"/><path d="m8 15-3 3 3-3"/></svg>
       <span>转存</span>
@@ -420,17 +428,21 @@
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
       <span>设置</span>
     </div>
+    <div class="nav-item" onclick="switchTab('tmdb')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="7" y1="3" x2="7" y2="21"/><line x1="17" y1="3" x2="17" y2="21"/><line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="17" x2="21" y2="17"/></svg>
+      <span>资源</span>
+    </div>
   </div>
 </nav>
 
 <!-- Floating log toggle (mobile / collapsed) -->
-<button class="log-fab" id="logFab" onclick="toggleLogPanel()" title="执行日志"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
+<button class="log-fab" id="logFab" onclick="toggleLogPanel()" title="执行日志" aria-label="执行日志"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
 
 <!-- Scrim for mobile drawers -->
 <div class="overlay-scrim" id="overlayScrim" onclick="closeDrawers()"></div>
 
 <!-- Toast Container -->
-<div id="toastContainer"></div>
+<div id="toastContainer" role="status" aria-live="polite"></div>
 
 <!-- Confirm Dialog -->
 <div class="confirm-overlay" id="confirmOverlay" onclick="if(event.target===this)resolveConfirm(false)">
