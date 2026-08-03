@@ -52,6 +52,11 @@ def _init_db():
         conn.execute("ALTER TABLE exec_history ADD COLUMN data TEXT")
     except sqlite3.OperationalError:
         pass
+    # TMDB id 去重（P3）：历史记录按作品唯一 id 去重，避免同名/异名续集误判
+    try:
+        conn.execute("ALTER TABLE transfer_history ADD COLUMN tmdb_id TEXT")
+    except sqlite3.OperationalError:
+        pass
     conn.execute("CREATE INDEX IF NOT EXISTS idx_exec_time ON exec_history(time DESC)")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA synchronous=NORMAL")
@@ -121,13 +126,14 @@ def load_history():
             return dict(_history_cache)
         with _db_lock:
             conn = _get_db()
-            rows = conn.execute("SELECT title, date, status, category FROM transfer_history").fetchall()
+            rows = conn.execute("SELECT title, date, status, category, tmdb_id FROM transfer_history").fetchall()
             result = {}
             for row in rows:
                 result[row["title"]] = {
                     "date": row["date"],
                     "status": row["status"],
-                    "category": row["category"]
+                    "category": row["category"],
+                    "tmdb_id": row["tmdb_id"] or ""
                 }
             _history_cache = result
             return dict(result)
@@ -145,10 +151,11 @@ def save_history(h):
             if to_delete:
                 placeholders = ",".join("?" * len(to_delete))
                 conn.execute("DELETE FROM transfer_history WHERE title IN ({})".format(placeholders), tuple(to_delete))
-            rows = [(title, info.get("date", ""), info.get("status", ""), info.get("category", ""))
+            rows = [(title, info.get("date", ""), info.get("status", ""), info.get("category", ""),
+                     str(info["tmdb_id"]) if info.get("tmdb_id") else "")
                     for title, info in h.items()]
             conn.executemany(
-                "INSERT OR REPLACE INTO transfer_history (title, date, status, category) VALUES (?, ?, ?, ?)",
+                "INSERT OR REPLACE INTO transfer_history (title, date, status, category, tmdb_id) VALUES (?, ?, ?, ?, ?)",
                 rows
             )
             conn.commit()
@@ -165,14 +172,15 @@ def upsert_history_item(title, info):
         date = info.get("date", "")
         status = info.get("status", "")
         category = info.get("category", "")
+        tmdb_id = str(info["tmdb_id"]) if info.get("tmdb_id") else ""
     else:
-        date = status = category = ""
+        date = status = category = tmdb_id = ""
     with _history_lock:
         with _db_lock:
             conn = _get_db()
             conn.execute(
-                "INSERT OR REPLACE INTO transfer_history (title, date, status, category) VALUES (?, ?, ?, ?)",
-                (title, date, status, category)
+                "INSERT OR REPLACE INTO transfer_history (title, date, status, category, tmdb_id) VALUES (?, ?, ?, ?, ?)",
+                (title, date, status, category, tmdb_id)
             )
             conn.commit()
         if _history_cache is not None:

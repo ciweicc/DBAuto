@@ -19,9 +19,15 @@ class TestNextFireTime:
         now = _now_local()
         future = now + timedelta(hours=2)
         ts = "{}:{:02d}".format(future.hour, future.minute)
+        # 按 _next_fire_time 的真实语义构造预期值：今天该时刻若已过则滚到明天，
+        # 使断言与测试运行时刻无关（避免 22:00 后 now+2h 跨日导致的 flaky）。
+        hh, mm = future.hour, future.minute
+        candidate = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if candidate <= now:
+            candidate = candidate + timedelta(days=1)
         nxt = _next_fire_time(ts, None, 0, None)
         assert nxt is not None
-        assert nxt.day == now.day and nxt.hour == future.hour
+        assert nxt == candidate
 
     def test_time_str_next_day_when_passed(self):
         now = _now_local()

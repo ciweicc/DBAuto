@@ -262,6 +262,64 @@ def refresh_tmdb_cache():
     log("TMDB 缓存已清空")
 
 
+def search_tmdb_id(query, media_type="movie", year=0):
+    """按标题搜索 TMDB，返回最佳匹配的整型作品 id；无结果 / 未配置 key / 出错时返回 None。
+
+    用于转存去重：同一作品（含不同译名、续集/分季差异）在 TMDB 拥有稳定唯一 id，
+    以 id 去重比标题规范化更可靠，可避免"阿凡达"误吞"阿凡达2"等误判。
+    """
+    api_key = _get_api_key()
+    if not api_key:
+        return None
+    if not query:
+        return None
+    cache_key = "search:{}:{}:{}".format(query, media_type, year)
+    now = time.time()
+    with _tmdb_lock:
+        if cache_key in _tmdb_cache:
+            ct, cd = _tmdb_cache[cache_key]
+            if now - ct < _TMDB_TTL:
+                return cd
+    params = {
+        "api_key": api_key,
+        "language": _LANG,
+        "query": query,
+        "include_adult": "false",
+        "page": "1",
+    }
+    try:
+        data = _tmdb_request_with_failover("/search/multi", params)
+    except Exception as e:
+        log("TMDB 搜索失败 {}: {}".format(query, e))
+        return None
+    results = data.get("results", [])
+    picked = None
+    for item in results:
+        mt = item.get("media_type")
+        if mt not in ("movie", "tv"):
+            continue
+        # 按 category 过滤类型，避免电影误匹配到同名剧集（反之亦然）
+        if media_type == "movie" and mt != "movie":
+            continue
+        if media_type == "tv" and mt != "tv":
+            continue
+        if year:
+            rd = item.get("release_date") or item.get("first_air_date") or ""
+            try:
+                iy = int(rd[:4])
+            except (ValueError, TypeError):
+                iy = 0
+            if iy and iy != year:
+                continue
+        picked = item.get("id")
+        if picked:
+            break
+    with _tmdb_lock:
+        _tmdb_cache[cache_key] = (now, picked)
+        _prune_cache()
+    return picked
+
+
 # 地区/语言选项
 REGION_OPTIONS = [
     {"code": "", "name": "全部"},

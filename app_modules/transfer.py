@@ -7,6 +7,7 @@ from config import ConfigManager, load_settings, LOCAL_TZ
 from utils import http_get, http_post, log, TTLCache, clear_progress, sse_broadcast
 from storage import load_history, add_exec_record, update_exec_record, upsert_history_item
 from douban import get_douban_list
+from tmdb import search_tmdb_id
 
 SEARCH_CONCURRENCY = 3
 # 转存阶段并发数（受 QAS 速率限制约束，保守取 2）。
@@ -25,6 +26,29 @@ _pansou_cache = TTLCache(ttl=600, max_size=200)
 
 _qas_cache = set()
 _qas_cache_lock = Lock()
+
+# TMDB id 解析缓存：标题规范化 + category → 整型 id；失败/未配置 key 记为 None（降级到标题去重）
+_tmdb_id_cache = {}
+_tmdb_id_cache_lock = Lock()
+
+def _resolve_tmdb_id(title, category):
+    """解析标题对应的 TMDB 作品 id（带进程内缓存与失败降级），返回 int 或 None。"""
+    if not title:
+        return None
+    key = (_clean_title(title), category)
+    with _tmdb_id_cache_lock:
+        if key in _tmdb_id_cache:
+            return _tmdb_id_cache[key]
+    tid = None
+    try:
+        mt = "tv" if category == "tv" else "movie"
+        y, _ = _extract_meta(title)
+        tid = search_tmdb_id(title, mt, int(y) if y else 0)
+    except Exception:
+        tid = None
+    with _tmdb_id_cache_lock:
+        _tmdb_id_cache[key] = tid
+    return tid
 
 # ---------------------------------------------------------------------------
 # P1 任务状态子系统：以 task_id 隔离状态，避免全局单状态互相覆盖 / SSE 串台
@@ -277,9 +301,11 @@ def transfer_one(title, shareurl, savepath, pattern="", replace="", category="mo
             else:
                 transfer_status["stats"]["failed"] += 1
             sse_broadcast("transfer_progress", dict(transfer_status))
-        # 更新历史记录（单条增量写入，不再全量 load+save）
+        # 更新历史记录（单条增量写入，不再全量 load+save），并写入 TMDB id 以便后续按作品去重
+        tmdb_id = _resolve_tmdb_id(title, category)
         upsert_history_item(title, {"date": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d"),
-                                    "status": res["status"], "category": category})
+                                    "status": res["status"], "category": category,
+                                    "tmdb_id": tmdb_id})
         return res
     finally:
         with transfer_lock:
@@ -514,6 +540,21 @@ def _build_history_index(history, qas_cache=None):
         items.append((k, ck, _core_title(k)) + _extract_meta(k))
         index["clean"].add(ck)
     index["items"] = items
+    # TMDB id 去重通道：历史记录中已记录 tmdb_id 的，建 id → 标题 映射
+    tmdb_ids = set()
+    tmdb_map = {}
+    for k, v in history.items():
+        raw = v.get("tmdb_id")
+        if raw:
+            try:
+                tid = int(raw)
+            except (TypeError, ValueError):
+                tid = None
+            if tid:
+                tmdb_ids.add(tid)
+                tmdb_map[tid] = k
+    index["tmdb_ids"] = tmdb_ids
+    index["tmdb_map"] = tmdb_map
     if qas_cache:
         qitems = []
         for name in qas_cache:
@@ -551,9 +592,28 @@ def _match_one(t_clean, t_core, t_year, t_season, cand_clean, cand_core, cand_ye
     return False
 
 
-def _find_in_history(title, history, index=None):
+def _find_in_history(title, history, index=None, tmdb_id=None):
     if title in history:
         return True
+    # TMDB id 去重（最高优先级）：同一作品的不同译名/续集在 TMDB 拥有稳定唯一 id，
+    # 只要 id 命中历史记录即判为已存在，避免标题规范化无法覆盖的跨名误转。
+    if tmdb_id:
+        try:
+            tid = int(tmdb_id)
+        except (TypeError, ValueError):
+            tid = None
+        if tid:
+            if index and tid in index.get("tmdb_ids", set()):
+                return True
+            if not index:
+                for v in history.values():
+                    raw = v.get("tmdb_id")
+                    if raw:
+                        try:
+                            if int(raw) == tid:
+                                return True
+                        except (TypeError, ValueError):
+                            pass
     t_clean = _clean_title(title)
     t_core = _core_title(title)
     t_year, t_season = _extract_meta(title)
@@ -652,13 +712,25 @@ def run_transfer(task_list, limit):
         pending_tasks = []
         for task in task_list:
             title = task["title"]
+            category = task.get("category", "movie")
             if _find_in_history(title, history, history_index):
                 log("已跳过: {}".format(title))
-                results.append({"title": title, "status": "skipped", "msg": "skip", "category": task.get("category", "")})
+                results.append({"title": title, "status": "skipped", "msg": "skip", "category": category})
                 with transfer_lock:
                     transfer_status["stats"]["skipped"] += 1
                     sse_broadcast("transfer_progress", dict(transfer_status))
                 continue
+            # 标题未命中：用 TMDB id 兜底去重（同一作品的不同译名 / 续集 / 分季差异）
+            tmdb_id = _resolve_tmdb_id(title, category)
+            if tmdb_id:
+                task["tmdb_id"] = tmdb_id
+                if _find_in_history(title, history, history_index, tmdb_id=tmdb_id):
+                    log("已跳过(TMDB): {}".format(title))
+                    results.append({"title": title, "status": "skipped", "msg": "skip", "category": category})
+                    with transfer_lock:
+                        transfer_status["stats"]["skipped"] += 1
+                        sse_broadcast("transfer_progress", dict(transfer_status))
+                    continue
             pending_tasks.append(task)
 
         log("待搜索任务: {} 条，并发数: {}".format(len(pending_tasks), SEARCH_CONCURRENCY))
@@ -720,8 +792,9 @@ def run_transfer(task_list, limit):
             replace = TV_REPLACE if category == "tv" else ""
             res = add_and_run(title, chosen.get("url", ""), "{}/{}".format(savepath, title), pattern, replace)
             log("  {}".format(res["msg"]))
+            tmdb_id = task.get("tmdb_id") or _resolve_tmdb_id(title, category)
             info = {"date": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d"),
-                    "status": res["status"], "category": category}
+                    "status": res["status"], "category": category, "tmdb_id": tmdb_id}
             upsert_history_item(title, info)
             if res["status"] not in ("ok", "done"):
                 with transfer_lock:
