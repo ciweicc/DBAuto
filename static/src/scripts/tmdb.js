@@ -86,6 +86,21 @@ function toggleTmdbGenre(el){
   loadTmdbList();
 }
 
+async function loadTmdbProviders(){
+  var mt = document.getElementById('tmdbMediaType').value;
+  var country = document.getElementById('tmdbRegion').value || 'US';
+  var sel = document.getElementById('tmdbProvider');
+  try{
+    var d = await apiGet('/api/tmdb/providers?media_type='+mt+'&region='+country);
+    var list = d.providers || [];
+    sel.innerHTML = '<option value="">全部平台</option>' + list.map(function(p){
+      return '<option value="'+p.id+'">'+esc(p.name)+'</option>';
+    }).join('');
+  }catch(e){
+    console.error('TMDB providers error', e);
+  }
+}
+
 function onTmdbFilterChange(){
   var mt = document.getElementById('tmdbMediaType').value;
   // 如果切换了 media_type，更新列表类型选项
@@ -111,6 +126,13 @@ function onTmdbFilterChange(){
   document.getElementById('tmdbSort').disabled = !isDiscover;
   document.getElementById('tmdbMinRating').disabled = !isDiscover;
   document.getElementById('tmdbYear').disabled = !isDiscover;
+  document.getElementById('tmdbProvider').disabled = !isDiscover;
+  if(isDiscover){
+    // 进入 discover 或地区/分类切换时，刷新当前地区可用的流媒体平台列表
+    loadTmdbProviders();
+  }else{
+    document.getElementById('tmdbProvider').value = '';
+  }
   // 切换 media_type 时重新加载类型
   if(mt !== tmdbState.media_type){
     tmdbState.media_type = mt;
@@ -131,6 +153,7 @@ async function loadTmdbList(){
   var minRating = parseFloat(document.getElementById('tmdbMinRating').value) || 0;
   var year = parseInt(document.getElementById('tmdbYear').value) || 0;
   var genreId = tmdbState.genre_id || 0;
+  var provider = document.getElementById('tmdbProvider').value || '';
 
   // 如果不是 discover，但用户选了类型/评分/年份，自动切换到 discover
   if(lt !== 'discover' && (genreId > 0 || minRating > 0 || year > 0)){
@@ -149,6 +172,7 @@ async function loadTmdbList(){
     if(genreId) params += '&genre_id='+genreId;
     if(year) params += '&year='+year;
     if(minRating) params += '&min_rating='+minRating;
+    if(provider) params += '&watch_providers='+provider;
     params += '&sort_by='+sort;
   }
   if(region) params += '&country='+region;

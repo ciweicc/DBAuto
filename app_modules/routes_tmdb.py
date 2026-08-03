@@ -1,6 +1,6 @@
 # routes_tmdb.py — TMDB 相关路由 Mixin
 from tmdb import (
-    get_tmdb_list, get_tmdb_genres, refresh_tmdb_cache,
+    get_tmdb_list, get_tmdb_genres, refresh_tmdb_cache, get_tmdb_watch_providers,
     COUNTRY_OPTIONS, LANGUAGE_OPTIONS, SORT_OPTIONS, MOVIE_LIST_TYPES, TV_LIST_TYPES,
 )
 from utils import log
@@ -22,6 +22,7 @@ class TmdbRouteMixin:
             country = params.get("country", "")
             sort_by = params.get("sort_by", "popularity.desc")
             language = params.get("language", "")
+            watch_providers = params.get("watch_providers", "")
 
             ok, msg = validate_string(media_type, min_len=1, max_len=10)
             if not ok:
@@ -37,7 +38,7 @@ class TmdbRouteMixin:
                 result = get_tmdb_list(
                     media_type=media_type, list_type=list_type, page=page,
                     genre_id=genre_id, year=year, min_rating=min_rating,
-                    country=country, sort_by=sort_by, language=language)
+                    country=country, sort_by=sort_by, language=language, watch_providers=watch_providers)
                 self._send_json(result)
             except Exception as e:
                 log("TMDB list 错误: {}".format(e))
@@ -74,6 +75,24 @@ class TmdbRouteMixin:
         if route == "/api/tmdb/refresh":
             refresh_tmdb_cache()
             self._send_json({"success": True, "message": "TMDB 缓存已刷新"})
+            return True
+
+        if route == "/api/tmdb/providers":
+            params = self._get_query_params()
+            media_type = params.get("media_type", "movie")
+            region = params.get("region", "US")
+
+            ok, msg = validate_string(media_type, min_len=1, max_len=10)
+            if not ok:
+                self._send_json({"error": "media_type: {}".format(msg)}, 400)
+                return True
+
+            try:
+                providers = get_tmdb_watch_providers(media_type, region)
+                self._send_json({"providers": providers})
+            except Exception as e:
+                log("TMDB providers 错误: {}".format(e))
+                self._send_json({"error": str(e)}, 500)
             return True
 
         return False

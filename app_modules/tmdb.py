@@ -148,7 +148,7 @@ def _parse_item(item, media_type):
 
 def get_tmdb_list(media_type="movie", list_type="trending", page=1,
                   genre_id=0, year=0, min_rating=0, country="",
-                  sort_by="popularity.desc", language=""):
+                  sort_by="popularity.desc", language="", watch_providers=""):
     """获取 TMDB 列表
 
     Args:
@@ -162,6 +162,7 @@ def get_tmdb_list(media_type="movie", list_type="trending", page=1,
                  discover 下映射 with_origin_country，now_playing/upcoming/on_the_air/airing_today 下映射 region
         sort_by: 排序方式
         language: 原始语言代码（默认 zh-CN；discover 下映射 with_original_language）
+        watch_providers: 流媒体平台 ID（逗号分隔，用于 discover，配合 watch_region 映射 with_watch_providers）
     """
     api_key = _get_api_key()
     if not api_key:
@@ -169,8 +170,8 @@ def get_tmdb_list(media_type="movie", list_type="trending", page=1,
         return {"items": [], "total_pages": 0, "total_results": 0, "page": 1, "error": "未配置 TMDB API Key"}
 
     lang = language or _LANG
-    cache_key = "{}:{}:{}:{}:{}:{}:{}:{}:{}".format(
-        media_type, list_type, page, genre_id, year, min_rating, region, sort_by, lang)
+    cache_key = "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}".format(
+        media_type, list_type, page, genre_id, year, min_rating, country, sort_by, lang, watch_providers)
     now = time.time()
     with _tmdb_lock:
         if cache_key in _tmdb_cache:
@@ -197,6 +198,9 @@ def get_tmdb_list(media_type="movie", list_type="trending", page=1,
             params["with_origin_country"] = country
         if language:
             params["with_original_language"] = language
+        if watch_providers:
+            params["with_watch_providers"] = watch_providers
+            params["watch_region"] = country or "US"
         params["sort_by"] = sort_by
     else:
         endpoints = _MOVIE_ENDPOINTS if media_type == "movie" else _TV_ENDPOINTS
@@ -263,6 +267,44 @@ def refresh_tmdb_cache():
     with _tmdb_lock:
         _tmdb_cache.clear()
     log("TMDB 缓存已清空")
+
+
+def get_tmdb_watch_providers(media_type="movie", region=""):
+    """获取指定地区可用的流媒体平台（watch providers）列表
+
+    Args:
+        media_type: "movie" 或 "tv"
+        region: 地区/国家代码（ISO 3166-1，如 CN/US/JP），缺省回退到 US
+    返回:
+        [{"id": int, "name": str}, ...]（按名称排序）
+    """
+    api_key = _get_api_key()
+    if not api_key:
+        return []
+    region = region or "US"
+    lang = _LANG
+    cache_key = "providers:{}:{}".format(media_type, region)
+    now = time.time()
+    with _tmdb_lock:
+        if cache_key in _tmdb_cache:
+            ct, cd = _tmdb_cache[cache_key]
+            if now - ct < _TMDB_TTL * 24:  # 平台列表缓存 24 倍 TTL
+                return cd
+    try:
+        params = {"api_key": api_key, "language": lang, "watch_region": region}
+        data = _tmdb_request_with_failover("/watch/providers/{}".format(media_type), params)
+        results = data.get("results", [])
+        providers = [{"id": p.get("provider_id"), "name": p.get("provider_name")}
+                     for p in results if p.get("provider_id")]
+        providers.sort(key=lambda x: (x["name"] or "").lower())
+        with _tmdb_lock:
+            _tmdb_cache[cache_key] = (now, providers)
+            _prune_cache()
+        log("TMDB 流媒体平台 {} 列表 → {} 个".format(region, len(providers)))
+        return providers
+    except Exception as e:
+        log("TMDB 流媒体平台获取错误: {}".format(e))
+        return []
 
 
 def search_tmdb_id(query, media_type="movie", year=0):
