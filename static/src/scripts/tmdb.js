@@ -7,12 +7,24 @@ var tmdbState = {
   genre_id: 0,
   items: [],
   selected: {},
+  providers: [],        // 已选流媒体平台 id 列表
+  providerAnchor: -1,   // Shift 范围选择的锚点索引
+  providersList: [],    // 当前地区可用的平台完整列表
   options: null,
   genres: [],
   initialized: false
 };
 
 async function initTmdbPage(){
+  // 点击页面其它区域或按 Esc 关闭平台下拉（仅绑定一次）
+  if(!tmdbState._outsideBound){
+    document.addEventListener('click', function(e){
+      if(e.key === 'Escape'){ closeProviderDropdown(); return; }
+      var wrap = document.getElementById('tmdbProviderWrap');
+      if(wrap && !wrap.contains(e.target)) closeProviderDropdown();
+    });
+    tmdbState._outsideBound = true;
+  }
   if(!tmdbState.initialized){
     // 加载选项
     try{
@@ -89,15 +101,113 @@ function toggleTmdbGenre(el){
 async function loadTmdbProviders(){
   var mt = document.getElementById('tmdbMediaType').value;
   var country = document.getElementById('tmdbRegion').value || 'US';
-  var sel = document.getElementById('tmdbProvider');
+  var panel = document.getElementById('tmdbProviderPanel');
   try{
     var d = await apiGet('/api/tmdb/providers?media_type='+mt+'&region='+country);
     var list = d.providers || [];
-    sel.innerHTML = '<option value="">全部平台</option>' + list.map(function(p){
-      return '<option value="'+p.id+'">'+esc(p.name)+'</option>';
+    tmdbState.providersList = list;
+    // 地区/分类切换后平台集合变化，清空已选并重置锚点
+    tmdbState.providers = [];
+    tmdbState.providerAnchor = -1;
+    if(!list.length){
+      panel.innerHTML = '<div class="tmdb-ms-hint">该地区暂无可用平台</div>';
+      updateProviderLabel();
+      return;
+    }
+    var html = list.map(function(p, i){
+      return '<div class="tmdb-ms-option" role="option" aria-selected="false" data-pid="'+p.id+'" data-idx="'+i+'" onclick="toggleProviderOption(this, event)">'
+        + '<span class="ms-check"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span>'
+        + '<span class="ms-name">'+esc(p.name)+'</span></div>';
     }).join('');
+    html += '<div class="tmdb-ms-clear" onclick="clearProviderSelection(event)">清除全部选择</div>';
+    html += '<div class="tmdb-ms-hint">点击多选；按住 Shift 点选可批量选中一段</div>';
+    panel.innerHTML = html;
+    updateProviderLabel();
   }catch(e){
     console.error('TMDB providers error', e);
+    panel.innerHTML = '<div class="tmdb-ms-hint">平台列表加载失败</div>';
+  }
+}
+
+/* ---- 流媒体平台多选 + Shift 范围选择 ---- */
+function toggleProviderDropdown(ev){
+  ev.stopPropagation();
+  var btn = document.getElementById('tmdbProviderBtn');
+  if(btn.disabled) return;
+  var panel = document.getElementById('tmdbProviderPanel');
+  var open = panel.style.display === 'block';
+  panel.style.display = open ? 'none' : 'block';
+  btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+}
+
+function closeProviderDropdown(){
+  var panel = document.getElementById('tmdbProviderPanel');
+  if(panel) panel.style.display = 'none';
+  var btn = document.getElementById('tmdbProviderBtn');
+  if(btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+function toggleProviderOption(el, ev){
+  ev.stopPropagation();
+  var idx = parseInt(el.dataset.idx, 10);
+  var pid = parseInt(el.dataset.pid, 10);
+  var selIdx = tmdbState.providers.indexOf(pid);
+  if(ev.shiftKey && tmdbState.providerAnchor >= 0 && tmdbState.providerAnchor !== idx){
+    // 以锚点为准，把锚点到当前项这一段统一设为“目标状态”
+    var a = Math.min(tmdbState.providerAnchor, idx);
+    var b = Math.max(tmdbState.providerAnchor, idx);
+    var targetOn = selIdx < 0; // 点击项当前未选 -> 整段选中；已选 -> 整段取消
+    for(var i=a;i<=b;i++){
+      var op = tmdbState.providersList[i];
+      if(!op) continue;
+      var oi = tmdbState.providers.indexOf(op.id);
+      if(targetOn && oi < 0) tmdbState.providers.push(op.id);
+      else if(!targetOn && oi >= 0) tmdbState.providers.splice(oi, 1);
+    }
+  }else{
+    // 普通 / Ctrl / Cmd 点击：切换单项并设为新锚点
+    if(selIdx < 0) tmdbState.providers.push(pid);
+    else tmdbState.providers.splice(selIdx, 1);
+    tmdbState.providerAnchor = idx;
+  }
+  renderProviderSelection();
+}
+
+function clearProviderSelection(ev){
+  if(ev) ev.stopPropagation();
+  tmdbState.providers = [];
+  tmdbState.providerAnchor = -1;
+  renderProviderSelection();
+}
+
+function renderProviderSelection(){
+  var options = document.querySelectorAll('#tmdbProviderPanel .tmdb-ms-option');
+  var selSet = {};
+  tmdbState.providers.forEach(function(id){ selSet[id] = true; });
+  options.forEach(function(o){
+    var pid = parseInt(o.dataset.pid, 10);
+    var on = !!selSet[pid];
+    o.classList.toggle('on', on);
+    o.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  updateProviderLabel();
+  if(tmdbState.list_type === 'discover'){
+    tmdbState.page = 1;
+    loadTmdbList();
+  }
+}
+
+function updateProviderLabel(){
+  var btn = document.getElementById('tmdbProviderBtn');
+  var label = document.getElementById('tmdbProviderLabel');
+  if(!btn || !label) return;
+  var n = tmdbState.providers.length;
+  if(!n){
+    label.textContent = '全部平台';
+    btn.classList.remove('has-sel');
+  }else{
+    label.textContent = '已选 ' + n + ' 个平台';
+    btn.classList.add('has-sel');
   }
 }
 
@@ -126,12 +236,13 @@ function onTmdbFilterChange(){
   document.getElementById('tmdbSort').disabled = !isDiscover;
   document.getElementById('tmdbMinRating').disabled = !isDiscover;
   document.getElementById('tmdbYear').disabled = !isDiscover;
-  document.getElementById('tmdbProvider').disabled = !isDiscover;
+  document.getElementById('tmdbProviderBtn').disabled = !isDiscover;
   if(isDiscover){
     // 进入 discover 或地区/分类切换时，刷新当前地区可用的流媒体平台列表
     loadTmdbProviders();
   }else{
-    document.getElementById('tmdbProvider').value = '';
+    clearProviderSelection();
+    closeProviderDropdown();
   }
   // 切换 media_type 时重新加载类型
   if(mt !== tmdbState.media_type){
@@ -153,7 +264,7 @@ async function loadTmdbList(){
   var minRating = parseFloat(document.getElementById('tmdbMinRating').value) || 0;
   var year = parseInt(document.getElementById('tmdbYear').value) || 0;
   var genreId = tmdbState.genre_id || 0;
-  var provider = document.getElementById('tmdbProvider').value || '';
+  var provider = tmdbState.providers.join(',');
 
   // 如果不是 discover，但用户选了类型/评分/年份，自动切换到 discover
   if(lt !== 'discover' && (genreId > 0 || minRating > 0 || year > 0)){

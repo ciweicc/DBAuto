@@ -136,9 +136,14 @@
               </div>
               <div class="tmdb-filter-group">
                 <label>流媒体平台</label>
-                <select class="tmdb-select" id="tmdbProvider" onchange="onTmdbFilterChange()" disabled>
-                  <option value="">全部平台</option>
-                </select>
+                <div class="tmdb-multiselect" id="tmdbProviderWrap">
+                  <button type="button" class="tmdb-select tmdb-ms-trigger" id="tmdbProviderBtn" disabled
+                          onclick="toggleProviderDropdown(event)" aria-haspopup="true" aria-expanded="false">
+                    <span id="tmdbProviderLabel">全部平台</span>
+                    <svg class="tmdb-ms-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                  <div class="tmdb-ms-panel" id="tmdbProviderPanel" style="display:none"></div>
+                </div>
               </div>
             </div>
 

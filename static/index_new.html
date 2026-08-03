@@ -676,6 +676,30 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 [data-theme="light"] .tmdb-select{background:rgba(0,0,0,.02)}
 .tmdb-select:hover{border-color:rgba(10,132,255,.3);color:var(--accent)}
 .tmdb-select:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.15)}
+/* 流媒体平台多选控件（支持 Shift 范围选择） */
+.tmdb-multiselect{position:relative;width:100%}
+.tmdb-ms-trigger{display:flex;align-items:center;justify-content:space-between;text-align:left;font-family:var(--font)}
+.tmdb-ms-trigger:disabled{opacity:.5;cursor:not-allowed}
+.tmdb-ms-trigger.has-sel{color:var(--accent);border-color:var(--accent)}
+.tmdb-ms-caret{flex-shrink:0;transition:transform var(--transition-fast)}
+.tmdb-ms-trigger[aria-expanded="true"] .tmdb-ms-caret{transform:rotate(180deg)}
+.tmdb-ms-panel{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:50;
+  background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);
+  box-shadow:0 8px 24px rgba(0,0,0,.18);max-height:260px;overflow-y:auto;padding:6px}
+.tmdb-ms-option{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:var(--radius-xs);
+  font-size:13px;color:var(--text);cursor:pointer;user-select:none;transition:background var(--transition-fast)}
+.tmdb-ms-option:hover{background:var(--card-2)}
+.tmdb-ms-option.range{background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.tmdb-ms-option .ms-check{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--border2);
+  flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;transition:all var(--transition-fast)}
+.tmdb-ms-option .ms-check svg{display:none}
+.tmdb-ms-option.on{color:var(--accent);font-weight:600}
+.tmdb-ms-option.on .ms-check{background:var(--accent);border-color:var(--accent)}
+.tmdb-ms-option.on .ms-check svg{display:block}
+.tmdb-ms-clear{font-size:12px;color:var(--text3);text-align:center;padding:6px;margin-top:4px;
+  border-top:1px solid var(--border);cursor:pointer}
+.tmdb-ms-clear:hover{color:var(--accent)}
+.tmdb-ms-hint{font-size:11px;color:var(--text3);padding:4px 9px 6px;line-height:1.4}
 .tmdb-genre-chips{display:flex;flex-wrap:wrap;gap:6px;max-height:200px;overflow-y:auto;padding:4px 0}
 .tmdb-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px}
 @media(max-width:1200px){.tmdb-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
@@ -867,9 +891,14 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
               </div>
               <div class="tmdb-filter-group">
                 <label>流媒体平台</label>
-                <select class="tmdb-select" id="tmdbProvider" onchange="onTmdbFilterChange()" disabled>
-                  <option value="">全部平台</option>
-                </select>
+                <div class="tmdb-multiselect" id="tmdbProviderWrap">
+                  <button type="button" class="tmdb-select tmdb-ms-trigger" id="tmdbProviderBtn" disabled
+                          onclick="toggleProviderDropdown(event)" aria-haspopup="true" aria-expanded="false">
+                    <span id="tmdbProviderLabel">全部平台</span>
+                    <svg class="tmdb-ms-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                  <div class="tmdb-ms-panel" id="tmdbProviderPanel" style="display:none"></div>
+                </div>
               </div>
             </div>
 
@@ -1208,7 +1237,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 
 <script>
 // ===== DBAuto frontend bundle =====
-// sha:abd4531
+// sha:1949012
 // 由 build.sh 拼接生成（模块化源文件合并为单文件）。
 // 注意：不使用 IIFE 包裹。页面大量使用内联 onclick/onchange 事件处理器，
 // 这些处理器在全局作用域查找被调用的函数；若包进 IIFE 会导致函数不可见、按钮点击失效。
@@ -2337,12 +2366,24 @@ var tmdbState = {
   genre_id: 0,
   items: [],
   selected: {},
+  providers: [],        // 已选流媒体平台 id 列表
+  providerAnchor: -1,   // Shift 范围选择的锚点索引
+  providersList: [],    // 当前地区可用的平台完整列表
   options: null,
   genres: [],
   initialized: false
 };
 
 async function initTmdbPage(){
+  // 点击页面其它区域或按 Esc 关闭平台下拉（仅绑定一次）
+  if(!tmdbState._outsideBound){
+    document.addEventListener('click', function(e){
+      if(e.key === 'Escape'){ closeProviderDropdown(); return; }
+      var wrap = document.getElementById('tmdbProviderWrap');
+      if(wrap && !wrap.contains(e.target)) closeProviderDropdown();
+    });
+    tmdbState._outsideBound = true;
+  }
   if(!tmdbState.initialized){
     // 加载选项
     try{
@@ -2419,15 +2460,113 @@ function toggleTmdbGenre(el){
 async function loadTmdbProviders(){
   var mt = document.getElementById('tmdbMediaType').value;
   var country = document.getElementById('tmdbRegion').value || 'US';
-  var sel = document.getElementById('tmdbProvider');
+  var panel = document.getElementById('tmdbProviderPanel');
   try{
     var d = await apiGet('/api/tmdb/providers?media_type='+mt+'&region='+country);
     var list = d.providers || [];
-    sel.innerHTML = '<option value="">全部平台</option>' + list.map(function(p){
-      return '<option value="'+p.id+'">'+esc(p.name)+'</option>';
+    tmdbState.providersList = list;
+    // 地区/分类切换后平台集合变化，清空已选并重置锚点
+    tmdbState.providers = [];
+    tmdbState.providerAnchor = -1;
+    if(!list.length){
+      panel.innerHTML = '<div class="tmdb-ms-hint">该地区暂无可用平台</div>';
+      updateProviderLabel();
+      return;
+    }
+    var html = list.map(function(p, i){
+      return '<div class="tmdb-ms-option" role="option" aria-selected="false" data-pid="'+p.id+'" data-idx="'+i+'" onclick="toggleProviderOption(this, event)">'
+        + '<span class="ms-check"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><polyline points="20 6 9 17 4 12"/></svg></span>'
+        + '<span class="ms-name">'+esc(p.name)+'</span></div>';
     }).join('');
+    html += '<div class="tmdb-ms-clear" onclick="clearProviderSelection(event)">清除全部选择</div>';
+    html += '<div class="tmdb-ms-hint">点击多选；按住 Shift 点选可批量选中一段</div>';
+    panel.innerHTML = html;
+    updateProviderLabel();
   }catch(e){
     console.error('TMDB providers error', e);
+    panel.innerHTML = '<div class="tmdb-ms-hint">平台列表加载失败</div>';
+  }
+}
+
+/* ---- 流媒体平台多选 + Shift 范围选择 ---- */
+function toggleProviderDropdown(ev){
+  ev.stopPropagation();
+  var btn = document.getElementById('tmdbProviderBtn');
+  if(btn.disabled) return;
+  var panel = document.getElementById('tmdbProviderPanel');
+  var open = panel.style.display === 'block';
+  panel.style.display = open ? 'none' : 'block';
+  btn.setAttribute('aria-expanded', open ? 'false' : 'true');
+}
+
+function closeProviderDropdown(){
+  var panel = document.getElementById('tmdbProviderPanel');
+  if(panel) panel.style.display = 'none';
+  var btn = document.getElementById('tmdbProviderBtn');
+  if(btn) btn.setAttribute('aria-expanded', 'false');
+}
+
+function toggleProviderOption(el, ev){
+  ev.stopPropagation();
+  var idx = parseInt(el.dataset.idx, 10);
+  var pid = parseInt(el.dataset.pid, 10);
+  var selIdx = tmdbState.providers.indexOf(pid);
+  if(ev.shiftKey && tmdbState.providerAnchor >= 0 && tmdbState.providerAnchor !== idx){
+    // 以锚点为准，把锚点到当前项这一段统一设为“目标状态”
+    var a = Math.min(tmdbState.providerAnchor, idx);
+    var b = Math.max(tmdbState.providerAnchor, idx);
+    var targetOn = selIdx < 0; // 点击项当前未选 -> 整段选中；已选 -> 整段取消
+    for(var i=a;i<=b;i++){
+      var op = tmdbState.providersList[i];
+      if(!op) continue;
+      var oi = tmdbState.providers.indexOf(op.id);
+      if(targetOn && oi < 0) tmdbState.providers.push(op.id);
+      else if(!targetOn && oi >= 0) tmdbState.providers.splice(oi, 1);
+    }
+  }else{
+    // 普通 / Ctrl / Cmd 点击：切换单项并设为新锚点
+    if(selIdx < 0) tmdbState.providers.push(pid);
+    else tmdbState.providers.splice(selIdx, 1);
+    tmdbState.providerAnchor = idx;
+  }
+  renderProviderSelection();
+}
+
+function clearProviderSelection(ev){
+  if(ev) ev.stopPropagation();
+  tmdbState.providers = [];
+  tmdbState.providerAnchor = -1;
+  renderProviderSelection();
+}
+
+function renderProviderSelection(){
+  var options = document.querySelectorAll('#tmdbProviderPanel .tmdb-ms-option');
+  var selSet = {};
+  tmdbState.providers.forEach(function(id){ selSet[id] = true; });
+  options.forEach(function(o){
+    var pid = parseInt(o.dataset.pid, 10);
+    var on = !!selSet[pid];
+    o.classList.toggle('on', on);
+    o.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  updateProviderLabel();
+  if(tmdbState.list_type === 'discover'){
+    tmdbState.page = 1;
+    loadTmdbList();
+  }
+}
+
+function updateProviderLabel(){
+  var btn = document.getElementById('tmdbProviderBtn');
+  var label = document.getElementById('tmdbProviderLabel');
+  if(!btn || !label) return;
+  var n = tmdbState.providers.length;
+  if(!n){
+    label.textContent = '全部平台';
+    btn.classList.remove('has-sel');
+  }else{
+    label.textContent = '已选 ' + n + ' 个平台';
+    btn.classList.add('has-sel');
   }
 }
 
@@ -2456,12 +2595,13 @@ function onTmdbFilterChange(){
   document.getElementById('tmdbSort').disabled = !isDiscover;
   document.getElementById('tmdbMinRating').disabled = !isDiscover;
   document.getElementById('tmdbYear').disabled = !isDiscover;
-  document.getElementById('tmdbProvider').disabled = !isDiscover;
+  document.getElementById('tmdbProviderBtn').disabled = !isDiscover;
   if(isDiscover){
     // 进入 discover 或地区/分类切换时，刷新当前地区可用的流媒体平台列表
     loadTmdbProviders();
   }else{
-    document.getElementById('tmdbProvider').value = '';
+    clearProviderSelection();
+    closeProviderDropdown();
   }
   // 切换 media_type 时重新加载类型
   if(mt !== tmdbState.media_type){
@@ -2483,7 +2623,7 @@ async function loadTmdbList(){
   var minRating = parseFloat(document.getElementById('tmdbMinRating').value) || 0;
   var year = parseInt(document.getElementById('tmdbYear').value) || 0;
   var genreId = tmdbState.genre_id || 0;
-  var provider = document.getElementById('tmdbProvider').value || '';
+  var provider = tmdbState.providers.join(',');
 
   // 如果不是 discover，但用户选了类型/评分/年份，自动切换到 discover
   if(lt !== 'discover' && (genreId > 0 || minRating > 0 || year > 0)){
