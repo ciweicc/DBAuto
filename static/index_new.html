@@ -195,7 +195,8 @@ body{
   border-bottom:1px solid var(--border);background:var(--bg);flex-shrink:0;
 }
 .topbar .side-toggle{display:none}
-.topbar .search-wrapper{flex:1;max-width:440px;min-width:0;width:100%;margin:0 auto}
+.topbar-start{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
+.topbar .search-wrapper{flex:1;max-width:440px;min-width:0;width:100%;margin:0}
 .topbar-actions{display:flex;align-items:center;gap:8px;flex-shrink:0}
 .content{
   flex:1;overflow-y:auto;padding:16px 20px;
@@ -623,7 +624,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   .log-panel.open{transform:none}
   .topbar .side-toggle{display:flex}
   .log-fab{display:flex}
-  .overlay-scrim{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:250;display:none}
+  .overlay-scrim{position:fixed;inset:0;background:rgba(0,0,0,.25);z-index:250;display:none}
   .overlay-scrim.show{display:block}
 }
 @media(max-width:640px){
@@ -662,6 +663,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 .search-toggle-btn{display:none}
 
 /* Light theme fixes */
+[data-theme="light"] .overlay-scrim{background:rgba(0,0,0,.18)}
 [data-theme="light"] .log-box{background:#f0f0f5;color:#333}
 [data-theme="light"] .log-box .ok{color:#0d8420}[data-theme="light"] .log-box .sk{color:#666}[data-theme="light"] .log-box .er{color:#d32f2f}[data-theme="light"] .log-box .inf{color:#0288d1}
 [data-theme="light"] ::-webkit-scrollbar-track{background:rgba(0,0,0,.03)}
@@ -814,15 +816,17 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   <!-- Main column -->
   <div class="main">
     <div class="topbar">
-      <button class="icon-btn side-toggle" onclick="toggleSidebar()" title="菜单" aria-label="菜单"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
-      <div class="search-wrapper">
-        <div class="search-box" id="searchBox" onclick="document.getElementById('searchInput').focus()">
-          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg>
-          <input type="text" id="searchInput" placeholder="搜索资源..." title="搜索资源（Ctrl/⌘ + K 聚焦）" oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()">
-          <button type="button" class="search-clear" aria-label="清除搜索" onclick="clearSearch()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg></button>
-        </div>
-        <div class="search-dropdown" id="searchDropdown">
-          <div id="searchResults"></div>
+      <div class="topbar-start">
+        <button class="icon-btn side-toggle" onclick="toggleSidebar()" title="菜单" aria-label="菜单"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+        <div class="search-wrapper">
+          <div class="search-box" id="searchBox" onclick="document.getElementById('searchInput').focus()">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg>
+            <input type="text" id="searchInput" placeholder="搜索资源..." title="搜索资源（Ctrl/⌘ + K 聚焦）" oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()">
+            <button type="button" class="search-clear" aria-label="清除搜索" onclick="clearSearch()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg></button>
+          </div>
+          <div class="search-dropdown" id="searchDropdown">
+            <div id="searchResults"></div>
+          </div>
         </div>
       </div>
       <div class="topbar-actions">
@@ -1237,7 +1241,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 
 <script>
 // ===== DBAuto frontend bundle =====
-// sha:1949012
+// sha:7a157a6
 // 由 build.sh 拼接生成（模块化源文件合并为单文件）。
 // 注意：不使用 IIFE 包裹。页面大量使用内联 onclick/onchange 事件处理器，
 // 这些处理器在全局作用域查找被调用的函数；若包进 IIFE 会导致函数不可见、按钮点击失效。

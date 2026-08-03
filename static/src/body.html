@@ -59,15 +59,17 @@
   <!-- Main column -->
   <div class="main">
     <div class="topbar">
-      <button class="icon-btn side-toggle" onclick="toggleSidebar()" title="菜单" aria-label="菜单"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
-      <div class="search-wrapper">
-        <div class="search-box" id="searchBox" onclick="document.getElementById('searchInput').focus()">
-          <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg>
-          <input type="text" id="searchInput" placeholder="搜索资源..." title="搜索资源（Ctrl/⌘ + K 聚焦）" oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()">
-          <button type="button" class="search-clear" aria-label="清除搜索" onclick="clearSearch()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg></button>
-        </div>
-        <div class="search-dropdown" id="searchDropdown">
-          <div id="searchResults"></div>
+      <div class="topbar-start">
+        <button class="icon-btn side-toggle" onclick="toggleSidebar()" title="菜单" aria-label="菜单"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+        <div class="search-wrapper">
+          <div class="search-box" id="searchBox" onclick="document.getElementById('searchInput').focus()">
+            <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg>
+            <input type="text" id="searchInput" placeholder="搜索资源..." title="搜索资源（Ctrl/⌘ + K 聚焦）" oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()">
+            <button type="button" class="search-clear" aria-label="清除搜索" onclick="clearSearch()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg></button>
+          </div>
+          <div class="search-dropdown" id="searchDropdown">
+            <div id="searchResults"></div>
+          </div>
         </div>
       </div>
       <div class="topbar-actions">
