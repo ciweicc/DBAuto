@@ -18,9 +18,11 @@ async function initTmdbPage(){
     try{
       var opts = await apiGet('/api/tmdb/options');
       tmdbState.options = opts;
-      // 填充地区
+      // 填充地区（国家）与语言
       var regionSel = document.getElementById('tmdbRegion');
-      regionSel.innerHTML = opts.regions.map(function(r){return '<option value="'+r.code+'">'+r.name+'</option>'}).join('');
+      regionSel.innerHTML = opts.countries.map(function(r){return '<option value="'+r.code+'">'+r.name+'</option>'}).join('');
+      var langSel = document.getElementById('tmdbLanguage');
+      if(langSel) langSel.innerHTML = opts.languages.map(function(l){return '<option value="'+l.code+'">'+l.name+'</option>'}).join('');
       // 填充列表类型
       updateTmdbListTypeOptions(opts.movie_list_types);
       tmdbState.initialized = true;
@@ -124,6 +126,7 @@ async function loadTmdbList(){
   var mt = document.getElementById('tmdbMediaType').value;
   var lt = document.getElementById('tmdbListType').value;
   var region = document.getElementById('tmdbRegion').value;
+  var language = document.getElementById('tmdbLanguage') ? document.getElementById('tmdbLanguage').value : '';
   var sort = document.getElementById('tmdbSort').value;
   var minRating = parseFloat(document.getElementById('tmdbMinRating').value) || 0;
   var year = parseInt(document.getElementById('tmdbYear').value) || 0;
@@ -148,7 +151,8 @@ async function loadTmdbList(){
     if(minRating) params += '&min_rating='+minRating;
     params += '&sort_by='+sort;
   }
-  if(region) params += '&region='+region;
+  if(region) params += '&country='+region;
+  if(language) params += '&language='+language;
 
   try{
     var d = await apiGet('/api/tmdb/list?'+params);

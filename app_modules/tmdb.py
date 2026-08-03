@@ -147,7 +147,7 @@ def _parse_item(item, media_type):
 
 
 def get_tmdb_list(media_type="movie", list_type="trending", page=1,
-                  genre_id=0, year=0, min_rating=0, region="",
+                  genre_id=0, year=0, min_rating=0, country="",
                   sort_by="popularity.desc", language=""):
     """获取 TMDB 列表
 
@@ -157,10 +157,11 @@ def get_tmdb_list(media_type="movie", list_type="trending", page=1,
         page: 页码
         genre_id: 类型 ID（用于 discover）
         year: 年份（用于 discover）
-        min_rating: 最低评分（用于 discover）
-        region: 地区/语言代码（如 zh, en, ja, ko）
+        min_rating: 最低评分（用于 discover，映射 vote_average.gte）
+        country: 地区/国家代码（ISO 3166-1，如 CN/US/JP）；
+                 discover 下映射 with_origin_country，now_playing/upcoming/on_the_air/airing_today 下映射 region
         sort_by: 排序方式
-        language: 语言代码（默认 zh-CN）
+        language: 原始语言代码（默认 zh-CN；discover 下映射 with_original_language）
     """
     api_key = _get_api_key()
     if not api_key:
@@ -192,18 +193,20 @@ def get_tmdb_list(media_type="movie", list_type="trending", page=1,
                 params["first_air_date_year"] = year
         if min_rating:
             params["vote_average.gte"] = min_rating
-        if region:
-            params["with_original_language"] = region
+        if country:
+            params["with_origin_country"] = country
+        if language:
+            params["with_original_language"] = language
         params["sort_by"] = sort_by
-        params["vote_count.gte"] = 50  # 过滤投票数太少的结果
     else:
         endpoints = _MOVIE_ENDPOINTS if media_type == "movie" else _TV_ENDPOINTS
         if list_type not in endpoints:
             log("TMDB: 未知列表类型 {}".format(list_type))
             return {"items": [], "total_pages": 0, "total_results": 0, "page": 1}
         endpoint = endpoints[list_type]
-        if region:
-            params["with_original_language"] = region
+        # region（国家码）仅对支持该参数的榜单生效（正在上映/即将上映/正在播出/今日播出）
+        if country and list_type in ("now_playing", "upcoming", "on_the_air", "airing_today"):
+            params["region"] = country
 
     try:
         data = _tmdb_request_with_failover(endpoint, params)
@@ -320,8 +323,8 @@ def search_tmdb_id(query, media_type="movie", year=0):
     return picked
 
 
-# 地区/语言选项
-REGION_OPTIONS = [
+# 原始语言选项（对应 TMDB with_original_language，ISO 639-1）
+LANGUAGE_OPTIONS = [
     {"code": "", "name": "全部"},
     {"code": "zh", "name": "华语"},
     {"code": "en", "name": "英语"},
@@ -334,12 +337,34 @@ REGION_OPTIONS = [
     {"code": "hi", "name": "印地语"},
 ]
 
-# 排序选项
+# 地区/国家选项（对应 TMDB region / with_origin_country，ISO 3166-1 alpha-2）
+COUNTRY_OPTIONS = [
+    {"code": "", "name": "全部"},
+    {"code": "CN", "name": "中国大陆"},
+    {"code": "HK", "name": "中国香港"},
+    {"code": "TW", "name": "中国台湾"},
+    {"code": "US", "name": "美国"},
+    {"code": "JP", "name": "日本"},
+    {"code": "KR", "name": "韩国"},
+    {"code": "GB", "name": "英国"},
+    {"code": "FR", "name": "法国"},
+    {"code": "DE", "name": "德国"},
+    {"code": "ES", "name": "西班牙"},
+    {"code": "TH", "name": "泰国"},
+    {"code": "IN", "name": "印度"},
+]
+
+# 排序选项（与 TMDB discover sort_by 对齐，含 asc/desc 及 revenue/original_title）
 SORT_OPTIONS = [
-    {"code": "popularity.desc", "name": "按热度"},
-    {"code": "vote_average.desc", "name": "按评分"},
-    {"code": "release_date.desc", "name": "按时间"},
-    {"code": "vote_count.desc", "name": "按投票数"},
+    {"code": "popularity.desc", "name": "热度(高→低)"},
+    {"code": "popularity.asc", "name": "热度(低→高)"},
+    {"code": "vote_average.desc", "name": "评分(高→低)"},
+    {"code": "vote_average.asc", "name": "评分(低→高)"},
+    {"code": "release_date.desc", "name": "时间(新→旧)"},
+    {"code": "release_date.asc", "name": "时间(旧→新)"},
+    {"code": "vote_count.desc", "name": "投票数(多→少)"},
+    {"code": "revenue.desc", "name": "票房(高→低)"},
+    {"code": "original_title.asc", "name": "标题(A→Z)"},
 ]
 
 # 列表类型选项

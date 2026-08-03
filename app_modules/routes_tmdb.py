@@ -1,7 +1,7 @@
 # routes_tmdb.py — TMDB 相关路由 Mixin
 from tmdb import (
     get_tmdb_list, get_tmdb_genres, refresh_tmdb_cache,
-    REGION_OPTIONS, SORT_OPTIONS, MOVIE_LIST_TYPES, TV_LIST_TYPES,
+    COUNTRY_OPTIONS, LANGUAGE_OPTIONS, SORT_OPTIONS, MOVIE_LIST_TYPES, TV_LIST_TYPES,
 )
 from utils import log
 from validator import validate_string
@@ -19,7 +19,7 @@ class TmdbRouteMixin:
             genre_id = int(params.get("genre_id", "0")) or 0
             year = int(params.get("year", "0")) or 0
             min_rating = float(params.get("min_rating", "0")) or 0
-            region = params.get("region", "")
+            country = params.get("country", "")
             sort_by = params.get("sort_by", "popularity.desc")
             language = params.get("language", "")
 
@@ -37,7 +37,7 @@ class TmdbRouteMixin:
                 result = get_tmdb_list(
                     media_type=media_type, list_type=list_type, page=page,
                     genre_id=genre_id, year=year, min_rating=min_rating,
-                    region=region, sort_by=sort_by, language=language)
+                    country=country, sort_by=sort_by, language=language)
                 self._send_json(result)
             except Exception as e:
                 log("TMDB list 错误: {}".format(e))
@@ -63,7 +63,8 @@ class TmdbRouteMixin:
 
         if route == "/api/tmdb/options":
             self._send_json({
-                "regions": REGION_OPTIONS,
+                "countries": COUNTRY_OPTIONS,
+                "languages": LANGUAGE_OPTIONS,
                 "sorts": SORT_OPTIONS,
                 "movie_list_types": MOVIE_LIST_TYPES,
                 "tv_list_types": TV_LIST_TYPES,
