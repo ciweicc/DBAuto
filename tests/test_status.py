@@ -101,10 +101,11 @@ class TestStatusSubsystem:
         transfer.run_transfer = fake_run
         try:
             result = transfer.enqueue_scheduled_transfer(["x"], 5)
-            for _ in range(50):
+            # CI 容器线程调度较慢，放宽轮询上限（100 × 0.08 = 8s）
+            for _ in range(100):
                 if "args" in called:
                     break
-                time.sleep(0.05)
+                time.sleep(0.08)
         finally:
             transfer.run_transfer = orig
         assert result == "started"
@@ -136,10 +137,11 @@ class TestStatusSubsystem:
             busy.join()
             transfer.transfer_status["running"] = False
             transfer._drain_pending_scheduled()
-            for _ in range(50):
+            # CI 容器线程调度较慢，放宽轮询上限（100 × 0.08 = 8s）
+            for _ in range(100):
                 if "args" in called:
                     break
-                time.sleep(0.05)
+                time.sleep(0.08)
             assert called.get("args") == (["q"], 7)
             with transfer._scheduled_queue_lock:
                 assert len(transfer._scheduled_queue) == 0

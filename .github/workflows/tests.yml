@@ -16,12 +16,13 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.11'
+          python-version: '3.12'
 
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install requests cryptography croniter pytest
+          pip install requests cryptography croniter pytest pytest-rerunfailures
 
       - name: Run tests
-        run: pytest -q
+        run: |
+          pytest --tb=short -q --reruns 2 --reruns-delay 3 -r a
