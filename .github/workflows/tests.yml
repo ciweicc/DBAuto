@@ -23,6 +23,18 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests cryptography croniter pytest pytest-rerunfailures
 
-      - name: Run tests
+      - name: Run tests (per-file isolation)
         run: |
-          pytest --tb=long -v --reruns 2 --reruns-delay 3 -r a
+          set -e
+          echo "=== Running pytest ==="
+          python -m pytest tests/ --tb=long -v --reruns 2 --reruns-delay 3 -r a \
+            2>&1 | tee test_output.txt
+          echo "=== Exit code: $? ==="
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-log
+          path: test_output.txt
+          retention-days: 7
