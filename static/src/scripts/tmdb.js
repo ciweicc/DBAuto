@@ -389,8 +389,7 @@ async function transferTmdbSelection(){
     }
   }
   if(!tasks.length){showToast('未找到选中项',false);return}
-  // 提前清空日志并切换 tab，避免 SSE 早期日志被竞态清除（日志面板常驻）
-  switchTab('manual');
+  // 清空日志（日志面板常驻，无需切换页面即可看到转存进度）
   logBefore=[]; document.getElementById('log').textContent='';
   addLog('[开始转存 TMDB 选中内容]');
   try{
