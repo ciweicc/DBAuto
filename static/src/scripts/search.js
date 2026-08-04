@@ -127,7 +127,10 @@ document.addEventListener('click',function(e){
 async function transferOne(btn){
   var title = btn.dataset.title;
   var url = btn.dataset.url;
-  var savepath = APP_PATHS.search||'/批量转存/手动搜索存';
+  // 用剧名作为壳文件夹，复用批量转存“savepath/剧名”的结构，保证转存后目录清晰、能正确显示剧名
+  var base = APP_PATHS.search||'/批量转存/手动搜索存';
+  var safe = (title||'').replace(/[\/\\:*?"<>|]/g,'').trim().slice(0,80);
+  var savepath = base + '/' + (safe || '未命名资源');
   btn.disabled=true; btn.textContent='转存中...';
   try{
     var r = await apiPost('/api/transfer_one',{title:title, shareurl:url, savepath:savepath});
