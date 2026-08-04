@@ -2829,7 +2829,7 @@ async function refreshTmdbCache(){
 
 // ===== module: search.js =====
 // ============ Search ============
-var searchTimer=null;var searchAbort=null;
+var searchTimer=null;var searchAbort=null;var searchCheckSeq=0;
 function toggleMobileSearch(){
   var w=document.querySelector('.search-wrapper');
   w.classList.toggle('mobile-show');
@@ -2894,6 +2894,8 @@ async function doSearch(){
       return;
     }
     el.textContent='';
+    var seq = ++searchCheckSeq;
+    var checkItems = [];
     d.results.forEach(function(r){
       var item = document.createElement('div');
       item.className = 'search-item';
@@ -2905,8 +2907,12 @@ async function doSearch(){
       var sourceDiv = document.createElement('div');
       sourceDiv.className = 'search-item-source';
       sourceDiv.textContent = r.source||'夸克网盘';
+      var badge = document.createElement('div');
+      badge.style.cssText = 'margin-top:3px;font-size:12px;color:var(--text3,#999)';
+      badge.textContent = '检测中…';
       infoDiv.appendChild(titleDiv);
       infoDiv.appendChild(sourceDiv);
+      infoDiv.appendChild(badge);
       var btn = document.createElement('button');
       btn.className = 'btn btn-sm btn-primary';
       btn.textContent = '转存';
@@ -2916,7 +2922,9 @@ async function doSearch(){
       item.appendChild(infoDiv);
       item.appendChild(btn);
       el.appendChild(item);
-    });}
+      if(r.url){ checkItems.push({url:r.url, badge:badge, btn:btn, seq:seq}); }
+    });
+    checkSearchLinks(checkItems);}
   catch(e){
     if(e.name==='AbortError')return;
     el.textContent='';
@@ -2956,6 +2964,40 @@ async function transferOne(btn){
     if(r.success){showToast('已提交转存: '+title,true); btn.textContent='已转存'; btn.className='btn btn-sm btn-outline'}
     else{showToast(r.message||'失败',false); btn.disabled=false; btn.textContent='转存'}
   }catch(e){showToast('请求失败',false); btn.disabled=false; btn.textContent='转存'}
+}
+
+// 搜索结果展示后，异步逐条检测链接有效性，用标记提示（先显示后检测，不打断搜索）
+async function checkSearchLinks(items){
+  if(!items || !items.length) return;
+  var CONC = 4;
+  for(var i=0;i<items.length;i+=CONC){
+    var batch = items.slice(i,i+CONC);
+    await Promise.all(batch.map(function(it){ return checkOneLink(it); }));
+  }
+}
+async function checkOneLink(it){
+  if(it.seq !== searchCheckSeq) return; // 已有新搜索，丢弃过期回调
+  try{
+    var d = await apiGet('/api/check_link?url='+encodeURIComponent(it.url), 1);
+    if(it.seq !== searchCheckSeq) return;
+    if(d.checked === false){
+      it.badge.textContent = '检测失败';
+      it.badge.style.color = 'var(--text3,#999)';
+    } else if(d.valid){
+      it.badge.textContent = '✓ 链接正常';
+      it.badge.style.color = 'var(--green,#1a9e5f)';
+    } else {
+      it.badge.textContent = '✗ 链接失效';
+      it.badge.style.color = 'var(--red,#e5484d)';
+      it.btn.disabled = true;
+      it.btn.textContent = '已失效';
+      it.btn.className = 'btn btn-sm btn-outline';
+    }
+  }catch(e){
+    if(it.seq !== searchCheckSeq) return;
+    it.badge.textContent = '检测失败';
+    it.badge.style.color = 'var(--text3,#999)';
+  }
 }
 
 
