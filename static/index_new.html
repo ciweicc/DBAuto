@@ -424,32 +424,32 @@ body{
   margin-top:4px;
 }
 .overview-schedule{
-  font-size:13px;
+  font-size:14px;
   font-weight:500;
   color:var(--text2);
-  line-height:1.5;
+  line-height:1.4;
   display:flex;
   flex-direction:column;
-  gap:2px;
+  gap:6px;
 }
 .overview-schedule-row{
-  display:flex;
+  display:grid;
+  grid-template-columns:18px auto 1fr;
   align-items:center;
-  justify-content:space-between;
-  gap:8px;
+  gap:6px 10px;
 }
+.overview-schedule-row > svg{width:14px;height:14px;opacity:.85;color:var(--text3)}
 .overview-schedule-row .task-name{
-  display:flex;
-  align-items:center;
-  gap:5px;
   color:var(--text3);
-  font-size:12px;
+  font-size:13px;
   white-space:nowrap;
 }
 .overview-schedule-row .task-time{
-  color:var(--text2);
+  color:var(--text);
   white-space:nowrap;
   font-variant-numeric:tabular-nums;
+  text-align:right;
+  font-weight:600;
 }
 .status-dot{
   width:8px;height:8px;border-radius:50%;background:var(--green);
@@ -1466,7 +1466,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 
 <script>
 // ===== DBAuto frontend bundle =====
-// sha:852cb30
+// sha:1d3c84c
 // 由 build.sh 拼接生成（模块化源文件合并为单文件）。
 // 注意：不使用 IIFE 包裹。页面大量使用内联 onclick/onchange 事件处理器，
 // 这些处理器在全局作用域查找被调用的函数；若包进 IIFE 会导致函数不可见、按钮点击失效。
@@ -3291,7 +3291,7 @@ function renderSchedule(s){
   el.textContent = '';
   var rows = [];
   if(s.transfer_next){
-    rows.push({icon:'#icon-transfer', name:'转存', time:s.transfer_next.slice(5)});
+    rows.push({icon:'#icon-cloud-download', name:'转存', time:s.transfer_next.slice(5)});
   }
   if(s.expired_check_next){
     rows.push({icon:'#icon-refresh', name:'检测', time:s.expired_check_next.slice(5)});
@@ -3303,7 +3303,7 @@ function renderSchedule(s){
   rows.forEach(function(r){
     var row = document.createElement('div');
     row.className = 'overview-schedule-row';
-    row.innerHTML = '<span class="task-name"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="'+r.icon+'"/></svg> '+esc(r.name)+'</span><span class="task-time">'+esc(r.time)+'</span>';
+    row.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="'+r.icon+'"/></svg><span class="task-name">'+esc(r.name)+'</span><span class="task-time">'+esc(r.time)+'</span>';
     el.appendChild(row);
   });
 }

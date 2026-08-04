@@ -70,7 +70,7 @@ function renderSchedule(s){
   el.textContent = '';
   var rows = [];
   if(s.transfer_next){
-    rows.push({icon:'#icon-transfer', name:'转存', time:s.transfer_next.slice(5)});
+    rows.push({icon:'#icon-cloud-download', name:'转存', time:s.transfer_next.slice(5)});
   }
   if(s.expired_check_next){
     rows.push({icon:'#icon-refresh', name:'检测', time:s.expired_check_next.slice(5)});
@@ -82,7 +82,7 @@ function renderSchedule(s){
   rows.forEach(function(r){
     var row = document.createElement('div');
     row.className = 'overview-schedule-row';
-    row.innerHTML = '<span class="task-name"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="'+r.icon+'"/></svg> '+esc(r.name)+'</span><span class="task-time">'+esc(r.time)+'</span>';
+    row.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="'+r.icon+'"/></svg><span class="task-name">'+esc(r.name)+'</span><span class="task-time">'+esc(r.time)+'</span>';
     el.appendChild(row);
   });
 }
