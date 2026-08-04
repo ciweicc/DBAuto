@@ -250,6 +250,14 @@ def validate_share_link(url):
         return False, str(e)
 
 def add_and_run(title, shareurl, savepath, pattern="", replace=""):
+    # 前置校验：失效链接直接返回，避免在网盘创建空目录
+    try:
+        ok, msg = validate_share_link(shareurl)
+        if not ok:
+            log("链接无效，跳过转存: {} ({})".format(shareurl, msg))
+            return {"status": "invalid", "msg": msg or "链接已失效"}
+    except Exception as e:
+        log("链接校验异常(放行): {}".format(e))
     client = _get_qas_client()
     add_res = client.add_task(title, shareurl, savepath, pattern, replace)
     if not add_res.get("success"):
@@ -786,7 +794,28 @@ def run_transfer(task_list, limit):
                 with transfer_lock:
                     transferred -= 1
                 return {"title": title, "status": "not_found", "msg": "not_found", "category": category}
-            chosen = sr[0]
+            # —— 过滤失效链接，避免转存空文件夹 ——
+            valid_sr = []
+            for item in sr:
+                u = item.get("url", "")
+                if not u:
+                    continue
+                try:
+                    ok, _msg = validate_share_link(u)
+                except Exception as e:
+                    log("链接校验异常(保守保留): {} ({})".format(u, e))
+                    ok = True
+                if ok:
+                    valid_sr.append(item)
+                else:
+                    log("跳过失效链接: {} -> {}".format(item.get("title", title), u))
+            if not valid_sr:
+                log("全部候选链接失效: {}".format(title))
+                with transfer_lock:
+                    transferred -= 1
+                return {"title": title, "status": "expired", "msg": "all_links_invalid", "category": category}
+
+            chosen = valid_sr[0]
             log("找到: {}".format(chosen.get("note", title)))
             pattern = VIDEO_SUB
             replace = TV_REPLACE if category == "tv" else ""
@@ -814,7 +843,7 @@ def run_transfer(task_list, limit):
                 with transfer_lock:
                     if r["status"] in ("ok", "done"):
                         transfer_status["stats"]["ok"] += 1
-                    elif r["status"] in ("skipped", "exists", "limit", "stopped"):
+                    elif r["status"] in ("skipped", "exists", "limit", "stopped", "not_found", "expired", "invalid"):
                         if r["status"] != "stopped":
                             transfer_status["stats"]["skipped"] += 1
                     elif r["status"] == "search_failed":
