@@ -3,7 +3,7 @@ from threading import Thread
 from config import CATEGORIES
 from douban import get_douban_list
 from transfer import (
-    transfer_status, transfer_lock, search_pansou,
+    transfer_status, transfer_lock, search_pansou, _get_qas_client,
     check_expired_tasks, update_expired_task, validate_share_link, fix_expired_tasks,
     run_transfer, add_and_run, transfer_one, VIDEO_SUB, TV_REPLACE, build_transfer_tasks,
     is_transfer_running, get_recent_tasks,
@@ -52,6 +52,27 @@ class TransferRouteMixin:
             except Exception as e:
                 log("搜索失败: {}".format(e))
                 self._send_json({"success": False, "message": str(e)}, 500)
+            return True
+
+        if route == "/api/check_link":
+            params = self._get_query_params()
+            url = params.get("url", "").strip()
+            ok, msg = validate_string(url, min_len=1, max_len=500, allow_empty=False)
+            if not ok:
+                self._send_json({"valid": False, "message": "url: {}".format(msg), "checked": False}, 400)
+                return True
+            try:
+                client = _get_qas_client()
+                r = client.get_share_detail(url)
+                valid = r.get("success", False)
+                self._send_json({
+                    "valid": valid,
+                    "message": r.get("message", "") or ("链接正常" if valid else "链接可能已经失效"),
+                    "checked": True,
+                })
+            except Exception as e:
+                log("链接检测异常: {}".format(e))
+                self._send_json({"valid": False, "message": "检测失败: {}".format(e), "checked": False})
             return True
 
         if route == "/api/check_expired":
