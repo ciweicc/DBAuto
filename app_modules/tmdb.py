@@ -1,7 +1,8 @@
 # tmdb.py — TMDB (The Movie Database) 官方 API 客户端
 import time
 import requests
-from threading import Lock
+from requests.adapters import HTTPAdapter
+from threading import Lock, Semaphore
 from utils import http_get, log
 from config import ConfigManager
 
@@ -17,8 +18,21 @@ _TMDB_CACHE_MAX = 50
 _TMDB_TIMEOUT = 8
 
 # 请求 session（复用连接池）
+# 放大连接池：默认 pool_maxsize=10，连续搜索时并发请求会把它耗尽，
+# 后续请求只能排队等连接释放 → 表现为「搜索卡住/无法搜索」。放大到 20 留足余量。
 _tmdb_session = requests.Session()
 _tmdb_session.headers.update({"Accept": "application/json"})
+_tmdb_adapter = HTTPAdapter(pool_connections=20, pool_maxsize=20, max_retries=0)
+_tmdb_session.mount("https://", _tmdb_adapter)
+_tmdb_session.mount("http://", _tmdb_adapter)
+
+# 并发上限：限制同时在飞的 TMDB 网络调用数量。
+# server.py 用 ThreadingMixIn（每连接一个线程、无上限），若不做限制，连续搜索时
+# 缓慢的 TMDB 请求（单请求最长 8s×3 地址 ≈ 24s）会堆积大量阻塞线程，
+# 既拖垮其它接口，又可能吃满内存触发 OOM 重启（重启后若 key 仅由环境变量注入则会变空，
+# 进而误报「未配置 TMDB API Key」）。信号量把在飞请求收敛到固定数量。
+_TMDB_MAX_CONCURRENCY = 4
+_tmdb_semaphore = Semaphore(_TMDB_MAX_CONCURRENCY)
 
 # 双地址自动切换（api.tmdb.org 短域名国内通常可访问）
 _TMDB_PRIMARY = "https://api.tmdb.org/3"
@@ -77,16 +91,19 @@ def _tmdb_request_with_failover(endpoint, params):
             ordered.append(c)
 
     last_err = None
-    for base in ordered:
-        url = "{}{}?{}".format(base, endpoint, qs)
-        try:
-            data = _tmdb_request(url, proxies=proxies)
-            _tmdb_current_url = base  # 成功，记录为当前优选地址
-            return data
-        except Exception as e:
-            last_err = e
-            host = url.split("?")[0]
-            log("TMDB 地址请求失败 {}: {}".format(host, e))
+    # 信号量限制在飞请求数：多余请求在此排队（仍占一个 server 线程，但网络调用被收敛），
+    # 既避免连接池耗尽，也避免无界线程堆积。
+    with _tmdb_semaphore:
+        for base in ordered:
+            url = "{}{}?{}".format(base, endpoint, qs)
+            try:
+                data = _tmdb_request(url, proxies=proxies)
+                _tmdb_current_url = base  # 成功，记录为当前优选地址
+                return data
+            except Exception as e:
+                last_err = e
+                host = url.split("?")[0]
+                log("TMDB 地址请求失败 {}: {}".format(host, e))
     raise last_err
 
 # 列表类型 → endpoint 映射
