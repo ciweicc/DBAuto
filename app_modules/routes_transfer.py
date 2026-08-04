@@ -77,7 +77,8 @@ class TransferRouteMixin:
             url = params.get("url", "").strip()
             ok, msg = validate_string(url, min_len=1, max_len=500, allow_empty=False)
             if not ok:
-                self._send_json({"state": "busy", "message": "url: {}".format(msg)}, 400)
+                # 非法 url 单独用 error 语义（与队列繁忙 busy 区分），前端据此渲染「链接无效」
+                self._send_json({"state": "error", "message": "url: {}".format(msg)}, 400)
                 return True
             r = link_check.enqueue(url)
             state = r.get("state")

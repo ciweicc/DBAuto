@@ -244,12 +244,13 @@ class TestLinkCheckRoute:
             else:
                 assert "task_id" in h.last
 
-    def test_check_link_invalid_url_returns_400_busy(self):
+    def test_check_link_invalid_url_returns_400_error(self):
+        # 非法 url 用独立的 error 语义（区别于队列繁忙 busy），前端据此渲染「链接无效」
         h = self._make_handler()
         h._params = {"url": ""}
         h._handle_transfer_get("/api/check_link")
         assert h.last_code == 400
-        assert h.last["state"] == "busy"
+        assert h.last["state"] == "error"
 
     def test_check_link_status_polls_to_done(self):
         fake = mock.MagicMock()
@@ -292,3 +293,64 @@ class TestLinkCheckRoute:
         h._handle_transfer_get("/api/check_link/status")
         assert h.last_code == 400
         assert h.last["state"] == "unknown"
+
+
+class TestLinkCheckHttpIntegration:
+    """D：HTTP 集成测试——起真实 ThreadedHTTPServer，经完整 HTTP 栈（含路由分发）打
+    /api/check_link 与 /api/check_link/status。auth/rate-limit 在测试中隔离，专注验证链接检测链路本身。"""
+
+    @classmethod
+    def setup_class(cls):
+        import threading
+        # QAS 真实调用用 mock 替换；auth 与 rate-limit 仅做测试隔离（不影响链接检测逻辑）
+        cls._qas = mock.patch(
+            "transfer._get_qas_client",
+            return_value=mock.MagicMock(get_share_detail=lambda u: {"success": True, "message": "ok"}),
+        )
+        cls._qas.start()
+        cls._auth = mock.patch("routes_auth._check_auth", return_value=True)
+        cls._auth.start()
+        cls._rl = mock.patch("routes._check_rate_limit", return_value=(True, None))
+        cls._rl.start()
+        from server import ThreadedHTTPServer
+        from routes import H
+        link_check.start_workers()
+        cls.server = ThreadedHTTPServer(("127.0.0.1", 0), H)
+        cls.port = cls.server.server_address[1]
+        cls._srv = threading.Thread(target=cls.server.serve_forever, daemon=True)
+        cls._srv.start()
+        cls.base = "http://127.0.0.1:{}/".format(cls.port)
+
+    @classmethod
+    def teardown_class(cls):
+        try:
+            cls.server.shutdown()
+            cls.server.server_close()
+        finally:
+            cls._qas.stop()
+            cls._auth.stop()
+            cls._rl.stop()
+
+    def test_check_link_then_poll_status_over_http(self):
+        r = requests.get(self.base + "api/check_link", params={"url": "http://http/1"}, timeout=10)
+        assert r.status_code == 200
+        body = r.json()
+        assert body["state"] in ("pending", "running", "done")
+        assert "task_id" in body
+        tid = body["task_id"]
+        done = None
+        for _ in range(80):
+            s = requests.get(self.base + "api/check_link/status", params={"task_id": tid}, timeout=10).json()
+            if s.get("state") == "done":
+                done = s
+                break
+            time.sleep(0.05)
+        assert done is not None, "经 HTTP 轮询应到达 done"
+        assert done["state"] == "done"
+        assert done["valid"] is True
+        assert done["checked"] is True
+
+    def test_check_link_invalid_url_returns_400_over_http(self):
+        r = requests.get(self.base + "api/check_link", params={"url": ""}, timeout=10)
+        assert r.status_code == 400
+        assert r.json()["state"] == "error"
