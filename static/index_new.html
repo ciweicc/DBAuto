@@ -659,8 +659,13 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   .search-wrapper{display:none}
   .search-wrapper.mobile-show{display:block;position:fixed;inset:0;z-index:200;background:var(--bg);padding:12px 14px}
   .search-toggle-btn{display:flex !important}
+  .search-wrapper.mobile-show .search-close{display:flex !important}
+  /* 移动全屏模式下下拉框已移入 .search-box，相对搜索框定位；抬高可用高度 */
+  .search-wrapper.mobile-show .search-dropdown{top:calc(100% + 8px);max-height:calc(100vh - 80px)}
 }
 .search-toggle-btn{display:none}
+.search-close{display:none;align-items:center;justify-content:center;width:30px;height:30px;border:none;background:transparent;color:var(--text2);padding:0;flex-shrink:0;cursor:pointer}
+.search-close:hover{color:var(--text)}
 
 /* Light theme fixes */
 [data-theme="light"] .overlay-scrim{background:rgba(0,0,0,.18)}
@@ -827,9 +832,10 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
             <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg>
             <input type="text" id="searchInput" placeholder="搜索资源..." title="搜索资源（Ctrl/⌘ + K 聚焦）" oninput="onSearchInput()" onkeydown="if(event.key==='Enter')doSearch()">
             <button type="button" class="search-clear" aria-label="清除搜索" onclick="clearSearch()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg></button>
-          </div>
-          <div class="search-dropdown" id="searchDropdown">
-            <div id="searchResults"></div>
+            <button type="button" class="search-close" aria-label="关闭搜索" onclick="toggleMobileSearch()"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg></button>
+            <div class="search-dropdown" id="searchDropdown">
+              <div id="searchResults"></div>
+            </div>
           </div>
         </div>
       </div>
