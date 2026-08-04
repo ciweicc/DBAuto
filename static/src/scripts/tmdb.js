@@ -358,7 +358,11 @@ function toggleTmdbCard(el, id){
 function updateTmdbSelBar(){
   var count = Object.keys(tmdbState.selected).length;
   document.getElementById('tmdbSelCount').textContent = '已选 '+count+' 部';
-  document.getElementById('tmdbSelBar').classList.toggle('active', count > 0);
+  var active = count > 0;
+  document.getElementById('tmdbSelBar').classList.toggle('active', active);
+  // 选中栏为 fixed 浮层，会遮挡底部内容（含分页按钮）；
+  // 选中时给页面预留底部空间，使「下一页」等可正常点击
+  document.getElementById('pageTmdb').classList.toggle('sel-active', active);
 }
 
 function clearTmdbSelection(){

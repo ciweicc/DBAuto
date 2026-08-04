@@ -748,6 +748,10 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 
 @media(max-width:1024px){.tmdb-sel-bar{left:0;right:0}}
 @media(max-width:640px){.tmdb-sel-bar{bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
+/* 选中栏为 fixed 浮层，会遮挡页面底部内容（含「下一页」分页按钮）；
+   选中时给页面预留底部空间，使分页与末行网格不被浮层覆盖 */
+#pageTmdb.sel-active{padding-bottom:96px}
+@media(max-width:640px){#pageTmdb.sel-active{padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))}}
 
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
@@ -1242,7 +1246,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 
 <script>
 // ===== DBAuto frontend bundle =====
-// sha:01789e9
+// sha:faee58a
 // 由 build.sh 拼接生成（模块化源文件合并为单文件）。
 // 注意：不使用 IIFE 包裹。页面大量使用内联 onclick/onchange 事件处理器，
 // 这些处理器在全局作用域查找被调用的函数；若包进 IIFE 会导致函数不可见、按钮点击失效。
@@ -2724,7 +2728,11 @@ function toggleTmdbCard(el, id){
 function updateTmdbSelBar(){
   var count = Object.keys(tmdbState.selected).length;
   document.getElementById('tmdbSelCount').textContent = '已选 '+count+' 部';
-  document.getElementById('tmdbSelBar').classList.toggle('active', count > 0);
+  var active = count > 0;
+  document.getElementById('tmdbSelBar').classList.toggle('active', active);
+  // 选中栏为 fixed 浮层，会遮挡底部内容（含分页按钮）；
+  // 选中时给页面预留底部空间，使「下一页」等可正常点击
+  document.getElementById('pageTmdb').classList.toggle('sel-active', active);
 }
 
 function clearTmdbSelection(){

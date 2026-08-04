@@ -614,6 +614,10 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 
 @media(max-width:1024px){.tmdb-sel-bar{left:0;right:0}}
 @media(max-width:640px){.tmdb-sel-bar{bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
+/* 选中栏为 fixed 浮层，会遮挡页面底部内容（含「下一页」分页按钮）；
+   选中时给页面预留底部空间，使分页与末行网格不被浮层覆盖 */
+#pageTmdb.sel-active{padding-bottom:96px}
+@media(max-width:640px){#pageTmdb.sel-active{padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))}}
 
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
