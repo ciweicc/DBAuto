@@ -353,30 +353,104 @@ body{
 .search-dropdown .search-item .search-item-source{font-size:11px;color:var(--text3);margin-top:2px}
 
 /* =========================================================
-   Dashboard
+   Overview (运行概览)
    ========================================================= */
-.dash{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
-.dcard{
-  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
-  padding:12px 14px;text-align:left;position:relative;overflow:hidden;
-  transition:border-color var(--transition-fast);
+.module-overview{margin-bottom:18px}
+.overview-grid{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:12px;
 }
-.dcard:hover{border-color:var(--border2)}
-.dcard-icon{
-  position:absolute; top:10px; right:10px;
-  width:30px; height:30px;
-  border-radius:8px;
-  display:flex; align-items:center; justify-content:center;
+.overview-card{
+  position:relative;
+  background:var(--card);
+  border:1px solid var(--glass-border);
+  border-radius:var(--radius);
+  padding:14px 16px;
+  min-height:96px;
+  display:flex;
+  flex-direction:column;
+  justify-content:space-between;
+  transition:border-color var(--transition-fast),transform var(--transition-fast),box-shadow var(--transition-fast);
+  overflow:hidden;
+}
+.overview-card:hover{
+  border-color:var(--border2);
+  transform:translateY(-1px);
+  box-shadow:0 8px 24px rgba(0,0,0,.12);
+}
+.overview-card__icon{
+  position:absolute;
+  top:12px;
+  right:12px;
+  width:32px;
+  height:32px;
+  border-radius:var(--radius-sm);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  color:var(--ov-icon-color,var(--accent));
+  background:color-mix(in srgb,var(--ov-icon-color,var(--accent)) 12%,transparent);
   pointer-events:none;
 }
-.dcard-icon svg{width:16px;height:16px}
-.dcard .num{font-size:22px;font-weight:700;color:var(--text);font-family:var(--font-display);
-  font-variant-numeric:tabular-nums;line-height:1.2;position:relative;z-index:1;
-  display:flex;align-items:center;gap:8px;
+.overview-card__icon svg{width:16px;height:16px}
+.overview-card__body{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  justify-content:flex-end;
+  height:100%;
+  padding-right:38px;
 }
-.dcard .lbl{font-size:12px;color:var(--text3);margin-top:6px;font-weight:500;position:relative;z-index:1}
-.dcard .num.green{color:var(--green)}.dcard .num.blue{color:var(--accent)}.dcard .num.red{color:var(--red)}
-.dcard .num.purple{color:var(--purple)}
+.overview-card__value{
+  font-size:26px;
+  font-weight:700;
+  color:var(--text);
+  font-family:var(--font-display);
+  font-variant-numeric:tabular-nums;
+  line-height:1.1;
+  display:flex;
+  align-items:center;
+  gap:8px;
+}
+.overview-card__value.blue{color:var(--accent)}
+.overview-card__value.green{color:var(--green)}
+.overview-card__value.red{color:var(--red)}
+.overview-card__value.orange{color:var(--orange)}
+.overview-card__label{
+  font-size:12px;
+  color:var(--text3);
+  font-weight:500;
+  margin-top:4px;
+}
+.overview-schedule{
+  font-size:13px;
+  font-weight:500;
+  color:var(--text2);
+  line-height:1.5;
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+}
+.overview-schedule-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+}
+.overview-schedule-row .task-name{
+  display:flex;
+  align-items:center;
+  gap:5px;
+  color:var(--text3);
+  font-size:12px;
+  white-space:nowrap;
+}
+.overview-schedule-row .task-time{
+  color:var(--text2);
+  white-space:nowrap;
+  font-variant-numeric:tabular-nums;
+}
 .status-dot{
   width:8px;height:8px;border-radius:50%;background:var(--green);
   box-shadow:0 0 6px rgba(48,209,88,.5);
@@ -385,24 +459,61 @@ body{
 .status-dot.red{background:var(--red);box-shadow:0 0 6px rgba(255,69,58,.5)}
 .status-dot.orange{background:var(--orange);box-shadow:0 0 6px rgba(255,159,10,.5)}
 @keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.6;transform:scale(1.2)}}
-.dcard-wide .num{font-size:13px;font-weight:500;color:var(--text2);line-height:1.6}
-.dcard-wide .num span{font-weight:600;font-size:inherit}
-.dcard-wide .num .ok{color:var(--green)}.dcard-wide .num .fail{color:var(--red)}
+.overview-card-wide{grid-column:1 / -1}
+.overview-chart-card{min-height:120px}
+.overview-chart-header{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin-bottom:10px;
+  padding-right:42px;
+}
+.overview-chart-title{
+  font-size:13px;
+  font-weight:600;
+  color:var(--text);
+}
+.overview-chart-summary{
+  font-size:12px;
+  color:var(--text2);
+  white-space:nowrap;
+}
+.overview-chart-summary .ok{color:var(--green);font-weight:600}
+.overview-chart-summary .fail{color:var(--red);font-weight:600}
+.overview-chart{
+  display:flex;
+  align-items:flex-end;
+  gap:6px;
+  height:56px;
+  margin-bottom:8px;
+}
+.overview-bar{
+  flex:1;
+  min-width:0;
+  border-radius:4px 4px 0 0;
+  opacity:.75;
+  transition:opacity var(--transition-fast),transform var(--transition-fast);
+  position:relative;
+}
+.overview-bar:hover{
+  opacity:1;
+  transform:scaleY(1.04);
+  transform-origin:bottom;
+}
+.overview-bar[title]{cursor:help}
+.overview-bar.empty{background:var(--text4)}
+.overview-bar.ok{background:var(--green)}
+.overview-bar.mixed{background:linear-gradient(180deg,var(--green),var(--orange))}
+.overview-bar.fail{background:var(--red)}
 
 /* 页面标题 + 设置页模块化网格 */
 .page-head{margin-bottom:18px}
 .page-head h1{margin:0 0 4px;font-size:20px;font-weight:700;font-family:var(--font-display);color:var(--text)}
 .page-head p{margin:0;font-size:13px;color:var(--text3);line-height:1.5}
-.module-overview{margin-bottom:18px}
 .settings-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-top:4px}
 .settings-grid .card{margin:0}
 .card.save-card{grid-column:1/-1;display:flex;align-items:center;padding:14px 18px}
-
-/* 近 7 天可视化：柱状图 + 成功率环形图 */
-.dash7-viz{display:flex;align-items:flex-end;gap:12px;margin:2px 0 12px}
-.dash7-chart{flex:1;display:flex;align-items:flex-end;gap:5px;height:44px;min-width:0}
-.dash7-bar{flex:1;min-width:0;border-radius:4px 4px 0 0;opacity:.6;background:var(--accent)}
-.dash7-bar:hover{opacity:1}
 
 /* =========================================================
    Card
@@ -467,6 +578,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 .btn-danger:hover{background:rgba(255,69,58,.2);border-color:rgba(255,69,58,.4)}
 .btn-outline{background:transparent;border:1px solid var(--border);color:var(--text2)}
 .btn-outline:hover{background:var(--card-2);border-color:var(--border2);color:var(--text)}
+.btn-icon{padding:6px;border-radius:var(--radius-sm);display:inline-flex;align-items:center;justify-content:center}
 .btn-dashed{border-style:dashed;border-color:var(--border3)}
 .btn-dashed:hover{background:rgba(10,132,255,.06);border-color:var(--accent);color:var(--accent)}
 .btn:disabled{opacity:.45;cursor:not-allowed;transform:none;filter:grayscale(.3)}
@@ -688,6 +800,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 }
 @media(max-width:1024px){
   .app{grid-template-columns:1fr}
+  .overview-grid{grid-template-columns:repeat(2,1fr)}
   .sidebar{position:fixed;left:0;top:0;bottom:0;z-index:300;transform:translateX(-100%);
     transition:transform var(--transition-normal);box-shadow:var(--shadow)}
   .sidebar.open{transform:none}
@@ -707,9 +820,10 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   .bottom-nav{display:block}
   .log-panel{width:100%;max-width:100%;top:auto;bottom:0;height:72vh;transform:translateY(100%);border-left:none;border-top:1px solid var(--border)}
   .log-panel.open{transform:none}
-  .dash{grid-template-columns:repeat(2,1fr);gap:10px}
-  .dcard .num{font-size:20px}
-  .dcard-wide{grid-column:1/-1}
+  .overview-grid{grid-template-columns:1fr;gap:10px}
+  .overview-card{min-height:88px;padding:12px 14px}
+  .overview-card__value{font-size:24px}
+  .overview-chart{height:48px}
   .card.grid-3{grid-template-columns:1fr}
   /* Touch target optimization */
   .chip{padding:10px 16px;min-height:42px;display:inline-flex;align-items:center}
@@ -1152,37 +1266,59 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
         </div>
 
         <!-- 运行概览（由概览页并入） -->
-        <div class="card module-overview">
-          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-dashboard"/></svg> 运行概览</div>
-          <div class="dash" id="dashSkeleton">
-            <div class="dcard"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
-            <div class="dcard"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
-            <div class="dcard"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
-            <div class="dcard dcard-wide"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:40%"></div></div>
+        <div class="card module-overview" id="overviewModule">
+          <div class="card-title" style="justify-content:space-between">
+            <div style="display:flex;align-items:center;gap:8px">
+              <svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-dashboard"/></svg>
+              运行概览
+            </div>
+            <button class="btn btn-sm btn-outline btn-icon" onclick="refreshOverview()" title="刷新概览" aria-label="刷新概览">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-refresh"/></svg>
+            </button>
           </div>
-          <div class="dash" id="dashContent" style="display:none">
-            <div class="dcard">
-              <div class="dcard-icon" style="background:color-mix(in srgb,var(--accent) 14%,transparent);color:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-download"/></svg></div>
-              <div class="num blue"><span id="dashToday">-</span></div>
-              <div class="lbl">今日转存</div>
-            </div>
-            <div class="dcard">
-              <div class="dcard-icon" style="background:color-mix(in srgb,var(--purple) 14%,transparent);color:var(--purple)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg></div>
-              <div class="num" style="font-size:13px;color:var(--text2);line-height:1.5;font-weight:500" id="dashNext">加载中...</div>
-              <div class="lbl">下次调度</div>
-            </div>
-            <div class="dcard">
-              <div class="dcard-icon" style="background:color-mix(in srgb,var(--green) 14%,transparent);color:var(--green)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg></div>
-              <div class="num" id="dashLastStatus" style="font-size:16px;gap:6px"><span class="status-dot" id="dashStatusDot" style="display:none"></span><span id="dashStatusText">-</span></div>
-              <div class="lbl" id="dashLastTime">上次转存</div>
-            </div>
-            <div class="dcard dcard-wide">
-              <div class="dcard-icon" style="background:color-mix(in srgb,var(--cyan) 14%,transparent);color:var(--cyan)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-trending-up"/></svg></div>
-              <div class="dash7-viz">
-                <div class="dash7-chart" id="dash7Chart"></div>
+
+          <!-- 骨架屏 -->
+          <div class="overview-grid" id="overviewSkeleton">
+            <div class="overview-card"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
+            <div class="overview-card"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
+            <div class="overview-card"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
+            <div class="overview-card overview-card-wide"><div class="skeleton" style="height:60px;margin-bottom:8px"></div><div class="skeleton-text" style="width:40%"></div></div>
+          </div>
+
+          <!-- 真实内容 -->
+          <div class="overview-grid" id="overviewContent" style="display:none">
+            <div class="overview-card">
+              <div class="overview-card__icon" id="ovTodayIcon" style="--ov-icon-color:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-download"/></svg></div>
+              <div class="overview-card__body">
+                <div class="overview-card__value blue" id="ovToday">-</div>
+                <div class="overview-card__label">今日转存</div>
               </div>
-              <div class="num"><span class="ok" id="dash7OK">0</span> 成功 / <span class="fail" id="dash7Fail">0</span> 失败</div>
-              <div class="lbl">近 7 天共 <span id="dash7Total" style="color:var(--text);font-weight:600">0</span> 次</div>
+            </div>
+
+            <div class="overview-card">
+              <div class="overview-card__icon" style="--ov-icon-color:var(--purple)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg></div>
+              <div class="overview-card__body">
+                <div class="overview-card__value overview-schedule" id="ovSchedule">加载中...</div>
+                <div class="overview-card__label">下次调度</div>
+              </div>
+            </div>
+
+            <div class="overview-card">
+              <div class="overview-card__icon" id="ovStatusIcon" style="--ov-icon-color:var(--green)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg></div>
+              <div class="overview-card__body">
+                <div class="overview-card__value" id="ovStatus"><span class="status-dot" id="ovStatusDot" style="display:none"></span><span id="ovStatusText">-</span></div>
+                <div class="overview-card__label" id="ovStatusTime">上次转存</div>
+              </div>
+            </div>
+
+            <div class="overview-card overview-card-wide overview-chart-card">
+              <div class="overview-card__icon" style="--ov-icon-color:var(--cyan)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-trending-up"/></svg></div>
+              <div class="overview-chart-header">
+                <div class="overview-chart-title">近 7 天趋势</div>
+                <div class="overview-chart-summary"><span class="ok" id="ovWeekOK">0</span> 成功 / <span class="fail" id="ovWeekFail">0</span> 失败</div>
+              </div>
+              <div class="overview-chart" id="ovChart"></div>
+              <div class="overview-card__label">近 7 天共 <span id="ovWeekTotal" style="color:var(--text);font-weight:600">0</span> 次</div>
             </div>
           </div>
         </div>
@@ -1330,7 +1466,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 
 <script>
 // ===== DBAuto frontend bundle =====
-// sha:538949d
+// sha:852cb30
 // 由 build.sh 拼接生成（模块化源文件合并为单文件）。
 // 注意：不使用 IIFE 包裹。页面大量使用内联 onclick/onchange 事件处理器，
 // 这些处理器在全局作用域查找被调用的函数；若包进 IIFE 会导致函数不可见、按钮点击失效。
@@ -3083,103 +3219,173 @@ async function checkOneLink(it){
 
 
 // ===== module: dashboard.js =====
-// ============ Dashboard ============
+// ============ Dashboard / 运行概览 ============
+// 状态管理：loading / data / error，所有子组件均从 state 派生渲染
+var dashboardState = { loading:true, data:null, error:null };
+
+/**
+ * 加载概览数据（入口）。保持函数名 loadDashboard 以兼容 init.js / SSE 调用。
+ */
 async function loadDashboard(){
   try{
+    dashboardState.loading = true;
     var d = await apiGet('/api/dashboard/all');
-    var s = d.schedule_status || {};
-    var dashNextEl = document.getElementById('dashNext');
-    dashNextEl.textContent = '';
-    var gridDiv = document.createElement('div');
-    gridDiv.style.cssText = 'display:grid;grid-template-columns:auto 1fr;gap:3px 10px;align-items:center';
-    if(s.transfer_next){
-      var tLabel = document.createElement('span');
-      tLabel.style.cssText = 'display:flex;align-items:center;gap:5px;white-space:nowrap;color:var(--text3);font-size:12px';
-      tLabel.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-transfer"/></svg> 转存';
-      var tVal = document.createElement('span');
-      tVal.style.cssText = 'text-align:right;color:var(--text2);white-space:nowrap;font-size:12px;font-weight:500';
-      tVal.textContent = s.transfer_next.slice(5);
-      gridDiv.appendChild(tLabel);
-      gridDiv.appendChild(tVal);
-    }
-    if(s.expired_check_next){
-      var eLabel = document.createElement('span');
-      eLabel.style.cssText = 'display:flex;align-items:center;gap:5px;white-space:nowrap;color:var(--text3);font-size:12px';
-      eLabel.innerHTML = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-refresh"/></svg> 检测';
-      var eVal = document.createElement('span');
-      eVal.style.cssText = 'text-align:right;color:var(--text2);white-space:nowrap;font-size:12px;font-weight:500';
-      eVal.textContent = s.expired_check_next.slice(5);
-      gridDiv.appendChild(eLabel);
-      gridDiv.appendChild(eVal);
-    }
-    if(s.transfer_next || s.expired_check_next){
-      dashNextEl.appendChild(gridDiv);
-    } else {
-      dashNextEl.textContent = '暂无调度';
-    }
-    var stats = d.stats || {};
-    var todayEl = document.getElementById('dashToday');
-    if(stats.today_count){animateNumber(todayEl,stats.today_count,800)}else{todayEl.textContent='-'}
-    animateNumber(document.getElementById('dash7OK'),stats.week_ok||0,900);
-    animateNumber(document.getElementById('dash7Fail'),stats.week_fail||0,900);
-    animateNumber(document.getElementById('dash7Total'),stats.week_total||0,1000);
-    renderDash7Viz(stats);
-    var dotEl = document.getElementById('dashStatusDot');
-    var textEl = document.getElementById('dashStatusText');
-    var timeEl = document.getElementById('dashLastTime');
-    if(stats.last_status && stats.last_status !== 'none'){
-      var statusMap={
-        'success':{text:'成功',dotClass:'status-dot',textColor:'color:var(--green)'},
-        'partial':{text:'部分成功',dotClass:'status-dot orange',textColor:'color:var(--orange)'},
-        'fail':{text:'失败',dotClass:'status-dot red',textColor:'color:var(--red)'},
-        'none':{text:'无新增',dotClass:'',textColor:''}
-      };
-      var st=statusMap[stats.last_status]||statusMap['none'];
-      dotEl.className = st.dotClass;
-      dotEl.style.display = st.dotClass ? 'inline-block' : 'none';
-      textEl.textContent = st.text;
-      textEl.style.cssText = st.textColor + ';font-size:16px;font-weight:600;font-family:var(--font-display)';
-      timeEl.textContent=stats.last_time?stats.last_time.slice(5,16):'上次转存';
-    }else{
-      dotEl.style.display='none';
-      textEl.textContent='-';
-      textEl.style.cssText='color:var(--text);font-size:16px;font-weight:600';
-      timeEl.textContent='上次转存';
-    }
+    dashboardState.data = d;
+    dashboardState.error = null;
+    renderOverview(d);
     if(d.version) document.getElementById('headerVersion').textContent='v'+d.version;
-  }catch(e){}
-  finally{
-    // 骨架屏 → 真实内容
-    var sk = document.getElementById('dashSkeleton');
-    var ct = document.getElementById('dashContent');
-    if(sk) sk.style.display = 'none';
-    if(ct) ct.style.display = 'grid';
+  }catch(e){
+    dashboardState.error = e;
+  }finally{
+    dashboardState.loading = false;
+    setOverviewSkeleton(false);
   }
 }
 
-// 近 7 天柱状图 + 成功率环形图
-function renderDash7Viz(stats){
-  var chartEl = document.getElementById('dash7Chart');
-  if(chartEl && stats.daily && stats.daily.length){
-    chartEl.textContent='';
-    var maxTotal = 1;
-    for(var i=0;i<stats.daily.length;i++){ if(stats.daily[i].total>maxTotal) maxTotal=stats.daily[i].total; }
-    for(var j=0;j<stats.daily.length;j++){
-      var d = stats.daily[j];
-      var bar = document.createElement('div');
-      bar.className='dash7-bar';
-      var h = Math.round(d.total/maxTotal*100);
-      bar.style.height = (h<5?5:h) + '%';
-      bar.title = d.date + '　成功 '+d.ok+' / 失败 '+d.fail;
-      if(d.ok===0 && d.fail>0) bar.style.background='var(--red)';
-      else if(d.fail>0) bar.style.background='linear-gradient(180deg,var(--green),var(--orange))';
-      else if(d.ok>0) bar.style.background='var(--green)';
-      else bar.style.background='var(--text4)';
-      chartEl.appendChild(bar);
+/**
+ * 手动刷新：显示骨架屏后重新拉取。
+ */
+function refreshOverview(){
+  setOverviewSkeleton(true);
+  loadDashboard();
+}
+
+/**
+ * 切换骨架屏与真实内容。
+ */
+function setOverviewSkeleton(show){
+  var sk = document.getElementById('overviewSkeleton');
+  var ct = document.getElementById('overviewContent');
+  if(sk) sk.style.display = show ? 'grid' : 'none';
+  if(ct) ct.style.display = show ? 'none' : 'grid';
+}
+
+/**
+ * 总渲染：将聚合数据分发给各子组件。
+ */
+function renderOverview(d){
+  var s = d.schedule_status || {};
+  var stats = d.stats || {};
+  renderToday(stats.today_count);
+  renderSchedule(s);
+  renderStatus(stats.last_status, stats.last_time);
+  renderWeekChart(stats);
+}
+
+/**
+ * 今日转存卡片。
+ */
+function renderToday(count){
+  var el = document.getElementById('ovToday');
+  if(!el) return;
+  if(count) animateNumber(el, count, 800);
+  else el.textContent = '-';
+}
+
+/**
+ * 下次调度卡片：转存 / 检测两行对齐展示。
+ */
+function renderSchedule(s){
+  var el = document.getElementById('ovSchedule');
+  if(!el) return;
+  el.textContent = '';
+  var rows = [];
+  if(s.transfer_next){
+    rows.push({icon:'#icon-transfer', name:'转存', time:s.transfer_next.slice(5)});
+  }
+  if(s.expired_check_next){
+    rows.push({icon:'#icon-refresh', name:'检测', time:s.expired_check_next.slice(5)});
+  }
+  if(!rows.length){
+    el.textContent = '暂无调度';
+    return;
+  }
+  rows.forEach(function(r){
+    var row = document.createElement('div');
+    row.className = 'overview-schedule-row';
+    row.innerHTML = '<span class="task-name"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="'+r.icon+'"/></svg> '+esc(r.name)+'</span><span class="task-time">'+esc(r.time)+'</span>';
+    el.appendChild(row);
+  });
+}
+
+/**
+ * 上次状态卡片：根据真实状态动态切换图标、颜色与文字。
+ */
+function renderStatus(status, time){
+  var dotEl = document.getElementById('ovStatusDot');
+  var textEl = document.getElementById('ovStatusText');
+  var timeEl = document.getElementById('ovStatusTime');
+  var iconEl = document.getElementById('ovStatusIcon');
+  if(!textEl) return;
+
+  var statusMap = {
+    'success': {text:'成功', dotClass:'status-dot', textColor:'green', icon:'#icon-check-circle', iconColor:'var(--green)'},
+    'partial': {text:'部分成功', dotClass:'status-dot orange', textColor:'orange', icon:'#icon-alert-circle', iconColor:'var(--orange)'},
+    'fail':    {text:'失败', dotClass:'status-dot red', textColor:'red', icon:'#icon-x-circle', iconColor:'var(--red)'},
+    'none':    {text:'无新增', dotClass:'', textColor:'', icon:'#icon-check-circle', iconColor:'var(--text3)'}
+  };
+  var st = statusMap[status] || statusMap['none'];
+
+  if(dotEl){
+    dotEl.className = st.dotClass;
+    dotEl.style.display = st.dotClass ? 'inline-block' : 'none';
+  }
+  textEl.textContent = st.text;
+  textEl.className = 'overview-card__value ' + st.textColor;
+  if(timeEl) timeEl.textContent = time ? '上次转存 '+time.slice(5,16) : '上次转存';
+  if(iconEl){
+    iconEl.style.setProperty('--ov-icon-color', st.iconColor);
+    iconEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="'+st.icon+'"/></svg>';
+  }
+}
+
+/**
+ * 近 7 天趋势卡片：柱状图 + 汇总数字。
+ */
+function renderWeekChart(stats){
+  var chartEl = document.getElementById('ovChart');
+  if(!chartEl) return;
+
+  animateNumber(document.getElementById('ovWeekOK'), stats.week_ok||0, 900);
+  animateNumber(document.getElementById('ovWeekFail'), stats.week_fail||0, 900);
+  animateNumber(document.getElementById('ovWeekTotal'), stats.week_total||0, 1000);
+
+  chartEl.textContent = '';
+  if(!stats.daily || !stats.daily.length){
+    for(var i=0;i<7;i++){
+      var emptyBar = document.createElement('div');
+      emptyBar.className = 'overview-bar empty';
+      emptyBar.style.height = '5%';
+      chartEl.appendChild(emptyBar);
     }
+    return;
   }
+
+  var maxTotal = 1;
+  stats.daily.forEach(function(d){ if(d.total>maxTotal) maxTotal=d.total; });
+
+  stats.daily.forEach(function(d){
+    var bar = document.createElement('div');
+    bar.className = 'overview-bar';
+    var h = Math.round(d.total/maxTotal*100);
+    bar.style.height = (h<5?5:h) + '%';
+    bar.title = d.date + '　成功 '+d.ok+' / 失败 '+d.fail;
+    if(d.total===0) bar.classList.add('empty');
+    else if(d.fail>0 && d.ok===0) bar.classList.add('fail');
+    else if(d.fail>0) bar.classList.add('mixed');
+    else bar.classList.add('ok');
+    chartEl.appendChild(bar);
+  });
 }
 
+/**
+ * 小工具：HTML 转义，防止调度时间等字符串注入。
+ */
+function esc(s){
+  return String(s).replace(/[&<>"']/g, function(c){
+    return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
+  });
+}
 
 // ===== module: init.js =====
 // ============ Init ============
