@@ -165,7 +165,9 @@ def _get_qas_client():
     cached_version = getattr(_qas_thread_local, "version", -1)
     if cached_version != _qas_client_version or not hasattr(_qas_thread_local, "client"):
         from api_client import QASClient
-        _qas_thread_local.client = QASClient(cfg.qas, cfg.qas_token, timeout=20)
+        # 链接检测/失效检测走 QAS get_share_detail，超时设置较短（10s），
+        # 避免单个慢调用长期占用服务器线程，导致 /api/search 与 /api/config 被饿死
+        _qas_thread_local.client = QASClient(cfg.qas, cfg.qas_token, timeout=10)
         _qas_thread_local.version = _qas_client_version
         with _qas_client_lock:
             log("QAS Client 创建，token 长度: {}".format(len(cfg.qas_token or "")))

@@ -1,5 +1,5 @@
 # routes_transfer.py — 转存、搜索、失效检测 路由 Mixin
-from threading import Thread
+from threading import Thread, Semaphore
 from config import CATEGORIES
 from douban import get_douban_list
 from transfer import (
@@ -11,6 +11,27 @@ from transfer import (
 from storage import load_history, save_history
 from utils import log, sse_broadcast, log_progress
 from validator import validate_string, validate_positive_int, validate_list, validate_task
+
+# 链接检测信号量：限制全服务的 /api/check_link 并发 QAS 调用数，
+# 防止手动搜索对每个结果做链接检测时，无界 ThreadedHTTPServer 线程被 QAS 阻塞调用占满，
+# 进而饿死 /api/search 与 /api/config（表现为页面无法搜索、并误报“未配置 TMDB API Key”）。
+_LINK_CHECK_MAX_CONCURRENCY = 3
+_LINK_CHECK_SEM = Semaphore(_LINK_CHECK_MAX_CONCURRENCY)
+_LINK_CHECK_ACQUIRE_TIMEOUT = 2.0  # 抢不到槽位就尽快返回“繁忙”，绝不堆积线程
+
+
+def _safe_check_link(url, client, wait=_LINK_CHECK_ACQUIRE_TIMEOUT):
+    """带并发上限的 QAS 链接检测。
+
+    返回 QAS 的原始结果字典；若抢不到槽位（服务繁忙）则返回一个带 busy 标记的降级结果，
+    调用方据此快速返回，避免占用服务器线程排队等待。
+    """
+    if not _LINK_CHECK_SEM.acquire(timeout=wait):
+        return {"success": False, "message": "检测繁忙，请稍后重试", "busy": True}
+    try:
+        return client.get_share_detail(url)
+    finally:
+        _LINK_CHECK_SEM.release()
 
 
 class TransferRouteMixin:
@@ -63,7 +84,11 @@ class TransferRouteMixin:
                 return True
             try:
                 client = _get_qas_client()
-                r = client.get_share_detail(url)
+                r = _safe_check_link(url, client)
+                if r.get("busy"):
+                    # 服务繁忙：尽快返回，不占用服务器线程排队，避免饿死搜索/配置接口
+                    self._send_json({"valid": False, "message": r.get("message", "检测繁忙，请稍后重试"), "checked": False})
+                    return True
                 valid = r.get("success", False)
                 self._send_json({
                     "valid": valid,

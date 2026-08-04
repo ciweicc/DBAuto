@@ -11,6 +11,7 @@ from unittest import mock
 
 from transfer import _clean_title, _core_title, _extract_meta, search_pansou
 from utils import _http_retryable, _http_backoff
+import routes_transfer
 
 
 class TestNormalizeTitles:
@@ -74,3 +75,59 @@ class TestSearchFailurePropagation:
             except RuntimeError as e:
                 assert "PanSou" in str(e)
                 assert "某电影" in str(e)
+
+
+class TestLinkCheckBackpressure:
+    """P3：手动搜索对每个结果做链接检测时，限制并发并快速返回“繁忙”，
+    避免无界 ThreadedHTTPServer 线程被 QAS 阻塞调用占满，饿死搜索/配置接口。"""
+
+    def test_busy_when_semaphore_full(self):
+        sem = routes_transfer._LINK_CHECK_SEM
+        # 占满全部槽位，模拟服务繁忙
+        held = [sem.acquire() for _ in range(routes_transfer._LINK_CHECK_MAX_CONCURRENCY)]
+        try:
+            fake_client = mock.MagicMock()
+            r = routes_transfer._safe_check_link("http://x", fake_client, wait=0.1)
+            assert r.get("busy") is True
+            assert "繁忙" in r.get("message", "")
+            # 繁忙时不应调用 QAS，避免继续堆积
+            fake_client.get_share_detail.assert_not_called()
+        finally:
+            for _ in held:
+                sem.release()
+
+    def test_normal_call_returns_qas_result_and_releases(self):
+        sem = routes_transfer._LINK_CHECK_SEM
+        before = sem.acquire()
+        try:
+            # 让初始状态只剩 2 个槽位，验证正常调用后可再次获取（信号量已释放）
+            assert sem.acquire()
+            sem.release()
+            fake_client = mock.MagicMock()
+            fake_client.get_share_detail.return_value = {"success": True, "message": "ok"}
+            r = routes_transfer._safe_check_link("http://x", fake_client, wait=1.0)
+            assert r == {"success": True, "message": "ok"}
+            fake_client.get_share_detail.assert_called_once_with("http://x")
+        finally:
+            sem.release()
+            if before:
+                sem.release()
+
+    def test_exception_releases_semaphore(self):
+        sem = routes_transfer._LINK_CHECK_SEM
+        # 确保调用前至少有 1 个可用槽位（调用会临时占满 1 个）
+        acquired_start = sem.acquire()
+        try:
+            fake_client = mock.MagicMock()
+            fake_client.get_share_detail.side_effect = RuntimeError("QAS 挂了")
+            try:
+                routes_transfer._safe_check_link("http://x", fake_client, wait=1.0)
+                assert False, "应当抛出"
+            except RuntimeError:
+                pass
+            # 异常后信号量必须已释放：应能立即再获取
+            assert sem.acquire(timeout=0.5)
+            sem.release()
+        finally:
+            if acquired_start:
+                sem.release()

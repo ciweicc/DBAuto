@@ -3000,10 +3000,14 @@ async function transferOne(btn){
 // 搜索结果展示后，异步逐条检测链接有效性，用标记提示（先显示后检测，不打断搜索）
 async function checkSearchLinks(items){
   if(!items || !items.length) return;
-  var CONC = 4;
+  var CONC = 3; // 与服务端链接检测信号量(_LINK_CHECK_MAX_CONCURRENCY=3)对齐，避免突发占满
   for(var i=0;i<items.length;i+=CONC){
     var batch = items.slice(i,i+CONC);
     await Promise.all(batch.map(function(it){ return checkOneLink(it); }));
+    if(i + CONC < items.length){
+      // 批次间短暂停顿，给服务端链接检测槽位留出释放窗口，避免连续搜索时堆积
+      await new Promise(function(r){ setTimeout(r, 200); });
+    }
   }
 }
 async function checkOneLink(it){
@@ -3012,8 +3016,14 @@ async function checkOneLink(it){
     var d = await apiGet('/api/check_link?url='+encodeURIComponent(it.url), 1);
     if(it.seq !== searchCheckSeq) return;
     if(d.checked === false){
-      it.badge.textContent = '检测失败';
-      it.badge.style.color = 'var(--text3,#999)';
+      var m = (d.message || '');
+      if(m.indexOf('繁忙') >= 0 || m.indexOf('稍后') >= 0){
+        it.badge.textContent = '稍后重试';
+        it.badge.style.color = 'var(--text3,#999)';
+      } else {
+        it.badge.textContent = '检测失败';
+        it.badge.style.color = 'var(--text3,#999)';
+      }
     } else if(d.valid){
       it.badge.textContent = '✓ 链接正常';
       it.badge.style.color = 'var(--green,#1a9e5f)';
