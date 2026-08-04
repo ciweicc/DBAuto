@@ -36,6 +36,9 @@
   <symbol id="icon-empty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
 </svg>
 
+<!-- Liquid glass background orbs (behind everything) -->
+<div class="liquid-bg" aria-hidden="true"><span></span><span></span><span></span></div>
+
 <!-- App shell: sidebar | content | log panel -->
 <div class="app">
 
@@ -444,7 +447,7 @@
       <span>TMDB</span>
     </div>
     <div class="nav-item" onclick="switchTab('manual')">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/><path d="m16 9-3-3-3 3"/><path d="m8 15-3 3 3-3"/></svg>
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>
       <span>转存</span>
     </div>
     <div class="nav-item" onclick="switchTab('schedule')">

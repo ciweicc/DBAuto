@@ -1,22 +1,31 @@
 /* ========================================
    DBAuto Design Tokens
    CSS Custom Properties for theming
-   Flat / Admin style — subdued solid surfaces, tight radius, no glow.
+   Liquid-glass admin style — frosted surfaces, brand gradient,
+   grid + drifting glow background. Shared token source for the
+   whole admin shell (consumed by main.css and bundled into index_new.html).
    ======================================== */
 
 :root {
-  /* Background */
+  /* Background (base, used as page backdrop & solid fallbacks) */
   --bg: #0d0d10;
   --bg-deep: #08080b;
 
-  /* Card (solid surfaces) */
-  --card: #16161a;
-  --card-2: #1c1c22;
+  /* Glass surfaces (translucent — frosted via backdrop-filter in main.css) */
+  --glass-bg: rgba(22, 23, 28, 0.55);
+  --glass-bg-strong: rgba(17, 18, 23, 0.74);
+  --glass-border: rgba(255, 255, 255, 0.14);
+  --glass-border-strong: rgba(255, 255, 255, 0.22);
+  --glass-hi: rgba(255, 255, 255, 0.16); /* inset top highlight for glass edges */
+
+  /* Card / Card-2 (semantic aliases → glass) */
+  --card: var(--glass-bg);
+  --card-2: var(--glass-bg-strong);
 
   /* Border (3 levels) */
-  --border: rgba(255, 255, 255, 0.08);
-  --border2: rgba(255, 255, 255, 0.12);
-  --border3: rgba(255, 255, 255, 0.18);
+  --border: rgba(255, 255, 255, 0.10);
+  --border2: rgba(255, 255, 255, 0.14);
+  --border3: rgba(255, 255, 255, 0.22);
 
   /* Text (4 levels) */
   --text: #f2f2f5;
@@ -49,21 +58,32 @@
   --status-skipped: var(--orange);
   --status-pending: var(--text3);
 
-  /* Border Radius (tight, admin style) */
+  /* Brand gradient (blue → purple) */
+  --gradient-brand: linear-gradient(135deg, var(--accent), var(--accent2));
+  --gradient-brand-hover: linear-gradient(135deg, color-mix(in srgb, var(--accent) 85%, #fff), color-mix(in srgb, var(--accent2) 85%, #fff));
+
+  /* Grid + glow background */
+  --grid-size: 40px;
+  --grid-line: rgba(255, 255, 255, 0.045);
+  --glow-1: #0a84ff;
+  --glow-2: #5e5ce6;
+  --glow-3: #64d2ff;
+
+  /* Border Radius */
   --radius: 8px;
   --radius-sm: 6px;
   --radius-xs: 4px;
   --radius-lg: 10px;
   --radius-xl: 12px;
 
-  /* Blur (disabled — flat surfaces) */
-  --blur: none;
-  --blur-xl: none;
+  /* Blur (liquid glass) */
+  --blur: blur(20px) saturate(160%);
+  --blur-xl: blur(30px) saturate(180%);
 
-  /* Shadow (minimal — no glow) */
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-sm: none;
-  --shadow-glow: none;
+  /* Shadow (soft, layered) */
+  --shadow: 0 10px 30px -12px rgba(0, 0, 0, 0.55);
+  --shadow-sm: 0 4px 14px -6px rgba(0, 0, 0, 0.45);
+  --shadow-glow: 0 10px 40px -12px rgba(10, 132, 255, 0.35);
 
   /* Font */
   --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "PingFang SC", "Microsoft YaHei", "Helvetica Neue", sans-serif;
@@ -99,11 +119,20 @@
 [data-theme="light"] {
   --bg: #f2f2f7;
   --bg-deep: #e6e6ec;
-  --card: #ffffff;
-  --card-2: #fafafc;
-  --border: rgba(0, 0, 0, 0.08);
-  --border2: rgba(0, 0, 0, 0.12);
-  --border3: rgba(0, 0, 0, 0.18);
+
+  /* Glass surfaces (lighter, multiply-blended orbs in main.css) */
+  --glass-bg: rgba(255, 255, 255, 0.55);
+  --glass-bg-strong: rgba(255, 255, 255, 0.78);
+  --glass-border: rgba(255, 255, 255, 0.65);
+  --glass-border-strong: rgba(255, 255, 255, 0.9);
+  --glass-hi: rgba(255, 255, 255, 0.7);
+
+  --card: var(--glass-bg);
+  --card-2: var(--glass-bg-strong);
+
+  --border: rgba(0, 0, 0, 0.10);
+  --border2: rgba(0, 0, 0, 0.14);
+  --border3: rgba(0, 0, 0, 0.22);
   --text: #1c1c1e;
   --text2: rgba(0, 0, 0, 0.55);
   --text3: rgba(0, 0, 0, 0.5);
@@ -116,7 +145,13 @@
   --orange: #ff9500;
   --purple: #af52de;
   --cyan: #00a3ff;
-  --shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-  --shadow-sm: none;
-  --shadow-glow: none;
+
+  --grid-line: rgba(0, 0, 0, 0.045);
+  --glow-1: #007aff;
+  --glow-2: #5856d6;
+  --glow-3: #00a3ff;
+
+  --shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.22);
+  --shadow-sm: 0 4px 14px -8px rgba(0, 0, 0, 0.18);
+  --shadow-glow: 0 10px 40px -14px rgba(0, 122, 255, 0.28);
 }
