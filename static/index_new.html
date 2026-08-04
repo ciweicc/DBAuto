@@ -3025,8 +3025,10 @@ function applyCheckResult(it, d){
 async function checkOneLink(it){
   if(it.seq !== searchCheckSeq) return; // 已有新搜索，丢弃过期回调
   try{
+    it.badge.textContent = '检测中…'; it.badge.style.color = 'var(--text3,#999)';
     var d = await apiGet('/api/check_link?url='+encodeURIComponent(it.url), 1);
     if(it.seq !== searchCheckSeq) return;
+    if(!d || !d.state){ it.badge.textContent = '检测失败'; it.badge.style.color = 'var(--text3,#999)'; return; }
     if(d.state === 'busy'){
       it.badge.textContent = '稍后重试'; it.badge.style.color = 'var(--text3,#999)';
       return;
@@ -3035,20 +3037,26 @@ async function checkOneLink(it){
       applyCheckResult(it, d);
       return;
     }
-    // pending / running -> 轮询状态（带 seq 守卫，过期搜索直接丢弃）
     var tid = d.task_id;
     if(!tid){ it.badge.textContent = '检测失败'; it.badge.style.color = 'var(--text3,#999)'; return; }
-    for(var k=0;k<40;k++){
+    // pending / running -> 持续轮询，直到 done / unknown / 异常。
+    // 关键修复：一次搜索若返回多条结果，队尾任务需排队；队列深时可能需数十秒甚至上百秒
+    // （例如 32 条结果 ≈ 100s）才轮到执行，因此【不设 20s 硬上限】，否则会误报「检测超时」。
+    // 仅保留足够大的安全上限（240*500ms≈120s）防死循环；到顶仍 pending 也不误标为失败。
+    var MAX_POLL = 240;
+    for(var k=0;k<MAX_POLL;k++){
       if(it.seq !== searchCheckSeq) return;
       await new Promise(function(r){ setTimeout(r, 500); });
       if(it.seq !== searchCheckSeq) return;
       var s = await apiGet('/api/check_link/status?task_id='+encodeURIComponent(tid), 1);
       if(it.seq !== searchCheckSeq) return;
+      if(!s || !s.state){ it.badge.textContent = '检测失败'; it.badge.style.color = 'var(--text3,#999)'; return; }
       if(s.state === 'done'){ applyCheckResult(it, s); return; }
       if(s.state === 'unknown'){ it.badge.textContent = '检测失败'; it.badge.style.color = 'var(--text3,#999)'; return; }
       // 仍 pending / running -> 继续轮询
     }
-    it.badge.textContent = '检测超时'; it.badge.style.color = 'var(--text3,#999)';
+    // 安全上限到达仍在进行（极罕见，通常是 worker 异常）：保留「检测中」状态，不误报「超时失败」
+    it.badge.textContent = '检测中…'; it.badge.style.color = 'var(--text3,#999)';
   }catch(e){
     if(it.seq !== searchCheckSeq) return;
     it.badge.textContent = '检测失败'; it.badge.style.color = 'var(--text3,#999)';

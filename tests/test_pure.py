@@ -3,6 +3,7 @@ import sys
 import tempfile
 import time
 import queue
+import threading
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app_modules"))
 os.environ["DATA_DIR"] = tempfile.mkdtemp()
@@ -117,3 +118,177 @@ class TestLinkCheckQueue:
 
     def test_unknown_for_missing_task(self):
         assert link_check.get_status("nonexistent-task-id")["state"] == "unknown"
+
+    def test_concurrent_same_url_dedup(self):
+        # 同一 URL 在 pending 期间重复 enqueue：返回同一 task_id，且只打一次 QAS
+        fake = mock.MagicMock()
+        fake.get_share_detail.return_value = {"success": True, "message": "ok"}
+        with mock.patch("transfer._get_qas_client", return_value=fake):
+            link_check.start_workers()
+            url = "http://dedup/1"
+            r1 = link_check.enqueue(url)
+            assert r1["state"] in ("pending", "running", "done")
+            r2 = link_check.enqueue(url)  # 重复提交
+            assert r2["task_id"] == r1["task_id"]
+            # 轮询到 done
+            s = None
+            for _ in range(60):
+                s = link_check.get_status(r1["task_id"])
+                if s["state"] == "done":
+                    break
+                time.sleep(0.05)
+            assert s["state"] == "done"
+            assert fake.get_share_detail.call_count == 1  # 去重生效，只一次
+
+    def test_running_state_visible(self):
+        # worker 执行期间状态应为 running（用慢 QAS 放大窗口，紧密轮询捕捉）
+        release = threading.Event()
+        fake = mock.MagicMock()
+        def _slow(*a, **k):
+            release.wait(5)
+            return {"success": True, "message": "ok"}
+        fake.get_share_detail.side_effect = _slow
+        with mock.patch("transfer._get_qas_client", return_value=fake):
+            link_check.start_workers()
+            r = link_check.enqueue("http://running/1")
+            tid = r["task_id"]
+            observed = set()
+            # 紧密轮询捕捉 running 态（最多 ~2s）
+            for _ in range(400):
+                st = link_check.get_status(tid)["state"]
+                observed.add(st)
+                if st == "done":
+                    break
+                time.sleep(0.005)
+            release.set()
+            assert "running" in observed, "应观察到 running 态，实际: {}".format(observed)
+
+    def test_real_queue_full_busy(self):
+        # 真实路径：直接灌满底层队列（不 mock put），再 enqueue 触发 queue.Full -> busy
+        for i in range(link_check._LINK_QUEUE_MAX):
+            link_check._q.put("http://fill/%d" % i, block=False)
+        try:
+            r = link_check.enqueue("http://overflow-unique")
+            assert r["state"] == "busy"
+            assert "task_id" not in r
+            # 未留下僵尸 pending 条目
+            assert link_check.get_status(link_check._task_id("http://overflow-unique"))["state"] == "unknown"
+        finally:
+            # 排空队列，避免 worker 拿到无对应 _store 的 dummy（worker 会安全跳过）
+            while not link_check._q.empty():
+                try:
+                    link_check._q.get_nowait()
+                except Exception:
+                    pass
+
+    def test_sweeper_cleans_expired(self):
+        # 真实 sweeper 线程：过期任务（ts 旧 + TTL=0）应被清理（含 _url_index 回收）
+        fake = mock.MagicMock()
+        fake.get_share_detail.return_value = {"success": True, "message": "ok"}
+        with mock.patch("transfer._get_qas_client", return_value=fake):
+            r = link_check.enqueue("http://sweep/1")
+            tid = r["task_id"]
+            for _ in range(60):
+                if link_check.get_status(tid)["state"] == "done":
+                    break
+                time.sleep(0.05)
+            with link_check._lock:
+                link_check._store[tid]["ts"] = 0  # 标记为过期
+            old_int, old_ttl = link_check._LINK_SWEEP_INTERVAL, link_check._LINK_TASK_TTL
+            link_check._LINK_SWEEP_INTERVAL = 0
+            link_check._LINK_TASK_TTL = 0
+            orig_sleep = link_check.time.sleep
+            link_check.time.sleep = lambda *a, **k: None  # 让 sweeper 立即跑一次清理
+            try:
+                threading.Thread(target=link_check._sweeper_loop, daemon=True).start()
+                time.sleep(0.1)  # 等 sweeper 执行一轮
+                with link_check._lock:
+                    assert tid not in link_check._store
+                    assert "http://sweep/1" not in link_check._url_index
+            finally:
+                link_check.time.sleep = orig_sleep
+                link_check._LINK_SWEEP_INTERVAL = old_int
+                link_check._LINK_TASK_TTL = old_ttl
+
+
+class TestLinkCheckRoute:
+    """B：路由层契约测试——/api/check_link(入队) 与 /api/check_link/status(轮询) 的响应形状。
+    此前提交套件未覆盖这两条路由，本类用 TransferRouteMixin + fake _send_json 断言响应契约。"""
+
+    def _make_handler(self):
+        class H(routes_transfer.TransferRouteMixin):
+            def _get_query_params(self):
+                return self._params
+            def _send_json(self, obj, code=200):
+                self.last_code = code
+                self.last = obj
+        h = H()
+        h.last = None
+        h.last_code = None
+        return h
+
+    def test_check_link_enqueue_shape(self):
+        fake = mock.MagicMock()
+        fake.get_share_detail.return_value = {"success": True, "message": "ok"}
+        with mock.patch("transfer._get_qas_client", return_value=fake):
+            link_check.start_workers()
+            h = self._make_handler()
+            h._params = {"url": "http://route/1"}
+            h._handle_transfer_get("/api/check_link")
+            assert h.last_code == 200
+            assert "state" in h.last
+            assert h.last["state"] in ("pending", "running", "done")
+            if h.last["state"] == "done":
+                assert h.last["valid"] is True
+                assert h.last["checked"] is True
+            else:
+                assert "task_id" in h.last
+
+    def test_check_link_invalid_url_returns_400_busy(self):
+        h = self._make_handler()
+        h._params = {"url": ""}
+        h._handle_transfer_get("/api/check_link")
+        assert h.last_code == 400
+        assert h.last["state"] == "busy"
+
+    def test_check_link_status_polls_to_done(self):
+        fake = mock.MagicMock()
+        fake.get_share_detail.return_value = {"success": True, "message": "ok"}
+        with mock.patch("transfer._get_qas_client", return_value=fake):
+            link_check.start_workers()
+            h = self._make_handler()
+            h._params = {"url": "http://route/2"}
+            h._handle_transfer_get("/api/check_link")
+            tid = h.last.get("task_id")
+            assert tid
+            out = None
+            for _ in range(60):
+                hh = self._make_handler()
+                hh._params = {"task_id": tid}
+                hh._handle_transfer_get("/api/check_link/status")
+                if hh.last.get("state") == "done":
+                    out = hh.last
+                    break
+                time.sleep(0.05)
+            assert out is not None, "status 轮询应到达 done"
+            assert out["state"] == "done"
+            assert out["valid"] is True
+            assert out["checked"] is True
+            # _check_payload 透传 QAS 原始 message（为空时才回退到「链接正常」）
+            assert out["message"] == "ok"
+
+    def test_check_link_status_unknown_returns_state_unknown(self):
+        # 合法格式但不存在/已过期的 task_id：返回 200 + {state:"unknown"}
+        # （400 仅用于畸形/空 task_id，见下一条）
+        h = self._make_handler()
+        h._params = {"task_id": "does-not-exist"}
+        h._handle_transfer_get("/api/check_link/status")
+        assert h.last_code == 200
+        assert h.last["state"] == "unknown"
+
+    def test_check_link_status_invalid_tid_returns_400(self):
+        h = self._make_handler()
+        h._params = {"task_id": ""}
+        h._handle_transfer_get("/api/check_link/status")
+        assert h.last_code == 400
+        assert h.last["state"] == "unknown"
