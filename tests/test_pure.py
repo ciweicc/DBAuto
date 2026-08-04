@@ -1,6 +1,8 @@
 import os
 import sys
 import tempfile
+import time
+import queue
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "app_modules"))
 os.environ["DATA_DIR"] = tempfile.mkdtemp()
@@ -12,6 +14,7 @@ from unittest import mock
 from transfer import _clean_title, _core_title, _extract_meta, search_pansou
 from utils import _http_retryable, _http_backoff
 import routes_transfer
+import link_check
 
 
 class TestNormalizeTitles:
@@ -77,57 +80,40 @@ class TestSearchFailurePropagation:
                 assert "某电影" in str(e)
 
 
-class TestLinkCheckBackpressure:
-    """P3：手动搜索对每个结果做链接检测时，限制并发并快速返回“繁忙”，
-    避免无界 ThreadedHTTPServer 线程被 QAS 阻塞调用占满，饿死搜索/配置接口。"""
+class TestLinkCheckQueue:
+    """P3：链接检测异步队列——请求线程零占用，并发由 worker 池限定，
+    从架构上根除「无界 ThreadedHTTPServer 线程被 QAS 占满 → 饿死搜索/配置接口」的链路。"""
 
-    def test_busy_when_semaphore_full(self):
-        sem = routes_transfer._LINK_CHECK_SEM
-        # 占满全部槽位，模拟服务繁忙
-        held = [sem.acquire() for _ in range(routes_transfer._LINK_CHECK_MAX_CONCURRENCY)]
-        try:
-            fake_client = mock.MagicMock()
-            r = routes_transfer._safe_check_link("http://x", fake_client, wait=0.1)
-            assert r.get("busy") is True
-            assert "繁忙" in r.get("message", "")
-            # 繁忙时不应调用 QAS，避免继续堆积
-            fake_client.get_share_detail.assert_not_called()
-        finally:
-            for _ in held:
-                sem.release()
+    def test_busy_when_queue_full(self):
+        # 模拟队列已满：put 抛 Full -> enqueue 返回 busy，且不留僵尸任务
+        with mock.patch.object(link_check._q, "put", side_effect=queue.Full):
+            r = link_check.enqueue("http://x")
+            assert r["state"] == "busy"
+            assert "task_id" not in r
+            # 不应残留 pending 僵尸条目
+            assert link_check.get_status(link_check._task_id("http://x"))["state"] == "unknown"
 
-    def test_normal_call_returns_qas_result_and_releases(self):
-        sem = routes_transfer._LINK_CHECK_SEM
-        before = sem.acquire()
-        try:
-            # 让初始状态只剩 2 个槽位，验证正常调用后可再次获取（信号量已释放）
-            assert sem.acquire()
-            sem.release()
-            fake_client = mock.MagicMock()
-            fake_client.get_share_detail.return_value = {"success": True, "message": "ok"}
-            r = routes_transfer._safe_check_link("http://x", fake_client, wait=1.0)
-            assert r == {"success": True, "message": "ok"}
-            fake_client.get_share_detail.assert_called_once_with("http://x")
-        finally:
-            sem.release()
-            if before:
-                sem.release()
+    def test_done_via_worker_and_cache(self):
+        fake = mock.MagicMock()
+        fake.get_share_detail.return_value = {"success": True, "message": "ok"}
+        with mock.patch("transfer._get_qas_client", return_value=fake):
+            link_check.start_workers()
+            r = link_check.enqueue("http://a")
+            assert r["state"] in ("pending", "running", "done")
+            tid = r["task_id"]
+            # 轮询直到 done
+            s = None
+            for _ in range(60):
+                s = link_check.get_status(tid)
+                if s["state"] == "done":
+                    break
+                time.sleep(0.05)
+            assert s["state"] == "done"
+            assert s["result"]["success"] is True
+            # 再次 enqueue 同 url -> 命中缓存（不重复打 QAS）
+            r2 = link_check.enqueue("http://a")
+            assert r2["state"] == "done"
+            assert fake.get_share_detail.call_count == 1
 
-    def test_exception_releases_semaphore(self):
-        sem = routes_transfer._LINK_CHECK_SEM
-        # 确保调用前至少有 1 个可用槽位（调用会临时占满 1 个）
-        acquired_start = sem.acquire()
-        try:
-            fake_client = mock.MagicMock()
-            fake_client.get_share_detail.side_effect = RuntimeError("QAS 挂了")
-            try:
-                routes_transfer._safe_check_link("http://x", fake_client, wait=1.0)
-                assert False, "应当抛出"
-            except RuntimeError:
-                pass
-            # 异常后信号量必须已释放：应能立即再获取
-            assert sem.acquire(timeout=0.5)
-            sem.release()
-        finally:
-            if acquired_start:
-                sem.release()
+    def test_unknown_for_missing_task(self):
+        assert link_check.get_status("nonexistent-task-id")["state"] == "unknown"

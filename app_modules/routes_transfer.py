@@ -1,9 +1,9 @@
 # routes_transfer.py — 转存、搜索、失效检测 路由 Mixin
-from threading import Thread, Semaphore
+from threading import Thread
 from config import CATEGORIES
 from douban import get_douban_list
 from transfer import (
-    transfer_status, transfer_lock, search_pansou, _get_qas_client,
+    transfer_status, transfer_lock, search_pansou,
     check_expired_tasks, update_expired_task, validate_share_link, fix_expired_tasks,
     run_transfer, add_and_run, transfer_one, VIDEO_SUB, TV_REPLACE, build_transfer_tasks,
     is_transfer_running, get_recent_tasks,
@@ -11,27 +11,23 @@ from transfer import (
 from storage import load_history, save_history
 from utils import log, sse_broadcast, log_progress
 from validator import validate_string, validate_positive_int, validate_list, validate_task
+import link_check
 
-# 链接检测信号量：限制全服务的 /api/check_link 并发 QAS 调用数，
-# 防止手动搜索对每个结果做链接检测时，无界 ThreadedHTTPServer 线程被 QAS 阻塞调用占满，
-# 进而饿死 /api/search 与 /api/config（表现为页面无法搜索、并误报“未配置 TMDB API Key”）。
-_LINK_CHECK_MAX_CONCURRENCY = 3
-_LINK_CHECK_SEM = Semaphore(_LINK_CHECK_MAX_CONCURRENCY)
-_LINK_CHECK_ACQUIRE_TIMEOUT = 2.0  # 抢不到槽位就尽快返回“繁忙”，绝不堆积线程
+# 链接检测已改为异步队列（link_check 模块）：/api/check_link 仅入队并立即返回任务状态，
+# 真正的 QAS get_share_detail 由固定 worker 池异步执行，请求线程零占用，
+# 从架构上根除「无界 ThreadedHTTPServer 线程被 QAS 阻塞占满 → 饿死搜索/配置接口 → 误报未配置」的链路。
 
 
-def _safe_check_link(url, client, wait=_LINK_CHECK_ACQUIRE_TIMEOUT):
-    """带并发上限的 QAS 链接检测。
-
-    返回 QAS 的原始结果字典；若抢不到槽位（服务繁忙）则返回一个带 busy 标记的降级结果，
-    调用方据此快速返回，避免占用服务器线程排队等待。
-    """
-    if not _LINK_CHECK_SEM.acquire(timeout=wait):
-        return {"success": False, "message": "检测繁忙，请稍后重试", "busy": True}
-    try:
-        return client.get_share_detail(url)
-    finally:
-        _LINK_CHECK_SEM.release()
+def _check_payload(res):
+    """把 QAS 原始结果归一化为前端期望的 {valid, message, checked} 形状。"""
+    if res is None:
+        return {"valid": False, "message": "检测失败", "checked": True}
+    valid = res.get("success", False)
+    return {
+        "valid": valid,
+        "message": res.get("message", "") or ("链接正常" if valid else "链接可能已经失效"),
+        "checked": True,
+    }
 
 
 class TransferRouteMixin:
@@ -76,28 +72,41 @@ class TransferRouteMixin:
             return True
 
         if route == "/api/check_link":
+            # 仅入队：立即返回任务状态，不阻塞请求线程。真正检测由 link_check worker 池异步执行。
             params = self._get_query_params()
             url = params.get("url", "").strip()
             ok, msg = validate_string(url, min_len=1, max_len=500, allow_empty=False)
             if not ok:
-                self._send_json({"valid": False, "message": "url: {}".format(msg), "checked": False}, 400)
+                self._send_json({"state": "busy", "message": "url: {}".format(msg)}, 400)
                 return True
-            try:
-                client = _get_qas_client()
-                r = _safe_check_link(url, client)
-                if r.get("busy"):
-                    # 服务繁忙：尽快返回，不占用服务器线程排队，避免饿死搜索/配置接口
-                    self._send_json({"valid": False, "message": r.get("message", "检测繁忙，请稍后重试"), "checked": False})
-                    return True
-                valid = r.get("success", False)
-                self._send_json({
-                    "valid": valid,
-                    "message": r.get("message", "") or ("链接正常" if valid else "链接可能已经失效"),
-                    "checked": True,
-                })
-            except Exception as e:
-                log("链接检测异常: {}".format(e))
-                self._send_json({"valid": False, "message": "检测失败: {}".format(e), "checked": False})
+            r = link_check.enqueue(url)
+            state = r.get("state")
+            if state == "busy":
+                self._send_json({"state": "busy", "message": "检测繁忙，请稍后重试"})
+                return True
+            if state == "done":
+                payload = _check_payload(r.get("result"))
+                payload["state"] = "done"
+                self._send_json(payload)
+                return True
+            # pending / running：前端轮询 /api/check_link/status
+            self._send_json({"state": state, "task_id": r.get("task_id")})
+            return True
+
+        if route == "/api/check_link/status":
+            params = self._get_query_params()
+            tid = params.get("task_id", "").strip()
+            ok, msg = validate_string(tid, min_len=1, max_len=64, allow_empty=False)
+            if not ok:
+                self._send_json({"state": "unknown"}, 400)
+                return True
+            s = link_check.get_status(tid)
+            if s.get("state") == "done":
+                payload = _check_payload(s.get("result"))
+                payload["state"] = "done"
+                self._send_json(payload)
+            else:
+                self._send_json({"state": s.get("state")})
             return True
 
         if route == "/api/check_expired":

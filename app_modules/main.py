@@ -7,6 +7,7 @@ from scheduler import scheduler_loop
 from server import ThreadedHTTPServer
 from routes import H
 from utils import log
+import link_check
 
 _startup_time = time.time()
 _shutdown_server = None
@@ -28,6 +29,7 @@ def start():
     load_config()
     Thread(target=init_qas_cache, daemon=True).start()
     Thread(target=scheduler_loop, daemon=True).start()
+    link_check.start_workers()  # 链接检测异步队列 worker 池随进程启动
     server = ThreadedHTTPServer(("0.0.0.0", PORT), H)
     _shutdown_server = server
     log("监听 :{}".format(PORT))
