@@ -628,7 +628,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   .log-panel{padding:10px}
 }
 @media(max-width:1160px){
-  .app{grid-template-columns:184px minmax(0,1fr) 300px}
+  .app{grid-template-columns:170px minmax(0,1fr) 280px}
   .log-panel{padding:10px}
 }
 @media(max-width:1024px){
@@ -760,6 +760,10 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 .tmdb-loading{display:flex;justify-content:center;align-items:center;padding:60px 0;color:var(--text2);font-size:13px;gap:8px}
 .tmdb-empty{text-align:center;padding:60px 0;color:var(--text2);font-size:13px}
 .tmdb-pagination{display:flex;justify-content:center;gap:12px;align-items:center;margin-top:18px}
+/* 可折叠筛选栏（UX #3：降低浏览页首屏认知负荷） */
+.tmdb-filters.collapsed .tmdb-filter-bar,
+.tmdb-filters.collapsed .form-group{display:none}
+#tmdbFilterToggle{font-family:var(--font-display)}
 .tmdb-sel-bar{
   position:fixed;bottom:0;left:220px;right:380px;z-index:200;margin:0;
   background:var(--card);border:1px solid var(--border);border-bottom:none;
