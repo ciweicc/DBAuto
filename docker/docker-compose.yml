@@ -4,7 +4,7 @@ services:
   dbauto:
     build:
       context: ..
-      dockerfile: Dockerfile
+      dockerfile: docker/Dockerfile
     container_name: dbauto
     ports:
       - "3001:3001"
