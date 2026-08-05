@@ -6,11 +6,31 @@ from transfer import init_qas_cache
 from scheduler import scheduler_loop
 from server import ThreadedHTTPServer
 from routes import H
-from utils import log
+from utils import log, logger
 import link_check
 
 _startup_time = time.time()
 _shutdown_server = None
+
+def _log_single_instance_mode():
+    """P2-12：启动期提示进程内单实例约束（不改变任何运行时行为）。
+
+    本服务的认证 token、登录频率限制、调度器、SSE 客户端、
+    各类内存缓存均为进程内单例，仅在「单 OS 进程」内
+    （ThreadedHTTPServer 多线程共享进程内存）保持一致。
+    多 worker / 多副本会各自持有独立内存，导致状态分裂。
+    """
+    workers = int(os.environ.get("WEB_CONCURRENCY", os.environ.get("GUNICORN_WORKERS", "1")))
+    if workers > 1:
+        logger.warning(
+            "检测到多 worker 配置 (WEB_CONCURRENCY/GUNICORN_WORKERS=%s)：本服务为单进程单实例设计，"
+            "多 worker 会导致 token/限速/调度/缓存等进程内状态分裂，请勿对多 worker 部署。",
+            workers,
+        )
+    else:
+        log("单实例模式：进程内状态（token / 限速 / 调度 / 缓存）仅在单 OS 进程内一致；"
+            "请勿对多个副本/进程共用同一 DATA_DIR（详见 docs/SCALING.md）。")
+
 
 def _shutdown(sig=None, frame=None):
     log("正在关闭...")
@@ -26,6 +46,7 @@ def start():
 
     log("=== douban-transfer 启动 ===")
     log("端口: {}".format(PORT))
+    _log_single_instance_mode()
     load_config()
     Thread(target=init_qas_cache, daemon=True).start()
     Thread(target=scheduler_loop, daemon=True).start()

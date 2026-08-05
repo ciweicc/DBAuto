@@ -25,3 +25,15 @@ test_all.py
 test_output.py
 test_simple.py
 test_result.txt
+
+# ===== 工具 / 测试生成物（P2-11）=====
+.pytest_cache/
+.ruff_cache/
+.coverage
+coverage.xml
+htmlcov/
+test_output.txt
+# ===== 本地环境变量（P2 fixes）=====
+.env
+.env.*
+!.env.example
