@@ -1,31 +1,97 @@
 // ============ Search ============
 var searchTimer=null;var searchAbort=null;var searchCheckSeq=0;
+// 键盘导航状态：当前高亮的结果项索引 + 结果项 DOM 引用
+var searchActiveIndex=-1;
+var searchOptions=[];
+
 function toggleMobileSearch(){
   var w=document.querySelector('.search-wrapper');
   w.classList.toggle('mobile-show');
   if(w.classList.contains('mobile-show')){document.getElementById('searchInput').focus()}
 }
+
+// 关闭下拉并重置键盘导航状态 / ARIA（无障碍）
+function closeSearch(){
+  var dropdown=document.getElementById('searchDropdown');
+  var input=document.getElementById('searchInput');
+  if(dropdown) dropdown.classList.remove('show');
+  if(input){
+    input.setAttribute('aria-expanded','false');
+    input.setAttribute('aria-activedescendant','');
+  }
+  searchActiveIndex=-1;
+  searchOptions=[];
+}
+
 function onSearchInput(){clearTimeout(searchTimer);var q=document.getElementById('searchInput').value.trim();
   var dropdown=document.getElementById('searchDropdown');
   var searchBox=document.getElementById('searchBox');
+  var input=document.getElementById('searchInput');
   searchBox.classList.toggle('has-value',!!q);
-  if(!q){dropdown.classList.remove('show');document.getElementById('searchResults').innerHTML='';return}
+  if(!q){closeSearch();document.getElementById('searchResults').innerHTML='';return}
   dropdown.classList.add('show');
+  input.setAttribute('aria-expanded','true');
   searchTimer=setTimeout(doSearch,500)}
+
 function clearSearch(){
   var input=document.getElementById('searchInput');
   var searchBox=document.getElementById('searchBox');
   input.value='';
   searchBox.classList.remove('has-value');
-  document.getElementById('searchDropdown').classList.remove('show');
+  closeSearch();
   document.getElementById('searchResults').innerHTML='';
   input.focus();
 }
+
+// 键盘导航：方向键移动高亮项，Enter 触发当前项转存，Esc 关闭下拉
+function onSearchKeydown(e){
+  var dropdown=document.getElementById('searchDropdown');
+  if(e.key==='ArrowDown'||e.key==='ArrowUp'){
+    if(!dropdown.classList.contains('show')||!searchOptions.length) return;
+    e.preventDefault();
+    var next = e.key==='ArrowDown'
+      ? Math.min(searchActiveIndex+1, searchOptions.length-1)
+      : Math.max(searchActiveIndex-1, 0);
+    searchSetActive(next);
+  } else if(e.key==='Enter'){
+    if(searchActiveIndex>=0 && searchOptions[searchActiveIndex]){
+      e.preventDefault();
+      var btn=searchOptions[searchActiveIndex].querySelector('.btn');
+      if(btn && !btn.disabled){ transferOne(btn); }
+      return;
+    }
+    doSearch();
+  } else if(e.key==='Escape'){
+    if(dropdown.classList.contains('show')){ e.preventDefault(); closeSearch(); }
+  }
+}
+
+// 设置第 i 项为高亮（视觉 + ARIA activedescendant）
+function searchSetActive(i){
+  if(i<0||i>=searchOptions.length) return;
+  searchActiveIndex=i;
+  searchOptions.forEach(function(o,idx){
+    var on = idx===i;
+    o.classList.toggle('active', on);
+    o.setAttribute('aria-selected', on ? 'true':'false');
+    if(on){ o.style.background='rgba(10,132,255,.08)'; o.style.paddingLeft='18px'; }
+    else { o.style.background=''; o.style.paddingLeft=''; }
+  });
+  var opt=searchOptions[i];
+  if(!opt.id) opt.id='search-opt-'+i;
+  document.getElementById('searchInput').setAttribute('aria-activedescendant', opt.id);
+  opt.scrollIntoView({block:'nearest'});
+}
+
 async function doSearch(){
   var q=document.getElementById('searchInput').value.trim();
   if(!q)return;
   var dropdown=document.getElementById('searchDropdown');
+  var input=document.getElementById('searchInput');
   dropdown.classList.add('show');
+  input.setAttribute('aria-expanded','true');
+  // 新搜索：重置键盘导航状态
+  searchActiveIndex=-1; searchOptions=[]; input.setAttribute('aria-activedescendant','');
   var el=document.getElementById('searchResults');
   el.textContent='';
   var skWrap = document.createElement('div');
@@ -66,9 +132,12 @@ async function doSearch(){
     el.textContent='';
     var seq = ++searchCheckSeq;
     var checkItems = [];
-    d.results.forEach(function(r){
+    d.results.forEach(function(r, i){
       var item = document.createElement('div');
       item.className = 'search-item';
+      item.setAttribute('role','option');
+      item.setAttribute('id','search-opt-'+i);
+      item.setAttribute('aria-selected','false');
       var infoDiv = document.createElement('div');
       infoDiv.style.cssText = 'flex:1;min-width:0';
       var titleDiv = document.createElement('div');
@@ -92,6 +161,7 @@ async function doSearch(){
       item.appendChild(infoDiv);
       item.appendChild(btn);
       el.appendChild(item);
+      searchOptions.push(item);
       if(r.url){ checkItems.push({url:r.url, badge:badge, btn:btn, seq:seq}); }
     });
     checkSearchLinks(checkItems);}
@@ -116,11 +186,12 @@ async function doSearch(){
     failWrap.appendChild(failDesc);
     el.appendChild(failWrap);
   }}
+
 document.addEventListener('click',function(e){
   var dropdown=document.getElementById('searchDropdown');
   var wrapper=document.querySelector('.search-wrapper');
   if(dropdown.classList.contains('show')&&!wrapper.contains(e.target)){
-    dropdown.classList.remove('show');
+    closeSearch();
   }
 });
 
@@ -172,4 +243,3 @@ async function checkOneLink(it){
     it.badge.style.color = 'var(--text3,#999)';
   }
 }
-
