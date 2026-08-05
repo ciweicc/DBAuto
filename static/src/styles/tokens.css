@@ -60,6 +60,7 @@
 
   /* Brand gradient (blue → purple) */
   --gradient-brand: linear-gradient(135deg, var(--accent), var(--accent2));
+  --gradient-brand-hover: linear-gradient(135deg, var(--accent), var(--accent2));
   --gradient-brand-hover: linear-gradient(135deg, color-mix(in srgb, var(--accent) 85%, #fff), color-mix(in srgb, var(--accent2) 85%, #fff));
 
   /* Grid + glow background */

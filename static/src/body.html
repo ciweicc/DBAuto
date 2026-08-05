@@ -50,7 +50,7 @@
       <span class="brand-ver" id="headerVersion">v1.1.0</span>
     </div>
     <nav class="side-nav">
-      <button class="side-nav-item active" data-tab="tmdb" onclick="switchTab('tmdb')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-tmdb"/></svg>TMDB</button>
+      <button class="side-nav-item active" data-tab="tmdb" onclick="switchTab('tmdb')" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-tmdb"/></svg>TMDB</button>
       <button class="side-nav-item" data-tab="manual" onclick="switchTab('manual')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>手动转存</button>
       <button class="side-nav-item" data-tab="schedule" onclick="switchTab('schedule')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg>定时任务</button>
       <button class="side-nav-item" data-tab="history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg>执行历史</button>
@@ -60,7 +60,7 @@
   </aside>
 
   <!-- Main column -->
-  <div class="main">
+  <main class="main">
     <div class="topbar">
       <div class="topbar-start">
         <button class="icon-btn side-toggle" onclick="toggleSidebar()" title="菜单" aria-label="菜单"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
@@ -417,7 +417,7 @@
       </section>
 
     </div>
-  </div>
+  </main>
 
   <!-- Log panel (persistent) -->
   <aside class="log-panel" id="logPanel">
@@ -464,7 +464,7 @@
 <!-- Bottom Navigation (Mobile) -->
 <nav class="bottom-nav">
   <div class="bottom-nav-inner">
-    <div class="nav-item active" onclick="switchTab('tmdb')">
+    <div class="nav-item active" onclick="switchTab('tmdb')" aria-current="page">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-tmdb"/></svg>
       <span>TMDB</span>
     </div>
