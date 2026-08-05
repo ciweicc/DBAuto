@@ -38,16 +38,27 @@ jobs:
 
       - name: Run tests (per-file isolation)
         run: |
-          set -e
+          set -e -o pipefail
           echo "=== Running pytest ==="
           python -m pytest tests/ --tb=long -v --reruns 2 --reruns-delay 3 -r a \
-            2>&1 | tee test_output.txt
+            2>&1 | tee pytest-ci.log
           echo "=== Exit code: $? ==="
+
+      - name: Print test log on failure
+        if: failure()
+        run: |
+          if [ -f pytest-ci.log ]; then
+            echo "========== pytest-ci.log (begin) =========="
+            cat pytest-ci.log
+            echo "========== pytest-ci.log (end) =========="
+          else
+            echo "pytest-ci.log not found — pytest process may have crashed before writing output."
+          fi
 
       - name: Upload test log
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: test-log
-          path: test_output.txt
+          path: pytest-ci.log
           retention-days: 7
