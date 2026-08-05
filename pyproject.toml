@@ -1,3 +1,7 @@
+[project]
+name = "dbauto"
+version = "1.1.0"
+
 [tool.pytest.ini_options]
 # 测试目录与模块搜索路径；使 `pytest` 可从任意 cwd 运行。
 testpaths = ["tests"]

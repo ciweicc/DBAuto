@@ -85,13 +85,21 @@ def compute_dashboard_stats():
 
 
 def read_version():
-    """读取 VERSION 文件（与 /version 接口复用同一逻辑）。"""
+    """读取版本号：优先解析 pyproject.toml [project].version，失败时回退硬编码值。
+
+    使用 tomllib 解析仓库根的 pyproject.toml（容器内 dbauto 未安装，不可用
+    importlib.metadata）。路径复用本文件推导出的仓库根（app_modules 的上一级）。
+    """
     version = "1.1.0"
-    version_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
-    if os.path.isfile(version_path):
+    pyproject_path = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pyproject.toml"
+    )
+    if os.path.isfile(pyproject_path):
         try:
-            with open(version_path, "r") as f:
-                version = f.read().strip()
+            import tomllib
+            with open(pyproject_path, "rb") as f:
+                data = tomllib.load(f)
+            version = data.get("project", {}).get("version", version)
         except Exception:
             pass
     return version

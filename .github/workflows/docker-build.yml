@@ -43,7 +43,7 @@ jobs:
 
       - name: Read version
         id: version
-        run: echo "version=$(cat VERSION)" >> $GITHUB_OUTPUT
+        run: echo "version=$(python -c "import tomllib;print(tomllib.load(open('pyproject.toml','rb'))['project']['version'])")" >> $GITHUB_OUTPUT
 
       - name: Extract metadata
         id: meta

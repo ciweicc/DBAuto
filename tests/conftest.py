@@ -8,5 +8,9 @@ import sys
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _APP_MODULES = os.path.join(_ROOT, "app_modules")
 
+# 仓库根加入 sys.path：支持 `from scripts import reset_password` 等隐式命名空间包导入
+if _ROOT not in sys.path:
+    sys.path.insert(0, _ROOT)
+
 if _APP_MODULES not in sys.path:
     sys.path.insert(0, _APP_MODULES)

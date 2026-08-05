@@ -4,7 +4,7 @@ import io
 
 # sys.path 由 tests/conftest.py 统一配置（也可由 pyproject.toml pythonpath 覆盖）
 
-import reset_password
+from scripts import reset_password
 
 
 def test_read_password_from_stdin_non_tty(monkeypatch):

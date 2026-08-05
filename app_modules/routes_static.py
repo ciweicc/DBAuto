@@ -125,11 +125,15 @@ class StaticRouteMixin:
 
         if route == "/version":
             version = "1.1.0"
-            version_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "VERSION")
-            if os.path.isfile(version_path):
+            pyproject_path = os.path.join(
+                os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "pyproject.toml"
+            )
+            if os.path.isfile(pyproject_path):
                 try:
-                    with open(version_path, "r") as f:
-                        version = f.read().strip()
+                    import tomllib
+                    with open(pyproject_path, "rb") as f:
+                        data = tomllib.load(f)
+                    version = data.get("project", {}).get("version", version)
                 except Exception:
                     pass
             self._send_json({"version": version})

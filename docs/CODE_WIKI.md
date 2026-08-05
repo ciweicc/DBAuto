@@ -110,13 +110,13 @@
 ```
 /workspace/
 ├── main.py                      # 项目入口文件
-├── reset_password.py            # 密码重置脚本
-├── VERSION                      # 版本号文件 (1.1.0)
+├── scripts/reset_password.py      # 密码重置脚本
+├── pyproject.toml               # 项目元数据（name / version）
 ├── requirements.txt             # Python 依赖
-├── requirements-dev.txt         # 开发依赖 (含 pytest)
-├── Dockerfile                   # Docker 镜像构建
-├── docker-compose.yml           # Docker Compose 配置
-├── docker-entrypoint.sh         # Docker 入口脚本
+├── requirements/requirements-dev.txt # 开发依赖 (含 pytest)
+├── docker/Dockerfile             # Docker 镜像构建
+├── docker/docker-compose.yml     # Docker Compose 配置
+├── docker/docker-entrypoint.sh    # Docker 入口脚本
 ├── .dockerignore                # Docker 忽略文件
 ├── .gitignore                   # Git 忽略文件
 │
@@ -1188,7 +1188,7 @@ python main.py
 #### 密码重置
 
 ```bash
-python reset_password.py your_new_password
+python scripts/reset_password.py your_new_password
 ```
 
 ### 健康检查
@@ -1210,7 +1210,7 @@ Docker 健康检查通过 `/health` 端点实现：
 ### 安装开发依赖
 
 ```bash
-pip install -r requirements-dev.txt
+pip install -r requirements/requirements-dev.txt
 ```
 
 ### 运行测试

@@ -52,14 +52,14 @@
 
 依赖以锁文件提交，保证构建可复现；CI 从锁文件安装：
 
-- 顶层依赖声明在 `requirements.txt`（运行）与 `requirements-dev.txt`（开发 / 测试）。
+- 顶层依赖声明在 `requirements.txt`（运行）与 `requirements/requirements-dev.txt`（开发 / 测试）。
 - 锁文件由 `pip-compile` 生成：
 
   ```bash
   # 请在 Python 3.12 环境下执行，以匹配运行 / CI 目标
   pip install pip-tools
   pip-compile requirements.txt               # -> requirements.lock.txt
-  pip-compile requirements-dev.txt          # -> requirements-dev.lock.txt
+  pip-compile requirements/requirements-dev.txt          # -> requirements-dev.lock.txt
   ```
 
 - **请勿手动编辑锁文件**；改依赖时修改 `requirements*.txt` 后重新生成锁文件，并将

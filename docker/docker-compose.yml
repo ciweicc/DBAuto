@@ -3,7 +3,7 @@ version: '3.8'
 services:
   dbauto:
     build:
-      context: .
+      context: ..
       dockerfile: Dockerfile
     container_name: dbauto
     ports:

@@ -74,7 +74,7 @@ echo 'your_new_password' | docker exec -i dbauto python reset_password.py
 # 或交互式：docker exec -it dbauto python reset_password.py
 ```
 
-> 也可使用 `docker-compose up -d`，详见 [docker-compose.yml](docker-compose.yml)。
+> 也可使用 `docker-compose up -d`，详见 [docker-compose.yml](docker/docker-compose.yml)。
 
 ### 本地运行
 
