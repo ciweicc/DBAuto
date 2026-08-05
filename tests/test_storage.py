@@ -5,9 +5,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 import tempfile
 os.environ["DATA_DIR"] = tempfile.mkdtemp()
 
+import storage
 from storage import (
     load_history, save_history, add_exec_record, update_exec_record,
-    clear_exec_history, load_exec_history,
+    clear_exec_history, load_exec_history, upsert_history_item,
 )
 
 
@@ -42,6 +43,34 @@ class TestStorageHistory:
         loaded = load_history()
         assert "电影D" not in loaded
         assert "电影E" in loaded
+
+    def test_upsert_history_item_preserves_tmdb_id_in_cache(self):
+        """回归测试：upsert_history_item 后内存热缓存须保留 tmdb_id。
+
+        冷路径（load_history 直读 DB）能正确返回 tmdb_id，但历史缓存曾被
+        upsert 重建时漏写 tmdb_id，导致依赖 load_history() 缓存命中的
+        TMDB 去重逻辑拿不到 tmdb_id。
+        """
+        import uuid
+        # 唯一标题，避免与其他测试/真实数据冲突，无需额外清理
+        title = "P3_TEST_TITLE_{}".format(uuid.uuid4().hex)
+        # 重置模块缓存状态，保证测试确定性且不污染全局缓存
+        saved_cache = storage._history_cache
+        storage._history_cache = None
+        try:
+            # 预热缓存：从 DB 载入，使 _history_cache 不再是 None（启用缓存命中路径）
+            load_history()
+            assert storage._history_cache is not None
+            # 增量写入一条带 tmdb_id 的历史
+            upsert_history_item(
+                title,
+                {"date": "2026-08-06", "status": "done", "category": "movie", "tmdb_id": "123456"},
+            )
+            # 再次读取走缓存命中路径（dict(_history_cache)）
+            loaded = load_history()
+            assert loaded[title]["tmdb_id"] == "123456"
+        finally:
+            storage._history_cache = saved_cache
 
 
 class TestStorageExecHistory:

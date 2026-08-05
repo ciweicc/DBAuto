@@ -184,7 +184,7 @@ def upsert_history_item(title, info):
             )
             conn.commit()
         if _history_cache is not None:
-            _history_cache[title] = {"date": date, "status": status, "category": category}
+            _history_cache[title] = {"date": date, "status": status, "category": category, "tmdb_id": tmdb_id}
 
 
 def load_exec_history():
