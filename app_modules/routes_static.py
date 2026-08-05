@@ -93,7 +93,8 @@ class StaticRouteMixin:
         if route == "/" or route == "/index.html":
             data, _, mtime = _get_static_file("index_new.html")
             if data:
-                self._send_static_file(data, mtime=mtime)
+                # no-cache：每次都重新校验 ETag，避免部署后浏览器缓存到旧版首页
+                self._send_static_file(data, cache_control="no-cache", mtime=mtime)
                 return True
             self._send_json({"error": "not found"}, 404)
             return True
@@ -101,7 +102,7 @@ class StaticRouteMixin:
         if route == "/login.html":
             data, _, mtime = _get_static_file("login_new.html")
             if data:
-                self._send_static_file(data, mtime=mtime)
+                self._send_static_file(data, cache_control="no-cache", mtime=mtime)
                 return True
             self._send_json({"error": "not found"}, 404)
             return True
