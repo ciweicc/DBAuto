@@ -1,4 +1,6 @@
-FROM python:3.11-slim
+# 锁定到不可变 digest，避免基础镜像浮动导致构建不可复现 / 供应链漂移。
+# 更新方式：在 Docker Hub 查询 python:3.11-slim 的最新 digest 后替换下方 @sha256。
+FROM python:3.11-slim@sha256:78b39ef14d8e2b4d71f8dc304f1328c37df95fe0ef99477c2ae6bd3d03784553
 
 WORKDIR /app
 

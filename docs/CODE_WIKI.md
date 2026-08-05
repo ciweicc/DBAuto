@@ -230,7 +230,7 @@
 2. **Token 认证**：随机生成 32 字符十六进制 Token
 3. **登录频率限制**：60 秒内最多 5 次尝试，失败后锁定 5 分钟
 4. **Token 过期清理**：每次验证时自动清理过期 Token
-5. **多渠道 Token 提取**：支持 Header (X-Auth-Token / Authorization: Bearer) 和 Query 参数
+5. **多渠道 Token 提取**：首选 Header (X-Auth-Token / Authorization: Bearer)；`?token=` Query 参数仅作历史兼容、已弃用（存在 URL 日志泄露风险）
 
 ---
 
@@ -620,7 +620,7 @@ PanSou 搜索服务客户端。
 ### 基础信息
 
 - **Base URL**：`http://host:3001`
-- **认证方式**：Header `X-Auth-Token` 或 `Authorization: Bearer <token>` 或 Query 参数 `?token=`
+- **认证方式（首选）**：请求头 `X-Auth-Token` 或 `Authorization: Bearer <token>`；`?token=` Query 参数已弃用，仅作历史兼容
 - **响应格式**：JSON
 
 ---

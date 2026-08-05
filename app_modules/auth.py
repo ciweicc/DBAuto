@@ -48,6 +48,12 @@ class AuthManager:
             try:
                 qs = urllib.parse.parse_qs(handler.path.split("?", 1)[1])
                 token = qs.get("token", [""])[0]
+                if token:
+                    # 弃用警告：URL 中的 token 会出现在代理访问日志 / 浏览器历史，存在泄露风险。
+                    # 第一方前端已全部改用 X-Auth-Token 请求头；此分支仅保留给历史外部 API 客户端，
+                    # 后续版本将移除。通过日志可观测是否仍有外部调用方依赖该方式。
+                    log("[DEPRECATED] 通过 URL 查询参数 ?token= 认证（存在日志/历史泄露风险），"
+                        "请改用请求头 X-Auth-Token；该方式将在未来版本移除。")
             except Exception as e:
                 log("解析 token 查询参数失败: {}".format(e))
         return token

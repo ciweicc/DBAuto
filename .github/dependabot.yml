@@ -1,0 +1,26 @@
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    # 将直接 + 传递依赖归并到同一组 PR，避免 Dependabot 刷屏
+    groups:
+      python-dependencies:
+        patterns:
+          - "*"
+    # 重新生成锁文件后再合并：pip-compile requirements.in --generate-hashes -o requirements.txt
+    #                       pip-compile requirements-dev.in --generate-hashes -o requirements-dev.txt
+    commit-message:
+      prefix: "build"
+      include: "scope"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    commit-message:
+      prefix: "ci"
+      include: "scope"

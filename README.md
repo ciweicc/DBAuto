@@ -113,7 +113,7 @@ DBAuto/
 
 ## 🔌 API 接口
 
-所有 API 响应均为 JSON 格式，需通过 Header `X-Auth-Token` 或 Query 参数 `?token=` 携带 Token 认证（登录接口除外）。
+所有 API 响应均为 JSON 格式。**首选**通过请求头 `X-Auth-Token`（或 `Authorization: Bearer <token>`）携带 Token 认证（登录接口除外）。历史兼容的 Query 参数 `?token=` 仍可用但**已弃用**——Token 会出现在反向代理访问日志与浏览器历史中，存在泄露风险，不建议新客户端使用。
 
 | 方法 | 路径 | 说明 |
 |------|------|------|

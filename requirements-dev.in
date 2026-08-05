@@ -1,0 +1,4 @@
+# DBAuto 开发/测试依赖（由 pip-compile 生成锁定版 requirements-dev.txt）
+# 重新生成：pip-compile requirements-dev.in --generate-hashes -o requirements-dev.txt
+pytest>=7.0
+pytest-rerunfailures>=11.0

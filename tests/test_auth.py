@@ -62,3 +62,31 @@ class TestAuthManager:
             headers = {}
         ip = AuthManager.get_client_ip(FakeHandler)
         assert ip == "192.168.1.5"
+
+    def test_extract_token_from_header(self):
+        """首选：从 X-Auth-Token 请求头提取"""
+        class FakeHandler:
+            headers = {"X-Auth-Token": "header-token-001"}
+            path = "/api/status"
+        assert AuthManager.get_instance().extract_token(FakeHandler()) == "header-token-001"
+
+    def test_extract_token_from_bearer(self):
+        """兼容：从 Authorization: Bearer 提取"""
+        class FakeHandler:
+            headers = {"Authorization": "Bearer bearer-token-002"}
+            path = "/api/status"
+        assert AuthManager.get_instance().extract_token(FakeHandler()) == "bearer-token-002"
+
+    def test_extract_token_from_query(self):
+        """历史兼容：从 ?token= 查询参数提取（仍可用，已弃用）"""
+        class FakeHandler:
+            headers = {}
+            path = "/api/status?token=query-token-003&foo=bar"
+        assert AuthManager.get_instance().extract_token(FakeHandler()) == "query-token-003"
+
+    def test_extract_token_missing(self):
+        """无凭证时返回空字符串"""
+        class FakeHandler:
+            headers = {}
+            path = "/api/status"
+        assert AuthManager.get_instance().extract_token(FakeHandler()) == ""
