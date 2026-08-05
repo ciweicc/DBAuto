@@ -9,34 +9,32 @@
 /* FOUC 防闪烁：在 CSS 之前同步设置主题 */
 (function(){var t=localStorage.getItem('theme')||'dark';document.documentElement.setAttribute('data-theme',t)})();
 </script>
+<link rel="stylesheet" href="/static/src/styles/tokens.css">
 <style>
+/* 基础设计 token（含 WCAG AA 对比度）统一引用 tokens.css，避免重复维护；
+   以下仅保留登录页的局部微调，确保外观与改版前一致 */
 :root {
-  --bg:#0d0d10; --bg-deep:#08080b; --card:#16161a; --card-2:#1c1c22;
-  --border:rgba(255,255,255,.08); --border2:rgba(255,255,255,.12); --border3:rgba(255,255,255,.18);
-  /* 对比度修正：次要文字从 .45 提到 .55，四级文字从 .30 提到 .42（对齐 WCAG AA） */
-  --text:#ffffff; --text2:rgba(255,255,255,.72); --text3:rgba(255,255,255,.55); --text4:rgba(255,255,255,.55);
-  --accent:#0a84ff; --accent2:#5e5ce6; --accent3:#8585ff;
-  --green:#30d158; --red:#ff453a; --orange:#ff9f0a; --purple:#bf5af2; --cyan:#64d2ff;
-  --radius:8px; --radius-sm:6px; --radius-xs:4px; --radius-lg:12px; --radius-xl:14px;
-  --blur:none; --blur-xl:none;
-  --shadow:0 1px 2px rgba(0,0,0,.3); --shadow-sm:none; --shadow-glow:none;
+  --text:#ffffff;
+  --text2:rgba(255,255,255,.72);
+  --border:rgba(255,255,255,.08);
+  --border2:rgba(255,255,255,.12);
+  --card-2:#1c1c22;
+  --radius-lg:12px;
+  --radius-xl:14px;
   --shadow-card:0 24px 60px -20px rgba(0,0,0,.7), 0 2px 8px rgba(0,0,0,.4);
-  --font-display:-apple-system,BlinkMacSystemFont,'SF Pro Display','PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;
-  --font:-apple-system,BlinkMacSystemFont,'SF Pro Text','PingFang SC','Microsoft YaHei','Helvetica Neue',sans-serif;
-  --mono:'SF Mono','Cascadia Code','Fira Code',Consolas,monospace;
-  --space-xs:4px; --space-sm:8px; --space-md:12px; --space-lg:16px; --space-xl:20px; --space-2xl:24px; --space-3xl:32px;
   --transition-fast:.15s cubic-bezier(.4,0,.2,1);
   --transition-normal:.25s cubic-bezier(.4,0,.2,1);
-  --transition-slow:.4s cubic-bezier(.4,0,.2,1);
 }
 [data-theme="light"] {
-  --bg:#f2f2f7; --bg-deep:#e9e9ee; --card:#ffffff; --card-2:#f4f4f8;
-  --border:rgba(0,0,0,.08); --border2:rgba(0,0,0,.12); --border3:rgba(0,0,0,.18);
-  --text:#1c1c1e; --text2:rgba(0,0,0,.60); --text3:rgba(0,0,0,.62); --text4:rgba(0,0,0,.55);
-  --accent:#007aff; --accent2:#5856d6; --accent3:#8e8dff;
-  --green:#34c759; --red:#ff3b30; --orange:#ff9500; --purple:#af52de; --cyan:#00a3ff;
-  --shadow:0 1px 2px rgba(0,0,0,.1); --shadow-sm:none; --shadow-glow:none;
+  --text2:rgba(0,0,0,.60);
+  --border:rgba(0,0,0,.08);
+  --border2:rgba(0,0,0,.12);
+  --card-2:#f4f4f8;
+  --radius-lg:12px;
+  --radius-xl:14px;
   --shadow-card:0 24px 60px -24px rgba(20,20,40,.22), 0 2px 8px rgba(0,0,0,.06);
+  --transition-fast:.15s cubic-bezier(.4,0,.2,1);
+  --transition-normal:.25s cubic-bezier(.4,0,.2,1);
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
