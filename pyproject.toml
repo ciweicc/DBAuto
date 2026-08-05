@@ -5,3 +5,14 @@ pythonpath = ["app_modules"]
 # 仅收集 test_*.py 单元测试；仓库内 *_test.py 为依赖 playwright / 实时服务的
 # E2E / 冒烟测试，需另行安装 playwright 并下载浏览器后单独运行，不纳入默认 CI。
 python_files = ["test_*.py"]
+
+[tool.ruff]
+# 初始宽松规则集：仅抓真实问题，避免误伤现有代码。
+# 后续可逐步加入 E/W/B 等规则收紧。
+target-version = "py311"
+line-length = 120
+
+[tool.ruff.lint]
+# F: pyflakes（未定义/未使用/重复参数等）；E9: 语法错误。两者只报真实缺陷，误伤极低。
+select = ["F", "E9"]
+

@@ -30,6 +30,12 @@ jobs:
           # 基于锁定清单做供应链漏洞扫描；发现已知漏洞时本步骤非零退出，阻断合并
           pip-audit -r requirements.txt -r requirements-dev.txt --desc on
 
+      - name: Lint (ruff)
+        run: |
+          pip install ruff
+          # 仅启用 F（pyflakes 缺陷）+ E9（语法错误），不阻塞风格；首次若有违规按需修复或加 # noqa
+          ruff check .
+
       - name: Run tests (per-file isolation)
         run: |
           set -e

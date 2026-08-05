@@ -29,4 +29,13 @@ EXPOSE 3001
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:3001/health').read()"
 
+# 以非特权用户运行，降低容器被攻破后的影响面（缓解容器逃逸/提权）。
+# 端口 3001 为非特权端口，无需 CAP_NET_BIND_SERVICE。
+# 切换 USER 前：建数据目录并将 /data、/app 属主改为 appuser
+# （entrypoint 需 mkdir $DATA_DIR，应用运行时可能写这两处）。
+RUN useradd --create-home --uid 10001 --user-group appuser \
+    && mkdir -p /data/douban-history \
+    && chown -R appuser:appuser /data /app
+USER appuser
+
 ENTRYPOINT ["./docker-entrypoint.sh"]
