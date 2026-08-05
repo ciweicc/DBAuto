@@ -34,6 +34,8 @@
   <symbol id="icon-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="16"/></symbol>
   <symbol id="icon-filter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 19 14 12.46 22 3"/></symbol>
   <symbol id="icon-empty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
+  <symbol id="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></symbol>
 </svg>
 
 <!-- Liquid glass background orbs (behind everything) -->
@@ -99,31 +101,35 @@
           <div class="card">
             <div class="card-title" style="justify-content:space-between">
               <span><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg> TMDB 数据源</span>
-              <button class="btn btn-outline btn-sm" onclick="refreshTmdbCache()">刷新缓存</button>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn-outline btn-sm" id="tmdbFilterToggle" onclick="toggleTmdbFilters()" aria-expanded="true" title="收起/展开筛选条件">收起筛选</button>
+                <button class="btn btn-outline btn-sm" onclick="refreshTmdbCache()">刷新缓存</button>
+              </div>
             </div>
 
+            <div class="tmdb-filters" id="tmdbFilters">
             <div class="tmdb-filter-bar">
               <div class="tmdb-filter-group">
-                <label>分类</label>
+                <label for="tmdbMediaType">分类</label>
                 <select class="tmdb-select" id="tmdbMediaType" onchange="onTmdbFilterChange()">
                   <option value="movie">电影</option>
                   <option value="tv">电视剧</option>
                 </select>
               </div>
               <div class="tmdb-filter-group">
-                <label>榜单类型</label>
+                <label for="tmdbListType">榜单类型</label>
                 <select class="tmdb-select" id="tmdbListType" onchange="onTmdbFilterChange()"></select>
               </div>
               <div class="tmdb-filter-group">
-                <label>地区</label>
+                <label for="tmdbRegion">地区</label>
                 <select class="tmdb-select" id="tmdbRegion" onchange="onTmdbFilterChange()"></select>
               </div>
               <div class="tmdb-filter-group">
-                <label>语言</label>
+                <label for="tmdbLanguage">语言</label>
                 <select class="tmdb-select" id="tmdbLanguage" onchange="onTmdbFilterChange()"></select>
               </div>
               <div class="tmdb-filter-group">
-                <label>排序</label>
+                <label for="tmdbSort">排序</label>
                 <select class="tmdb-select" id="tmdbSort" onchange="onTmdbFilterChange()">
                   <option value="popularity.desc">按热度</option>
                   <option value="vote_average.desc">按评分</option>
@@ -132,15 +138,15 @@
                 </select>
               </div>
               <div class="tmdb-filter-group">
-                <label>最低评分</label>
+                <label for="tmdbMinRating">最低评分</label>
                 <input type="number" id="tmdbMinRating" min="0" max="10" step="0.5" value="0" onchange="onTmdbFilterChange()">
               </div>
               <div class="tmdb-filter-group">
-                <label>年份</label>
+                <label for="tmdbYear">年份</label>
                 <input type="number" id="tmdbYear" min="1900" max="2030" placeholder="全部" onchange="onTmdbFilterChange()">
               </div>
               <div class="tmdb-filter-group">
-                <label>流媒体平台</label>
+                <label for="tmdbProviderBtn">流媒体平台</label>
                 <div class="tmdb-multiselect" id="tmdbProviderWrap">
                   <button type="button" class="tmdb-select tmdb-ms-trigger" id="tmdbProviderBtn" disabled
                           onclick="toggleProviderDropdown(event)" aria-haspopup="true" aria-expanded="false">
@@ -155,6 +161,7 @@
             <div class="form-group" style="margin-bottom:12px">
               <label>类型筛选</label>
               <div class="tmdb-genre-chips" id="tmdbGenreChips"></div>
+            </div>
             </div>
           </div>
 
@@ -202,7 +209,7 @@
           </div>
           <div class="sched-row" style="margin-top:10px">
             <span style="color:var(--text2)">最低评分</span>
-            <input type="range" id="manualFilterRating" min="0" max="10" step="0.5" value="0" onchange="updateManualFilterRating()">
+            <input type="range" id="manualFilterRating" min="0" max="10" step="0.5" value="0" oninput="updateManualFilterRating()">
             <span id="manualFilterRatingVal" style="width:30px;text-align:right;color:var(--accent)">0</span>
           </div>
           <div class="sched-row">
@@ -254,7 +261,7 @@
           </div>
           <div class="sched-row" style="margin-top:8px">
             <span style="color:var(--text2)">最低评分</span>
-            <input type="range" id="filterRating" min="0" max="10" step="0.5" value="0" onchange="updateFilterRating(); autoSaveSchedule()">
+            <input type="range" id="filterRating" min="0" max="10" step="0.5" value="0" oninput="updateFilterRating(); autoSaveSchedule()">
             <span id="filterRatingVal" style="width:30px;text-align:right;color:var(--accent)">0</span>
           </div>
           <div class="sched-row">
@@ -370,38 +377,38 @@
         <div class="settings-grid">
           <div class="card">
             <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-search"/></svg> 搜索服务</div>
-            <div class="form-group"><label>PanSou 地址</label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"></div>
+            <div class="form-group"><label for="cfg_pansou">PanSou 地址</label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"></div>
           </div>
           <div class="card">
             <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg> TMDB 数据源</div>
-            <div class="form-group" style="margin-bottom:0"><label>API Key</label><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"></div>
-            <div class="form-group" style="margin-top:8px"><label>API 地址（可选）</label><input type="text" id="cfg_tmdb_base_url" placeholder="留空自动切换 api.tmdb.org / api.themoviedb.org"></div>
-            <div class="form-group" style="margin-top:8px"><label>代理（可选）</label><input type="text" id="cfg_tmdb_proxy" placeholder="如 http://127.0.0.1:7890，留空则直连"></div>
+            <div class="form-group" style="margin-bottom:0"><label for="cfg_tmdb_api_key">API Key</label><div class="pwd-wrap"><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div></div>
+            <div class="form-group" style="margin-top:8px"><label for="cfg_tmdb_base_url">API 地址（可选）</label><input type="text" id="cfg_tmdb_base_url" placeholder="留空自动切换 api.tmdb.org / api.themoviedb.org"></div>
+            <div class="form-group" style="margin-top:8px"><label for="cfg_tmdb_proxy">代理（可选）</label><input type="text" id="cfg_tmdb_proxy" placeholder="如 http://127.0.0.1:7890，留空则直连"></div>
             <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.5">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">TMDB 官网</a> 申请 API Key。国内网络访问 api.tmdb.org 常被干扰（TLS 握手失败），若榜单无法加载，请在此填写代理地址（如 Clash / V2Ray 的 HTTP 代理）</div>
           </div>
           <div class="card">
             <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-transfer"/></svg> 转存服务</div>
-            <div class="form-group"><label>QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
-            <div class="form-group" style="margin-bottom:0"><label>QAS Token</label><input type="password" id="cfg_qas_token" placeholder="留空不修改"></div>
+            <div class="form-group"><label for="cfg_qas">QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
+            <div class="form-group" style="margin-bottom:0"><label for="cfg_qas_token">QAS Token</label><div class="pwd-wrap"><input type="password" id="cfg_qas_token" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div></div>
           </div>
           <div class="card">
             <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg> 转存路径</div>
-            <div class="form-group"><label>榜单分类路径前缀</label><input type="text" id="cfg_path_category_base" placeholder="/影视"></div>
+            <div class="form-group"><label for="cfg_path_category_base">榜单分类路径前缀</label><input type="text" id="cfg_path_category_base" placeholder="/影视"></div>
             <div style="font-size:12px;color:var(--text2);margin:-4px 0 8px;line-height:1.5">实际路径 = 前缀 + 分类名，如 /影视/电影、/影视/电视剧</div>
-            <div class="form-group"><label>搜索转存路径</label><input type="text" id="cfg_path_search" placeholder="/批量转存/手动搜索存"></div>
-            <div class="form-group" style="margin-bottom:0"><label>TMDB 转存路径</label><input type="text" id="cfg_path_tmdb" placeholder="/批量转存/TMDB"></div>
+            <div class="form-group"><label for="cfg_path_search">搜索转存路径</label><input type="text" id="cfg_path_search" placeholder="/批量转存/手动搜索存"></div>
+            <div class="form-group" style="margin-bottom:0"><label for="cfg_path_tmdb">TMDB 转存路径</label><input type="text" id="cfg_path_tmdb" placeholder="/批量转存/TMDB"></div>
           </div>
           <div class="card">
             <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-lock"/></svg> 管理认证</div>
-            <div class="form-group"><label>用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
-            <div class="form-group" style="margin-bottom:0"><label>密码</label><input type="password" id="cfg_auth_pass" placeholder="留空不修改"></div>
+            <div class="form-group"><label for="cfg_auth_user">用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
+            <div class="form-group" style="margin-bottom:0"><label for="cfg_auth_pass">密码</label><div class="pwd-wrap"><input type="password" id="cfg_auth_pass" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div></div>
           </div>
           <div class="card">
             <div class="card-title" style="justify-content:space-between"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-cloud-download"/></svg> 豆瓣想看同步 <a href="https://www.douban.com/" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="text-decoration:none">打开豆瓣 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-left:2px"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
             <div id="wishAccountsList" style="display:flex;flex-direction:column;gap:8px"></div>
             <button class="btn btn-outline btn-sm" onclick="addWishAccount()" style="margin-top:2px;border-style:dashed"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加豆瓣账号</button>
-            <div class="form-group" style="margin-top:12px"><label>保存路径</label><input type="text" id="cfg_wish_savepath" placeholder="/批量转存/想看"></div>
-            <div class="form-group"><label>分类</label><div class="chips" id="wishCategoryChips" style="margin-top:4px"><span class="chip" data-cat="movie" onclick="toggleWishCat(this)">电影</span><span class="chip" data-cat="tv" onclick="toggleWishCat(this)">电视剧</span></div></div>
+            <div class="form-group" style="margin-top:12px"><label for="cfg_wish_savepath">保存路径</label><input type="text" id="cfg_wish_savepath" placeholder="/批量转存/想看"></div>
+            <div class="form-group"><label for="wishCategoryChips">分类</label><div class="chips" id="wishCategoryChips" style="margin-top:4px"><span class="chip" data-cat="movie" onclick="toggleWishCat(this)">电影</span><span class="chip" data-cat="tv" onclick="toggleWishCat(this)">电视剧</span></div></div>
             <div style="border-top:1px solid var(--border);margin:4px 0 8px"></div>
             <div class="sched-row" style="margin-top:4px">
               <span class="chip" id="cfg_wish_enabled_chip" onclick="toggleWishEnabled(this)">启用想看同步</span>

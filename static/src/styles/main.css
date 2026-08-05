@@ -529,6 +529,28 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 .section-title::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent)}
 .form-group{margin-bottom:14px}.form-group label{display:block;font-size:13px;color:var(--text2);margin-bottom:6px;font-weight:600;font-family:var(--font-display)}
 
+/* P1 password visibility toggle */
+.pwd-wrap{position:relative;display:flex;align-items:center}
+.pwd-wrap input{flex:1;padding-right:40px}
+.pwd-toggle{
+  position:absolute;right:4px;top:50%;transform:translateY(-50%);
+  width:30px;height:30px;border:none;background:transparent;border-radius:var(--radius-xs);
+  color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:color var(--transition-fast),background var(--transition-fast)
+}
+.pwd-toggle:hover{color:var(--text);background:var(--card-2)}
+
+/* P1 password visibility toggle */
+.pwd-wrap{position:relative;display:flex;align-items:center}
+.pwd-wrap input{flex:1;padding-right:40px}
+.pwd-toggle{
+  position:absolute;right:4px;top:50%;transform:translateY(-50%);
+  width:30px;height:30px;border:none;background:transparent;border-radius:var(--radius-xs);
+  color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;
+  transition:color var(--transition-fast),background var(--transition-fast)
+}
+.pwd-toggle:hover{color:var(--text);background:var(--card-2)}
+
 /* Toast */
 #toastContainer{position:fixed;top:20px;left:50%;transform:translateX(-50%);z-index:9999;display:flex;flex-direction:column;gap:10px;align-items:center;pointer-events:none}
 .toast{position:relative;transform:none;padding:11px 18px;
@@ -628,7 +650,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   .log-panel{padding:10px}
 }
 @media(max-width:1160px){
-  .app{grid-template-columns:184px minmax(0,1fr) 300px}
+  .app{grid-template-columns:170px minmax(0,1fr) 280px}
   .log-panel{padding:10px}
 }
 @media(max-width:1024px){
@@ -760,6 +782,10 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 .tmdb-loading{display:flex;justify-content:center;align-items:center;padding:60px 0;color:var(--text2);font-size:13px;gap:8px}
 .tmdb-empty{text-align:center;padding:60px 0;color:var(--text2);font-size:13px}
 .tmdb-pagination{display:flex;justify-content:center;gap:12px;align-items:center;margin-top:18px}
+/* 可折叠筛选栏（UX #3：降低浏览页首屏认知负荷） */
+.tmdb-filters.collapsed .tmdb-filter-bar,
+.tmdb-filters.collapsed .form-group{display:none}
+#tmdbFilterToggle{font-family:var(--font-display)}
 .tmdb-sel-bar{
   position:fixed;bottom:0;left:220px;right:380px;z-index:200;margin:0;
   background:var(--card);border:1px solid var(--border);border-bottom:none;

@@ -319,7 +319,7 @@ function renderTmdbGrid(){
     var poster = item.poster || '';
     var posterHtml = poster
       ? '<img class="tmdb-poster" src="'+esc(poster)+'" loading="lazy" alt="'+esc(item.title)+'">'
-      : '<div class="tmdb-poster" style="display:flex;align-items:center;justify-content:center;font-size:40px;color:var(--text3)">🎬</div>';
+      : '<div class="tmdb-poster" style="display:flex;align-items:center;justify-content:center;color:var(--text3)"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg></div>';
     var ratingHtml = item.rating > 0
       ? '<div class="tmdb-rating-badge">★ '+item.rating.toFixed(1)+'</div>'
       : '';
@@ -450,3 +450,17 @@ async function refreshTmdbCache(){
   }catch(e){showToast('刷新失败',false)}
 }
 
+
+/**
+ * 折叠/展开 TMDB 筛选栏（UX #3：降低浏览页首屏认知负荷）。
+ */
+function toggleTmdbFilters(){
+  var wrap = document.getElementById('tmdbFilters');
+  var btn = document.getElementById('tmdbFilterToggle');
+  if(!wrap) return;
+  var collapsed = wrap.classList.toggle('collapsed');
+  if(btn){
+    btn.setAttribute('aria-expanded', String(!collapsed));
+    btn.textContent = collapsed ? '\u5c55\u5f00\u7b5b\u9009' : '\u6536\u8d77\u7b5b\u9009';
+  }
+}
