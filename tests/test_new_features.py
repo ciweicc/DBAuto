@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 import tempfile
 os.environ["DATA_DIR"] = tempfile.mkdtemp()
 
-from datetime import datetime, timedelta
+from datetime import timedelta
 from scheduler import _next_fire_time, _now_local, LOCAL_TZ
 
 
@@ -29,6 +29,7 @@ class TestNextFireTime:
     def test_cron_expression(self):
         try:
             from croniter import croniter
+            del croniter  # 仅探测可用性，无引用；标记为已使用以消除 F401
             dt = _next_fire_time("", "0 2 * * *")
             assert dt is not None
             assert dt.hour == 2

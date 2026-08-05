@@ -51,7 +51,6 @@ def compute_dashboard_stats():
                 if isinstance(d, dict):
                     ok = d.get("ok", 0)
                     fail = d.get("failed", 0)
-                    skip = d.get("skipped", 0)
                     if ok > 0 and fail == 0:
                         last_status = "success"
                     elif ok > 0 and fail > 0:

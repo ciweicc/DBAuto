@@ -1,6 +1,6 @@
 # routes_auth.py — 认证相关路由 Mixin
 from auth import _do_login, _login_rate_check, _check_auth, _client_ip
-from utils import log, sse_broadcast
+from utils import sse_broadcast
 from validator import validate_string
 
 

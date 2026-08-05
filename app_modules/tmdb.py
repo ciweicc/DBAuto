@@ -3,7 +3,7 @@ import time
 import requests
 from requests.adapters import HTTPAdapter
 from threading import Lock, Semaphore
-from utils import http_get, log
+from utils import log
 from config import ConfigManager
 
 TMDB_IMAGE_BASE = "https://image.tmdb.org/t/p"

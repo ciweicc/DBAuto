@@ -2,8 +2,7 @@
 from config import load_config, save_config, load_settings, save_settings
 from auth import hash_auth_password
 from scheduler import (
-    schedule_status, schedule_lock, _next_fire_time, _now_local,
-    _run_scheduled_transfer, _run_scheduled_expired_check,
+    schedule_status, schedule_lock, _next_fire_time, _run_scheduled_transfer, _run_scheduled_expired_check,
     notify_settings_changed,
 )
 from transfer import reset_qas_client

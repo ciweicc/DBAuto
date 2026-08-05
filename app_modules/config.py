@@ -1,5 +1,5 @@
 # config.py — 配置管理（ConfigManager 类 + 兼容层函数）
-import os, json, time
+import os, json
 from datetime import timezone, timedelta
 from threading import Lock
 

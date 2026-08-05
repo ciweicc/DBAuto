@@ -3,9 +3,9 @@ from datetime import datetime, timedelta
 from threading import Thread, Lock, Event
 from config import load_settings, ConfigManager, LOCAL_TZ, CATEGORIES
 from douban import get_douban_list, get_douban_wishlist
-from transfer import run_transfer, check_expired_tasks, fix_expired_tasks, is_in_qas, build_transfer_tasks, is_transfer_running, enqueue_scheduled_transfer
+from transfer import check_expired_tasks, fix_expired_tasks, build_transfer_tasks, is_transfer_running, enqueue_scheduled_transfer
 from storage import add_exec_record
-from utils import log, http_post
+from utils import log
 
 try:
     from croniter import croniter as _croniter

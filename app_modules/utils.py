@@ -94,7 +94,6 @@ def _derive_key(purpose=b"secret"):
     return hashlib.pbkdf2_hmac('sha256', sk, purpose, 10000)
 
 def _get_fernet_key():
-    from cryptography.fernet import Fernet
     dk = _derive_key(b"fernet_key")
     return base64.urlsafe_b64encode(dk[:32])
 

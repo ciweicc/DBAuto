@@ -37,3 +37,7 @@ test_output.txt
 .env
 .env.*
 !.env.example
+
+# ===== 本地虚拟环境（临时验证用，勿提交）=====
+.venv/
+.venv-*/

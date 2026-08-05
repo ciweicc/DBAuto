@@ -4,7 +4,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from threading import Lock, get_ident, enumerate as enumerate_threads, local, Thread
 from config import ConfigManager, load_settings, LOCAL_TZ
-from utils import http_get, http_post, log, TTLCache, clear_progress, sse_broadcast
+from utils import log, TTLCache, clear_progress, sse_broadcast
 from storage import load_history, add_exec_record, update_exec_record, upsert_history_item
 from douban import get_douban_list
 from tmdb import search_tmdb_id
