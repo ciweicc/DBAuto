@@ -142,18 +142,28 @@ def load_history():
 def save_history(h):
     global _history_cache
     with _history_lock:
-        _history_cache = dict(h)
+        # 规范化条目为统一四字段结构，保证缓存与冷路径形状一致（含 tmdb_id 缺省 ""）
+        normalized = {}
+        for title, info in h.items():
+            if not isinstance(info, dict):
+                info = {}
+            normalized[title] = {
+                "date": info.get("date", ""),
+                "status": info.get("status", ""),
+                "category": info.get("category", ""),
+                "tmdb_id": str(info["tmdb_id"]) if info.get("tmdb_id") else "",
+            }
+        _history_cache = normalized
         with _db_lock:
             conn = _get_db()
             existing_titles = set(row["title"] for row in conn.execute("SELECT title FROM transfer_history").fetchall())
-            new_titles = set(h.keys())
+            new_titles = set(normalized.keys())
             to_delete = existing_titles - new_titles
             if to_delete:
                 placeholders = ",".join("?" * len(to_delete))
                 conn.execute("DELETE FROM transfer_history WHERE title IN ({})".format(placeholders), tuple(to_delete))
-            rows = [(title, info.get("date", ""), info.get("status", ""), info.get("category", ""),
-                     str(info["tmdb_id"]) if info.get("tmdb_id") else "")
-                    for title, info in h.items()]
+            rows = [(title, item["date"], item["status"], item["category"], item["tmdb_id"])
+                    for title, item in normalized.items()]
             conn.executemany(
                 "INSERT OR REPLACE INTO transfer_history (title, date, status, category, tmdb_id) VALUES (?, ?, ?, ?, ?)",
                 rows

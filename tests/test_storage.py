@@ -72,6 +72,35 @@ class TestStorageHistory:
         finally:
             storage._history_cache = saved_cache
 
+    def test_save_history_normalizes_missing_tmdb_id(self):
+        """save_history 必须把缺失 tmdb_id 的条目规范化为 tmdb_id="" 的四字段结构。"""
+        import uuid
+        title = "P4_TEST_MISSING_{}".format(uuid.uuid4().hex)
+        saved_cache = storage._history_cache
+        storage._history_cache = None
+        try:
+            history = {title: {"date": "2026-08-06", "status": "done", "category": "movie"}}
+            save_history(history)
+            loaded = load_history()            # 缓存命中路径（dict(_history_cache)）
+            assert title in loaded
+            assert "tmdb_id" in loaded[title]   # 关键：缺失键须被补全
+            assert loaded[title]["tmdb_id"] == ""
+        finally:
+            storage._history_cache = saved_cache
+
+    def test_save_history_preserves_present_tmdb_id(self):
+        import uuid
+        title = "P4_TEST_PRESENT_{}".format(uuid.uuid4().hex)
+        saved_cache = storage._history_cache
+        storage._history_cache = None
+        try:
+            history = {title: {"date": "2026-08-06", "status": "done", "category": "movie", "tmdb_id": "987654"}}
+            save_history(history)
+            loaded = load_history()
+            assert loaded[title]["tmdb_id"] == "987654"
+        finally:
+            storage._history_cache = saved_cache
+
 
 class TestStorageExecHistory:
     def test_add_and_load_exec_record(self):
