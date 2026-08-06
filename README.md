@@ -31,6 +31,26 @@ docker run -d \
 
 启动后访问 `http://localhost:3001` 登录，在设置页面（⚙️）中配置 PanSou、QAS 地址和 Token。
 
+### 从源码构建镜像（可选）
+
+若不使用预构建镜像，可在**仓库根目录**自行构建（仓库重构后 Dockerfile 位于 `docker/Dockerfile`）：
+
+```bash
+docker build -f docker/Dockerfile -t dbauto:local .
+```
+
+随后用本地镜像启动：
+
+```bash
+docker run -d \
+  --name dbauto \
+  --restart unless-stopped \
+  -p 3001:3001 \
+  -v /opt/douban-history:/data/douban-history \
+  -e AUTH_PASS=your_password \
+  dbauto:local
+```
+
 ### 更新镜像
 
 ```bash
@@ -74,7 +94,11 @@ echo 'your_new_password' | docker exec -i dbauto python reset_password.py
 # 或交互式：docker exec -it dbauto python reset_password.py
 ```
 
-> 也可使用 `docker-compose up -d`，详见 [docker-compose.yml](docker/docker-compose.yml)。
+> 也可使用 Docker Compose 部署。Compose 文件中构建上下文为仓库根（`context: ..`）、Dockerfile 位于 `docker/Dockerfile`，因此请在**仓库根目录**用 `-f` 指定文件执行：
+> ```bash
+> docker compose -f docker/docker-compose.yml up -d
+> ```
+> 数据默认挂载到 `docker/data`。详见 [docker-compose.yml](docker/docker-compose.yml)。
 
 ### 本地运行
 
