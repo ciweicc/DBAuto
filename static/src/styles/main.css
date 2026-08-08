@@ -364,7 +364,7 @@ body{
 .card-title svg{color:var(--accent)}
 .card-title .ic,.hist-icon .ic{display:inline;vertical-align:middle;margin-right:4px}
 .card-title .badge{font-size:11px;padding:2px 9px;border-radius:20px;
-  background:var(--accent);color:#fff;font-weight:600;font-family:var(--font-display)}
+  background:var(--gradient-btn);color:#fff;font-weight:600;font-family:var(--font-display)}
 .sub-title{font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px;margin-top:14px;display:flex;align-items:center;gap:8px;
   font-family:var(--font-display)}
 .sub-title:first-child{margin-top:0}
@@ -376,8 +376,10 @@ body{
 .chips{display:flex;flex-wrap:wrap;gap:6px}
 .chip{padding:7px 14px;border-radius:var(--radius-sm);background:var(--card-2);border:1px solid var(--border);
   cursor:pointer;font-size:13px;font-weight:500;color:var(--text2);user-select:none;
+  font-family:inherit;line-height:normal;-webkit-appearance:none;appearance:none;
   transition:background var(--transition-fast),border-color var(--transition-fast),color var(--transition-fast)}
 .chip:hover{background:var(--card);border-color:var(--border2);color:var(--text)}
+.chip:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
 .chip.on{background:rgba(48,209,88,.12);border-color:rgba(48,209,88,.45);color:var(--green);font-weight:600}
 
 /* Input */
@@ -601,7 +603,8 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 .input-sm:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.15)}
 
 /* Data Table (compact, dense) */
-.data-table{width:100%;border-collapse:collapse;font-size:13px;background:var(--glass-bg-strong);border:1px solid var(--glass-border);border-radius:var(--radius);overflow:hidden}
+.data-table{width:100%;border-collapse:collapse;font-size:13px;background:var(--glass-bg-strong);border:1px solid var(--glass-border);border-radius:var(--radius);overflow:hidden;min-width:600px}
+.data-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100%}
 .data-table thead th{text-align:left;font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;
   padding:9px 12px;background:var(--card-2);border-bottom:1px solid var(--border);cursor:default;white-space:nowrap;position:sticky;top:0}
 .data-table thead th[data-sort]{cursor:pointer;user-select:none}

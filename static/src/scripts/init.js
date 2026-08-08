@@ -98,9 +98,10 @@ function initShortcuts(){
   document.addEventListener('keydown', function(e){
     // Esc：关闭确认框 / Sheet
     if(e.key === 'Escape'){
-      var overlays = document.querySelectorAll('.confirm-overlay.show, .sheet-overlay.show');
-      if(overlays.length){
-        overlays.forEach(function(o){ o.classList.remove('show'); });
+      if(document.querySelector('.confirm-overlay.show')){ resolveConfirm(false); e.preventDefault(); return; }
+      var sheets = document.querySelectorAll('.sheet-overlay.show');
+      if(sheets.length){
+        sheets.forEach(function(o){ o.classList.remove('show'); });
         e.preventDefault();
       }
       return;

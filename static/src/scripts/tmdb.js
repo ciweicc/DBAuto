@@ -82,8 +82,8 @@ async function loadTmdbGenres(){
     var d = await apiGet('/api/tmdb/genres?media_type='+mt);
     tmdbState.genres = d.genres || [];
     var chips = document.getElementById('tmdbGenreChips');
-    var html = '<span class="chip on" data-gid="0" onclick="toggleTmdbGenre(this)">全部</span>';
-    html += tmdbState.genres.map(function(g){return '<span class="chip" data-gid="'+g.id+'" onclick="toggleTmdbGenre(this)">'+g.name+'</span>'}).join('');
+    var html = '<button type="button" class="chip on" data-gid="0" onclick="toggleTmdbGenre(this)">全部</button>';
+    html += tmdbState.genres.map(function(g){return '<button type="button" class="chip" data-gid="'+g.id+'" onclick="toggleTmdbGenre(this)">'+g.name+'</button>'}).join('');
     chips.innerHTML = html;
     tmdbState.genre_id = 0;
   }catch(e){

@@ -142,7 +142,9 @@ function renderExecHistory(){
     var tr = document.createElement('tr');
     tr.className = 'hist-row'; tr.setAttribute('data-id', hid);
     var td1 = document.createElement('td');
-    td1.innerHTML = '<span class="status-dot-cell '+statusClass(h.status)+'" title="'+esc(h.status||'')+'"></span>';
+    var stKey = statusClass(h.status);
+    var stLabel = {ok:'成功', fail:'失败', partial:'部分成功', none:'无'}[stKey] || esc(h.status||'');
+    td1.innerHTML = '<span class="status-dot-cell '+stKey+'" role="img" aria-label="'+stLabel+'" title="'+esc(h.status||'')+'"></span>';
     var td2 = document.createElement('td'); td2.className='hist-type'; td2.textContent = typeLabel(h.type);
     var td3 = document.createElement('td'); td3.className='hist-detail-cell'; td3.textContent = h.detail||'';
     var td4 = document.createElement('td'); td4.innerHTML = resultBadges(h);
@@ -157,7 +159,9 @@ function renderExecHistory(){
       dtr.appendChild(dtd); tbody.appendChild(dtr);
     }
   });
-  table.appendChild(tbody); el.appendChild(table);
+  table.appendChild(tbody);
+  var tw = document.createElement('div'); tw.className='data-table-wrap';
+  tw.appendChild(table); el.appendChild(tw);
   if(histMore){
     var moreDiv = document.createElement('div');
     moreDiv.style.cssText = 'text-align:center;padding:12px;margin-top:6px';
