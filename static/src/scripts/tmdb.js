@@ -280,7 +280,8 @@ async function loadTmdbList(){
   }
 
   var grid = document.getElementById('tmdbGrid');
-  grid.innerHTML = '<div class="tmdb-loading" style="grid-column:1/-1"><div class="spinner"></div> 加载中...</div>';
+  var sk=''; for(var si=0;si<12;si++){ sk += '<div class="tmdb-skeleton"></div>'; }
+  grid.innerHTML = sk;
 
   var params = 'media_type='+mt+'&list_type='+lt+'&page='+tmdbState.page;
   if(lt === 'discover'){

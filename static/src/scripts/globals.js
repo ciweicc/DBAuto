@@ -29,3 +29,27 @@ function srAnnounce(msg){
   el.textContent = '';
   setTimeout(function(){ el.textContent = msg; }, 40);
 }
+
+// 外观：密度切换（紧凑 / 舒适），纯客户端偏好，与主题、音效同类
+function initDensity(){
+  var d = localStorage.getItem('density') || 'comfortable';
+  document.documentElement.setAttribute('data-density', d);
+  updateDensityBtn();
+}
+function toggleDensity(){
+  var cur = document.documentElement.getAttribute('data-density') || 'comfortable';
+  var next = cur === 'compact' ? 'comfortable' : 'compact';
+  document.documentElement.setAttribute('data-density', next);
+  localStorage.setItem('density', next);
+  updateDensityBtn();
+  srAnnounce(next === 'compact' ? '已切换为紧凑密度' : '已切换为舒适密度');
+}
+function updateDensityBtn(){
+  var btn = document.getElementById('densityBtn');
+  if(!btn) return;
+  var compact = (document.documentElement.getAttribute('data-density') || 'comfortable') === 'compact';
+  var tip = compact ? '当前：紧凑密度（点击切换为舒适）' : '当前：舒适密度（点击切换为紧凑）';
+  btn.title = tip;
+  btn.setAttribute('aria-label', tip);
+  btn.classList.toggle('active', compact);
+}

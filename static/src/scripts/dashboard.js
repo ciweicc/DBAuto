@@ -155,6 +155,34 @@ function renderWeekChart(stats){
     else bar.classList.add('ok');
     chartEl.appendChild(bar);
   });
+  renderSparkline(stats.daily);
+}
+
+/**
+ * 近 7 天成功率趋势迷你折线（与柱状图互补：柱状看总量，折线看质量）。
+ * 仅在有 daily 数据时渲染；成功率 = ok/(ok+fail)，无失败维度的日期跳过该点。
+ */
+function renderSparkline(daily){
+  var el = document.getElementById('ovSpark');
+  if(!el) return;
+  if(!daily || !daily.length){ el.innerHTML=''; return; }
+  var W=120, H=30, pad=4;
+  var vals = daily.map(function(d){
+    var denom=(d.ok||0)+(d.fail||0);
+    return denom>0 ? (d.ok/denom) : null;
+  });
+  var n=vals.length, started=false, dpath='', dots='';
+  for(var i=0;i<n;i++){
+    if(vals[i]===null){ started=false; continue; }
+    var x = n===1 ? W/2 : pad + i*(W-2*pad)/(n-1);
+    var y = H - pad - vals[i]*(H-2*pad);
+    dpath += (started?'L':'M') + x.toFixed(1) + ' ' + y.toFixed(1) + ' ';
+    started=true;
+    dots += '<circle cx="'+x.toFixed(1)+'" cy="'+y.toFixed(1)+'" r="1.6" fill="var(--accent)"/>';
+  }
+  el.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" width="100%" height="'+H+'">'+
+    '<path d="'+dpath.trim()+'" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>'+
+    dots+'</svg>';
 }
 
 /**

@@ -19,7 +19,7 @@ function initLayout(){
 }
 
 async function init(){
-  initTheme(); initTimeSelects(); updateSoundBtn(); initShortcuts();
+  initTheme(); initDensity(); initTimeSelects(); updateSoundBtn(); initShortcuts();
   try{ C = await apiGet('/api/categories'); }
   catch(e){ showToast('认证失败，请重新登录', false); setTimeout(function(){ location.href = '/login.html'; }, 1500); return; }
   parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
