@@ -767,7 +767,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 .tmdb-card.selected::after{content:'✓';position:absolute;top:8px;right:8px;
   width:26px;height:26px;border-radius:50%;background:var(--green);color:#fff;
   display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;z-index:2}
-.tmdb-poster{width:100%;aspect-ratio:2/3;object-fit:cover;background:rgba(255,255,255,.03);display:block;transition:transform .3s var(--ease-bounce)}
+.tmdb-poster{width:100%;aspect-ratio:2/3;object-fit:cover;background:rgba(255,255,255,.03);display:block;transition:transform .3s var(--ease-bounce);-webkit-user-drag:none;user-select:none}
 .tmdb-card:hover .tmdb-poster{transform:scale(1.05)}
 .tmdb-poster-wrap{overflow:hidden;position:relative}
 .tmdb-poster-wrap::after{content:'';position:absolute;bottom:0;left:0;right:0;height:60px;
