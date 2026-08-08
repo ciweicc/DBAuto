@@ -123,6 +123,11 @@ function renderExecHistory(){
     th.textContent = c.t;
     if(c.k){
       th.setAttribute('data-sort', c.k);
+      if(execHistorySort.key===c.k){
+        th.setAttribute('aria-sort', execHistorySort.dir==='asc'?'ascending':'descending');
+      } else {
+        th.setAttribute('aria-sort', 'none');
+      }
       var ind = document.createElement('span'); ind.className='sort-ind';
       if(execHistorySort.key===c.k) ind.textContent = execHistorySort.dir==='asc'?'▲':'▼';
       th.appendChild(ind);

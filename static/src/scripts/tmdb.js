@@ -15,6 +15,10 @@ var tmdbState = {
   initialized: false
 };
 
+function tmdbPosterFallback(img){
+  img.outerHTML = '<div class="tmdb-poster" style="display:flex;align-items:center;justify-content:center;color:var(--text3)"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg></div>';
+}
+
 async function initTmdbPage(){
   // 点击页面其它区域或按 Esc 关闭平台下拉（仅绑定一次）
   if(!tmdbState._outsideBound){
@@ -318,7 +322,7 @@ function renderTmdbGrid(){
     var sel = tmdbState.selected[item.id] ? ' selected' : '';
     var poster = item.poster || '';
     var posterHtml = poster
-      ? '<img class="tmdb-poster" src="'+esc(poster)+'" loading="lazy" alt="'+esc(item.title)+'">'
+      ? '<img class="tmdb-poster" src="'+esc(poster)+'" loading="lazy" decoding="async" alt="'+esc(item.title)+'" onerror="tmdbPosterFallback(this)">'
       : '<div class="tmdb-poster" style="display:flex;align-items:center;justify-content:center;color:var(--text3)"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg></div>';
     var ratingHtml = item.rating > 0
       ? '<div class="tmdb-rating-badge">★ '+item.rating.toFixed(1)+'</div>'
