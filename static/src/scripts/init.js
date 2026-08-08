@@ -106,11 +106,10 @@ function initShortcuts(){
       }
       return;
     }
-    // Ctrl/⌘ + K：聚焦搜索框
+    // Ctrl/⌘ + K：打开命令面板
     if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k'){
       e.preventDefault();
-      var sb = document.getElementById('searchInput');
-      if(sb){ sb.focus(); sb.select(); }
+      openCommandPalette();
       return;
     }
     // Ctrl/⌘ + Enter：开始转存（手动页，且未在编辑设置表单时）

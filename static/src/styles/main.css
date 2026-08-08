@@ -341,7 +341,8 @@ body{
 .overview-bar.empty{background:var(--text3)}
 .overview-bar__seg{display:block;width:100%;flex:0 0 auto}
 .overview-bar__seg.seg-ok{background:var(--green)}
-.overview-bar__seg.seg-fail{background:var(--red)}
+/* 失败段加斜纹纹理：不依赖纯色即可区分成功/失败，色弱与浅色主题下更清晰 */
+.overview-bar__seg.seg-fail{background:var(--red);background-image:repeating-linear-gradient(45deg, rgba(0,0,0,.16) 0 3px, transparent 3px 7px)}
 .overview-chart-legend{display:flex;gap:14px;margin:2px 0 6px}
 .legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)}
 .legend-dot{width:9px;height:9px;border-radius:3px;display:inline-block}
@@ -862,3 +863,46 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .tmdb-skeleton{aspect-ratio:2/3;border-radius:var(--radius);border:1px solid var(--border);
   background:linear-gradient(100deg,var(--glass-bg) 30%,var(--glass-bg-strong) 50%,var(--glass-bg) 70%);
   background-size:200% 100%;animation:shimmer 1.5s ease-in-out infinite}
+
+/* ===== 命令面板（⌘K / Ctrl+K） ===== */
+.cmd-palette-overlay{position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:3000;display:none;
+  align-items:flex-start;justify-content:center;padding-top:14vh}
+.cmd-palette-overlay.show{display:flex;animation:overlayFadeIn .18s ease}
+.cmd-palette{width:560px;max-width:92vw;background:var(--glass-bg-strong);border:1px solid var(--glass-border-strong);
+  border-radius:var(--radius-lg);box-shadow:var(--shadow), inset 0 1px 0 var(--glass-hi);overflow:hidden;
+  animation:cmdIn .22s var(--ease-standard)}
+@keyframes cmdIn{from{opacity:0;transform:translateY(-12px) scale(.97)}to{opacity:1;transform:none}}
+.cmd-palette__input-wrap{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid var(--glass-border)}
+.cmd-palette__input-wrap svg{width:18px;height:18px;color:var(--text3);flex-shrink:0}
+.cmd-palette__input-wrap input{flex:1;border:none;background:transparent;color:var(--text);font-size:15px;outline:none;font-family:var(--font)}
+.cmd-palette__input-wrap input::placeholder{color:var(--text3)}
+.cmd-palette__list{max-height:50vh;overflow-y:auto;padding:6px}
+.cmd-item{display:flex;align-items:center;gap:12px;padding:11px 14px;border-radius:var(--radius-sm);cursor:pointer;transition:background var(--transition-fast)}
+.cmd-item.active{background:color-mix(in srgb,var(--accent) 16%,transparent)}
+.cmd-item svg{width:18px;height:18px;color:var(--text2);flex-shrink:0}
+.cmd-item__body{display:flex;flex-direction:column;gap:2px;min-width:0}
+.cmd-item__title{font-size:14px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cmd-item__hint{font-size:11px;color:var(--text3)}
+.cmd-empty{padding:24px;text-align:center;color:var(--text3);font-size:13px}
+.cmd-palette__footer{display:flex;gap:14px;padding:8px 16px;border-top:1px solid var(--glass-border);font-size:11px;color:var(--text3)}
+.cmd-palette__footer kbd{font-family:var(--font-display);background:var(--card-2);border:1px solid var(--border);border-radius:4px;padding:1px 6px;font-size:10px}
+
+/* ===== 日志搜索（增强日志查看器） ===== */
+.log-search-row{padding:0 12px 10px}
+.log-search{width:100%;padding:8px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);
+  background:var(--card-2);color:var(--text);font-size:13px;transition:border-color var(--transition-fast)}
+.log-search:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px rgba(10,132,255,.15)}
+.log-search::placeholder{color:var(--text3)}
+
+/* ===== 设置分组折叠 ===== */
+.settings-groups{display:flex;flex-direction:column;gap:14px;margin-top:4px}
+.settings-group{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--card)}
+.settings-group>summary{display:flex;align-items:center;gap:9px;padding:13px 16px;font-size:14px;font-weight:600;color:var(--text);
+  cursor:pointer;list-style:none;user-select:none;font-family:var(--font-display);transition:background var(--transition-fast)}
+.settings-group>summary::-webkit-details-marker{display:none}
+.settings-group>summary:hover{background:var(--card-2)}
+.settings-group>summary svg{width:18px;height:18px;color:var(--accent);flex-shrink:0}
+.settings-group>summary::after{content:'';margin-left:auto;width:8px;height:8px;border-right:2px solid var(--text3);border-bottom:2px solid var(--text3);
+  transform:rotate(45deg);transition:transform var(--transition-fast)}
+.settings-group:not([open])>summary::after{transform:rotate(-45deg)}
+.settings-group>.settings-grid{margin:0;padding:16px 16px 4px}

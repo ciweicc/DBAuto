@@ -333,7 +333,7 @@ function renderTmdbGrid(){
     var metaParts = [];
     if(yearStr) metaParts.push(yearStr);
     if(votesStr) metaParts.push(votesStr);
-    return '<div class="tmdb-card'+sel+'" onclick="toggleTmdbCard(this,'+item.id+')">'+
+    return '<div class="tmdb-card'+sel+'" role="button" tabindex="0" aria-pressed="'+(sel?'true':'false')+'" data-id="'+item.id+'" onclick="toggleTmdbCard(this,'+item.id+')">'+
       '<div class="tmdb-poster-wrap">'+posterHtml+ratingHtml+'</div>'+
       '<div class="tmdb-info">'+
         '<div class="tmdb-title">'+esc(item.title)+'</div>'+
@@ -348,6 +348,7 @@ function toggleTmdbCard(el, id){
   if(tmdbState.selected[id]){
     delete tmdbState.selected[id];
     el.classList.remove('selected');
+    el.setAttribute('aria-pressed','false');
   }else{
     // 存储完整信息，以便翻页后仍能构建转存任务
     var item = null;
@@ -356,8 +357,66 @@ function toggleTmdbCard(el, id){
     }
     tmdbState.selected[id] = item ? {title: item.title} : {title: ''};
     el.classList.add('selected');
+    el.setAttribute('aria-pressed','true');
   }
   updateTmdbSelBar();
+}
+
+// 全选本页可见资源（鼠标按钮 + 键盘 A）
+function selectAllTmdbVisible(){
+  tmdbState.items.forEach(function(item){
+    tmdbState.selected[item.id] = {title: item.title};
+  });
+  document.querySelectorAll('#tmdbGrid .tmdb-card').forEach(function(c){
+    c.classList.add('selected');
+    c.setAttribute('aria-pressed','true');
+  });
+  updateTmdbSelBar();
+  srAnnounce('已全选本页 ' + tmdbState.items.length + ' 项');
+}
+
+// 键盘导航：方向键移动焦点、空格/回车切换选中、A 全选、Esc 取消当前焦点
+function onTmdbGridKeydown(e){
+  var grid = document.getElementById('tmdbGrid');
+  if(!grid) return;
+  var cards = Array.prototype.slice.call(grid.querySelectorAll('.tmdb-card'));
+  if(!cards.length) return;
+  // A 全选（输入框内不拦截）
+  if(e.key === 'a' || e.key === 'A'){
+    if(e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+    e.preventDefault(); selectAllTmdbVisible(); return;
+  }
+  var active = document.activeElement;
+  var idx = cards.indexOf(active);
+  if(idx === -1){
+    // 焦点不在卡片上，方向键先聚焦第一张
+    if(e.key === 'ArrowDown' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowLeft'){
+      e.preventDefault(); cards[0].focus();
+    }
+    return;
+  }
+  // 计算当前列数（响应式会变化）
+  var cols = 5;
+  var cs = getComputedStyle(grid).gridTemplateColumns;
+  if(cs){ var parts = cs.trim().split(/\s+/); if(parts.length > 1) cols = parts.length; }
+  var next = idx;
+  switch(e.key){
+    case 'ArrowRight': next = idx + 1; break;
+    case 'ArrowLeft':  next = idx - 1; break;
+    case 'ArrowDown':  next = idx + cols; break;
+    case 'ArrowUp':    next = idx - cols; break;
+    case 'Home':       next = 0; break;
+    case 'End':        next = cards.length - 1; break;
+    case ' ':
+    case 'Enter':
+      e.preventDefault();
+      toggleTmdbCard(active, parseInt(active.dataset.id, 10));
+      return;
+    default: return;
+  }
+  if(next < 0 || next >= cards.length) return;
+  e.preventDefault();
+  cards[next].focus();
 }
 
 function updateTmdbSelBar(){
