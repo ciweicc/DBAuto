@@ -19,18 +19,20 @@ function switchTab(tab){
     var el = document.getElementById(PAGE_IDS[p]);
     if(el) el.classList.toggle('active', p === tab);
   });
-  // 侧边栏联动（同时标记 aria-current 供屏幕阅读器识别）
+  // 侧边栏联动（role=tab：同步 aria-selected 与 aria-current）
   document.querySelectorAll('.side-nav-item').forEach(function(b){
     var on = b.getAttribute('data-tab') === tab;
     b.classList.toggle('active', on);
+    b.setAttribute('aria-selected', on ? 'true' : 'false');
     if(on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
-  // 底部导航联动
+  // 底部导航联动（role=tab：同步 aria-selected，不再使用 aria-current）
   var navIdx = BOTTOM_NAV.indexOf(tab);
   document.querySelectorAll('.bottom-nav .nav-item').forEach(function(n, i){
     var on = i === navIdx;
     n.classList.toggle('active', on);
-    if(on) n.setAttribute('aria-current', 'page'); else n.removeAttribute('aria-current');
+    n.setAttribute('aria-selected', on ? 'true' : 'false');
+    n.removeAttribute('aria-current');
   });
   // 关闭移动端抽屉
   closeDrawers();
@@ -40,3 +42,24 @@ function switchTab(tab){
   if(tab === 'tmdb') initTmdbPage();
   if(tab === 'settings') loadConfig();
 }
+
+// 方向键在标签间导航（ARIA tabs 模式：左右 / Home / End 切换并自动激活）
+document.addEventListener('keydown', function(e){
+  var t = e.target;
+  if(!t || !t.classList) return;
+  var isTab = t.classList.contains('side-nav-item') || t.classList.contains('nav-item');
+  if(!isTab) return;
+  if(e.key !== 'ArrowRight' && e.key !== 'ArrowLeft' && e.key !== 'Home' && e.key !== 'End') return;
+  e.preventDefault();
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.side-nav-item'));
+  var idx = tabs.indexOf(t);
+  if(idx < 0) return;
+  var n = tabs.length;
+  if(e.key === 'ArrowRight') idx = (idx + 1) % n;
+  else if(e.key === 'ArrowLeft') idx = (idx - 1 + n) % n;
+  else if(e.key === 'Home') idx = 0;
+  else if(e.key === 'End') idx = n - 1;
+  var next = tabs[idx].getAttribute('data-tab');
+  switchTab(next);
+  tabs[idx].focus();
+});

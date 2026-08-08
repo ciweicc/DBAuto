@@ -138,7 +138,7 @@ function startLogPoll(interval, initLen, skipFirstSync){
         updateProgress(d.stats);
       }
       if(!d.running&&logPollTimer){clearInterval(logPollTimer);logPollTimer=null;logPollInterval=0;
-        document.getElementById('stopBtn').style.display='none';addLog('全部完成');
+        document.getElementById('stopBtn').style.display='none';addLog('全部完成');srAnnounce('转存全部完成');
         if(d.stats&&(d.stats.failed||0)>0)playSound('error');else playSound('success');}
     }catch(e){}
   },pollInterval);
@@ -195,7 +195,7 @@ async function checkExpired(){
   try{
     var d = await apiGet('/api/check_expired');
     if(d.expired&&d.expired.length>0){
-      addLog('发现 '+d.expired.length+' 个失效链接');
+      addLog('发现 '+d.expired.length+' 个失效链接');srAnnounce('发现 '+d.expired.length+' 个失效链接');
       for(var i=0;i<d.expired.length;i++)addLog('  '+d.expired[i].taskname);
       addLog('开始搜索并替换失效链接...');
       var fd = await apiGet('/api/fix_expired');
@@ -207,10 +207,10 @@ async function checkExpired(){
           addLog('已有任务在运行，恢复监控...');
           checkRunningStatus();
         }else{
-          addLog('启动修复失败: '+(fd.message||'未知错误'));
+          addLog('启动修复失败: '+(fd.message||'未知错误'));srAnnounce('修复启动失败：'+(fd.message||'未知错误'));
         }
       }
-    }else addLog('所有链接正常');
+    }else{addLog('所有链接正常');srAnnounce('所有链接正常');}
   }catch(e){addLog('检测失败: '+e.message)}
 }
 

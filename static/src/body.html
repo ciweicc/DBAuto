@@ -51,12 +51,12 @@
       <span>豆瓣自动转存</span>
       <span class="brand-ver" id="headerVersion">v1.1.0</span>
     </div>
-    <nav class="side-nav">
-      <button class="side-nav-item active" data-tab="tmdb" onclick="switchTab('tmdb')" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-tmdb"/></svg>TMDB</button>
-      <button class="side-nav-item" data-tab="manual" onclick="switchTab('manual')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>手动转存</button>
-      <button class="side-nav-item" data-tab="schedule" onclick="switchTab('schedule')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg>定时任务</button>
-      <button class="side-nav-item" data-tab="history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg>执行历史</button>
-      <button class="side-nav-item" data-tab="settings" onclick="switchTab('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-settings"/></svg>设置</button>
+    <nav class="side-nav" role="tablist">
+      <button class="side-nav-item active" role="tab" aria-selected="true" data-tab="tmdb" onclick="switchTab('tmdb')" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-tmdb"/></svg>TMDB</button>
+      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="manual" onclick="switchTab('manual')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>手动转存</button>
+      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="schedule" onclick="switchTab('schedule')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg>定时任务</button>
+      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg>执行历史</button>
+      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="settings" onclick="switchTab('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-settings"/></svg>设置</button>
     </nav>
     <div class="side-foot" id="sideFoot"></div>
   </aside>
@@ -357,7 +357,7 @@
             <div class="overview-card">
               <div class="overview-card__icon" id="ovStatusIcon" style="--ov-icon-color:var(--green)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg></div>
               <div class="overview-card__body">
-                <div class="overview-card__value" id="ovStatus"><span class="status-dot" id="ovStatusDot" style="display:none"></span><span id="ovStatusText">-</span></div>
+                <div class="overview-card__value" id="ovStatus"><span class="status-dot" id="ovStatusDot" style="display:none"></span><span id="ovStatusText" role="status">-</span></div>
                 <div class="overview-card__label" id="ovStatusTime">上次转存</div>
               </div>
             </div>
@@ -470,29 +470,32 @@
 
 <!-- Bottom Navigation (Mobile) -->
 <nav class="bottom-nav">
-  <div class="bottom-nav-inner">
-    <div class="nav-item active" onclick="switchTab('tmdb')" aria-current="page">
+  <nav class="bottom-nav-inner" role="tablist">
+    <button class="nav-item active" type="button" role="tab" aria-selected="true" onclick="switchTab('tmdb')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-tmdb"/></svg>
       <span>TMDB</span>
-    </div>
-    <div class="nav-item" onclick="switchTab('manual')">
+    </button>
+    <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('manual')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>
       <span>转存</span>
-    </div>
-    <div class="nav-item" onclick="switchTab('schedule')">
+    </button>
+    <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('schedule')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       <span>定时</span>
-    </div>
-    <div class="nav-item" onclick="switchTab('history')">
+    </button>
+    <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('history')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
       <span>历史</span>
-    </div>
-    <div class="nav-item" onclick="switchTab('settings')">
+    </button>
+    <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('settings')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
       <span>设置</span>
-    </div>
-  </div>
+    </button>
+  </nav>
 </nav>
+
+<!-- Screen-reader live region: announces transfer milestones politely -->
+<div id="srLive" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
 <!-- Floating log toggle (mobile / collapsed) -->
 <button class="log-fab" id="logFab" onclick="toggleLogPanel()" title="执行日志" aria-label="执行日志"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>

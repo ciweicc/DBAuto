@@ -31,7 +31,6 @@
   --text: #f2f2f5;
   --text2: rgba(255, 255, 255, 0.62);
   --text3: rgba(255, 255, 255, 0.55);
-  --text4: rgba(255, 255, 255, 0.55);
 
   /* Accent */
   --accent: #0a84ff;
@@ -60,8 +59,8 @@
 
   /* Brand gradient (blue → purple) */
   --gradient-brand: linear-gradient(135deg, var(--accent), var(--accent2));
-  --gradient-brand-hover: linear-gradient(135deg, var(--accent), var(--accent2));
   --gradient-brand-hover: linear-gradient(135deg, color-mix(in srgb, var(--accent) 85%, #fff), color-mix(in srgb, var(--accent2) 85%, #fff));
+  --gradient-btn: linear-gradient(135deg, #0071e3, var(--accent2));
 
   /* Grid + glow background */
   --grid-size: 40px;
@@ -95,6 +94,8 @@
   --fs-base: 13px;
   --fs-sm: 12px;
   --fs-lg: 14px;
+  --fs-xl: 20px;
+  --fs-2xl: 26px;
 
   /* Card inner padding */
   --card-pad: 12px;
@@ -137,7 +138,6 @@
   --text: #1c1c1e;
   --text2: rgba(0, 0, 0, 0.55);
   --text3: rgba(0, 0, 0, 0.62);
-  --text4: rgba(0, 0, 0, 0.55);
   --accent: #007aff;
   --accent2: #5856d6;
   --accent3: #8e8dff;
@@ -151,6 +151,8 @@
   --glow-1: #007aff;
   --glow-2: #5856d6;
   --glow-3: #00a3ff;
+
+  --gradient-btn: linear-gradient(135deg, #0066d6, var(--accent2));
 
   --shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.22);
   --shadow-sm: 0 4px 14px -8px rgba(0, 0, 0, 0.18);

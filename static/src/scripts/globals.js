@@ -22,13 +22,10 @@ function togglePwd(btn){
 }
 
 
-// P1 UX: password visibility toggle
-function togglePwd(btn){
-  var input = btn.previousElementSibling;
-  if(!input||!input.tagName||input.tagName.toLowerCase()!=='input')return;
-  var isPwd = input.type==='password';
-  input.type = isPwd ? 'text' : 'password';
-  btn.querySelector('use').setAttribute('href', isPwd ? '#icon-eye-off' : '#icon-eye');
-  btn.setAttribute('aria-label', isPwd ? '隐藏密码' : '显示密码');
-  btn.setAttribute('title', isPwd ? '隐藏密码' : '显示密码');
+// P3 a11y: announce milestone status to screen readers via a polite live region
+function srAnnounce(msg){
+  var el = document.getElementById('srLive');
+  if(!el || !msg) return;
+  el.textContent = '';
+  setTimeout(function(){ el.textContent = msg; }, 40);
 }
