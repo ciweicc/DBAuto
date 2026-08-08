@@ -825,7 +825,13 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
 }
 
-/* ===== 密度切换（紧凑 / 舒适） ===== */
+/* ===== 密度切换（宽松 / 标准 / 紧凑）：主要影响 TMDB 资源网格列数 ===== */
+html[data-density="comfortable"]{
+  --card-pad:14px;
+  --space-md:12px;
+  --space-lg:16px;
+  --space-xl:22px;
+}
 html[data-density="compact"]{
   --card-pad:9px;
   --space-md:8px;
@@ -833,6 +839,14 @@ html[data-density="compact"]{
   --space-xl:16px;
   --fs-base:12px;
 }
+
+/* TMDB 资源密度：每屏可见海报数量（桌面端；移动端保留响应式列数） */
+@media(min-width:761px){
+  html[data-density="comfortable"] .tmdb-grid{grid-template-columns:repeat(4,minmax(0,1fr));gap:20px}
+  html[data-density="standard"]   .tmdb-grid{grid-template-columns:repeat(5,minmax(0,1fr));gap:16px}
+  html[data-density="compact"]    .tmdb-grid{grid-template-columns:repeat(8,minmax(0,1fr));gap:12px}
+}
+
 html[data-density="compact"] .card{margin-bottom:8px}
 html[data-density="compact"] .card-title{margin-bottom:8px}
 html[data-density="compact"] .data-table tbody td{padding:6px 10px}

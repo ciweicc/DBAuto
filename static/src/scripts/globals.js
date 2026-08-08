@@ -30,26 +30,34 @@ function srAnnounce(msg){
   setTimeout(function(){ el.textContent = msg; }, 40);
 }
 
-// 外观：密度切换（紧凑 / 舒适），纯客户端偏好，与主题、音效同类
+// 外观：密度切换（宽松 / 标准 / 紧凑），纯客户端偏好；
+// 主要影响 TMDB 资源网格列数（每屏可见资源数量），紧凑态同时收紧全局间距
+var DENSITY_ORDER = ['comfortable','standard','compact'];
+var DENSITY_LABEL = {comfortable:'宽松', standard:'标准', compact:'紧凑'};
+
 function initDensity(){
-  var d = localStorage.getItem('density') || 'comfortable';
+  var d = localStorage.getItem('density');
+  if(DENSITY_ORDER.indexOf(d) === -1) d = 'standard';
   document.documentElement.setAttribute('data-density', d);
   updateDensityBtn();
 }
 function toggleDensity(){
-  var cur = document.documentElement.getAttribute('data-density') || 'comfortable';
-  var next = cur === 'compact' ? 'comfortable' : 'compact';
+  var cur = document.documentElement.getAttribute('data-density') || 'standard';
+  var idx = DENSITY_ORDER.indexOf(cur);
+  if(idx === -1) idx = 1;
+  var next = DENSITY_ORDER[(idx + 1) % DENSITY_ORDER.length];
   document.documentElement.setAttribute('data-density', next);
   localStorage.setItem('density', next);
   updateDensityBtn();
-  srAnnounce(next === 'compact' ? '已切换为紧凑密度' : '已切换为舒适密度');
+  srAnnounce('TMDB 显示密度已切换为' + (DENSITY_LABEL[next] || next));
 }
 function updateDensityBtn(){
   var btn = document.getElementById('densityBtn');
   if(!btn) return;
-  var compact = (document.documentElement.getAttribute('data-density') || 'comfortable') === 'compact';
-  var tip = compact ? '当前：紧凑密度（点击切换为舒适）' : '当前：舒适密度（点击切换为紧凑）';
+  var cur = document.documentElement.getAttribute('data-density') || 'standard';
+  var label = DENSITY_LABEL[cur] || cur;
+  var tip = 'TMDB 显示密度：' + label + '（点击切换）';
   btn.title = tip;
   btn.setAttribute('aria-label', tip);
-  btn.classList.toggle('active', compact);
+  btn.dataset.density = cur;
 }
