@@ -149,73 +149,23 @@ function renderWeekChart(stats){
     var h = Math.round(d.total/maxTotal*100);
     bar.style.height = (h<5?5:h) + '%';
     bar.title = d.date + '　成功 '+d.ok+' / 失败 '+d.fail;
-    if(d.total===0) bar.classList.add('empty');
-    else if(d.fail>0 && d.ok===0) bar.classList.add('fail');
-    else if(d.fail>0) bar.classList.add('mixed');
-    else bar.classList.add('ok');
+    if(d.total===0){
+      bar.classList.add('empty');
+    }else{
+      // 堆叠段：底部绿色=成功，顶部红色=失败，比例即当天成功率
+      var okPct = d.total>0 ? (d.ok/d.total*100) : 0;
+      var failPct = d.total>0 ? (d.fail/d.total*100) : 0;
+      var segOk = document.createElement('span');
+      segOk.className = 'overview-bar__seg seg-ok';
+      segOk.style.height = okPct + '%';
+      var segFail = document.createElement('span');
+      segFail.className = 'overview-bar__seg seg-fail';
+      segFail.style.height = failPct + '%';
+      bar.appendChild(segOk);
+      bar.appendChild(segFail);
+    }
     chartEl.appendChild(bar);
   });
-  renderSparkline(stats.daily);
-}
-
-/**
- * 近 7 天成功率迷你面积图（与柱状图互补：柱状看总量，面积图看质量）。
- * 仅在有 daily 数据时渲染；成功率 = ok/(ok+fail)，无失败维度的日期跳过该点。
- */
-function renderSparkline(daily){
-  var el = document.getElementById('ovSpark');
-  var legendEl = document.getElementById('ovSparkLegend');
-  if(!el) return;
-  if(!daily || !daily.length){ if(legendEl) legendEl.textContent=''; el.innerHTML=''; return; }
-  var W=120, H=42, padX=4, padY=4;
-  var vals = daily.map(function(d){
-    var denom=(d.ok||0)+(d.fail||0);
-    return denom>0 ? (d.ok/denom) : null;
-  });
-  // 平均成功率用于图例
-  var valid = vals.filter(function(v){ return v!==null; });
-  var avg = valid.length ? valid.reduce(function(a,b){return a+b;},0)/valid.length : 0;
-  if(legendEl) legendEl.textContent = (avg*100).toFixed(0)+'%';
-
-  // 计算点坐标
-  var n=vals.length, pts=[];
-  for(var i=0;i<n;i++){
-    if(vals[i]===null){ pts.push(null); continue; }
-    var x = n===1 ? W/2 : padX + i*(W-2*padX)/(n-1);
-    var y = H - padY - vals[i]*(H-2*padY);
-    pts.push({x:x, y:y, v:vals[i]});
-  }
-
-  // 生成面积路径（从第一个有效点到最右，闭合到底边）
-  var area='M0 '+H+' ';
-  var first=true, linePath='';
-  for(var i=0;i<n;i++){
-    if(!pts[i]) continue;
-    var cmd = first ? 'M' : 'L';
-    linePath += cmd + pts[i].x.toFixed(1) + ' ' + pts[i].y.toFixed(1) + ' ';
-    area += cmd + pts[i].x.toFixed(1) + ' ' + pts[i].y.toFixed(1) + ' ';
-    first=false;
-  }
-  if(first){ el.innerHTML=''; return; } // 无有效点
-  area += 'L'+W+' '+H+' Z';
-
-  // 50% 参考虚线
-  var midY = (H - padY - 0.5*(H-2*padY)).toFixed(1);
-  var grid = '<line x1="0" y1="'+midY+'" x2="'+W+'" y2="'+midY+'" stroke="var(--glass-border)" stroke-width="1" stroke-dasharray="3 3"/>';
-
-  // 端点圆点
-  var dots='';
-  for(var i=0;i<n;i++){
-    if(!pts[i]) continue;
-    dots += '<circle cx="'+pts[i].x.toFixed(1)+'" cy="'+pts[i].y.toFixed(1)+'" r="2.2" fill="var(--green)" stroke="var(--card)" stroke-width="1.2"/>';
-  }
-
-  el.innerHTML = '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" width="100%" height="'+H+'">'+
-    '<defs><linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="var(--green)" stop-opacity=".35"/><stop offset="100%" stop-color="var(--green)" stop-opacity="0"/></linearGradient></defs>'+
-    grid+
-    '<path d="'+area+'" fill="url(#sparkFill)" stroke="none"/>'+
-    '<path d="'+linePath.trim()+'" fill="none" stroke="var(--green)" stroke-width="2.5"/>'+
-    dots+'</svg>';
 }
 
 /**

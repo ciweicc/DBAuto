@@ -328,6 +328,9 @@ body{
   opacity:.75;
   transition:opacity var(--transition-fast),transform var(--transition-fast);
   position:relative;
+  display:flex;
+  flex-direction:column-reverse;
+  overflow:hidden;
 }
 .overview-bar:hover{
   opacity:1;
@@ -336,9 +339,14 @@ body{
 }
 .overview-bar[title]{cursor:help}
 .overview-bar.empty{background:var(--text3)}
-.overview-bar.ok{background:var(--green)}
-.overview-bar.mixed{background:linear-gradient(180deg,var(--green),var(--orange))}
-.overview-bar.fail{background:var(--red)}
+.overview-bar__seg{display:block;width:100%;flex:0 0 auto}
+.overview-bar__seg.seg-ok{background:var(--green)}
+.overview-bar__seg.seg-fail{background:var(--red)}
+.overview-chart-legend{display:flex;gap:14px;margin:2px 0 6px}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:11px;color:var(--text2)}
+.legend-dot{width:9px;height:9px;border-radius:3px;display:inline-block}
+.legend-dot.ok{background:var(--green)}
+.legend-dot.fail{background:var(--red)}
 
 /* 页面标题 + 设置页模块化网格 */
 .page-head{margin-bottom:18px}
@@ -835,15 +843,6 @@ html[data-density="compact"] .tmdb-info{padding:8px}
 html[data-density="compact"] .row{gap:8px}
 html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{padding:8px}
 .icon-btn.active{background:var(--card-2);border-color:var(--accent);color:var(--accent)}
-
-/* ===== 概览成功率迷你面积图 ===== */
-.overview-spark-head{display:flex;align-items:center;justify-content:space-between;margin-top:14px;padding-top:10px;border-top:1px solid var(--glass-border)}
-.overview-spark-label{font-size:11px;font-weight:600;color:var(--text2);letter-spacing:.2px}
-.overview-spark-legend{font-size:11px;color:var(--green);font-weight:600}
-.overview-spark{margin-top:8px;position:relative}
-.overview-spark::before{content:'';position:absolute;inset:0;background:linear-gradient(180deg, color-mix(in srgb, var(--green) 12%, transparent) 0%, transparent 100%);border-radius:var(--radius-sm);pointer-events:none;z-index:0}
-.overview-spark svg{display:block;width:100%;height:42px;overflow:visible;position:relative;z-index:1}
-.overview-spark path{vector-effect:none;stroke-linecap:round;stroke-linejoin:round}
 
 /* ===== TMDB 网格骨架屏 ===== */
 .tmdb-skeleton{aspect-ratio:2/3;border-radius:var(--radius);border:1px solid var(--border);
