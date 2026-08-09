@@ -31,12 +31,57 @@ class APIClient:
         return http_post_stream(url, data or {}, timeout=timeout)
 
 
+# PanSou /api/search 支持的网盘类型（完整列表，参考 fish2018/pansou 文档）。
+# 不再只请求 quark，避免漏掉百度/阿里/115 等资源的搜索结果。
+PANSOU_CLOUD_TYPES = [
+    "baidu", "aliyun", "quark", "guangya", "tianyi", "uc", "mobile",
+    "115", "pikpak", "xunlei", "123", "magnet", "ed2k",
+]
+
+# /api/check/links 可识别的 disk_type（用于按 URL 推断网盘类型时兜底）。
+_PANSOU_DISK_TYPE_HINTS = [
+    ("pan.quark.cn", "quark"),
+    ("pan.baidu.com", "baidu"),
+    ("aliyundrive.com", "aliyun"),
+    ("alipan.com", "aliyun"),
+    ("115.com", "115"),
+    ("115cdn.com", "115"),
+    ("115cdn.net", "115"),
+    ("pan.xunlei.com", "xunlei"),
+    ("cloud.189.cn", "tianyi"),
+    ("pan.uc.cn", "uc"),
+    ("caiyun.139.com", "mobile"),
+    ("139.com", "mobile"),
+    ("123pan.com", "123"),
+    ("123pan.cn", "123"),
+    ("pikpak.com", "pikpak"),
+    ("pikpak.cn", "pikpak"),
+]
+
+
+def infer_disk_type(url):
+    """根据分享链接 URL 推断 PanSou check/links 所需的 disk_type。
+
+    PanSou 的 /api/check/links 要求每条链接带上 disk_type；但搜索结果通常只给出
+    url 与来源频道（source），并不直接给出网盘类型。这里按域名做启发式推断，
+    无法识别时兜底为 quark（盘搜结果中夸克占比最高）。
+    """
+    u = (url or "").lower()
+    for domain, dtype in _PANSOU_DISK_TYPE_HINTS:
+        if domain in u:
+            return dtype
+    return "quark"
+
+
 class PanSouClient(APIClient):
     def search(self, keyword):
-        return self.post("/api/search", {"kw": keyword, "cloud_types": ["quark"], "res": "merge"})
+        return self.post(
+            "/api/search",
+            {"kw": keyword, "cloud_types": list(PANSOU_CLOUD_TYPES), "res": "merge"},
+        )
 
     def check_links(self, urls):
-        items = [{"disk_type": "quark", "url": u} for u in urls if u]
+        items = [{"disk_type": infer_disk_type(u), "url": u} for u in urls if u]
         if not items:
             return []
         return self.post("/api/check/links", {"items": items})

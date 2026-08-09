@@ -72,14 +72,17 @@ class TransferRouteMixin:
 
         if route == "/api/check_link":
             # 仅入队：立即返回任务状态，不阻塞请求线程。真正检测由 link_check worker 池异步执行。
+            # source 透传给 link_check：盘搜搜索结果链接应带 source=pansou，走 PanSou 校验；
+            # 不传或传 qas 时走 QAS（向后兼容，转存/失效检测链路不受影响）。
             params = self._get_query_params()
             url = params.get("url", "").strip()
+            source = params.get("source", "qas").strip()
             ok, msg = validate_string(url, min_len=1, max_len=500, allow_empty=False)
             if not ok:
                 # 非法 url 单独用 error 语义（与队列繁忙 busy 区分），前端据此渲染「链接无效」
                 self._send_json({"state": "error", "message": "url: {}".format(msg)}, 400)
                 return True
-            r = link_check.enqueue(url)
+            r = link_check.enqueue(url, source=source)
             state = r.get("state")
             if state == "busy":
                 self._send_json({"state": "busy", "message": "检测繁忙，请稍后重试"})

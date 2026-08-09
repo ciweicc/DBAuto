@@ -214,9 +214,18 @@ def search_pansou(keyword, category="movie"):
     for attempt in range(2):
         try:
             data = client.search(keyword)
-            results = data.get("data", {}).get("merged_by_type", {}).get("quark", [])
-            if not isinstance(results, list):
+            # PanSou res="merge" 时结果按网盘类型分组在 data.merged_by_type 中，
+            # 这里合并所有类型（quark/baidu/aliyun/115...）的结果，避免只取 quark 导致漏结果。
+            merged = data.get("data", {}).get("merged_by_type", {})
+            results = []
+            if isinstance(merged, dict):
+                for items in merged.values():
+                    if isinstance(items, list):
+                        results.extend(items)
+            if not results:
                 results = data.get("results", [])
+            if not isinstance(results, list):
+                results = []
             formatted_results = []
             for item in results:
                 title = item.get("note", item.get("Title", item.get("title", "")))

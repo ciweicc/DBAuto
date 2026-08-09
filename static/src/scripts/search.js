@@ -221,9 +221,72 @@ async function checkSearchLinks(items){
 }
 async function checkOneLink(it){
   if(it.seq !== searchCheckSeq) return; // 已有新搜索，丢弃过期回调
+
+  // 轮询辅助：检测任务入队后反复查询 /api/check_link/status 直至终态。
+  // 采用 async/await + 循环（非 setInterval 回调风格），每次轮询前校验 seq 防呆。
+  function delay(ms){ return new Promise(function(res){ setTimeout(res, ms); }); }
+  async function pollStatus(taskId){
+    var MAX_RETRY = 20;
+    var INTERVAL = 1500;
+    var last = null;
+    for(var i = 0; i < MAX_RETRY; i++){
+      if(it.seq !== searchCheckSeq) return null; // 已有新搜索，丢弃过期轮询
+      last = await apiGet('/api/check_link/status?task_id=' + encodeURIComponent(taskId), 1);
+      if(it.seq !== searchCheckSeq) return null;
+      // 终态：done / error / unknown / busy 不再轮询
+      if(last.state === 'done' || last.state === 'error' || last.state === 'unknown' || last.state === 'busy'){
+        return last;
+      }
+      // pending / running：间隔后继续轮询
+      if(i < MAX_RETRY - 1){
+        if(it.seq !== searchCheckSeq) return null;
+        await delay(INTERVAL);
+      }
+    }
+    // 超过最大重试次数仍未完成 → 中性「检测超时」，不标红失效
+    if(last) last.state = 'timeout';
+    return last;
+  }
+
   try{
-    var d = await apiGet('/api/check_link?url='+encodeURIComponent(it.url), 1);
+    // 搜索结果均来自盘搜，链接检测必须走 PanSou 校验（source=pansou），
+    // 否则会被错误地用 QAS 验证、把有效盘搜链接误报为「✗ 链接失效」。
+    var d = await apiGet('/api/check_link?url=' + encodeURIComponent(it.url) + '&source=pansou', 1);
     if(it.seq !== searchCheckSeq) return;
+
+    var state = d.state;
+    if(state === 'pending' || state === 'running'){
+      // 任务入队，需轮询 status 接口直到终态
+      if(!d.task_id){
+        it.badge.textContent = '检测失败';
+        it.badge.style.color = 'var(--text3,#999)';
+        return;
+      }
+      var final = await pollStatus(d.task_id);
+      if(it.seq !== searchCheckSeq) return;
+      if(final === null) return; // 已过期，静默丢弃
+      if(final.state === 'timeout'){
+        it.badge.textContent = '检测超时';
+        it.badge.style.color = 'var(--text3,#999)';
+        return;
+      }
+      // 终态结果覆盖，继续走下方渲染逻辑
+      d = final;
+      state = final.state;
+    }
+
+    if(state === 'busy'){
+      it.badge.textContent = '检测繁忙';
+      it.badge.style.color = 'var(--text3,#999)';
+      return;
+    }
+    if(state === 'error' || state === 'unknown'){
+      it.badge.textContent = '检测失败';
+      it.badge.style.color = 'var(--text3,#999)';
+      return;
+    }
+
+    // state === 'done'（或旧后端无 state 字段）：按现有逻辑渲染 ✓/✗/检测失败
     if(d.checked === false){
       it.badge.textContent = '检测失败';
       it.badge.style.color = 'var(--text3,#999)';
