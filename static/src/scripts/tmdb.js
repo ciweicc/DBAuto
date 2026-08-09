@@ -12,7 +12,11 @@ var tmdbState = {
   providersList: [],    // 当前地区可用的平台完整列表
   options: null,
   genres: [],
-  initialized: false
+  initialized: false,
+  loadingMore: false,   // 是否正在加载下一页（防止重复触发）
+  allLoaded: false,     // 是否已加载完所有页
+  _scrollBound: false,  // 滚动监听是否已绑定（防止重复绑定）
+  _renderedCount: 0     // 已渲染到 grid 的卡片数量（用于增量追加）
 };
 
 function tmdbPosterFallback(img){
@@ -62,6 +66,8 @@ async function initTmdbPage(){
   // 加载类型和列表
   await loadTmdbGenres();
   await loadTmdbList();
+  // 绑定无限滚动监听（只绑定一次）
+  bindTmdbScroll();
 }
 
 function updateTmdbListTypeOptions(listTypes){
@@ -259,7 +265,8 @@ function onTmdbFilterChange(){
   }
 }
 
-async function loadTmdbList(){
+// 读取当前筛选条件并拼装 /api/tmdb/list 请求参数
+function buildTmdbListParams(){
   var mt = document.getElementById('tmdbMediaType').value;
   var lt = document.getElementById('tmdbListType').value;
   var region = document.getElementById('tmdbRegion').value;
@@ -269,19 +276,6 @@ async function loadTmdbList(){
   var year = parseInt(document.getElementById('tmdbYear').value) || 0;
   var genreId = tmdbState.genre_id || 0;
   var provider = tmdbState.providers.join(',');
-
-  // 如果不是 discover，但用户选了类型/评分/年份，自动切换到 discover
-  if(lt !== 'discover' && (genreId > 0 || minRating > 0 || year > 0)){
-    document.getElementById('tmdbListType').value = 'discover';
-    lt = 'discover';
-    tmdbState.list_type = 'discover';
-    onTmdbFilterChange();
-    return;
-  }
-
-  var grid = document.getElementById('tmdbGrid');
-  var sk=''; for(var si=0;si<12;si++){ sk += '<div class="tmdb-skeleton"></div>'; }
-  grid.innerHTML = sk;
 
   var params = 'media_type='+mt+'&list_type='+lt+'&page='+tmdbState.page;
   if(lt === 'discover'){
@@ -293,12 +287,82 @@ async function loadTmdbList(){
   }
   if(region) params += '&country='+region;
   if(language) params += '&language='+language;
+  return params;
+}
+
+async function loadTmdbList(append){
+  append = append || false;
+  var grid = document.getElementById('tmdbGrid');
+
+  // ---- 增量加载（无限滚动）----
+  if(append){
+    // 防护：已在加载 / 已全部加载完 / 没有下一页 时直接返回
+    if(tmdbState.loadingMore || tmdbState.allLoaded || tmdbState.page >= tmdbState.total_pages) return;
+    tmdbState.loadingMore = true;
+    // 底部“加载更多”指示器（不清除现有 grid）
+    grid.insertAdjacentHTML('beforeend',
+      '<div id="tmdbLoadMore" style="grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:10px;padding:18px;color:var(--text3);font-size:13px">加载更多…</div>');
+    tmdbState.page++;
+    var aparams = buildTmdbListParams();
+    try{
+      var ad = await apiGet('/api/tmdb/list?'+aparams);
+      var newItems = ad.items || [];
+      // 按 id 去重（切换筛选条件时不同页可能重叠）
+      var seen = {};
+      tmdbState.items.forEach(function(it){ seen[it.id] = true; });
+      var deduped = newItems.filter(function(it){
+        if(seen[it.id]) return false;
+        seen[it.id] = true;
+        return true;
+      });
+      tmdbState.items = tmdbState.items.concat(deduped);
+      if(ad.total_pages) tmdbState.total_pages = ad.total_pages;
+      var alm = document.getElementById('tmdbLoadMore');
+      if(alm) alm.remove();
+      renderTmdbGrid(true);
+      renderTmdbPagination();
+      tmdbState.loadingMore = false;
+      if(tmdbState.page >= tmdbState.total_pages) tmdbState.allLoaded = true;
+    }catch(e){
+      // 追加失败时仅停止并隐藏指示器，不清除已渲染内容
+      var elm = document.getElementById('tmdbLoadMore');
+      if(elm) elm.remove();
+      tmdbState.loadingMore = false;
+      console.error('TMDB append load error', e);
+    }
+    return;
+  }
+
+  // ---- 全新加载（替换）----
+  tmdbState.items = [];
+  tmdbState.allLoaded = false;
+  tmdbState.loadingMore = false;
+
+  var mt = document.getElementById('tmdbMediaType').value;
+  var lt = document.getElementById('tmdbListType').value;
+  var minRating = parseFloat(document.getElementById('tmdbMinRating').value) || 0;
+  var year = parseInt(document.getElementById('tmdbYear').value) || 0;
+  var genreId = tmdbState.genre_id || 0;
+
+  // 如果不是 discover，但用户选了类型/评分/年份，自动切换到 discover
+  if(lt !== 'discover' && (genreId > 0 || minRating > 0 || year > 0)){
+    document.getElementById('tmdbListType').value = 'discover';
+    lt = 'discover';
+    tmdbState.list_type = 'discover';
+    onTmdbFilterChange();
+    return;
+  }
+
+  var sk=''; for(var si=0;si<12;si++){ sk += '<div class="tmdb-skeleton"></div>'; }
+  grid.innerHTML = sk;
+
+  var params = buildTmdbListParams();
 
   try{
     var d = await apiGet('/api/tmdb/list?'+params);
     tmdbState.items = d.items || [];
     tmdbState.total_pages = d.total_pages || 1;
-    renderTmdbGrid();
+    renderTmdbGrid(false);
     renderTmdbPagination();
     if(d.error){
       var msg = String(d.error);
@@ -313,35 +377,54 @@ async function loadTmdbList(){
   }
 }
 
-function renderTmdbGrid(){
+// 单张卡片 HTML（供全新渲染与增量追加复用）
+function tmdbCardHtml(item){
+  var sel = tmdbState.selected[item.id] ? ' selected' : '';
+  var poster = item.poster || '';
+  var posterHtml = poster
+    ? '<img class="tmdb-poster" src="'+esc(poster)+'" loading="lazy" decoding="async" alt="'+esc(item.title)+'" draggable="false" ondragstart="return false" onerror="tmdbPosterFallback(this)">'
+    : '<div class="tmdb-poster" style="display:flex;align-items:center;justify-content:center;color:var(--text3)"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg></div>';
+  var ratingHtml = item.rating > 0
+    ? '<div class="tmdb-rating-badge">★ '+item.rating.toFixed(1)+'</div>'
+    : '';
+  var yearStr = item.year ? item.year : '';
+  var votesStr = item.votes > 0 ? (item.votes >= 1000 ? (item.votes/1000).toFixed(1)+'k' : item.votes) + '票' : '';
+  var metaParts = [];
+  if(yearStr) metaParts.push(yearStr);
+  if(votesStr) metaParts.push(votesStr);
+  return '<div class="tmdb-card'+sel+'" role="button" tabindex="0" aria-pressed="'+(sel?'true':'false')+'" data-id="'+item.id+'" onclick="toggleTmdbCard(this,'+item.id+')">'+
+    '<div class="tmdb-poster-wrap">'+posterHtml+ratingHtml+'</div>'+
+    '<div class="tmdb-info">'+
+      '<div class="tmdb-title">'+esc(item.title)+'</div>'+
+      '<div class="tmdb-meta">'+metaParts.join(' · ')+'</div>'+
+      (item.overview ? '<div class="tmdb-overview">'+esc(item.overview)+'</div>' : '')+
+    '</div>'+
+  '</div>';
+}
+
+function renderTmdbGrid(append){
+  append = append || false;
   var grid = document.getElementById('tmdbGrid');
-  if(!tmdbState.items.length){
-    grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">暂无数据</div>';
+
+  // 全新渲染
+  if(!append){
+    if(!tmdbState.items.length){
+      grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">暂无数据</div>';
+      tmdbState._renderedCount = 0;
+      return;
+    }
+    grid.innerHTML = tmdbState.items.map(tmdbCardHtml).join('');
+    tmdbState._renderedCount = tmdbState.items.length;
     return;
   }
-  grid.innerHTML = tmdbState.items.map(function(item){
-    var sel = tmdbState.selected[item.id] ? ' selected' : '';
-    var poster = item.poster || '';
-    var posterHtml = poster
-      ? '<img class="tmdb-poster" src="'+esc(poster)+'" loading="lazy" decoding="async" alt="'+esc(item.title)+'" draggable="false" ondragstart="return false" onerror="tmdbPosterFallback(this)">'
-      : '<div class="tmdb-poster" style="display:flex;align-items:center;justify-content:center;color:var(--text3)"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg></div>';
-    var ratingHtml = item.rating > 0
-      ? '<div class="tmdb-rating-badge">★ '+item.rating.toFixed(1)+'</div>'
-      : '';
-    var yearStr = item.year ? item.year : '';
-    var votesStr = item.votes > 0 ? (item.votes >= 1000 ? (item.votes/1000).toFixed(1)+'k' : item.votes) + '票' : '';
-    var metaParts = [];
-    if(yearStr) metaParts.push(yearStr);
-    if(votesStr) metaParts.push(votesStr);
-    return '<div class="tmdb-card'+sel+'" role="button" tabindex="0" aria-pressed="'+(sel?'true':'false')+'" data-id="'+item.id+'" onclick="toggleTmdbCard(this,'+item.id+')">'+
-      '<div class="tmdb-poster-wrap">'+posterHtml+ratingHtml+'</div>'+
-      '<div class="tmdb-info">'+
-        '<div class="tmdb-title">'+esc(item.title)+'</div>'+
-        '<div class="tmdb-meta">'+metaParts.join(' · ')+'</div>'+
-        (item.overview ? '<div class="tmdb-overview">'+esc(item.overview)+'</div>' : '')+
-      '</div>'+
-    '</div>';
-  }).join('');
+
+  // 增量追加：仅渲染尚未绘制的卡片，保留现有内容与选中态
+  if(!tmdbState.items.length) return;
+  var start = tmdbState._renderedCount || 0;
+  if(start >= tmdbState.items.length) return;
+  var html = tmdbState.items.slice(start).map(tmdbCardHtml).join('');
+  grid.insertAdjacentHTML('beforeend', html);
+  tmdbState._renderedCount = tmdbState.items.length;
 }
 
 function toggleTmdbCard(el, id){
@@ -512,6 +595,37 @@ async function refreshTmdbCache(){
     tmdbState.page = 1;
     await loadTmdbList();
   }catch(e){showToast('刷新失败',false)}
+}
+
+// ============ 无限滚动 ============
+
+// 判断 #tmdbGrid 底部是否已接近可视区底部（阈值 400px）
+function tmdbNearBottom(){
+  var grid = document.getElementById('tmdbGrid');
+  if(!grid) return false;
+  // 真正的滚动容器是 .content（body 设了 overflow:hidden，window 不滚动）
+  var sc = document.querySelector('.content');
+  var viewportBottom = sc ? sc.getBoundingClientRect().bottom : window.innerHeight;
+  var gridRect = grid.getBoundingClientRect();
+  return (viewportBottom - gridRect.bottom) <= 400;
+}
+
+// 滚动回调：仅在 TMDB 标签页可见且未到底时追加下一页
+function tmdbOnScroll(){
+  if(!tmdbState.initialized) return;
+  var page = document.getElementById('pageTmdb');
+  if(!page || !page.classList.contains('active')) return;
+  if(tmdbState.loadingMore || tmdbState.allLoaded) return;
+  if(!tmdbNearBottom()) return;
+  loadTmdbList(true);
+}
+
+// 绑定滚动监听（只绑定一次）。滚动容器优先取 .content，否则回退到 window。
+function bindTmdbScroll(){
+  if(tmdbState._scrollBound) return;
+  var sc = document.querySelector('.content') || window;
+  sc.addEventListener('scroll', tmdbOnScroll, {passive:true});
+  tmdbState._scrollBound = true;
 }
 
 
