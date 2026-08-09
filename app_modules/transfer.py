@@ -214,14 +214,10 @@ def search_pansou(keyword, category="movie"):
     for attempt in range(2):
         try:
             data = client.search(keyword)
-            # PanSou res="merge" 时结果按网盘类型分组在 data.merged_by_type 中，
-            # 这里合并所有类型（quark/baidu/aliyun/115...）的结果，避免只取 quark 导致漏结果。
+            # PanSou res="merge" 时结果按网盘类型分组在 data.merged_by_type 中。
+            # 本项目仅使用夸克网盘，只取 quark 类型结果。
             merged = data.get("data", {}).get("merged_by_type", {})
-            results = []
-            if isinstance(merged, dict):
-                for items in merged.values():
-                    if isinstance(items, list):
-                        results.extend(items)
+            results = merged.get("quark", []) if isinstance(merged, dict) else []
             if not results:
                 results = data.get("results", [])
             if not isinstance(results, list):

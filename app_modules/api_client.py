@@ -32,7 +32,8 @@ class APIClient:
 
 
 # PanSou /api/search 支持的网盘类型（完整列表，参考 fish2018/pansou 文档）。
-# 不再只请求 quark，避免漏掉百度/阿里/115 等资源的搜索结果。
+# 注：本项目转存仅使用夸克网盘，search() 只请求 quark 类型；
+# 此列表与 infer_disk_type() 保留供 check_links() 使用（链接检测需按 URL 推断 disk_type）。
 PANSOU_CLOUD_TYPES = [
     "baidu", "aliyun", "quark", "guangya", "tianyi", "uc", "mobile",
     "115", "pikpak", "xunlei", "123", "magnet", "ed2k",
@@ -75,9 +76,10 @@ def infer_disk_type(url):
 
 class PanSouClient(APIClient):
     def search(self, keyword):
+        # 本项目仅使用夸克网盘转存，只请求 quark 类型结果
         return self.post(
             "/api/search",
-            {"kw": keyword, "cloud_types": list(PANSOU_CLOUD_TYPES), "res": "merge"},
+            {"kw": keyword, "cloud_types": ["quark"], "res": "merge"},
         )
 
     def check_links(self, urls):
