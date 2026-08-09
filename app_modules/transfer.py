@@ -257,12 +257,14 @@ def validate_share_link(url):
         return False, str(e)
 
 def add_and_run(title, shareurl, savepath, pattern="", replace=""):
-    # 前置校验：失效链接直接返回，避免在网盘创建空目录
+    # 前置校验：用 QAS 检查链接是否失效，仅作"参考/告警"，不阻断真实转存。
+    # 用户从搜索结果中明确选择的链接已在展示侧用 source=pansou 校验过；
+    # QAS get_share_detail 偶发误判(success=False)，若在此直接跳过会导致"假成功、无实际转存"。
+    # 因此预校验失败时仅告警，仍以 QAS add_task + run_script_now_stream 的真实结果为准。
     try:
         ok, msg = validate_share_link(shareurl)
         if not ok:
-            log("链接无效，跳过转存: {} ({})".format(shareurl, msg))
-            return {"status": "invalid", "msg": msg or "链接已失效"}
+            log("链接预校验未通过(仍尝试转存): {} ({})".format(shareurl, msg))
     except Exception as e:
         log("链接校验异常(放行): {}".format(e))
     client = _get_qas_client()
@@ -290,9 +292,11 @@ def add_and_run(title, shareurl, savepath, pattern="", replace=""):
     return {"status": "done", "msg": "转存成功"}
 
 def transfer_one(title, shareurl, savepath, pattern="", replace="", category="movie"):
-    """单条转存，正确管理 transfer_status 状态"""
+    """单条转存，正确管理 transfer_status 状态，并写入执行历史(exec record)"""
     tid = get_ident()
     task_id = uuid.uuid4().hex
+    exec_record_id = None
+    res = None
     with transfer_lock:
         transfer_status.update({
             "running": True,
@@ -306,8 +310,20 @@ def transfer_one(title, shareurl, savepath, pattern="", replace="", category="mo
         })
         clear_progress()
     _register_running_task(task_id)
+    # 写入执行历史（与 run_transfer 一致的单条转存日志），便于用户在"转存执行日志"中查看
     try:
-        res = add_and_run(title, shareurl, savepath, pattern, replace)
+        rec = add_exec_record("transfer", "单条转存: {}".format(title), "running")
+        exec_record_id = rec["id"]
+    except Exception:
+        pass
+    try:
+        try:
+            res = add_and_run(title, shareurl, savepath, pattern, replace)
+        except Exception as e:
+            # 捕获 add_and_run 的异常，转为结构化失败结果，确保 finally 中仍能写入执行日志，
+            # 避免异常直接向上抛导致 update_exec_record 被跳过（原本的优雅失败路径失效）。
+            log("单条转存异常: {}".format(e))
+            res = {"status": "error", "msg": "异常: {}".format(e)}
         with transfer_lock:
             if res["status"] in ("ok", "done"):
                 transfer_status["stats"]["ok"] += 1
@@ -329,6 +345,31 @@ def transfer_one(title, shareurl, savepath, pattern="", replace="", category="mo
             transfer_status["thread_id"] = None
             sse_broadcast("transfer_progress", dict(transfer_status))
         _snapshot_finish(task_id)
+        # 将 add_and_run 的执行结果透传到执行历史，确保每次转存都有可见的执行日志
+        if exec_record_id:
+            status = (res or {}).get("status", "error")
+            msg = (res or {}).get("msg", "")
+            if res is None:
+                final_status = "fail"
+                detail = "转存未产生结果（可能异常中断）"
+            elif status in ("ok", "done"):
+                final_status = "ok"
+                detail = "单条转存结果: {} ({})".format(status, msg)
+            elif status == "exists":
+                final_status = "skipped"
+                detail = "单条转存结果: {} ({})".format(status, msg)
+            elif status == "invalid":
+                final_status = "fail"
+                detail = "链接校验未通过，仍尝试转存: {}".format(msg)
+            else:
+                final_status = "fail"
+                detail = "单条转存结果: {} ({})".format(status, msg)
+            try:
+                update_exec_record(exec_record_id, detail=detail, status=final_status,
+                                   data={"title": title, "status": (res or {}).get("status"),
+                                         "msg": (res or {}).get("msg")})
+            except Exception:
+                pass
 
 EXPIRED_CHECK_CONCURRENCY = 5
 
