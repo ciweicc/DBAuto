@@ -94,6 +94,7 @@ body{
   display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 16px;
   border-bottom:1px solid var(--glass-border);background:var(--glass-bg);flex-shrink:0;
   box-shadow:var(--shadow-sm), inset 0 1px 0 var(--glass-hi);
+  position:relative;z-index:10;
 }
 .topbar .side-toggle{display:none}
 .topbar-start{display:flex;align-items:center;gap:10px;flex:1;min-width:0}
@@ -162,7 +163,7 @@ body{
 .search-clear:hover{background:rgba(255,255,255,.1);color:var(--text)}
 .search-box.has-value .search-clear{opacity:1;visibility:visible}
 
-.search-wrapper{position:relative;flex:1;max-width:440px}
+.search-wrapper{position:relative;flex:1;max-width:440px;z-index:1000}
 .search-dropdown{
   position:absolute;top:100%;left:0;right:0;margin-top:6px;
   background:var(--card);border:1px solid var(--border2);border-radius:var(--radius);
