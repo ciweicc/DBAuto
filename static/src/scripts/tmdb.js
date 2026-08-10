@@ -16,11 +16,39 @@ var tmdbState = {
   loadingMore: false,   // 是否正在加载下一页（防止重复触发）
   allLoaded: false,     // 是否已加载完所有页
   _scrollBound: false,  // 滚动监听是否已绑定（防止重复绑定）
-  _renderedCount: 0     // 已渲染到 grid 的卡片数量（用于增量追加）
+  _backToTopCreated: false, // “回到顶部”按钮是否已创建（防止重复创建）
+  _renderedCount: 0,    // 已渲染到 grid 的卡片数量（用于增量追加）
+  lastScrollTrigger: 0, // 上次滚动触发加载的时间戳（节流用，单位 ms）
+  lastAppendAt: 0       // 上次“成功追加加载完成”的时间戳（追加后冷却用，单位 ms）
 };
 
+// 无限滚动相关阈值常量（集中管理，便于调参）
+var TMDB_SCROLL_THROTTLE_MS = 900;   // 滚动触发节流：两次触发的最小时间间隔
+var TMDB_NEAR_BOTTOM_PX = 900;       // 接近底部的触发距离（越大越早预加载）
+var TMDB_APPEND_COOLDOWN_MS = 1500;  // 一次成功追加加载完成后的最小冷却时间
+var TMDB_BACK_TOP_THRESHOLD = 600;   // “回到顶部”按钮出现的滚动阈值（.content scrollTop，单位 px）
+
+// 无封面占位卡片的 HTML：深色渐变背景 + 半透明大图标 + 居中的标题文字。
+// 既保留“有信息可看”的观感，又契合现代流媒体（如 Netflix）的占位瓦片风格。
+function tmdbNoPosterHtml(title){
+  var safeTitle = esc(title || '');
+  return '<div class="tmdb-poster tmdb-no-poster">'
+    + '<svg class="tmdb-no-poster-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-movie"/></svg>'
+    + '<span class="tmdb-no-poster-title">' + safeTitle + '</span>'
+    + '</div>';
+}
+
+// 封面图加载失败时的兜底：用富占位替换 <img>，并尽量从卡片 DOM 中取出标题。
 function tmdbPosterFallback(img){
-  img.outerHTML = '<div class="tmdb-poster" style="display:flex;align-items:center;justify-content:center;color:var(--text3)"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg></div>';
+  var title = '';
+  try{
+    var card = img.closest ? img.closest('.tmdb-card') : null;
+    if(card){
+      var tEl = card.querySelector('.tmdb-title');
+      if(tEl) title = tEl.textContent || (tEl.innerText || '');
+    }
+  }catch(e){ /* 取不到标题就只显示图标 */ }
+  img.outerHTML = tmdbNoPosterHtml(title);
 }
 
 async function initTmdbPage(){
@@ -68,6 +96,8 @@ async function initTmdbPage(){
   await loadTmdbList();
   // 绑定无限滚动监听（只绑定一次）
   bindTmdbScroll();
+  // 创建“回到顶部”悬浮按钮（只创建一次）
+  ensureTmdbBackToTop();
 }
 
 function updateTmdbListTypeOptions(listTypes){
@@ -298,6 +328,8 @@ async function loadTmdbList(append){
   if(append){
     // 防护：已在加载 / 已全部加载完 / 没有下一页 时直接返回
     if(tmdbState.loadingMore || tmdbState.allLoaded || tmdbState.page >= tmdbState.total_pages) return;
+    // 关键：在发起异步请求之前就同步置位 loadingMore，
+    // 保证本函数返回（遇到 await）前守卫已生效，杜绝重复触发竞态。
     tmdbState.loadingMore = true;
     // 底部“加载更多”指示器（不清除现有 grid）
     grid.insertAdjacentHTML('beforeend',
@@ -321,14 +353,17 @@ async function loadTmdbList(append){
       if(alm) alm.remove();
       renderTmdbGrid(true);
       renderTmdbPagination();
-      tmdbState.loadingMore = false;
       if(tmdbState.page >= tmdbState.total_pages) tmdbState.allLoaded = true;
+      // 记录成功追加完成的时间，供滚动冷却使用
+      tmdbState.lastAppendAt = Date.now();
     }catch(e){
       // 追加失败时仅停止并隐藏指示器，不清除已渲染内容
       var elm = document.getElementById('tmdbLoadMore');
       if(elm) elm.remove();
-      tmdbState.loadingMore = false;
       console.error('TMDB append load error', e);
+    }finally{
+      // 无论成功失败都释放守卫，确保不会卡死在“加载中”
+      tmdbState.loadingMore = false;
     }
     return;
   }
@@ -337,6 +372,7 @@ async function loadTmdbList(append){
   tmdbState.items = [];
   tmdbState.allLoaded = false;
   tmdbState.loadingMore = false;
+  tmdbState.lastAppendAt = 0; // 清空追加冷却，允许新列表立即响应滚动加载
 
   var mt = document.getElementById('tmdbMediaType').value;
   var lt = document.getElementById('tmdbListType').value;
@@ -375,6 +411,8 @@ async function loadTmdbList(append){
   }catch(e){
     grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">加载失败: '+esc(e.message||'')+'<br><span style="font-size:12px;opacity:.7">请检查 TMDB API Key 是否正确，以及网络是否能访问 themoviedb.org；若被网络限制，可在设置中配置代理。</span></div>';
   }
+  // 全新加载后刷新“回到顶部”按钮状态（用户可能已滚动很深后切换筛选/分页）
+  tmdbUpdateBackToTop();
 }
 
 // 单张卡片 HTML（供全新渲染与增量追加复用）
@@ -383,7 +421,7 @@ function tmdbCardHtml(item){
   var poster = item.poster || '';
   var posterHtml = poster
     ? '<img class="tmdb-poster" src="'+esc(poster)+'" loading="lazy" decoding="async" alt="'+esc(item.title)+'" draggable="false" ondragstart="return false" onerror="tmdbPosterFallback(this)">'
-    : '<div class="tmdb-poster" style="display:flex;align-items:center;justify-content:center;color:var(--text3)"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg></div>';
+    : tmdbNoPosterHtml(item.title);
   var ratingHtml = item.rating > 0
     ? '<div class="tmdb-rating-badge">★ '+item.rating.toFixed(1)+'</div>'
     : '';
@@ -599,7 +637,7 @@ async function refreshTmdbCache(){
 
 // ============ 无限滚动 ============
 
-// 判断 #tmdbGrid 底部是否已接近可视区底部（阈值 400px）
+// 判断 #tmdbGrid 底部是否已接近可视区底部（阈值可配置，默认 900px）
 function tmdbNearBottom(){
   var grid = document.getElementById('tmdbGrid');
   if(!grid) return false;
@@ -607,16 +645,26 @@ function tmdbNearBottom(){
   var sc = document.querySelector('.content');
   var viewportBottom = sc ? sc.getBoundingClientRect().bottom : window.innerHeight;
   var gridRect = grid.getBoundingClientRect();
-  return (viewportBottom - gridRect.bottom) <= 400;
+  return (viewportBottom - gridRect.bottom) <= TMDB_NEAR_BOTTOM_PX;
 }
 
 // 滚动回调：仅在 TMDB 标签页可见且未到底时追加下一页
+// 通过“时间戳节流 + 追加后冷却”避免鼠标滚轮大跳变导致的连续重复加载。
 function tmdbOnScroll(){
   if(!tmdbState.initialized) return;
+  // 按钮可见性：仅依赖滚动位置 + 当前页是否激活，独立于下面的加载触发逻辑，
+  // 这样即使在 loadingMore / allLoaded / 冷却 等提前 return 的分支里，按钮状态也能实时跟随滚动更新。
+  tmdbUpdateBackToTop();
   var page = document.getElementById('pageTmdb');
   if(!page || !page.classList.contains('active')) return;
   if(tmdbState.loadingMore || tmdbState.allLoaded) return;
+  // 追加成功后冷却：避免“加载→新内容把旧内容顶上去→又触发滚动”的级联
+  if(tmdbState.lastAppendAt && (Date.now() - tmdbState.lastAppendAt) < TMDB_APPEND_COOLDOWN_MS) return;
+  // 时间戳节流：两次触发至少间隔 TMDB_SCROLL_THROTTLE_MS，轻量且与 passive 监听兼容
+  var now = Date.now();
+  if(now - tmdbState.lastScrollTrigger < TMDB_SCROLL_THROTTLE_MS) return;
   if(!tmdbNearBottom()) return;
+  tmdbState.lastScrollTrigger = now;
   loadTmdbList(true);
 }
 
@@ -626,6 +674,52 @@ function bindTmdbScroll(){
   var sc = document.querySelector('.content') || window;
   sc.addEventListener('scroll', tmdbOnScroll, {passive:true});
   tmdbState._scrollBound = true;
+}
+
+// ============ 一键回到顶部 ============
+
+// 创建“回到顶部”悬浮按钮（只创建一次，guard 由 _backToTopCreated 标记 + DOM 存在性双重保证）。
+// 按钮挂在 body 上（app 级），可见性由 TMDB 滚动位置 + 当前页是否激活共同驱动。
+function ensureTmdbBackToTop(){
+  if(tmdbState._backToTopCreated) return;
+  var existing = document.getElementById('tmdbBackToTop');
+  if(existing) return; // 防御：DOM 已存在则视为已创建，避免重复
+  var btn = document.createElement('button');
+  btn.id = 'tmdbBackToTop';
+  btn.type = 'button';
+  btn.className = 'tmdb-back-to-top';
+  btn.setAttribute('aria-label', '回到顶部');
+  btn.title = '回到顶部';
+  // 上箭头图标（内联 SVG，随主题 currentColor 变化）
+  btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>';
+  // 点击：平滑滚动 .content 回到顶部（容器是 .content 而非 window）
+  btn.addEventListener('click', function(){
+    var content = document.querySelector('.content');
+    if(content) content.scrollTo({ top: 0, behavior: 'smooth' });
+  });
+  document.body.appendChild(btn);
+  tmdbState._backToTopCreated = true;
+}
+
+// 根据当前滚动位置与“TMDB 页是否激活”计算按钮可见性，并切换 .visible 类。
+// 不绑定独立滚动监听，由 tmdbOnScroll 复用同一 .content 滚动事件调用，避免重复触发。
+function tmdbUpdateBackToTop(){
+  if(!tmdbState._backToTopCreated) return;
+  var btn = document.getElementById('tmdbBackToTop');
+  if(!btn) return;
+  var content = document.querySelector('.content');
+  var page = document.getElementById('pageTmdb');
+  if(!content || !page) return;
+  var active = page.classList.contains('active');
+  var show = active && content.scrollTop > TMDB_BACK_TOP_THRESHOLD;
+  btn.classList.toggle('visible', show);
+}
+
+// 显式隐藏按钮（用于切换离开 TMDB 标签页时，避免悬浮按钮残留在其它页面）。
+function tmdbHideBackToTop(){
+  if(!tmdbState._backToTopCreated) return;
+  var btn = document.getElementById('tmdbBackToTop');
+  if(btn) btn.classList.remove('visible');
 }
 
 

@@ -41,6 +41,9 @@ function switchTab(tab){
   if(tab === 'history') loadExecHistory();
   if(tab === 'tmdb') initTmdbPage();
   if(tab === 'settings') loadConfig();
+  // TMDB “回到顶部”按钮：离开 TMDB 页时隐藏，返回时按当前滚动位置刷新可见性
+  if(tab !== 'tmdb') tmdbHideBackToTop();
+  else tmdbUpdateBackToTop();
 }
 
 // 方向键在标签间导航（ARIA tabs 模式：左右 / Home / End 切换并自动激活）

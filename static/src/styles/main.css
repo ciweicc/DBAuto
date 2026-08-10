@@ -783,6 +783,14 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;z-index:2}
 .tmdb-poster{width:100%;aspect-ratio:2/3;object-fit:cover;background:rgba(255,255,255,.03);display:block;transition:transform .3s var(--ease-standard);-webkit-user-drag:none;user-select:none}
 .tmdb-card:hover .tmdb-poster{transform:scale(1.05)}
+/* 无封面占位：深色渐变背景 + 半透明大图标 + 居中标题，观感更统一 */
+.tmdb-no-poster{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
+  padding:14px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);
+  color:rgba(255,255,255,.92);text-align:center;user-select:none}
+.tmdb-no-poster-icon{opacity:.35;flex-shrink:0;color:#fff}
+.tmdb-no-poster-title{font-size:12px;font-weight:600;line-height:1.4;color:#fff;max-width:92%;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
+  text-shadow:0 1px 3px rgba(0,0,0,.55)}
 .tmdb-poster-wrap{overflow:hidden;position:relative}
 .tmdb-poster-wrap::after{content:'';position:absolute;bottom:0;left:0;right:0;height:60px;
   background:linear-gradient(transparent,rgba(0,0,0,.8));pointer-events:none}
@@ -907,3 +915,56 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
   transform:rotate(45deg);transition:transform var(--transition-fast)}
 .settings-group:not([open])>summary::after{transform:rotate(-45deg)}
 .settings-group>.settings-grid{margin:0;padding:16px 16px 4px}
+
+/* =========================================================
+   TMDB 一键「回到顶部」悬浮按钮
+   挂在 body（app 级），可见性由 JS 依据 .content 滚动位置 + TMDB 页激活态驱动。
+   z-index 高于内容/底栏，但低于遮罩类弹层（sheet 1000 / confirm 2000 / toast 9999）。
+   ========================================================= */
+#tmdbBackToTop{
+  position:fixed;
+  right:24px;
+  bottom:24px;
+  width:44px;
+  height:44px;
+  border-radius:50%;
+  border:none;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  background:var(--gradient-btn);
+  color:#fff;
+  cursor:pointer;
+  box-shadow:var(--shadow-glow);
+  z-index:400;
+  opacity:0;
+  pointer-events:none;
+  transform:translateY(8px);
+  transition:opacity var(--transition-slow), transform var(--transition-slow), background var(--transition-fast);
+  -webkit-backdrop-filter:var(--blur);
+  backdrop-filter:var(--blur);
+}
+#tmdbBackToTop.visible{
+  opacity:1;
+  pointer-events:auto;
+  transform:translateY(0);
+}
+#tmdbBackToTop:hover{
+  background:var(--gradient-brand-hover);
+  transform:translateY(-2px) scale(1.05);
+}
+#tmdbBackToTop:active{
+  transform:translateY(0) scale(.96);
+}
+#tmdbBackToTop:focus-visible{
+  outline:2px solid var(--accent);
+  outline-offset:3px;
+}
+#tmdbBackToTop svg{
+  width:22px;
+  height:22px;
+}
+/* 移动端：避开底部导航栏（与 .log-fab 一致上移） */
+@media(max-width:640px){
+  #tmdbBackToTop{right:16px;bottom:calc(76px + env(safe-area-inset-bottom,0px))}
+}
