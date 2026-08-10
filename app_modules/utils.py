@@ -159,9 +159,22 @@ def setup_logging():
 
 logger = setup_logging()
 
-def log(msg):
+def log(msg, tag=None):
+    """记录一条日志并广播到 SSE / 前端进度面板。
+
+    Args:
+        msg: 日志正文。
+        tag: 可选的来源/批次标签（如 "TMDB"、"TRANSFER#ab12cd"）。
+            提供时日志行格式变为 "[HH:MM:SS][TAG] msg"（标签转大写、去除内部空格），
+            便于在混合日志流中区分来源；为 None 时保持原 "[HH:MM:SS] msg" 格式，
+            向后兼容所有旧调用方。
+    """
     ts = time.strftime("%H:%M:%S")
-    line = "[{}] {}".format(ts, msg)
+    if tag:
+        tag_label = tag.upper().replace(" ", "")
+        line = "[{}][{}] {}".format(ts, tag_label, msg)
+    else:
+        line = "[{}] {}".format(ts, msg)
     logger.info(msg)
     log_progress.append(line)
     sse_broadcast("log", {"line": line})

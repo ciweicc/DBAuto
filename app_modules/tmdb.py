@@ -280,7 +280,7 @@ def get_tmdb_list(media_type="movie", list_type="trending", page=1,
         with _tmdb_lock:
             _tmdb_cache[cache_key] = (now, result)
             _prune_cache()
-        log("TMDB: {}/{} → {} 条 (page {})".format(media_type, list_type, len(items), page))
+        log("TMDB: {}/{} → {} 条 (page {})".format(media_type, list_type, len(items), page), tag="TMDB")
         return result
     except Exception as e:
         log("TMDB 获取错误: {}".format(e))

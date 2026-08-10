@@ -249,12 +249,21 @@ def search_pansou(keyword, category="movie"):
     raise RuntimeError("PanSou 搜索失败 ({}): {}".format(keyword, last_err)) from last_err
 
 def validate_share_link(url):
-    try:
-        client = _get_qas_client()
-        r = client.get_share_detail(url)
-        return r.get("success", False), r.get("message", "")
-    except Exception as e:
-        return False, str(e)
+    """校验分享链接是否有效（调用 QAS 内部服务的 get_share_detail）。
+
+    返回 (ok, msg)：
+      - ok=True  ：服务确认链接有效；
+      - ok=False ：服务确认链接失效（msg 为原因）。
+
+    关键约定：当校验过程本身出错（网络超时 / 连接被重置 / QAS 服务异常 /
+    非 2xx 响应 / JSON 解析失败等）时，本函数会**抛出异常**而非返回 (False, ...)。
+    这样调用方可以把"校验不可信（QAS 抖动）"与"链接确实失效"区分开：
+    对不可信的校验应保守保留链接（交由真实转存判定成败），避免误删有效链接；
+    对确认失效的链接才硬跳过。该约定复用了各调用方已有的 except 分支（见 Fix C）。
+    """
+    client = _get_qas_client()
+    r = client.get_share_detail(url)
+    return bool(r.get("success", False)), r.get("message", "")
 
 def add_and_run(title, shareurl, savepath, pattern="", replace=""):
     # 前置校验：用 QAS 检查链接是否失效，仅作"参考/告警"，不阻断真实转存。
@@ -511,7 +520,10 @@ def fix_expired_tasks():
                         sse_broadcast("transfer_progress", dict(transfer_status))
                     continue
                 
-                valid, msg = validate_share_link(new_url)
+                try:
+                    valid, msg = validate_share_link(new_url)
+                except Exception as e:
+                    valid, msg = False, "链接校验异常: {}".format(e)
                 if not valid:
                     log("  新链接无效: {}".format(msg))
                     failed += 1
@@ -727,20 +739,21 @@ def build_transfer_tasks(tasks_config, filters=None):
     log("共获取 {} 条".format(len(uniq)))
     return uniq
 
-def _search_single_task(task):
+def _search_single_task(task, batch_tag=None):
     title = task["title"]
     try:
-        log("搜索: {}".format(title))
+        log("搜索: {}".format(title), tag=batch_tag)
         sr = search_pansou(title)
         return task, sr, None
     except Exception as e:
-        log("搜索异常 {}: {}".format(title, e))
+        log("搜索异常 {}: {}".format(title, e), tag=batch_tag)
         return task, [], str(e)
 
 def run_transfer(task_list, limit):
     global transfer_status
     tid = get_ident()
     task_id = uuid.uuid4().hex
+    batch_tag = "TRANSFER#{}".format(task_id[:6])
     exec_record_id = None
     try:
         rec = add_exec_record("transfer", "开始转存 ({} 条)".format(len(task_list)), "running")
@@ -755,7 +768,7 @@ def run_transfer(task_list, limit):
                                 "task_id": task_id, "run_type": "transfer"})
     _register_running_task(task_id)
     clear_progress()
-    log("开始转存，上限{}".format(limit))
+    log("开始转存，上限{}".format(limit), tag=batch_tag)
     history = load_history()
     with _qas_cache_lock:
         qas_cache_data = list(_qas_cache) if _qas_cache else []
@@ -794,12 +807,12 @@ def run_transfer(task_list, limit):
         search_results = {}
         search_errors = {}
         with ThreadPoolExecutor(max_workers=SEARCH_CONCURRENCY) as executor:
-            future_map = {executor.submit(_search_single_task, t): t for t in pending_tasks}
+            future_map = {executor.submit(_search_single_task, t, batch_tag): t for t in pending_tasks}
             for future in as_completed(future_map):
                 if transfer_status.get("stop"):
                     for f in future_map:
                         f.cancel()
-                    log("任务已被用户终止，取消剩余搜索")
+                    log("任务已被用户终止，取消剩余搜索", tag=batch_tag)
                     break
                 try:
                     task, sr, err = future.result()
@@ -817,7 +830,7 @@ def run_transfer(task_list, limit):
                         transfer_status["stats"]["searched"] += 1
                         sse_broadcast("transfer_progress", dict(transfer_status))
 
-        log("搜索完成，开始转存...")
+        log("搜索完成，开始转存...", tag=batch_tag)
 
         def _do_transfer(task):
             """单条转存 worker（并发执行）。限额采用"先占位、失败回退"，
@@ -836,13 +849,16 @@ def run_transfer(task_list, limit):
             if not sr:
                 err = search_errors.get(title)
                 if err:
-                    log("搜索失败: {} ({})".format(title, err))
+                    log("搜索失败: {} ({})".format(title, err), tag=batch_tag)
                     return {"title": title, "status": "search_failed", "msg": err, "category": category}
-                log("未找到: {}".format(title))
+                log("未找到: {}".format(title), tag=batch_tag)
                 with transfer_lock:
                     transferred -= 1
                 return {"title": title, "status": "not_found", "msg": "not_found", "category": category}
             # —— 过滤失效链接，避免转存空文件夹 ——
+            # 说明：validate_share_link 在"校验本身不可信"(QAS 抖动/超时/连接异常)时
+            # 会抛出异常，此时保守保留链接（交由真实转存判定）；仅当服务"确认链接失效"
+            # 返回 ok=False 时才硬跳过。这样避免 QAS 抖动误删有效链接（见 Fix C）。
             valid_sr = []
             for item in sr:
                 u = item.get("url", "")
@@ -851,24 +867,26 @@ def run_transfer(task_list, limit):
                 try:
                     ok, _msg = validate_share_link(u)
                 except Exception as e:
-                    log("链接校验异常(保守保留): {} ({})".format(u, e))
+                    # 校验不可信（QAS 抖动/超时/连接被重置）→ 保守保留，仅告警
+                    log("链接校验异常(不可信,保守保留): {} ({})".format(u, e), tag=batch_tag)
                     ok = True
                 if ok:
                     valid_sr.append(item)
                 else:
-                    log("跳过失效链接: {} -> {}".format(item.get("title", title), u))
+                    # 服务确认链接失效 → 硬跳过，避免转存空文件夹
+                    log("跳过失效链接: {} -> {}".format(item.get("title", title), u), tag=batch_tag)
             if not valid_sr:
-                log("全部候选链接失效: {}".format(title))
+                log("全部候选链接失效: {}".format(title), tag=batch_tag)
                 with transfer_lock:
                     transferred -= 1
                 return {"title": title, "status": "expired", "msg": "all_links_invalid", "category": category}
 
             chosen = valid_sr[0]
-            log("找到: {}".format(chosen.get("note", title)))
+            log("找到: {}".format(chosen.get("note", title)), tag=batch_tag)
             pattern = VIDEO_SUB
             replace = TV_REPLACE if category == "tv" else ""
             res = add_and_run(title, chosen.get("url", ""), "{}/{}".format(savepath, title), pattern, replace)
-            log("  {}".format(res["msg"]))
+            log("  {}".format(res["msg"]), tag=batch_tag)
             tmdb_id = task.get("tmdb_id") or _resolve_tmdb_id(title, category)
             info = {"date": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d"),
                     "status": res["status"], "category": category, "tmdb_id": tmdb_id}
@@ -885,7 +903,7 @@ def run_transfer(task_list, limit):
                 if transfer_status.get("stop"):
                     for f in futures:
                         f.cancel()
-                    log("任务已被用户终止")
+                    log("任务已被用户终止", tag=batch_tag)
                     break
                 r = future.result()
                 with transfer_lock:
@@ -902,7 +920,7 @@ def run_transfer(task_list, limit):
                 results.append(r)
     except Exception as e:
         error_msg = str(e)
-        log("转存异常: {}".format(e))
+        log("转存异常: {}".format(e), tag=batch_tag)
         results.append({"title": "异常中断", "status": "error", "msg": error_msg})
     finally:
         with transfer_lock:
@@ -917,7 +935,7 @@ def run_transfer(task_list, limit):
             sse_broadcast("transfer_progress", dict(transfer_status))
         _snapshot_finish(task_id)
         _drain_pending_scheduled()
-        log("转存完成: {} 条".format(transferred))
+        log("转存完成: {} 条".format(transferred), tag=batch_tag)
         if exec_record_id:
             ok_count = sum(1 for r in results if r.get("status") in ("ok", "done"))
             fail_count = sum(1 for r in results if r.get("status") not in ("ok", "done", "skipped", "exists"))

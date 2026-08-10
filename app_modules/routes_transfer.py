@@ -224,7 +224,12 @@ class TransferRouteMixin:
                 self._send_json({"success": False, "message": "shareurl: {}".format(msg)}, 400)
                 return True
 
-            valid, msg = validate_share_link(shareurl)
+            try:
+                valid, msg = validate_share_link(shareurl)
+            except Exception as e:
+                # 校验过程出错（网络/服务异常）同样视为不可信，拒绝本次添加
+                self._send_json({"success": False, "message": "链接校验异常: {}".format(e)}, 400)
+                return True
             if not valid:
                 self._send_json({"success": False, "message": msg or "invalid share link"})
                 return True
