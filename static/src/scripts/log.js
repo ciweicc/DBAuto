@@ -150,6 +150,12 @@ function updateProgress(stats){
   var ringFill=document.getElementById('ringFill');
   var ringText=document.getElementById('ringText');
   var ringSub=document.getElementById('ringSubtitle');
+  // 增强进度区域
+  var progWrap=document.getElementById('transferProgressWrap');
+  var progCount=document.getElementById('progressCount');
+  var progEta=document.getElementById('progressEta');
+  var progCurrent=document.getElementById('progressCurrent');
+  if(progWrap) progWrap.style.display = total>0 ? 'block' : 'none';
   if(ringFill){
     var circumference=2*Math.PI*18;
     var offset=circumference-(pct/100)*circumference;
@@ -159,20 +165,44 @@ function updateProgress(stats){
   if(ringText)ringText.textContent=pct+'%';
   if(ringSub){
     if(total>0){
-      var elapsed = '';
+      var elapsed = 0, elapsedStr = '', etaStr = '';
       if(stats.start_time){
         try{
           var start = new Date(stats.start_time.replace(' ','T'));
           var now = new Date();
-          var diff = Math.floor((now-start)/1000);
-          var mins = Math.floor(diff/60);
-          var secs = diff%60;
-          elapsed = ' | 已用 '+mins+'分'+secs+'秒';
+          elapsed = Math.floor((now-start)/1000);
+          var mins = Math.floor(elapsed/60);
+          var secs = elapsed%60;
+          elapsedStr = ' | 已用 '+mins+'分'+secs+'秒';
+          // 预估剩余时间
+          if(done>0 && done<total){
+            var avgPerItem = elapsed/done;
+            var remaining = Math.round(avgPerItem*(total-done));
+            var remMins = Math.floor(remaining/60);
+            var remSecs = remaining%60;
+            etaStr = ' · 预计剩余 '+remMins+'分'+remSecs+'秒';
+          }
         }catch(e){}
       }
-      ringSub.textContent='已完成 '+done+' / '+total+' 个任务'+elapsed;
+      ringSub.textContent='已完成 '+done+' / '+total+' 个任务'+elapsedStr;
+      if(progCount) progCount.textContent = done+' / '+total+' · 成功'+(stats.ok||0)+' 失败'+(stats.failed||0)+' 跳过'+(stats.skipped||0);
+      if(progEta) progEta.textContent = etaStr;
+      // 从最近日志提取当前处理条目
+      if(progCurrent && logBefore.length>0){
+        var lastLine = logBefore[logBefore.length-1] || '';
+        // 尝试提取正在处理的标题
+        var match = lastLine.match(/[《【]([^》】]+)[》】]/) || lastLine.match(/转存[：:]\s*(.+)/);
+        if(match && match[1]){
+          progCurrent.textContent = '当前：' + match[1].slice(0,40);
+        } else if(lastLine.indexOf('搜索')>=0 || lastLine.indexOf('转存')>=0){
+          progCurrent.textContent = lastLine.slice(0,50);
+        }
+      }
     }else{
       ringSub.textContent='正在搜索资源...';
+      if(progCount) progCount.textContent='搜索中...';
+      if(progEta) progEta.textContent='';
+      if(progCurrent) progCurrent.textContent='';
     }
   }
 }
@@ -214,3 +244,27 @@ async function checkExpired(){
   }catch(e){addLog('检测失败: '+e.message)}
 }
 
+
+// ============ 日志面板折叠/展开 ============
+function toggleLogPanel(){
+  var panel = document.getElementById('logPanel');
+  if(!panel) return;
+  panel.classList.toggle('collapsed');
+  try{ localStorage.setItem('logPanelCollapsed', panel.classList.contains('collapsed') ? '1' : '0'); }catch(e){}
+}
+function collapseLogPanel(){
+  var panel = document.getElementById('logPanel');
+  if(panel && !panel.classList.contains('collapsed')) panel.classList.add('collapsed');
+}
+function expandLogPanel(){
+  var panel = document.getElementById('logPanel');
+  if(panel && panel.classList.contains('collapsed')) panel.classList.remove('collapsed');
+}
+// 恢复折叠状态
+(function(){
+  try{
+    if(localStorage.getItem('logPanelCollapsed') === '1'){
+      document.addEventListener('DOMContentLoaded', function(){ collapseLogPanel(); });
+    }
+  }catch(e){}
+})();

@@ -14,7 +14,8 @@ function initTimeSelects(){
 
 function initLayout(){
   // 侧边栏抽屉 / 日志面板抽屉的开合由内联 onclick 调用
-  // toggleSidebar / toggleLogPanel / closeDrawers 实现。
+  // toggleSidebar / toggleLogDrawer / closeDrawers 实现。
+  // 桌面端日志面板折叠由 log.js 的 toggleLogPanel 实现。
   // 这里设定底部版本信息（如需要可扩展）。
 }
 
@@ -35,7 +36,7 @@ function toggleSidebar(){
   if(!s) return;
   toggleScrim(s.classList.toggle('open'));
 }
-function toggleLogPanel(){
+function toggleLogDrawer(){
   var p = document.getElementById('logPanel');
   if(!p) return;
   toggleScrim(p.classList.toggle('open'));
@@ -62,9 +63,9 @@ function initSSE(){
       clearInterval(logPollTimer); startLogPoll(10000);
     }
   };
-  es.addEventListener('schedule_update', function(){ SETTINGS_ALL = null; loadDashboard(); });
-  es.addEventListener('config_update', function(){ SETTINGS_ALL = null; loadConfig(); });
-  es.addEventListener('history_update', function(){ loadExecHistory(); });
+  es.addEventListener('schedule_update', function(){ SETTINGS_ALL = null; loadDashboard(); if(currentTab==='overview') loadOverviewPage(); });
+  es.addEventListener('config_update', function(){ SETTINGS_ALL = null; loadConfig(); if(currentTab==='overview') loadOverviewPage(); });
+  es.addEventListener('history_update', function(){ loadExecHistory(); if(currentTab==='overview') loadOverviewPage(); });
   es.addEventListener('transfer_progress', function(e){
     var d = JSON.parse(e.data);
     if(d.stats){
@@ -75,8 +76,8 @@ function initSSE(){
       document.getElementById('stTotal').textContent = d.stats.total || 0;
       updateProgress(d.stats);
     }
-    if(d.running) document.getElementById('stopBtn').style.display = 'inline-block';
-    else document.getElementById('stopBtn').style.display = 'none';
+    if(d.running){ document.getElementById('stopBtn').style.display = 'inline-block'; expandLogPanel(); }
+    else { document.getElementById('stopBtn').style.display = 'none'; if(currentTab==='overview') loadOverviewPage(); }
   });
   es.addEventListener('log', function(e){
     var d = JSON.parse(e.data);

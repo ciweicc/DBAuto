@@ -52,7 +52,7 @@ CSS_CONTENT=$(minify "$CSS_TMP" css)
 #          → 业务模块(transfer/log/schedule/history/settings/tmdb/search/dashboard) → 入口(init)
 JS_FILES=(
   auth animation theme globals sound toast confirm tabs categories
-  transfer log schedule history settings tmdb search dashboard init
+  transfer log schedule history settings tmdb search dashboard overview init
 )
 : > "$JS_TMP"
 for f in "${JS_FILES[@]}"; do

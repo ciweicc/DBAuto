@@ -22,6 +22,10 @@
   <symbol id="icon-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
   <symbol id="icon-transfer" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/><path d="m16 9-3-3-3 3"/><path d="m8 15-3 3 3-3"/></symbol>
   <symbol id="icon-dashboard" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></symbol>
+  <symbol id="icon-activity" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></symbol>
+  <symbol id="icon-alert-circle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></symbol>
+  <symbol id="icon-chevron-right" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></symbol>
+  <symbol id="icon-chevron-left" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></symbol>
   <symbol id="icon-send" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></symbol>
   <symbol id="icon-trending-up" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></symbol>
   <symbol id="icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></symbol>
@@ -53,10 +57,10 @@
       <span class="brand-ver" id="headerVersion">v1.1.0</span>
     </div>
     <nav class="side-nav" role="tablist">
-      <button class="side-nav-item active" role="tab" aria-selected="true" data-tab="tmdb" onclick="switchTab('tmdb')" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-tmdb"/></svg>TMDB</button>
-      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="manual" onclick="switchTab('manual')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>手动转存</button>
-      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="schedule" onclick="switchTab('schedule')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg>定时任务</button>
-      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg>执行历史</button>
+      <button class="side-nav-item active" role="tab" aria-selected="true" data-tab="overview" onclick="switchTab('overview')" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-dashboard"/></svg>概览</button>
+      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="manual" onclick="switchTab('manual')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>转存</button>
+      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="schedule" onclick="switchTab('schedule')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg>定时</button>
+      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg>历史</button>
       <button class="side-nav-item" role="tab" aria-selected="false" data-tab="settings" onclick="switchTab('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-settings"/></svg>设置</button>
     </nav>
     <div class="side-foot" id="sideFoot"></div>
@@ -86,9 +90,129 @@
     </div>
 
     <div class="content">
+<!-- ===== 概览（首页） ===== -->
+      <section class="page active" id="pageOverview">
+        <!-- KPI 条 -->
+        <div class="ov-kpi-bar">
+          <div class="ov-kpi-card ov-kpi-green">
+            <div class="ov-kpi-info">
+              <div class="ov-kpi-label">今日转存</div>
+              <div class="ov-kpi-value-row">
+                <span class="ov-kpi-value" id="ovTodayCount">-</span>
+                <span class="ov-kpi-sub" id="ovTodaySub"></span>
+              </div>
+            </div>
+            <button class="ov-kpi-btn" onclick="switchTab('tmdb')">去发现</button>
+          </div>
+          <div class="ov-kpi-card ov-kpi-blue">
+            <div class="ov-kpi-info">
+              <div class="ov-kpi-label">7天成功率</div>
+              <div class="ov-kpi-value-row">
+                <span class="ov-kpi-value" id="ovWeekRate">-</span>
+                <div class="ov-rate-bar"><div class="ov-rate-fill" id="ovWeekBar"></div></div>
+              </div>
+            </div>
+            <span class="ov-kpi-trend" id="ovWeekTrend"></span>
+          </div>
+          <div class="ov-kpi-card ov-kpi-orange">
+            <div class="ov-kpi-info">
+              <div class="ov-kpi-label">下次调度</div>
+              <div class="ov-kpi-schedule" id="ovNextSchedule">
+                <span class="ov-kpi-muted">加载中...</span>
+              </div>
+            </div>
+            <button class="ov-kpi-btn ov-kpi-btn-outline" onclick="runScheduleNow()">立即执行</button>
+          </div>
+          <div class="ov-kpi-card ov-kpi-purple">
+            <div class="ov-kpi-info">
+              <div class="ov-kpi-label">转存库</div>
+              <div class="ov-kpi-value-row">
+                <span class="ov-kpi-value" id="ovPendingCount">0</span>
+                <span class="ov-kpi-sub" id="ovPendingSub"></span>
+              </div>
+            </div>
+            <button class="ov-kpi-btn ov-kpi-btn-outline" onclick="switchTab('history')">查看全部</button>
+          </div>
+        </div>
 
-      <!-- ===== 资源浏览（TMDB） ===== -->
-      <section class="page active" id="pageTmdb">
+        <!-- 主工作区：左右分栏 -->
+        <div class="ov-workspace">
+          <!-- 左侧：最近转存 -->
+          <div class="ov-main-col">
+            <div class="ov-panel">
+              <div class="ov-panel-head">
+                <div class="ov-panel-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-cloud-download"/></svg>
+                  最近转存
+                </div>
+                <span class="ov-panel-sub" id="ovRecentSub">最近 8 条</span>
+                <button class="ov-link-btn" onclick="switchTab('history')">查看全部 →</button>
+              </div>
+              <div class="ov-table-wrap">
+                <table class="ov-table">
+                  <thead>
+                    <tr>
+                      <th>标题</th>
+                      <th style="width:130px">时间</th>
+                      <th style="width:80px">状态</th>
+                      <th style="width:50px">链接</th>
+                    </tr>
+                  </thead>
+                  <tbody id="ovRecentBody">
+                    <tr><td colspan="4" class="ov-table-empty">加载中...</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+
+          <!-- 右侧：系统状态 + 待办 -->
+          <div class="ov-side-col">
+            <div class="ov-panel">
+              <div class="ov-panel-head">
+                <div class="ov-panel-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-activity"/></svg>
+                  服务状态
+                </div>
+              </div>
+              <div class="ov-health-list" id="ovHealthList">
+                <div class="ov-health-row"><span class="ov-dot"></span><span class="ov-health-label">检测中...</span><span class="ov-health-value">-</span></div>
+              </div>
+            </div>
+
+            <div class="ov-panel ov-panel-todo">
+              <div class="ov-panel-head">
+                <div class="ov-panel-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-alert-circle"/></svg>
+                  待办事项
+                </div>
+              </div>
+              <div class="ov-todo-list" id="ovTodoList">
+                <div class="ov-todo-empty">加载中...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- 底部：热门推荐 -->
+        <div class="ov-panel ov-panel-rec">
+          <div class="ov-panel-head">
+            <div class="ov-panel-title">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
+              热门推荐
+            </div>
+            <button class="ov-link-btn" onclick="switchTab('tmdb')">更多 →</button>
+          </div>
+          <div class="ov-rec-scroll" id="ovRecScroll">
+            <div class="ov-rec-empty">加载中...</div>
+          </div>
+        </div>
+      </section>
+
+
+
+<!-- ===== 资源浏览（TMDB） ===== -->
+      <section class="page" id="pageTmdb">
         <div class="page-head">
           <h1>TMDB 资源浏览</h1>
           <p>浏览热门影视，按需筛选并一键转存到网盘</p>
@@ -484,6 +608,14 @@
         <span class="filter-tab" onclick="setLogFilter(this,'skip')">跳过</span>
         <span class="filter-tab" onclick="setLogFilter(this,'fail')">失败</span>
       </div>
+      <div class="transfer-progress-wrap" id="transferProgressWrap" style="display:none;margin:8px 0">
+        <div class="transfer-progress-bar"><div class="transfer-progress-fill" id="progressFill"></div></div>
+        <div class="transfer-progress-info">
+          <span id="progressCount">0 / 0</span>
+          <span id="progressEta"></span>
+        </div>
+        <div class="transfer-progress-current" id="progressCurrent"></div>
+      </div>
       <div class="log-box" id="log"><div class="empty-state" style="padding:32px 20px"><div class="empty-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-play"/></svg></div><div class="empty-title">准备就绪</div><div class="empty-desc">选择榜单并点击「开始转存」<br>进度和日志将会实时显示在这里</div></div></div>
     </div>
   </aside>
@@ -493,9 +625,13 @@
 <!-- Bottom Navigation (Mobile) -->
 <nav class="bottom-nav">
   <nav class="bottom-nav-inner" role="tablist">
-    <button class="nav-item active" type="button" role="tab" aria-selected="true" onclick="switchTab('tmdb')">
+    <button class="nav-item active" type="button" role="tab" aria-selected="true" onclick="switchTab('overview')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-dashboard"/></svg>
+      <span>概览</span>
+    </button>
+    <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('tmdb')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-tmdb"/></svg>
-      <span>TMDB</span>
+      <span>发现</span>
     </button>
     <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('manual')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>
@@ -520,7 +656,7 @@
 <div id="srLive" class="sr-only" aria-live="polite" aria-atomic="true"></div>
 
 <!-- Floating log toggle (mobile / collapsed) -->
-<button class="log-fab" id="logFab" onclick="toggleLogPanel()" title="执行日志" aria-label="执行日志"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
+<button class="log-fab" id="logFab" onclick="toggleLogDrawer()" title="执行日志" aria-label="执行日志"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg></button>
 
 <!-- Scrim for mobile drawers -->
 <div class="overlay-scrim" id="overlayScrim" onclick="closeDrawers()"></div>

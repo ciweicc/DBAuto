@@ -1,5 +1,5 @@
 // ============ Global ============
-var C = {}, currentTab = 'manual', execHistoryData = [], execHistoryFilter = 'all';
+var C = {}, currentTab = 'overview', execHistoryData = [], execHistoryFilter = 'all';
 var expiredDirEntries = [], autoSaveTimer = null, logPollTimer = null;
 var logBefore = [], logFilter = 'all', logPaused = false;
 var logPollInterval = 0;
@@ -65,12 +65,13 @@ function updateDensityBtn(){
 // ============ 命令面板（⌘K / Ctrl+K） ============
 // 全局快捷操作入口：切 tab、触发转存、切换主题/密度等。
 var CMD_LIST = [
-  {title:'前往 TMDB 资源浏览', icon:'icon-tmdb', hint:'浏览 / 转存影视', run:function(){ switchTab('tmdb'); }},
-  {title:'前往 手动转存', icon:'icon-send', hint:'', run:function(){ switchTab('manual'); }},
-  {title:'前往 定时任务', icon:'icon-clock', hint:'', run:function(){ switchTab('schedule'); }},
-  {title:'前往 执行历史', icon:'icon-check-circle', hint:'', run:function(){ switchTab('history'); }},
-  {title:'前往 设置', icon:'icon-settings', hint:'', run:function(){ switchTab('settings'); }},
-  {title:'开始转存（手动页）', icon:'icon-transfer', hint:'Ctrl/⌘ + Enter', run:function(){ if(currentTab==='manual'){ var s=document.getElementById('stopBtn'); if(!(s&&s.style.display!=='none')) startTransfer(); } }},
+  {title:'前往 概览', icon:'icon-dashboard', hint:'首页', run:function(){ switchTab('overview'); }},
+  {title:'前往 发现（TMDB）', icon:'icon-tmdb', hint:'浏览 / 转存影视', run:function(){ switchTab('tmdb'); }},
+  {title:'前往 转存', icon:'icon-send', hint:'手动转存', run:function(){ switchTab('manual'); }},
+  {title:'前往 定时', icon:'icon-clock', hint:'定时任务', run:function(){ switchTab('schedule'); }},
+  {title:'前往 历史', icon:'icon-check-circle', hint:'执行历史', run:function(){ switchTab('history'); }},
+  {title:'前往 设置', icon:'icon-settings', hint:'系统配置', run:function(){ switchTab('settings'); }},
+  {title:'开始转存（转存页）', icon:'icon-transfer', hint:'Ctrl/⌘ + Enter', run:function(){ if(currentTab==='manual'){ var s=document.getElementById('stopBtn'); if(!(s&&s.style.display!=='none')) startTransfer(); } }},
   {title:'刷新 TMDB 缓存', icon:'icon-refresh', hint:'', run:function(){ refreshTmdbCache(); }},
   {title:'切换主题（深 / 浅 / 跟随系统）', icon:'icon-contrast', hint:'', run:function(){ toggleTheme(); }},
   {title:'切换 TMDB 显示密度', icon:'icon-filter', hint:'', run:function(){ toggleDensity(); }},

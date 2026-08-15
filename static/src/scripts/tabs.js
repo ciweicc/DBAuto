@@ -1,16 +1,17 @@
 // ============ Tab / Navigation ============
-var currentTab = 'tmdb';
+var currentTab = 'overview';
 // 页面容器 id 映射：手动/定时/历史保持原 id（categories/schedule/transfer/history.js 依赖）
 var PAGE_IDS = {
+  overview: 'pageOverview',
   tmdb: 'pageTmdb',
   manual: 'tabManual',
   schedule: 'tabSchedule',
   history: 'tabHistory',
   settings: 'tabSettings'
 };
-var PAGES = ['tmdb', 'manual', 'schedule', 'history', 'settings'];
-// 底部导航与 BOTTOM_NAV 顺序保持一致：TMDB / 转存 / 定时 / 历史 / 设置
-var BOTTOM_NAV = ['tmdb', 'manual', 'schedule', 'history', 'settings'];
+var PAGES = ['overview', 'tmdb', 'manual', 'schedule', 'history', 'settings'];
+// 底部导航与 BOTTOM_NAV 顺序保持一致：概览 / 发现 / 转存 / 定时 / 历史 / 设置
+var BOTTOM_NAV = ['overview', 'tmdb', 'manual', 'schedule', 'history', 'settings'];
 
 function switchTab(tab){
   currentTab = tab;
@@ -37,13 +38,16 @@ function switchTab(tab){
   // 关闭移动端抽屉
   closeDrawers();
   // 按需加载
+  if(tab === 'overview') loadOverviewPage();
   if(tab === 'schedule') loadSchedule();
   if(tab === 'history') loadExecHistory();
   if(tab === 'tmdb') initTmdbPage();
   if(tab === 'settings') loadConfig();
-  // TMDB “回到顶部”按钮：离开 TMDB 页时隐藏，返回时按当前滚动位置刷新可见性
+  // TMDB "回到顶部"按钮：离开 TMDB 页时隐藏，返回时按当前滚动位置刷新可见性
   if(tab !== 'tmdb') tmdbHideBackToTop();
   else tmdbUpdateBackToTop();
+  // 概览页时收起日志面板（给内容更多空间）
+  if(tab === 'overview') collapseLogPanel();
 }
 
 // 方向键在标签间导航（ARIA tabs 模式：左右 / Home / End 切换并自动激活）
