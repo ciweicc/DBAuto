@@ -55,6 +55,7 @@ body{
   -webkit-backdrop-filter:var(--blur);
   backdrop-filter:var(--blur);
 }
+.sidebar{
   width:220px;background:var(--bg-deep);border-right:1px solid var(--border);
   display:flex;flex-direction:column;overflow-y:auto;padding:14px 10px;gap:4px;
 }

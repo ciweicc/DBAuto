@@ -6,6 +6,7 @@
 <title>豆瓣自动转存</title>
 <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
 <script>
+/* FOUC 防闪烁：在 CSS 之前同步设置主题 */
 (function(){var t=localStorage.getItem('theme')||'dark';document.documentElement.setAttribute('data-theme',t)})();
 </script>
 <style>
@@ -227,6 +228,7 @@ body{
   -webkit-backdrop-filter:var(--blur);
   backdrop-filter:var(--blur);
 }
+.sidebar{
   width:220px;background:var(--bg-deep);border-right:1px solid var(--border);
   display:flex;flex-direction:column;overflow-y:auto;padding:14px 10px;gap:4px;
 }
@@ -1485,6 +1487,7 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
     </div>
     <nav class="side-nav" role="tablist">
       <button class="side-nav-item active" role="tab" aria-selected="true" data-tab="overview" onclick="switchTab('overview')" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-dashboard"/></svg>概览</button>
+      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="tmdb" onclick="switchTab('tmdb')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-tmdb"/></svg>发现</button>
       <button class="side-nav-item" role="tab" aria-selected="false" data-tab="manual" onclick="switchTab('manual')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>转存</button>
       <button class="side-nav-item" role="tab" aria-selected="false" data-tab="schedule" onclick="switchTab('schedule')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg>定时</button>
       <button class="side-nav-item" role="tab" aria-selected="false" data-tab="history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg>历史</button>
@@ -2118,7 +2121,10 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 
 <script>
 // ===== DBAuto frontend bundle =====
-// sha:9c9770f
+// sha:4c67e57
+// 由 build 脚本拼接生成（模块化源文件合并为单文件）。
+// 注意：不使用 IIFE 包裹。页面大量使用内联 onclick/onchange 事件处理器，
+// 这些处理器在全局作用域查找被调用的函数；若包进 IIFE 会导致函数不可见、按钮点击失效。
 // ===== module: auth.js =====
 // ============ Auth ============
 var TOKEN = localStorage.getItem('auth_token')||'';
@@ -2153,6 +2159,7 @@ else throw e
 }
 
 
+
 // ===== module: animation.js =====
 // ============ Animation Utils ============
 function easeOutCubic(t){return 1-Math.pow(1-t,3)}
@@ -2172,6 +2179,7 @@ function animateNumber(el, target, duration){
   }
   requestAnimationFrame(step);
 }
+
 
 
 // ===== module: theme.js =====
@@ -2227,6 +2235,7 @@ function toggleTheme(){
   var label = next === 'dark' ? '深色' : next === 'light' ? '浅色' : '跟随系统';
   srAnnounce('主题已切换为' + label);
 }
+
 
 // ===== module: globals.js =====
 // ============ Global ============
@@ -2367,6 +2376,7 @@ function onCmdKeydown(e){
   if(e.key === 'Enter'){ e.preventDefault(); runCmd(cmdActive); return; }
 }
 
+
 // ===== module: sound.js =====
 // ============ Sound (操作音效) ============
 // 使用 Web Audio API 合成短音效，无需外部音频资源
@@ -2438,6 +2448,7 @@ function updateSoundBtn(){
   btn.style.opacity = SoundEnabled ? '1' : '0.55';
 }
 
+
 // ===== module: toast.js =====
 // ============ Toast ============
 function showToast(msg,ok,duration){
@@ -2461,6 +2472,7 @@ function showToast(msg,ok,duration){
     setTimeout(function(){if(t.parentNode)t.parentNode.removeChild(t)},300);
   },dur);
 }
+
 
 
 // ===== module: confirm.js =====
@@ -2498,6 +2510,7 @@ function resolveConfirm(result){
   if(_confirmReturnFocus && _confirmReturnFocus.focus) _confirmReturnFocus.focus();
   if(_confirmResolve){_confirmResolve(result);_confirmResolve=null}
 }
+
 
 
 // ===== module: tabs.js =====
@@ -2573,6 +2586,7 @@ document.addEventListener('keydown', function(e){
   switchTab(next);
   tabs[idx].focus();
 });
+
 
 // ===== module: categories.js =====
 // ============ Categories ============
@@ -2763,6 +2777,7 @@ function syncToSchedule(){
 }
 
 
+
 // ===== module: transfer.js =====
 // ============ Transfer ============
 async function startTransfer(){
@@ -2799,6 +2814,7 @@ async function stopTransfer(){
   document.getElementById('stopBtn').style.display='none';
   if(logPollTimer){clearInterval(logPollTimer);logPollTimer=null;logPollInterval=0}
 }
+
 
 
 // ===== module: log.js =====
@@ -3073,6 +3089,7 @@ function expandLogPanel(){
   }catch(e){}
 })();
 
+
 // ===== module: schedule.js =====
 // ============ Schedule ============
 async function loadSchedule(){
@@ -3171,6 +3188,7 @@ function renderExpiredDirs(){
 }
 function addExpiredDir(){expiredDirEntries.push('');renderExpiredDirs();autoSaveSchedule()}
 function removeExpiredDir(i){expiredDirEntries.splice(i,1);if(!expiredDirEntries.length)expiredDirEntries=[''];renderExpiredDirs();autoSaveSchedule()}
+
 
 
 // ===== module: history.js =====
@@ -3417,6 +3435,7 @@ async function clearExecHistory(){
 }
 
 
+
 // ===== module: settings.js =====
 // ============ Settings ============
 function openSettings(){switchTab('settings')}
@@ -3484,6 +3503,7 @@ APP_PATHS.search=savepaths.search;
 APP_PATHS.tmdb=savepaths.tmdb;
 }catch(e){showToast('保存失败',false)}
 }
+
 
 
 // ===== module: tmdb.js =====
@@ -4226,6 +4246,7 @@ function toggleTmdbFilters(){
   }
 }
 
+
 // ===== module: search.js =====
 // ============ Search ============
 var searchTimer=null;var searchAbort=null;var searchCheckSeq=0;
@@ -4536,6 +4557,7 @@ async function checkOneLink(it){
   }
 }
 
+
 // ===== module: dashboard.js =====
 // ============ Dashboard / 运行概览 ============
 // 状态管理：loading / data / error，所有子组件均从 state 派生渲染
@@ -4715,6 +4737,7 @@ function esc(s){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
   });
 }
+
 
 // ===== module: overview.js =====
 // ============ Overview Page（概览首页） ============
@@ -5019,6 +5042,7 @@ async function runScheduleNow(){
     showToast('触发失败: ' + (e.message || '未知错误'), false);
   }
 }
+
 
 // ===== module: init.js =====
 // ============ Init ============
