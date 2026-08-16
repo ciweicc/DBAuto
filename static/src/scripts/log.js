@@ -1,5 +1,7 @@
 // ============ Log ============
-function esc(s){
+// 注：保留此转义函数并改名为 escLogText，避免与 dashboard.js 中的全局 esc 重名互相覆盖（OPT-02）。
+// 本模块当前不直接调用它；全局统一使用的 esc 由 dashboard.js 提供（转义更完整）。
+function escLogText(s){
   if(s==null)return'';
   var d=document.createElement('div');
   d.textContent=String(s);
@@ -61,24 +63,16 @@ function togglePause(){
   pauseBtnEl.appendChild(pauseSvg);
 }
 
-// 智能滚动跟随：用户手动上翻时暂停自动滚动，回到底部时恢复
-(function(){
-  var logBox = document.getElementById('log');
-  if(logBox){
-    logBox.addEventListener('scroll', function(){
-      var isAtBottom = this.scrollHeight - this.scrollTop <= this.clientHeight + 50;
-      if(!logPaused && !isAtBottom){
-        // 用户上翻，临时暂停（不改变 logPaused 状态，只是不滚动到底部）
-      }
-    });
-  }
-})();
-
-// 日志搜索功能
+// 日志搜索功能（OPT-06：输入去抖，避免每次按键都全量重渲染日志）
+var logSearchTimer = null;
 function filterLogSearch(keyword){
+  if(logSearchTimer) clearTimeout(logSearchTimer);
+  var kw = (keyword||'').toLowerCase();
+  logSearchTimer = setTimeout(function(){ applyLogSearch(kw); }, 200);
+}
+function applyLogSearch(kw){
   var el = document.getElementById('log');
   el.textContent='';
-  var kw = (keyword||'').toLowerCase();
   for(var i=0;i<logBefore.length;i++){
     var line = logBefore[i];
     if(kw && line.toLowerCase().indexOf(kw)<0) continue;

@@ -252,6 +252,8 @@ function updateProviderLabel(){
 }
 
 function onTmdbFilterChange(){
+  var prevMt = tmdbState.media_type;
+  var prevLt = tmdbState.list_type;
   var mt = document.getElementById('tmdbMediaType').value;
   // 如果切换了 media_type，更新列表类型选项
   if(mt !== tmdbState.media_type){
@@ -285,6 +287,11 @@ function onTmdbFilterChange(){
     closeProviderDropdown();
   }
   // 切换 media_type 时重新加载类型
+  // OPT-04：切换媒体类型或榜单类型后，之前跨列表选择（tmdbState.selected）指向旧列表的条目，
+  // 若继续保留，转存时会混入无效 id。这里统一重置选择状态，保证选择栏与待转存任务一致。
+  if(mt !== prevMt || lt !== prevLt){
+    clearTmdbSelection();
+  }
   if(mt !== tmdbState.media_type){
     tmdbState.media_type = mt;
     tmdbState.genres = [];
@@ -614,7 +621,9 @@ function tmdbPrevPage(){
   if(tmdbState.page > 1){
     tmdbState.page--;
     loadTmdbList();
-    window.scrollTo({top:0,behavior:'smooth'});
+    // 真实滚动容器是 .content（body overflow:hidden，window 不滚动），回顶须操作 .content
+    var content = document.querySelector('.content');
+    if(content) content.scrollTo({ top: 0, behavior: 'smooth' });
   }
 }
 
@@ -622,7 +631,9 @@ function tmdbNextPage(){
   if(tmdbState.page < tmdbState.total_pages){
     tmdbState.page++;
     loadTmdbList();
-    window.scrollTo({top:0,behavior:'smooth'});
+    // 真实滚动容器是 .content（body overflow:hidden，window 不滚动），回顶须操作 .content
+    var content = document.querySelector('.content');
+    if(content) content.scrollTo({ top: 0, behavior: 'smooth' });
   }
 }
 

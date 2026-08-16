@@ -125,8 +125,12 @@ function runCmd(i){
   closeCommandPalette();
   try{ c.run(); }catch(e){ console.error('command run error', e); }
 }
+// 命令面板输入（OPT-06：去抖，避免每次按键重建结果列表 DOM）
+var cmdInputTimer = null;
 function onCmdInput(){
-  renderCmdResults(document.getElementById('cmdInput').value);
+  if(cmdInputTimer) clearTimeout(cmdInputTimer);
+  var v = document.getElementById('cmdInput').value;
+  cmdInputTimer = setTimeout(function(){ renderCmdResults(v); }, 120);
 }
 function onCmdKeydown(e){
   var items = document.querySelectorAll('#cmdList .cmd-item');
@@ -134,4 +138,30 @@ function onCmdKeydown(e){
   if(e.key === 'ArrowDown'){ e.preventDefault(); if(items.length){ cmdActive=(cmdActive+1)%items.length; cmdHover(cmdActive); items[cmdActive].scrollIntoView({block:'nearest'}); } return; }
   if(e.key === 'ArrowUp'){ e.preventDefault(); if(items.length){ cmdActive=(cmdActive-1+items.length)%items.length; cmdHover(cmdActive); items[cmdActive].scrollIntoView({block:'nearest'}); } return; }
   if(e.key === 'Enter'){ e.preventDefault(); runCmd(cmdActive); return; }
+}
+
+// ============ 轻量响应缓存（OPT-07） ============
+// 以 URL 为 key 缓存只读接口响应，TTL 内复用同一响应、并发请求复用同一 Promise，
+// 避免重复请求（双概览 UI 拉取 /api/dashboard/all 等场景的去重在此实现）。
+// 仅用于读多写少、短时陈旧可接受的概览类只读接口；请求失败不缓存，下次调用重试。
+var _apiCache = {};
+function cachedApiGet(url, ttl, force){
+  ttl = (ttl == null) ? 10000 : ttl;
+  force = !!force;
+  var now = Date.now();
+  var slot = _apiCache[url];
+  if(!force && slot && slot.inflight){ return slot.inflight; }
+  if(!force && slot && slot.data != null && (now - slot.ts) < ttl){ return Promise.resolve(slot.data); }
+  var p = (async function(){
+    try{
+      var d = await apiGet(url);
+      _apiCache[url] = { ts: Date.now(), data: d, inflight: null };
+      return d;
+    }catch(e){
+      _apiCache[url] = { ts: 0, data: null, inflight: null };
+      throw e;
+    }
+  })();
+  _apiCache[url] = { ts: now, data: null, inflight: p };
+  return p;
 }

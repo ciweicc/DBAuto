@@ -8,10 +8,12 @@ async function loadOverviewPage(){
   if(ovState.loading) return;
   ovState.loading = true;
   try{
+    // OPT-03：/api/dashboard/all 与 dashboard.js 的 overview-grid 共用同一份缓存数据，
+    // 避免双概览 UI 重复拉取；/api/history 与 TMDB 推荐以轻量缓存去重（OPT-07）。
     var results = await Promise.allSettled([
-      apiGet('/api/dashboard/all'),
-      apiGet('/api/history'),
-      apiGet('/api/tmdb/list?media_type=movie&list_type=trending&page=1')
+      fetchDashboardAll(false),
+      cachedApiGet('/api/history', 15000, false),
+      cachedApiGet('/api/tmdb/list?media_type=movie&list_type=trending&page=1', 60000, false)
     ]);
     var dash = results[0].status === 'fulfilled' ? results[0].value : null;
     var hist = results[1].status === 'fulfilled' ? results[1].value : null;
@@ -136,7 +138,6 @@ function renderOvRecent(hist){
   items.slice(0, 8).forEach(function(item){
     var tr = document.createElement('tr');
     var dateShort = item.date ? item.date.slice(5, 16) : '-';
-    var catStyle = '';
     tr.innerHTML =
       '<td class="ov-table-title"><span class="ov-table-cat">' + esc(item.category) + '</span>' + esc(item.title.length > 30 ? item.title.slice(0,30)+'…' : item.title) + '</td>' +
       '<td class="ov-table-date">' + esc(dateShort) + '</td>' +
@@ -262,8 +263,6 @@ function renderOvRecs(tmdb){
     var poster = item.poster_path || item.poster || '';
     var date = item.release_date || item.first_air_date || '';
     var year = date ? date.slice(0,4) : '';
-    var id = item.id || '';
-    var mediaType = item.media_type || 'movie';
 
     var card = document.createElement('div');
     card.className = 'ov-rec-card';
@@ -279,13 +278,6 @@ function renderOvRecs(tmdb){
       '</div>';
     el.appendChild(card);
   });
-}
-
-/**
- * 概览页快捷转存
- */
-function ovQuickTransfer(){
-  switchTab('tmdb');
 }
 
 /**

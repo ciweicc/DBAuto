@@ -2,13 +2,21 @@
 // 状态管理：loading / data / error，所有子组件均从 state 派生渲染
 var dashboardState = { loading:true, data:null, error:null };
 
+// 共享概览数据源（OPT-03）：loadDashboard（overview-grid 卡片）与 loadOverviewPage（ov-* 首页）
+// 共用同一份 /api/dashboard/all 响应，避免双概览 UI 重复拉取、状态不一致；
+// 底层走 cachedApiGet 做 TTL 缓存，并发请求复用同一 Promise，彻底去重。
+async function fetchDashboardAll(force){
+  return cachedApiGet('/api/dashboard/all', 8000, force);
+}
+
 /**
  * 加载概览数据（入口）。保持函数名 loadDashboard 以兼容 init.js / SSE 调用。
+ * @param {boolean} [force] true 时忽略缓存强制重新拉取（如手动刷新）。
  */
-async function loadDashboard(){
+async function loadDashboard(force){
   try{
     dashboardState.loading = true;
-    var d = await apiGet('/api/dashboard/all');
+    var d = await fetchDashboardAll(force);
     dashboardState.data = d;
     dashboardState.error = null;
     renderOverview(d);
@@ -22,11 +30,11 @@ async function loadDashboard(){
 }
 
 /**
- * 手动刷新：显示骨架屏后重新拉取。
+ * 手动刷新：显示骨架屏后强制重新拉取。
  */
 function refreshOverview(){
   setOverviewSkeleton(true);
-  loadDashboard();
+  loadDashboard(true);
 }
 
 /**
