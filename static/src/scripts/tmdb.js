@@ -252,6 +252,7 @@ function updateProviderLabel(){
 }
 
 function onTmdbFilterChange(){
+  if(!tmdbState.options) return; // OPT-45：防止 options 未初始化时访问 .movie_list_types 抛 TypeError
   var prevMt = tmdbState.media_type;
   var prevLt = tmdbState.list_type;
   var mt = document.getElementById('tmdbMediaType').value;
@@ -341,10 +342,10 @@ async function loadTmdbList(append){
     // 底部“加载更多”指示器（不清除现有 grid）
     grid.insertAdjacentHTML('beforeend',
       '<div id="tmdbLoadMore" style="grid-column:1/-1;display:flex;align-items:center;justify-content:center;gap:10px;padding:18px;color:var(--text3);font-size:13px">加载更多…</div>');
-    tmdbState.page++;
     var aparams = buildTmdbListParams();
     try{
       var ad = await apiGet('/api/tmdb/list?'+aparams);
+      tmdbState.page++; // OPT-27：成功拿到数据后再前进页码，避免失败页被永久跳过
       var newItems = ad.items || [];
       // 按 id 去重（切换筛选条件时不同页可能重叠）
       var seen = {};
@@ -392,6 +393,8 @@ async function loadTmdbList(append){
     document.getElementById('tmdbListType').value = 'discover';
     lt = 'discover';
     tmdbState.list_type = 'discover';
+    // OPT-45：早返回前先清空旧网格，避免残留上一次列表内容
+    grid.innerHTML = '<div class="tmdb-skeleton" style="grid-column:1/-1"></div>';
     onTmdbFilterChange();
     return;
   }
@@ -454,7 +457,10 @@ function renderTmdbGrid(append){
   // 全新渲染
   if(!append){
     if(!tmdbState.items.length){
-      grid.innerHTML = '<div class="tmdb-empty" style="grid-column:1/-1">暂无数据</div>';
+      var es = renderEmptyState({icon:'icon-film', title:'暂无数据'});
+      es.style.gridColumn = '1/-1';
+      grid.textContent = '';
+      grid.appendChild(es);
       tmdbState._renderedCount = 0;
       return;
     }
@@ -712,6 +718,22 @@ function ensureTmdbBackToTop(){
   tmdbState._backToTopCreated = true;
 }
 
+// 计算回顶按钮应避让的右侧距离，避免遮挡常驻日志面板（OPT-28）
+function tmdbBackToTopRight(){
+  var panel = document.getElementById('logPanel');
+  if(!panel) return 24;
+  // 移动端交还 CSS 媒体查询（right:16px + 上移）处理，不内联覆盖
+  if(window.innerWidth <= 640) return null;
+  var cs = getComputedStyle(panel);
+  // 抽屉式（平板/移动）：默认收起在屏外，仅展开时避让
+  if(cs.position === 'fixed'){
+    if(!panel.classList.contains('open')) return 24;
+    return panel.offsetWidth + 24;
+  }
+  // 桌面端常驻：按实际宽度（展开/折叠）避让
+  return panel.offsetWidth + 24;
+}
+
 // 根据当前滚动位置与“TMDB 页是否激活”计算按钮可见性，并切换 .visible 类。
 // 不绑定独立滚动监听，由 tmdbOnScroll 复用同一 .content 滚动事件调用，避免重复触发。
 function tmdbUpdateBackToTop(){
@@ -724,6 +746,9 @@ function tmdbUpdateBackToTop(){
   var active = page.classList.contains('active');
   var show = active && content.scrollTop > TMDB_BACK_TOP_THRESHOLD;
   btn.classList.toggle('visible', show);
+  // OPT-28：桌面端按日志面板实际宽度右移，避免遮挡
+  var right = tmdbBackToTopRight();
+  btn.style.right = (right === null) ? '' : (right + 'px');
 }
 
 // 显式隐藏按钮（用于切换离开 TMDB 标签页时，避免悬浮按钮残留在其它页面）。

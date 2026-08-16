@@ -8,6 +8,13 @@ var LOG_BEFORE_MAX = 500;
 var APP_PATHS = {category_base:'/影视', search:'/批量转存/手动搜索存', tmdb:'/批量转存/TMDB'};
 var SETTINGS_ALL = null;  // 缓存 /api/settings/all，调度页与设置页共用，避免重复请求
 
+// TMDB 海报基础地址（OPT-48）：与设置 cfg_tmdb_base_url 呼应，避免硬编码。
+var TMDB_IMG_BASE = 'https://image.tmdb.org/t/p/w185';
+
+// 统一「下次调度时间」格式化（OPT-35）："2024-01-01 12:00:00" → "01-01 12:00"，空值回退"—"。
+function fmtNextTime(s){
+  return s ? String(s).slice(5, 16) : '—';
+}
 
 
 // P1 UX: password visibility toggle
@@ -164,4 +171,73 @@ function cachedApiGet(url, ttl, force){
   })();
   _apiCache[url] = { ts: now, data: null, inflight: p };
   return p;
+}
+
+// ============ 统一空 / 错误态（OPT-33） ============
+// 沿用 history.js 的 _makeEmptyState 结构与 .empty-state 样式，供各模块复用，
+// 统一「暂无数据 / 加载失败」的视觉与交互（含重试按钮）。
+function renderEmptyState(opts){
+  opts = opts || {};
+  var icon = opts.icon || 'icon-inbox';
+  var title = opts.title || '暂无数据';
+  var desc = (opts.desc != null) ? opts.desc : '';
+  var action = opts.action || null; // {text, onClick}
+  var wrapper = document.createElement('div');
+  wrapper.className = 'empty-state';
+  var iconDiv = document.createElement('div');
+  iconDiv.className = 'empty-icon';
+  iconDiv.innerHTML = '<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#'+icon+'"/></svg>';
+  var titleDiv = document.createElement('div');
+  titleDiv.className = 'empty-title';
+  titleDiv.textContent = title;
+  wrapper.appendChild(iconDiv);
+  wrapper.appendChild(titleDiv);
+  if(desc){
+    var descDiv = document.createElement('div');
+    descDiv.className = 'empty-desc';
+    descDiv.innerHTML = desc;
+    wrapper.appendChild(descDiv);
+  }
+  if(action && action.text){
+    var btn = document.createElement('button');
+    btn.className = 'btn btn-sm btn-outline';
+    btn.style.marginTop = '10px';
+    btn.textContent = action.text;
+    if(action.onClick) btn.addEventListener('click', action.onClick);
+    wrapper.appendChild(btn);
+  }
+  return wrapper;
+}
+
+function renderErrorState(opts){
+  opts = opts || {};
+  var title = opts.title || '加载失败';
+  var desc = (opts.desc != null) ? opts.desc : '';
+  var onRetry = opts.onRetry || null;
+  var wrapper = document.createElement('div');
+  wrapper.className = 'empty-state';
+  var iconDiv = document.createElement('div');
+  iconDiv.className = 'empty-icon';
+  iconDiv.style.color = 'var(--red)';
+  iconDiv.innerHTML = '<svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-x-circle"/></svg>';
+  var titleDiv = document.createElement('div');
+  titleDiv.className = 'empty-title';
+  titleDiv.textContent = title;
+  wrapper.appendChild(iconDiv);
+  wrapper.appendChild(titleDiv);
+  if(desc){
+    var descDiv = document.createElement('div');
+    descDiv.className = 'empty-desc';
+    descDiv.innerHTML = desc;
+    wrapper.appendChild(descDiv);
+  }
+  if(onRetry){
+    var btn = document.createElement('button');
+    btn.className = 'btn btn-sm btn-primary';
+    btn.style.marginTop = '10px';
+    btn.textContent = '重试';
+    btn.addEventListener('click', onRetry);
+    wrapper.appendChild(btn);
+  }
+  return wrapper;
 }

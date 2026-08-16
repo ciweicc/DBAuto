@@ -62,6 +62,9 @@
   --gradient-brand-hover: linear-gradient(135deg, color-mix(in srgb, var(--accent) 85%, #fff), color-mix(in srgb, var(--accent2) 85%, #fff));
   --gradient-btn: linear-gradient(135deg, #0071e3, var(--accent2));
 
+  /* 无封面占位背景（OPT-38）：深色主题下的渐变 */
+  --tmdb-poster-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+
   /* Grid + glow background */
   --grid-size: 40px;
   --grid-line: rgba(255, 255, 255, 0.045);
@@ -153,6 +156,9 @@
   --glow-3: #00a3ff;
 
   --gradient-btn: linear-gradient(135deg, #0066d6, var(--accent2));
+
+  /* 无封面占位背景（OPT-38）：浅色主题下的渐变 */
+  --tmdb-poster-bg: linear-gradient(135deg, #eef0f5 0%, #e3e7f0 50%, #d7def0 100%);
 
   --shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.22);
   --shadow-sm: 0 4px 14px -8px rgba(0, 0, 0, 0.18);

@@ -1,5 +1,4 @@
 // ============ Tab / Navigation ============
-var currentTab = 'overview';
 // 页面容器 id 映射：手动/定时/历史保持原 id（categories/schedule/transfer/history.js 依赖）
 var PAGE_IDS = {
   overview: 'pageOverview',

@@ -180,10 +180,10 @@ function renderHistDetailContent(h){
       items.map(function(r){
         var st = r.status;
         var stText='未知', stClr='var(--text2)';
-        if(st==='ok'||st==='done'){stText='成功';stClr='#30d158'}
+        if(st==='ok'||st==='done'){stText='成功';stClr='var(--green)'}
         else if(st==='skipped'||st==='exists'){stText='跳过';stClr='var(--text3)'}
-        else if(st==='not_found'){stText='未找到';stClr='#ff9f0a'}
-        else if(st==='error'||st==='fail'){stText='失败';stClr='#ff453a'}
+        else if(st==='not_found'){stText='未找到';stClr='var(--orange)'}
+        else if(st==='error'||st==='fail'){stText='失败';stClr='var(--red)'}
         var cat = r.category ? '<span style=\"padding:1px 6px;border-radius:4px;background:rgba(10,132,255,.1);color:var(--accent);font-size:10px;margin-right:6px\">'+esc(r.category)+'</span>' : '';
         return '<div style=\"padding:6px 0;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center;gap:8px\">'+
           '<div style=\"flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px\">'+cat+esc(r.title)+'</div>'+
@@ -194,11 +194,11 @@ function renderHistDetailContent(h){
   }
   if(h.type==='expired_check' && h.data.expired){
     var items = h.data.expired;
-    if(!items || !items.length) return '<div style=\"color:#30d158;font-size:13px\">所有链接正常</div>';
+    if(!items || !items.length) return '<div style=\"color:var(--green);font-size:13px\">所有链接正常</div>';
     return '<div style=\"max-height:300px;overflow-y:auto\">'+
       items.map(function(r){
         return '<div style=\"padding:6px 0;border-bottom:1px solid var(--border);font-size:13px\">'+
-          '<div style=\"color:#ff453a\">'+esc(r.title||'未知')+'</div>'+
+          '<div style=\"color:var(--red)\">'+esc(r.title||'未知')+'</div>'+
           '<div style=\"color:var(--text3);font-size:12px;margin-top:2px\">'+esc(r.path||'')+'</div>'+
           (r.msg?'<div style=\"color:var(--text2);font-size:12px;margin-top:2px\">'+esc(r.msg)+'</div>':'')+
           '</div>';

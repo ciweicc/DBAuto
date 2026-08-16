@@ -1,12 +1,4 @@
 // ============ Log ============
-// 注：保留此转义函数并改名为 escLogText，避免与 dashboard.js 中的全局 esc 重名互相覆盖（OPT-02）。
-// 本模块当前不直接调用它；全局统一使用的 esc 由 dashboard.js 提供（转义更完整）。
-function escLogText(s){
-  if(s==null)return'';
-  var d=document.createElement('div');
-  d.textContent=String(s);
-  return d.innerHTML.replace(/'/g,'&#39;')
-}
 
 function addLog(line){
   logBefore.push(line);
@@ -245,14 +237,17 @@ function toggleLogPanel(){
   if(!panel) return;
   panel.classList.toggle('collapsed');
   try{ localStorage.setItem('logPanelCollapsed', panel.classList.contains('collapsed') ? '1' : '0'); }catch(e){}
+  if(typeof tmdbUpdateBackToTop==='function') tmdbUpdateBackToTop(); // OPT-28：面板态变化时刷新回顶按钮避让
 }
 function collapseLogPanel(){
   var panel = document.getElementById('logPanel');
   if(panel && !panel.classList.contains('collapsed')) panel.classList.add('collapsed');
+  if(typeof tmdbUpdateBackToTop==='function') tmdbUpdateBackToTop();
 }
 function expandLogPanel(){
   var panel = document.getElementById('logPanel');
   if(panel && panel.classList.contains('collapsed')) panel.classList.remove('collapsed');
+  if(typeof tmdbUpdateBackToTop==='function') tmdbUpdateBackToTop();
 }
 // 恢复折叠状态
 (function(){

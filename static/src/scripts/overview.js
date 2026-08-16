@@ -55,8 +55,11 @@ function renderOvKpi(dash, hist){
   // 7天成功率
   var weekTotal = stats.week_total || 0;
   var weekOk = stats.week_ok || 0;
-  var rate = weekTotal > 0 ? Math.round(weekOk / (weekOk + (stats.week_fail||0)) * 100) : 0;
-  if(weekOk === 0 && (stats.week_fail||0) === 0) rate = 0;
+  var weekFail = stats.week_fail || 0;
+  // 成功率分母采用「成功 + 失败」，仅统计有结论的转存；跳过项不计入成功率。
+  // 当 ok 与 fail 均为 0（如本周仅有跳过或无执行），成功率无统计意义，按 0 处理。
+  var denom = weekOk + weekFail;
+  var rate = denom > 0 ? Math.round(weekOk / denom * 100) : 0;
   var rateEl = document.getElementById('ovWeekRate');
   if(rateEl) rateEl.textContent = rate + '%';
   var barEl = document.getElementById('ovWeekBar');
@@ -70,10 +73,10 @@ function renderOvKpi(dash, hist){
     schedEl.innerHTML = '';
     var rows = [];
     if(sched.transfer_next){
-      rows.push({name:'转存', time:formatOvTime(sched.transfer_next)});
+      rows.push({name:'转存', time:fmtNextTime(sched.transfer_next)});
     }
     if(sched.expired_check_next){
-      rows.push({name:'检测', time:formatOvTime(sched.expired_check_next)});
+      rows.push({name:'检测', time:fmtNextTime(sched.expired_check_next)});
     }
     if(!rows.length){
       schedEl.innerHTML = '<span class="ov-kpi-muted">暂无调度</span>';
@@ -102,11 +105,7 @@ function renderOvKpi(dash, hist){
   }
 }
 
-function formatOvTime(t){
-  if(!t) return '';
-  // "2024-01-01 12:00:00" → "01-01 12:00"
-  try{ return t.slice(5, 16); }catch(e){ return t; }
-}
+// OPT-35：本地 formatOvTime 已统一为全局 fmtNextTime（见 globals.js），此处不再保留副本。
 
 /**
  * 最近转存列表
@@ -270,7 +269,7 @@ function renderOvRecs(tmdb){
     var fallbackHtml =
       '<div class="ov-rec-poster-fallback"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>';
     var posterHtml = poster
-      ? '<img class="ov-rec-img" src="https://image.tmdb.org/t/p/w185' + esc(poster) + '" alt="' + esc(title) + '" loading="lazy" onerror="this.style.display=\'none\'">' + fallbackHtml
+      ? '<img class="ov-rec-img" src="' + TMDB_IMG_BASE + esc(poster) + '" alt="' + esc(title) + '" loading="lazy" onerror="this.style.display=\'none\'">' + fallbackHtml
       : fallbackHtml;
     card.innerHTML =
       '<div class="ov-rec-poster">' + posterHtml + '</div>' +

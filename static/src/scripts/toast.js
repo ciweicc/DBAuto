@@ -3,7 +3,6 @@ function showToast(msg,ok,duration){
   var container=document.getElementById('toastContainer');
   var t=document.createElement('div');
   t.className='toast '+(ok?'ok':'err')+' show';
-  var icon=ok?'<span class="toast-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-check-circle"/></svg></span>':'<span class="toast-icon"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg></span>';
   var iconSpan = document.createElement('span');
   iconSpan.className = 'toast-icon';
   iconSpan.innerHTML = ok

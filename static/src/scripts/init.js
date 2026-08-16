@@ -12,20 +12,12 @@ function initTimeSelects(){
   }
 }
 
-function initLayout(){
-  // 侧边栏抽屉 / 日志面板抽屉的开合由内联 onclick 调用
-  // toggleSidebar / toggleLogDrawer / closeDrawers 实现。
-  // 桌面端日志面板折叠由 log.js 的 toggleLogPanel 实现。
-  // 这里设定底部版本信息（如需要可扩展）。
-}
-
 async function init(){
   initTheme(); initDensity(); initTimeSelects(); updateSoundBtn(); initShortcuts();
   try{ C = await apiGet('/api/categories'); }
   catch(e){ showToast('认证失败，请重新登录', false); setTimeout(function(){ location.href = '/login.html'; }, 1500); return; }
   parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
   checkRunningStatus(); loadDashboard();
-  initLayout();
   switchTab(currentTab);
   initSSE();
 }

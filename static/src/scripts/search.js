@@ -110,22 +110,8 @@ async function doSearch(){
   try{var d=await apiGet('/api/search?q='+encodeURIComponent(q),2,searchAbort.signal);
     if(!d.results||!d.results.length){
       el.textContent='';
-      var emptyWrap = document.createElement('div');
-      emptyWrap.className = 'empty-state';
+      var emptyWrap = renderEmptyState({icon:'icon-search', title:'没有找到相关资源', desc:'试试换个关键词，或检查拼写<br>也可以去「手动转存」从榜单中选择'});
       emptyWrap.style.padding = '28px 20px';
-      var emptyIcon = document.createElement('div');
-      emptyIcon.className = 'empty-icon';
-      emptyIcon.style.cssText = 'width:44px;height:44px';
-      emptyIcon.innerHTML = '<svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-search"/></svg>';
-      var emptyTitle = document.createElement('div');
-      emptyTitle.className = 'empty-title';
-      emptyTitle.textContent = '没有找到相关资源';
-      var emptyDesc = document.createElement('div');
-      emptyDesc.className = 'empty-desc';
-      emptyDesc.innerHTML = '试试换个关键词，或检查拼写<br>也可以去「手动转存」从榜单中选择';
-      emptyWrap.appendChild(emptyIcon);
-      emptyWrap.appendChild(emptyTitle);
-      emptyWrap.appendChild(emptyDesc);
       el.appendChild(emptyWrap);
       return;
     }
@@ -168,22 +154,8 @@ async function doSearch(){
   catch(e){
     if(e.name==='AbortError')return;
     el.textContent='';
-    var failWrap = document.createElement('div');
-    failWrap.className = 'empty-state';
+    var failWrap = renderErrorState({title:'搜索失败', desc: e.message||'网络错误'});
     failWrap.style.padding = '24px';
-    var failIcon = document.createElement('div');
-    failIcon.className = 'empty-icon';
-    failIcon.style.cssText = 'width:40px;height:40px;color:var(--red)';
-    failIcon.innerHTML = '<svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-x-circle"/></svg>';
-    var failTitle = document.createElement('div');
-    failTitle.className = 'empty-title';
-    failTitle.textContent = '搜索失败';
-    var failDesc = document.createElement('div');
-    failDesc.className = 'empty-desc';
-    failDesc.textContent = e.message||'网络错误';
-    failWrap.appendChild(failIcon);
-    failWrap.appendChild(failTitle);
-    failWrap.appendChild(failDesc);
     el.appendChild(failWrap);
   }}
 
@@ -292,10 +264,10 @@ async function checkOneLink(it){
       it.badge.style.color = 'var(--text3,#999)';
     } else if(d.valid){
       it.badge.textContent = '✓ 链接正常';
-      it.badge.style.color = 'var(--green,#1a9e5f)';
+      it.badge.style.color = 'var(--green)';
     } else {
       it.badge.textContent = '✗ 链接失效';
-      it.badge.style.color = 'var(--red,#e5484d)';
+      it.badge.style.color = 'var(--red)';
       it.btn.disabled = true;
       it.btn.textContent = '已失效';
       it.btn.className = 'btn btn-sm btn-outline';

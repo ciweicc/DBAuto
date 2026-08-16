@@ -23,6 +23,18 @@ async function loadDashboard(force){
     if(d.version) document.getElementById('headerVersion').textContent='v'+d.version;
   }catch(e){
     dashboardState.error = e;
+    // OPT-47：渲染概览错误占位，避免失败后静默空白
+    var ovCt = document.getElementById('overviewContent');
+    if(ovCt){
+      ovCt.textContent = '';
+      ovCt.appendChild(renderErrorState({
+        title: '概览加载失败',
+        desc: '无法获取运行概览数据，请检查网络或后端服务是否可用。',
+        onRetry: function(){ refreshOverview(); }
+      }));
+    } else {
+      showToast('概览加载失败', false);
+    }
   }finally{
     dashboardState.loading = false;
     setOverviewSkeleton(false);
@@ -78,10 +90,10 @@ function renderSchedule(s){
   el.textContent = '';
   var rows = [];
   if(s.transfer_next){
-    rows.push({icon:'#icon-cloud-download', name:'转存', time:s.transfer_next.slice(5)});
+    rows.push({icon:'#icon-cloud-download', name:'转存', time:fmtNextTime(s.transfer_next)});
   }
   if(s.expired_check_next){
-    rows.push({icon:'#icon-refresh', name:'检测', time:s.expired_check_next.slice(5)});
+    rows.push({icon:'#icon-refresh', name:'检测', time:fmtNextTime(s.expired_check_next)});
   }
   if(!rows.length){
     el.textContent = '暂无调度';

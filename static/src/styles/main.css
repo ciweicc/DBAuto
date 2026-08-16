@@ -786,10 +786,10 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 .tmdb-card:hover .tmdb-poster{transform:scale(1.05)}
 /* 无封面占位：深色渐变背景 + 半透明大图标 + 居中标题，观感更统一 */
 .tmdb-no-poster{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
-  padding:14px;background:linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%);
-  color:rgba(255,255,255,.92);text-align:center;user-select:none}
-.tmdb-no-poster-icon{opacity:.35;flex-shrink:0;color:#fff}
-.tmdb-no-poster-title{font-size:12px;font-weight:600;line-height:1.4;color:#fff;max-width:92%;
+  padding:14px;background:var(--tmdb-poster-bg, linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%));
+  color:var(--text2);text-align:center;user-select:none}
+.tmdb-no-poster-icon{opacity:.35;flex-shrink:0;color:var(--text2)}
+.tmdb-no-poster-title{font-size:12px;font-weight:600;line-height:1.4;color:var(--text);max-width:92%;
   display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
   text-shadow:0 1px 3px rgba(0,0,0,.55)}
 .tmdb-poster-wrap{overflow:hidden;position:relative}
@@ -945,6 +945,13 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
   -webkit-backdrop-filter:var(--blur);
   backdrop-filter:var(--blur);
 }
+/* 桌面端常驻日志面板占右侧栏，回顶按钮右移避开（OPT-28，CSS 基线；运行期 JS 会按实际宽度微调） */
+@media(min-width:1025px){
+  #tmdbBackToTop{ right: calc(380px + 24px); }
+}
+@media(min-width:1025px) and (max-width:1160px){
+  #tmdbBackToTop{ right: calc(280px + 24px); }
+}
 #tmdbBackToTop.visible{
   opacity:1;
   pointer-events:auto;
@@ -1006,7 +1013,6 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .ov-kpi-orange .ov-kpi-value{color:var(--orange)}
 .ov-kpi-purple .ov-kpi-value{color:var(--accent2)}
 .ov-kpi-sub{font-size:12px;color:var(--text3)}
-.ov-rate-bar{width:80px;height:6px;border-radius:3px;background:rgba(255,255,255,0.1);overflow:hidden}
 .ov-rate-bar{flex:1;height:6px;background:rgba(255,255,255,.08);border-radius:3px;overflow:hidden;min-width:60px}
 .ov-rate-fill{height:100%;border-radius:3px;background:var(--gradient-brand);transition:width .6s var(--ease-standard)}
 .ov-kpi-trend{font-size:11px;color:var(--text3);white-space:nowrap}
