@@ -267,9 +267,11 @@ function renderOvRecs(tmdb){
     var card = document.createElement('div');
     card.className = 'ov-rec-card';
     card.onclick = function(){ switchTab('tmdb'); };
+    var fallbackHtml =
+      '<div class="ov-rec-poster-fallback"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>';
     var posterHtml = poster
-      ? '<img src="https://image.tmdb.org/t/p/w185' + esc(poster) + '" alt="' + esc(title) + '" loading="lazy" onerror="this.style.display=\'none\';this.nextElementSibling.style.display=\'flex\'"><div class="ov-rec-poster-fallback"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>'
-      : '<div class="ov-rec-poster-fallback"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>';
+      ? '<img class="ov-rec-img" src="https://image.tmdb.org/t/p/w185' + esc(poster) + '" alt="' + esc(title) + '" loading="lazy" onerror="this.style.display=\'none\'">' + fallbackHtml
+      : fallbackHtml;
     card.innerHTML =
       '<div class="ov-rec-poster">' + posterHtml + '</div>' +
       '<div class="ov-rec-info">' +
