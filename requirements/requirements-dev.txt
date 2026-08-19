@@ -1,9 +1,5 @@
 # 由 pip-compile 自动生成 — 请勿手工编辑（仅 CI/测试使用）。
 # 源文件: requirements-dev.in | 重新生成: pip-compile requirements-dev.in --generate-hashes -o requirements-dev.txt
-colorama==0.4.6 \
-    --hash=sha256:08695f5cb7ed6e0531a20572697297273c47b8cae5a63ffc6d6ed5c201be6e44 \
-    --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
-    # via pytest
 iniconfig==2.3.0 \
     --hash=sha256:c76315c77db068650d49c5b56314774a7804df16fee4402c1f19d6d15d8c4730 \
     --hash=sha256:f631c04d2c48c52b84d0d0549c99ff3859c98df65b3101406327ecc7d53fbf12
@@ -28,7 +24,7 @@ pytest==9.1.1 \
     # via
     #   -r requirements-dev.in
     #   pytest-rerunfailures
-pytest-rerunfailures==16.4 \
-    --hash=sha256:8222d17c37eb7b9e4d6fc96a3c724ff4e1a5c97a5cc7cbb2c19e9282cfd21a11 \
-    --hash=sha256:f69b5beb39622c90d1e44bd945d826eff6db545dcf0b68f52b7e4ad15eaf6d6c
+pytest-rerunfailures==16.5 \
+    --hash=sha256:1481b45e6eb73228d19979c4481a8532007fadc6881d1198622cad1901c4afb2 \
+    --hash=sha256:f58d93fa529022013b2bdaeefe39f0e36d3c54b1ff7ee437e59c2b7bd59a429f
     # via -r requirements-dev.in
