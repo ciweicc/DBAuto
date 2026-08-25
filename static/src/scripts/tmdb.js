@@ -594,6 +594,9 @@ async function transferTmdbSelection(){
   // 清空日志（日志面板常驻，无需切换页面即可看到转存进度）
   logBefore=[]; document.getElementById('log').textContent='';
   addLog('[开始转存 TMDB 选中内容]');
+  // 3.1 统一 loading 态：异步期间禁点防重复提交
+  var tBtn=document.getElementById('tmdbTransferBtn');
+  if(tBtn)tBtn.classList.add('loading');
   try{
     var d = await apiPost('/api/transfer',{tasks:tasks,limit:5,filters:{}});
     if(d.success){
@@ -609,6 +612,7 @@ async function transferTmdbSelection(){
       }
     }
   }catch(e){showToast('请求失败: '+e.message,false)}
+  finally{if(tBtn)tBtn.classList.remove('loading')}
 }
 
 function renderTmdbPagination(){

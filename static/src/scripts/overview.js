@@ -137,10 +137,11 @@ function renderOvRecent(hist){
   items.slice(0, 8).forEach(function(item){
     var tr = document.createElement('tr');
     var dateShort = item.date ? item.date.slice(5, 16) : '-';
+    // 2.3 移动端表格卡片化：td 携带 data-label，<640px 时由 CSS 渲染为字段行
     tr.innerHTML =
       '<td class="ov-table-title"><span class="ov-table-cat">' + esc(item.category) + '</span>' + esc(item.title.length > 30 ? item.title.slice(0,30)+'…' : item.title) + '</td>' +
-      '<td class="ov-table-date">' + esc(dateShort) + '</td>' +
-      '<td><span class="ov-badge ov-badge-success">已转存</span></td>' +
+      '<td class="ov-table-date" data-label="时间">' + esc(dateShort) + '</td>' +
+      '<td data-label="状态"><span class="ov-badge ov-badge-success">已转存</span></td>' +
       '<td class="ov-table-actions">' +
         (item.shareurl ? '<a href="' + esc(item.shareurl) + '" target="_blank" rel="noopener" class="ov-btn-icon" title="打开链接"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>' : '') +
       '</td>';
@@ -285,11 +286,16 @@ function renderOvRecs(tmdb){
  * 立即运行定时任务
  */
 async function runScheduleNow(){
+  // 3.1 统一 loading 态
+  var btn=document.getElementById('runNowBtn');
+  if(btn)btn.classList.add('loading');
   try{
     await apiPost('/api/schedule', {action:'run_now'});
     showToast('已触发定时任务', true);
     loadOverviewPage();
   }catch(e){
     showToast('触发失败: ' + (e.message || '未知错误'), false);
+  }finally{
+    if(btn)btn.classList.remove('loading');
   }
 }

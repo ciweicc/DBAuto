@@ -1,195 +1,31 @@
-// ============ Dashboard / 运行概览 ============
-// 状态管理：loading / data / error，所有子组件均从 state 派生渲染
-var dashboardState = { loading:true, data:null, error:null };
+// ============ Dashboard 共享数据源 ============
+// 设置页「运行概览」模块已移除（与概览页 KPI 信息重复，见 docs/UI_Roadmap_Next.md 7.1）。
+// 本文件仅保留共享数据源与公共工具：
+//   - fetchDashboardAll：概览页（overview.js）复用的 /api/dashboard/all 缓存封装；
+//   - loadDashboard：顶栏版本号更新，保留函数名以兼容 init.js / SSE 调用点，
+//     拉取失败静默（概览页有自己的加载态与错误呈现）。
 
-// 共享概览数据源（OPT-03）：loadDashboard（overview-grid 卡片）与 loadOverviewPage（ov-* 首页）
-// 共用同一份 /api/dashboard/all 响应，避免双概览 UI 重复拉取、状态不一致；
-// 底层走 cachedApiGet 做 TTL 缓存，并发请求复用同一 Promise，彻底去重。
+// 共享概览数据源（OPT-03）：底层走 cachedApiGet 做 TTL 缓存，并发请求复用同一 Promise 去重。
 async function fetchDashboardAll(force){
   return cachedApiGet('/api/dashboard/all', 8000, force);
 }
 
 /**
  * 加载概览数据（入口）。保持函数名 loadDashboard 以兼容 init.js / SSE 调用。
- * @param {boolean} [force] true 时忽略缓存强制重新拉取（如手动刷新）。
+ * @param {boolean} [force] true 时忽略缓存强制重新拉取。
  */
 async function loadDashboard(force){
   try{
-    dashboardState.loading = true;
     var d = await fetchDashboardAll(force);
-    dashboardState.data = d;
-    dashboardState.error = null;
-    renderOverview(d);
-    if(d.version) document.getElementById('headerVersion').textContent='v'+d.version;
-  }catch(e){
-    dashboardState.error = e;
-    // OPT-47：渲染概览错误占位，避免失败后静默空白
-    var ovCt = document.getElementById('overviewContent');
-    if(ovCt){
-      ovCt.textContent = '';
-      ovCt.appendChild(renderErrorState({
-        title: '概览加载失败',
-        desc: '无法获取运行概览数据，请检查网络或后端服务是否可用。',
-        onRetry: function(){ refreshOverview(); }
-      }));
-    } else {
-      showToast('概览加载失败', false);
+    if(d && d.version){
+      var el = document.getElementById('headerVersion');
+      if(el) el.textContent = 'v' + d.version;
     }
-  }finally{
-    dashboardState.loading = false;
-    setOverviewSkeleton(false);
-  }
+  }catch(e){ /* 静默失败 */ }
 }
 
 /**
- * 手动刷新：显示骨架屏后强制重新拉取。
- */
-function refreshOverview(){
-  setOverviewSkeleton(true);
-  loadDashboard(true);
-}
-
-/**
- * 切换骨架屏与真实内容。
- */
-function setOverviewSkeleton(show){
-  var sk = document.getElementById('overviewSkeleton');
-  var ct = document.getElementById('overviewContent');
-  if(sk) sk.style.display = show ? 'grid' : 'none';
-  if(ct) ct.style.display = show ? 'none' : 'grid';
-}
-
-/**
- * 总渲染：将聚合数据分发给各子组件。
- */
-function renderOverview(d){
-  var s = d.schedule_status || {};
-  var stats = d.stats || {};
-  renderToday(stats.today_count);
-  renderSchedule(s);
-  renderStatus(stats.last_status, stats.last_time);
-  renderWeekChart(stats);
-}
-
-/**
- * 今日转存卡片。
- */
-function renderToday(count){
-  var el = document.getElementById('ovToday');
-  if(!el) return;
-  if(count) animateNumber(el, count, 800);
-  else el.textContent = '-';
-}
-
-/**
- * 下次调度卡片：转存 / 检测两行对齐展示。
- */
-function renderSchedule(s){
-  var el = document.getElementById('ovSchedule');
-  if(!el) return;
-  el.textContent = '';
-  var rows = [];
-  if(s.transfer_next){
-    rows.push({icon:'#icon-cloud-download', name:'转存', time:fmtNextTime(s.transfer_next)});
-  }
-  if(s.expired_check_next){
-    rows.push({icon:'#icon-refresh', name:'检测', time:fmtNextTime(s.expired_check_next)});
-  }
-  if(!rows.length){
-    el.textContent = '暂无调度';
-    return;
-  }
-  rows.forEach(function(r){
-    var row = document.createElement('div');
-    row.className = 'overview-schedule-row';
-    row.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="'+r.icon+'"/></svg><span class="task-name">'+esc(r.name)+'</span><span class="task-time">'+esc(r.time)+'</span>';
-    el.appendChild(row);
-  });
-}
-
-/**
- * 上次状态卡片：根据真实状态动态切换图标、颜色与文字。
- */
-function renderStatus(status, time){
-  var dotEl = document.getElementById('ovStatusDot');
-  var textEl = document.getElementById('ovStatusText');
-  var timeEl = document.getElementById('ovStatusTime');
-  var iconEl = document.getElementById('ovStatusIcon');
-  if(!textEl) return;
-
-  var statusMap = {
-    'success': {text:'成功', dotClass:'status-dot', textColor:'green', icon:'#icon-check-circle', iconColor:'var(--green)'},
-    'partial': {text:'部分成功', dotClass:'status-dot orange', textColor:'orange', icon:'#icon-alert-circle', iconColor:'var(--orange)'},
-    'fail':    {text:'失败', dotClass:'status-dot red', textColor:'red', icon:'#icon-x-circle', iconColor:'var(--red)'},
-    'none':    {text:'无新增', dotClass:'', textColor:'', icon:'#icon-check-circle', iconColor:'var(--text3)'}
-  };
-  var st = statusMap[status] || statusMap['none'];
-
-  if(dotEl){
-    dotEl.className = st.dotClass;
-    dotEl.style.display = st.dotClass ? 'inline-block' : 'none';
-  }
-  textEl.textContent = st.text;
-  textEl.className = 'overview-card__value ' + st.textColor;
-  if(timeEl) timeEl.textContent = time ? '上次转存 '+time.slice(5,16) : '上次转存';
-  if(iconEl){
-    iconEl.style.setProperty('--ov-icon-color', st.iconColor);
-    iconEl.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="'+st.icon+'"/></svg>';
-  }
-}
-
-/**
- * 近 7 天趋势卡片：柱状图 + 汇总数字。
- */
-function renderWeekChart(stats){
-  var chartEl = document.getElementById('ovChart');
-  if(!chartEl) return;
-
-  animateNumber(document.getElementById('ovWeekOK'), stats.week_ok||0, 900);
-  animateNumber(document.getElementById('ovWeekFail'), stats.week_fail||0, 900);
-  animateNumber(document.getElementById('ovWeekTotal'), stats.week_total||0, 1000);
-
-  chartEl.textContent = '';
-  if(!stats.daily || !stats.daily.length){
-    for(var i=0;i<7;i++){
-      var emptyBar = document.createElement('div');
-      emptyBar.className = 'overview-bar empty';
-      emptyBar.style.height = '5%';
-      chartEl.appendChild(emptyBar);
-    }
-    return;
-  }
-
-  var maxTotal = 1;
-  stats.daily.forEach(function(d){ if(d.total>maxTotal) maxTotal=d.total; });
-
-  stats.daily.forEach(function(d){
-    var bar = document.createElement('div');
-    bar.className = 'overview-bar';
-    var h = Math.round(d.total/maxTotal*100);
-    bar.style.height = (h<5?5:h) + '%';
-    bar.title = d.date + '　成功 '+d.ok+' / 失败 '+d.fail;
-    if(d.total===0){
-      bar.classList.add('empty');
-    }else{
-      // 堆叠段：底部绿色=成功，顶部红色=失败，比例即当天成功率
-      var okPct = d.total>0 ? (d.ok/d.total*100) : 0;
-      var failPct = d.total>0 ? (d.fail/d.total*100) : 0;
-      var segOk = document.createElement('span');
-      segOk.className = 'overview-bar__seg seg-ok';
-      segOk.style.height = okPct + '%';
-      var segFail = document.createElement('span');
-      segFail.className = 'overview-bar__seg seg-fail';
-      segFail.style.height = failPct + '%';
-      bar.appendChild(segOk);
-      bar.appendChild(segFail);
-    }
-    chartEl.appendChild(bar);
-  });
-}
-
-/**
- * 小工具：HTML 转义，防止调度时间等字符串注入。
+ * HTML 转义，防止调度时间等字符串注入（globals/history/overview/tmdb 共用）。
  */
 function esc(s){
   return String(s).replace(/[&<>"']/g, function(c){

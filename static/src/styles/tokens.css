@@ -17,6 +17,7 @@
   --glass-border: rgba(255, 255, 255, 0.14);
   --glass-border-strong: rgba(255, 255, 255, 0.22);
   --glass-hi: rgba(255, 255, 255, 0.16); /* inset top highlight for glass edges */
+  --surface-solid: #16171c; /* 5.3 不支持 backdrop-filter 时的实底兜底 */
 
   /* Card / Card-2 (semantic aliases → glass) */
   --card: var(--glass-bg);
@@ -49,6 +50,19 @@
   --danger: var(--red);
   --warning: var(--orange);
   --info: var(--cyan);
+
+  /* Semantic wash/border（语义色水洗底与描边，统一状态样式出处；浅色主题在下方联动覆盖） */
+  --green-wash: rgba(48, 209, 88, 0.12);
+  --green-wash-strong: rgba(48, 209, 88, 0.15);
+  --green-border: rgba(48, 209, 88, 0.45);
+  --green-border-soft: rgba(48, 209, 88, 0.40);
+  --red-wash: rgba(255, 69, 58, 0.12);
+  --red-wash-strong: rgba(255, 69, 58, 0.18);
+  --red-border: rgba(255, 69, 58, 0.32);
+  --red-border-strong: rgba(255, 69, 58, 0.42);
+  --orange-wash: rgba(255, 159, 10, 0.12);
+  --orange-wash-strong: rgba(255, 159, 10, 0.15);
+  --orange-border: rgba(255, 159, 10, 0.35);
 
   /* Status Colors */
   --status-running: var(--accent);
@@ -94,11 +108,41 @@
   --mono: "SF Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
 
   /* Font sizes (denser base) */
+  --fs-xs: 11px;
   --fs-base: 13px;
   --fs-sm: 12px;
   --fs-lg: 14px;
   --fs-xl: 20px;
   --fs-2xl: 26px;
+  --fs-3xl: 32px;
+
+  /* Interaction states（统一交互态令牌：
+     焦点环 / 强调色水洗底 / 中性悬停底 / 开关轨道，均随主题联动） */
+  --focus-ring: 0 0 0 3px rgba(10, 132, 255, 0.18);
+  --accent-wash: rgba(10, 132, 255, 0.08);
+  --accent-wash-strong: rgba(10, 132, 255, 0.14);
+  --hover-wash: rgba(255, 255, 255, 0.06);
+  --track: rgba(255, 255, 255, 0.12);
+
+  /* Content width（内容区最大宽度分级；TMDB 网格页在 main.css 中放宽） */
+  --content-max: 1440px;
+
+  /* Z-index ladder（浮层层级阶梯：新增浮层按层选值，禁止再写魔法数）
+     nav < fab < mobile-search < scrim < sidebar < backtop < popover/dropdown/sheet
+     < confirm < cmd-palette < toast */
+  --z-topbar: 10;
+  --z-popover: 50;
+  --z-nav: 100;
+  --z-fab: 150;
+  --z-mobile-search: 200;
+  --z-scrim: 250;
+  --z-sidebar: 300;
+  --z-backtop: 400;
+  --z-dropdown: 1000;
+  --z-sheet: 1000;
+  --z-confirm: 2000;
+  --z-cmd: 3000;
+  --z-toast: 9999;
 
   /* Card inner padding */
   --card-pad: 12px;
@@ -131,6 +175,7 @@
   --glass-border: rgba(255, 255, 255, 0.65);
   --glass-border-strong: rgba(255, 255, 255, 0.9);
   --glass-hi: rgba(255, 255, 255, 0.7);
+  --surface-solid: #ffffff; /* 5.3 不支持 backdrop-filter 时的实底兜底 */
 
   --card: var(--glass-bg);
   --card-2: var(--glass-bg-strong);
@@ -138,9 +183,10 @@
   --border: rgba(0, 0, 0, 0.10);
   --border2: rgba(0, 0, 0, 0.14);
   --border3: rgba(0, 0, 0, 0.22);
+  /* 文本层级：text2（次级）> text3（三级），且 text3 混合后对比度 ≥4.5:1 */
   --text: #1c1c1e;
-  --text2: rgba(0, 0, 0, 0.55);
-  --text3: rgba(0, 0, 0, 0.62);
+  --text2: rgba(0, 0, 0, 0.62);
+  --text3: rgba(0, 0, 0, 0.58);
   --accent: #007aff;
   --accent2: #5856d6;
   --accent3: #8e8dff;
@@ -154,6 +200,27 @@
   --glow-1: #007aff;
   --glow-2: #5856d6;
   --glow-3: #00a3ff;
+
+  /* Interaction states（浅色主题联动：焦点环/水洗底改用浅色主题主色，
+     中性悬停底与开关轨道改为黑色系，避免白底上"白色叠白色"不可见） */
+  --focus-ring: 0 0 0 3px rgba(0, 122, 255, 0.20);
+  --accent-wash: rgba(0, 122, 255, 0.08);
+  --accent-wash-strong: rgba(0, 122, 255, 0.14);
+  --hover-wash: rgba(0, 0, 0, 0.05);
+  --track: rgba(0, 0, 0, 0.14);
+
+  /* Semantic wash/border（浅色主题用更亮的系统色，透明度与深色一致） */
+  --green-wash: rgba(52, 199, 89, 0.12);
+  --green-wash-strong: rgba(52, 199, 89, 0.16);
+  --green-border: rgba(52, 199, 89, 0.50);
+  --green-border-soft: rgba(52, 199, 89, 0.45);
+  --red-wash: rgba(255, 59, 48, 0.10);
+  --red-wash-strong: rgba(255, 59, 48, 0.15);
+  --red-border: rgba(255, 59, 48, 0.35);
+  --red-border-strong: rgba(255, 59, 48, 0.45);
+  --orange-wash: rgba(255, 149, 0, 0.12);
+  --orange-wash-strong: rgba(255, 149, 0, 0.16);
+  --orange-border: rgba(255, 149, 0, 0.40);
 
   --gradient-btn: linear-gradient(135deg, #0066d6, var(--accent2));
 

@@ -69,27 +69,7 @@ class TestNextFireTime:
         assert now.tzinfo == LOCAL_TZ
 
 
-class TestDoubanWishSettings:
-    def test_douban_wish_in_default_settings(self):
-        from config import DEFAULT_SETTINGS
-        assert "douban_wish" in DEFAULT_SETTINGS
-        assert DEFAULT_SETTINGS["douban_wish"]["enabled"] is False
-        assert "savepath" in DEFAULT_SETTINGS["douban_wish"]
-        assert "category" in DEFAULT_SETTINGS["douban_wish"]
-
-    def test_douban_wish_settings_save_load(self):
-        from config import ConfigManager
-        ConfigManager._instance = None
-        mgr = ConfigManager.get_instance()
-        settings = mgr.get_settings()
-        settings["douban_wish"]["enabled"] = True
-        settings["douban_wish"]["savepath"] = "/test/wish"
-        mgr.set_settings(settings)
-        ConfigManager._instance = None
-        mgr2 = ConfigManager.get_instance()
-        s2 = mgr2.get_settings()
-        assert s2["douban_wish"]["enabled"] is True
-        assert s2["douban_wish"]["savepath"] == "/test/wish"
+# 豆瓣想看同步功能已移除（原 TestDoubanWishSettings 用例一并删除）
 
 
 class TestNewFilters:

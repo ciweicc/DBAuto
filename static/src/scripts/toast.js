@@ -3,6 +3,8 @@ function showToast(msg,ok,duration){
   var container=document.getElementById('toastContainer');
   var t=document.createElement('div');
   t.className='toast '+(ok?'ok':'err')+' show';
+  // 4.5 aria-live 分级：错误为打断式播报(alert)，成功提示维持容器上的 polite
+  if(!ok)t.setAttribute('role','alert');
   var iconSpan = document.createElement('span');
   iconSpan.className = 'toast-icon';
   iconSpan.innerHTML = ok

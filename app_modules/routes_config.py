@@ -39,17 +39,6 @@ def build_schedule_payload():
     t = settings.get("transfer", {})
     e = settings.get("expired_check", {})
     result = dict(settings)
-    # 脱敏豆瓣多账号 cookie
-    dw = result.get("douban_wish", {})
-    if dw and isinstance(dw.get("accounts"), list):
-        masked_accounts = []
-        for acc in dw["accounts"]:
-            ma = dict(acc)
-            if ma.get("cookie"):
-                ma["cookie"] = "***"
-            masked_accounts.append(ma)
-        result["douban_wish"] = dict(dw)
-        result["douban_wish"]["accounts"] = masked_accounts
     result["_status"] = status
     result["_next_runs"] = {
         "transfer": _format_next(t.get("time"), t.get("cron"), t.get("interval_hours", 0),
@@ -168,7 +157,7 @@ class ConfigRouteMixin:
             action = body.get("action", "save")
 
             if action == "save":
-                for section in ("transfer", "expired_check", "douban_wish", "savepaths"):
+                for section in ("transfer", "expired_check", "savepaths"):
                     if section in body:
                         section_data = body[section]
                         if section not in settings:
@@ -215,67 +204,6 @@ class ConfigRouteMixin:
                                     if not section_data[pk].startswith("/"):
                                         self._send_json({"success": False, "message": "savepaths.{}: 路径必须以 / 开头".format(pk)}, 400)
                                         return True
-
-                        # 豆瓣想看同步的保存路径和分类
-                        if section == "douban_wish":
-                            if "savepath" in section_data:
-                                ok, msg = validate_string(section_data["savepath"], min_len=1, max_len=500)
-                                if not ok:
-                                    self._send_json({"success": False, "message": "savepath: {}".format(msg)}, 400)
-                                    return True
-                            if "category" in section_data:
-                                cat = section_data["category"]
-                                if isinstance(cat, list):
-                                    ok, msg = validate_list(cat, max_len=10)
-                                    if not ok:
-                                        self._send_json({"success": False, "message": "category: {}".format(msg)}, 400)
-                                        return True
-                                    for c in cat:
-                                        ok, msg = validate_string(c, min_len=1, max_len=50)
-                                        if not ok:
-                                            self._send_json({"success": False, "message": "category: {}".format(msg)}, 400)
-                                            return True
-                                elif isinstance(cat, str):
-                                    ok, msg = validate_string(cat, min_len=1, max_len=50)
-                                    if not ok:
-                                        self._send_json({"success": False, "message": "category: {}".format(msg)}, 400)
-                                        return True
-                            if "accounts" in section_data:
-                                accts = section_data["accounts"]
-                                if not isinstance(accts, list):
-                                    self._send_json({"success": False, "message": "accounts must be a list"}, 400)
-                                    return True
-                                if len(accts) > 20:
-                                    self._send_json({"success": False, "message": "accounts: max 20 accounts"}, 400)
-                                    return True
-                                existing = settings.get(section, {}).get("accounts", [])
-                                for ai, acc in enumerate(accts):
-                                    if not isinstance(acc, dict):
-                                        self._send_json({"success": False, "message": "accounts[{}] must be object".format(ai)}, 400)
-                                        return True
-                                    ok, msg = validate_string(acc.get("uid", ""), min_len=1, max_len=50)
-                                    if not ok:
-                                        self._send_json({"success": False, "message": "accounts[{}].uid: {}".format(ai, msg)}, 400)
-                                        return True
-                                    ck = acc.get("cookie", "")
-                                    if ck == "***":
-                                        # 保留已有 cookie（脱敏占位），找不到则置空
-                                        acc["cookie"] = ""
-                                        for ea in existing:
-                                            if ea.get("uid") == acc.get("uid"):
-                                                acc["cookie"] = ea.get("cookie", "")
-                                                break
-                                    else:
-                                        ok, msg = validate_string(ck, min_len=1, max_len=2000)
-                                        if not ok:
-                                            self._send_json({"success": False, "message": "accounts[{}].cookie: {}".format(ai, msg)}, 400)
-                                            return True
-                                    nm = acc.get("name", "")
-                                    if nm:
-                                        ok, msg = validate_string(nm, min_len=1, max_len=50)
-                                        if not ok:
-                                            self._send_json({"success": False, "message": "accounts[{}].name: {}".format(ai, msg)}, 400)
-                                            return True
 
                         settings[section].update(section_data)
 

@@ -122,7 +122,7 @@
                 <span class="ov-kpi-muted">加载中...</span>
               </div>
             </div>
-            <button class="ov-kpi-btn ov-kpi-btn-outline" onclick="runScheduleNow()">立即执行</button>
+            <button class="ov-kpi-btn ov-kpi-btn-outline" id="runNowBtn" onclick="runScheduleNow()">立即执行</button>
           </div>
           <div class="ov-kpi-card ov-kpi-purple">
             <div class="ov-kpi-info">
@@ -297,7 +297,7 @@
             <div style="display:flex;gap:8px">
               <button class="btn btn-outline btn-sm" onclick="selectAllTmdbVisible()" title="全选本页（键盘 A）">全选本页</button>
               <button class="btn btn-outline btn-sm" onclick="clearTmdbSelection()">清空选择</button>
-              <button class="btn btn-primary btn-sm" onclick="transferTmdbSelection()">开始转存</button>
+              <button class="btn btn-primary btn-sm" id="tmdbTransferBtn" onclick="transferTmdbSelection()">开始转存</button>
             </div>
           </div>
 
@@ -331,7 +331,7 @@
             <span style="color:var(--text2)">每次最多</span>
             <input type="number" id="limit" value="5" min="1" max="50">
             <span style="color:var(--text2)">条</span>
-            <button class="btn btn-primary" onclick="startTransfer()" title="开始转存（Ctrl/⌘ + Enter）">开始转存</button>
+            <button class="btn btn-primary" id="startTransferBtn" onclick="startTransfer()" title="开始转存（Ctrl/⌘ + Enter）">开始转存</button>
             <button class="btn btn-outline btn-sm" onclick="checkExpired()">检测失效链接</button>
             <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="syncToSchedule()">同步到定时任务</button>
           </div>
@@ -377,7 +377,7 @@
         <div class="card">
           <div class="card-title">转存设置</div>
           <div class="sched-row">
-            <label class="toggle"><input type="checkbox" id="schedTOn" onchange="autoSaveSchedule()"><span class="slider"></span></label>
+            <label class="toggle"><input type="checkbox" id="schedTOn" aria-label="启用定时转存" onchange="autoSaveSchedule()"><span class="slider"></span></label>
             <span style="color:var(--text2)">启用</span>
             <span style="color:var(--text2);margin-left:8px">上限</span>
             <input type="number" id="schedLimit" value="5" min="1" max="50" onchange="autoSaveSchedule()">
@@ -409,7 +409,7 @@
         <div class="card">
           <div class="card-title">失效检测</div>
           <div class="sched-row">
-            <label class="toggle"><input type="checkbox" id="schedEOn" onchange="autoSaveSchedule()"><span class="slider"></span></label>
+            <label class="toggle"><input type="checkbox" id="schedEOn" aria-label="启用定时失效检测" onchange="autoSaveSchedule()"><span class="slider"></span></label>
             <span style="color:var(--text2)">启用</span>
             <span style="color:var(--text2);margin-left:8px">时间</span>
             <select id="schedEHour" onchange="autoSaveSchedule()" class="select"></select>
@@ -441,69 +441,7 @@
       <section class="page" id="tabSettings">
         <div class="page-head">
           <h1>设置</h1>
-          <p>配置数据源、转存服务与同步选项，运行状态一并在此查看</p>
-        </div>
-
-        <!-- 运行概览（由概览页并入） -->
-        <div class="card module-overview" id="overviewModule">
-          <div class="card-title" style="justify-content:space-between">
-            <div style="display:flex;align-items:center;gap:8px">
-              <svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-dashboard"/></svg>
-              运行概览
-            </div>
-            <button class="btn btn-sm btn-outline btn-icon" onclick="refreshOverview()" title="刷新概览" aria-label="刷新概览">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-refresh"/></svg>
-            </button>
-          </div>
-
-          <!-- 骨架屏 -->
-          <div class="overview-grid" id="overviewSkeleton">
-            <div class="overview-card"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
-            <div class="overview-card"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
-            <div class="overview-card"><div class="skeleton" style="height:44px;margin-bottom:8px"></div><div class="skeleton-text" style="width:60%"></div></div>
-            <div class="overview-card overview-card-wide"><div class="skeleton" style="height:60px;margin-bottom:8px"></div><div class="skeleton-text" style="width:40%"></div></div>
-          </div>
-
-          <!-- 真实内容 -->
-          <div class="overview-grid" id="overviewContent" style="display:none">
-            <div class="overview-card">
-              <div class="overview-card__icon" id="ovTodayIcon" style="--ov-icon-color:var(--accent)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-download"/></svg></div>
-              <div class="overview-card__body">
-                <div class="overview-card__value blue" id="ovToday">-</div>
-                <div class="overview-card__label">今日转存</div>
-              </div>
-            </div>
-
-            <div class="overview-card">
-              <div class="overview-card__icon" style="--ov-icon-color:var(--purple)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg></div>
-              <div class="overview-card__body">
-                <div class="overview-card__value overview-schedule" id="ovSchedule">加载中...</div>
-                <div class="overview-card__label">下次调度</div>
-              </div>
-            </div>
-
-            <div class="overview-card">
-              <div class="overview-card__icon" id="ovStatusIcon" style="--ov-icon-color:var(--green)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg></div>
-              <div class="overview-card__body">
-                <div class="overview-card__value" id="ovStatus"><span class="status-dot" id="ovStatusDot" style="display:none"></span><span id="ovStatusText" role="status">-</span></div>
-                <div class="overview-card__label" id="ovStatusTime">上次转存</div>
-              </div>
-            </div>
-
-            <div class="overview-card overview-card-wide overview-chart-card">
-              <div class="overview-card__icon" style="--ov-icon-color:var(--cyan)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-trending-up"/></svg></div>
-              <div class="overview-chart-header">
-                <div class="overview-chart-title">近 7 天趋势</div>
-                <div class="overview-chart-summary"><span class="ok" id="ovWeekOK">0</span> 成功 / <span class="fail" id="ovWeekFail">0</span> 失败</div>
-              </div>
-              <div class="overview-chart" id="ovChart"></div>
-              <div class="overview-chart-legend">
-                <span class="legend-item"><span class="legend-dot ok"></span>成功</span>
-                <span class="legend-item"><span class="legend-dot fail"></span>失败</span>
-              </div>
-              <div class="overview-card__label">近 7 天共 <span id="ovWeekTotal" style="color:var(--text);font-weight:600">0</span> 次</div>
-            </div>
-          </div>
+          <p>配置数据源、转存服务与认证信息</p>
         </div>
 
         <div class="settings-groups">
@@ -533,27 +471,10 @@
             <div class="form-group"><label for="cfg_path_search">搜索转存路径</label><input type="text" id="cfg_path_search" placeholder="/批量转存/手动搜索存"></div>
             <div class="form-group" style="margin-bottom:0"><label for="cfg_path_tmdb">TMDB 转存路径</label><input type="text" id="cfg_path_tmdb" placeholder="/批量转存/TMDB"></div>
           </div>
-            </div>
-          </details>
-          <details class="settings-group" open>
-            <summary><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-lock"/></svg> 账号与同步</summary>
-            <div class="settings-grid">
           <div class="card">
-            <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-lock"/></svg> 管理认证</div>
+            <div class="card-title" style="justify-content:space-between"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-lock"/></svg> 管理认证 <button class="btn btn-outline btn-sm" id="refreshDoubanBtn" onclick="refreshDoubanCache()">刷新豆瓣缓存</button></div>
             <div class="form-group"><label for="cfg_auth_user">用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
             <div class="form-group" style="margin-bottom:0"><label for="cfg_auth_pass">密码</label><div class="pwd-wrap"><input type="password" id="cfg_auth_pass" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div></div>
-          </div>
-          <div class="card">
-            <div class="card-title" style="justify-content:space-between"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-cloud-download"/></svg> 豆瓣想看同步 <a href="https://www.douban.com/" target="_blank" rel="noopener" class="btn btn-outline btn-sm" style="text-decoration:none">打开豆瓣 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-left:2px"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
-            <div id="wishAccountsList" style="display:flex;flex-direction:column;gap:8px"></div>
-            <button class="btn btn-outline btn-sm" onclick="addWishAccount()" style="margin-top:2px;border-style:dashed"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加豆瓣账号</button>
-            <div class="form-group" style="margin-top:12px"><label for="cfg_wish_savepath">保存路径</label><input type="text" id="cfg_wish_savepath" placeholder="/批量转存/想看"></div>
-            <div class="form-group"><label for="wishCategoryChips">分类</label><div class="chips" id="wishCategoryChips" style="margin-top:4px"><button type="button" class="chip" data-cat="movie" onclick="toggleWishCat(this)">电影</button><button type="button" class="chip" data-cat="tv" onclick="toggleWishCat(this)">电视剧</button></div></div>
-            <div style="border-top:1px solid var(--border);margin:4px 0 8px"></div>
-            <div class="sched-row" style="margin-top:4px">
-              <button type="button" class="chip" id="cfg_wish_enabled_chip" onclick="toggleWishEnabled(this)">启用想看同步</button>
-              <button class="btn btn-outline btn-sm" onclick="refreshDoubanCache()">刷新榜单缓存</button>
-            </div>
           </div>
             </div>
           </details>
@@ -561,7 +482,7 @@
         <div class="settings-grid">
           <div class="card save-card">
             <div class="row" style="justify-content:flex-end;width:100%">
-              <button class="btn btn-primary btn-sm" onclick="saveConfig(false)">保存设置</button>
+              <button class="btn btn-primary btn-sm" id="saveSettingsBtn" onclick="saveConfig(false)">保存设置</button>
             </div>
           </div>
         </div>
@@ -590,7 +511,7 @@
         <div style="display:flex;gap:6px">
           <button class="btn btn-sm btn-outline" id="soundBtn" onclick="toggleSound()" title="操作音效" aria-label="操作音效"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg></button>
           <button class="btn btn-sm btn-danger" id="stopBtn" onclick="stopTransfer()" style="display:none">停止</button>
-          <button class="btn btn-sm btn-outline" id="pauseBtn" onclick="togglePause()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-pause"/></svg></button>
+          <button class="btn btn-sm btn-outline" id="pauseBtn" onclick="togglePause()" title="暂停/恢复日志滚动" aria-label="暂停或恢复日志滚动"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-pause"/></svg></button>
         </div>
       </div>
       <div class="progress-stats">

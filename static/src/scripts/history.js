@@ -149,6 +149,11 @@ function renderExecHistory(){
     var td3 = document.createElement('td'); td3.className='hist-detail-cell'; td3.textContent = h.detail||'';
     var td4 = document.createElement('td'); td4.innerHTML = resultBadges(h);
     var td5 = document.createElement('td'); td5.className='hist-time'; td5.textContent = h.time||'';
+    // 2.3 移动端表格卡片化：td 携带 data-label；详情列不设标签，移动端整行展示
+    td1.setAttribute('data-label','状态');
+    td2.setAttribute('data-label','类型');
+    td4.setAttribute('data-label','结果');
+    td5.setAttribute('data-label','时间');
     [td1,td2,td3,td4,td5].forEach(function(td){ tr.appendChild(td); });
     tr.addEventListener('click', function(){ toggleHistDetail(hid); });
     tbody.appendChild(tr);

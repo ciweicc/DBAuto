@@ -1,12 +1,11 @@
 # 豆瓣自动转存 (DBAuto)
 
-> 基于豆瓣榜单与 TMDB 的影视资源自动转存工具：聚合豆瓣热门榜单 / 豆瓣想看 / TMDB 片单，经 PanSou 检索夸克网盘资源，调用 QAS 自动转存，并支持定时调度与失效链接修复。
+> 基于豆瓣榜单与 TMDB 的影视资源自动转存工具：聚合豆瓣热门榜单 / TMDB 片单，经 PanSou 检索夸克网盘资源，调用 QAS 自动转存，并支持定时调度与失效链接修复。
 
 ## ✨ 功能特性
 
 - 🎬 **豆瓣榜单抓取**：热门电影、最新电影、豆瓣高分、冷门佳片，电视剧 7 个分类 + 综艺 3 个分类
 - 📺 **TMDB 数据源**：浏览 TMDB 热门 / 发现片单，按地区与类型筛选，自动标记已转存条目（已整合进「概览」页）
-- 💡 **豆瓣想看**：自动转存你的豆瓣「想看」清单到网盘，支持多账号与自定义保存目录
 - 🔍 **资源搜索**：集成 PanSou 搜索，一键转存到指定目录，支持链接有效性验证
 - ⏰ **定时调度**：每日定时 / Cron 表达式，自动转存与失效链接检测修复
 - 📊 **概览面板**：今日转存、下次调度、上次结果、近 7 天成功率条形图，关键指标一目了然
@@ -126,7 +125,7 @@ DBAuto/
 │   ├── routes_*.py         # 各模块路由（auth / config / transfer / history / tmdb）
 │   ├── scheduler.py        # 定时调度与失效链接检测
 │   ├── transfer.py         # 转存核心逻辑
-│   ├── douban.py           # 豆瓣榜单 / 想看抓取
+│   ├── douban.py           # 豆瓣榜单抓取
 │   └── tmdb.py             # TMDB 数据源
 ├── static/                 # 前端（vanilla JS，构建为单文件 index_new.html）
 │   ├── login_new.html      # 登录页
@@ -144,7 +143,7 @@ DBAuto/
 | POST | `/api/login` | 登录，返回 Token |
 | GET | `/api/status` | 检查认证状态 |
 | GET | `/api/sse` | SSE 实时推送（日志 / 进度 / 状态变更） |
-| GET | `/api/refresh_douban` | 刷新豆瓣缓存（想看清单） |
+| GET | `/api/refresh_douban` | 刷新豆瓣榜单缓存 |
 | GET | `/api/categories` | 获取榜单分类 |
 | GET | `/api/search` | PanSou 资源搜索 |
 | POST | `/api/search_replace` | 搜索并按标题 / 直链替换资源 |

@@ -1,4 +1,9 @@
 // ============ Transfer ============
+// 3.1 统一 loading 态：异步期间按钮进入 .btn.loading（转圈+禁点），finally 必移除
+function setBtnLoading(id,on){
+  var b=document.getElementById(id);
+  if(b)b.classList.toggle('loading',!!on);
+}
 async function startTransfer(){
   var tasks = getSelectedTasks('tabManual');
   if(!tasks.length){showToast('请至少选择一个榜单',false);return}
@@ -13,6 +18,7 @@ async function startTransfer(){
   logBefore=[]; document.getElementById('log').textContent='';
   addLog('[开始转存]');
   playSound('click');
+  setBtnLoading('startTransferBtn',true);
   try{
     var d = await apiPost('/api/transfer',{tasks:tasks,limit:limit,filters:filters});
     if(d.success){
@@ -25,6 +31,7 @@ async function startTransfer(){
       else addLog(d.message||'启动失败');
     }
   }catch(e){addLog('请求失败: '+e.message);document.getElementById('stopBtn').style.display='none'}
+  finally{setBtnLoading('startTransferBtn',false)}
 }
 
 async function stopTransfer(){
