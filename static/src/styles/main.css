@@ -27,7 +27,7 @@ body{
    ========================================================= */
 .app{
   display:grid;
-  grid-template-columns:220px minmax(0,1fr) 380px;
+  grid-template-columns:200px minmax(0,1fr) 340px;
   height:100vh;height:100dvh;
   max-width:none;margin:0;padding:0;position:relative;
   background:transparent;z-index:1;
@@ -64,7 +64,9 @@ body{
   }
 }
 .sidebar{
-  width:220px;background:var(--bg-deep);border-right:1px solid var(--border);
+  /* width 是抽屉态（fixed）的基准宽；max-width 让它在网格轨道更窄时自动收缩，
+     避免 220px 硬宽顶穿 200px 的轨道、把主内容列又压掉 20px */
+  width:220px;max-width:100%;background:var(--bg-deep);border-right:1px solid var(--border);
   display:flex;flex-direction:column;overflow-y:auto;padding:14px 10px;gap:4px;
 }
 .brand{
@@ -121,9 +123,17 @@ body{
 /* Persistent log panel (right column) */
 .log-panel{
   background:var(--card-2);border-left:1px solid var(--glass-border);
-  overflow-y:auto;overflow-x:auto;min-width:260px;padding:12px;display:flex;flex-direction:column;gap:10px;
+  overflow-y:auto;overflow-x:hidden;min-width:260px;padding:12px;display:flex;flex-direction:column;gap:10px;
   box-shadow:var(--shadow-sm), inset 1px 0 0 var(--glass-hi);
 }
+/* 日志栏内部一律走「纵向换行」，杜绝超宽元素把 320px 撑出横向滚动条
+   （曾导致整块日志看起来被裁掉一半） */
+.log-panel .log-card{min-width:0}
+.log-panel .log-card .card-title{flex-wrap:wrap;gap:8px 10px;min-width:0}
+.log-panel .log-card .card-title > div{min-width:0}
+.log-panel .filter-tabs{flex-wrap:wrap}
+.log-panel .log-search-row{padding:0 0 10px}
+.log-panel .transfer-progress-current{overflow-wrap:anywhere}
 .log-panel-head{
   display:flex;align-items:center;justify-content:space-between;gap:8px;
   font-size:var(--fs-base);font-weight:600;color:var(--text2);font-family:var(--font-display);
@@ -340,8 +350,8 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 /* Log */
 .log-box{
   background:var(--glass-bg-strong);border:1px solid var(--glass-border);border-radius:var(--radius);
-  padding:12px;max-height:340px;overflow-y:auto;font-family:var(--mono);font-size:var(--fs-sm);line-height:1.8;
-  white-space:pre-wrap;color:var(--text2);position:relative;
+  padding:12px;max-height:340px;overflow-y:auto;overflow-x:hidden;font-family:var(--mono);font-size:var(--fs-sm);line-height:1.8;
+  white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;color:var(--text2);position:relative;
 }
 .log-box::before{content:'TERMINAL';position:absolute;top:8px;right:12px;
   font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--text3);font-family:var(--font-display)}
@@ -535,11 +545,18 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   .app{grid-template-columns:200px minmax(0,1fr) 320px}
   .ov-workspace{grid-template-columns:1fr minmax(240px,300px)}
   .log-panel{padding:10px}
+  /* KPI 数值随空间收缩，避免与右侧按钮争抢后把副信息挤断行 */
+  .ov-kpi-card{padding:12px 14px}
+  .ov-kpi-value{font-size:23px}
+  .ov-kpi-btn{padding:6px 12px}
 }
 @media(max-width:1350px){
-  .app{grid-template-columns:180px minmax(0,1fr) 280px}
+  .app{grid-template-columns:180px minmax(0,1fr) 290px}
   .ov-workspace{grid-template-columns:1fr minmax(220px,260px)}
-  .log-panel{min-width:280px;overflow-x:auto;padding:10px}
+  .log-panel{min-width:280px;overflow-x:hidden;padding:10px}
+  /* 主列已被压到 ~700px，4 列 KPI 每格不足 170px，降级为 2×2 */
+  .ov-kpi-bar{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .ov-kpi-value{font-size:22px}
 }
 @media(max-width:1200px){
   .app{grid-template-columns:170px minmax(0,1fr)}
@@ -561,6 +578,12 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   .log-fab{display:flex}
   .overlay-scrim{position:fixed;inset:0;background:rgba(0,0,0,.06);z-index:var(--z-scrim);display:none}
   .overlay-scrim.show{display:block}
+}
+/* 兜底保险：桌面态（>1200px）日志栏必须常驻可见。
+   曾出现网格轨道被压缩导致整栏塌陷、右侧只剩一片空白的情况；
+   用 :not(.collapsed) 避开主动折叠态（折叠态自带 !important，互不干扰）。 */
+@media(min-width:1201px){
+  .log-panel:not(.collapsed){display:flex;visibility:visible;transform:none;min-width:260px}
 }
 @media(max-width:640px){
   body{overflow:hidden}
@@ -685,7 +708,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 .tmdb-filters.collapsed .form-group{display:none}
 #tmdbFilterToggle{font-family:var(--font-display)}
 .tmdb-sel-bar{
-  position:fixed;bottom:0;left:220px;right:380px;z-index:200;margin:0;
+  position:fixed;bottom:0;left:200px;right:340px;z-index:200;margin:0;
   background:var(--card);border:1px solid var(--border);border-bottom:none;
   border-radius:var(--radius-xl) var(--radius-xl) 0 0;
   padding:10px 18px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;
@@ -693,7 +716,7 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   transform:translateY(120%);opacity:0;pointer-events:none;
   transition:transform .35s var(--ease-standard),opacity .3s ease}
 @media(max-width:1500px){.tmdb-sel-bar{left:200px;right:320px}}
-@media(max-width:1350px){.tmdb-sel-bar{left:180px;right:280px}}
+@media(max-width:1350px){.tmdb-sel-bar{left:180px;right:290px}}
 @media(max-width:1200px){.tmdb-sel-bar{left:170px;right:0}}
 .tmdb-sel-bar.active{transform:translateY(0);opacity:1;pointer-events:auto;border-color:var(--green-border-soft)}
 .tmdb-sel-count{font-size:var(--fs-base);font-weight:600;color:var(--green)}
@@ -822,13 +845,13 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 }
 /* 桌面端常驻日志面板占右侧栏，回顶按钮右移避开（OPT-28，CSS 基线；运行期 JS 会按实际宽度微调） */
 @media(min-width:1501px){
-  #tmdbBackToTop{ right: calc(380px + 24px); }
+  #tmdbBackToTop{ right: calc(340px + 24px); }
 }
 @media(min-width:1351px) and (max-width:1500px){
   #tmdbBackToTop{ right: calc(320px + 24px); }
 }
 @media(min-width:1201px) and (max-width:1350px){
-  #tmdbBackToTop{ right: calc(280px + 24px); }
+  #tmdbBackToTop{ right: calc(290px + 24px); }
 }
 @media(max-width:1200px){
   #tmdbBackToTop{ right: 24px; }
@@ -865,7 +888,7 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 /* KPI 条 */
 .ov-kpi-bar{
   display:grid;
-  grid-template-columns:repeat(4,1fr);
+  grid-template-columns:repeat(4,minmax(0,1fr));
   gap:12px;
   margin-bottom:14px;
 }
@@ -873,6 +896,8 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
   display:flex;
   align-items:center;
   justify-content:space-between;
+  gap:10px;
+  min-width:0;
   padding:14px 16px;
   border-radius:var(--radius-lg);
   background:var(--card);
@@ -882,18 +907,21 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
   transition:border-color var(--transition-fast),transform var(--transition-fast);
 }
 .ov-kpi-card:hover{border-color:var(--border3)}
+.ov-kpi-info{min-width:0;flex:1;overflow:hidden}
 .ov-kpi-green{border-left:3px solid var(--green)}
 .ov-kpi-blue{border-left:3px solid var(--accent)}
 .ov-kpi-orange{border-left:3px solid var(--orange)}
 .ov-kpi-purple{border-left:3px solid var(--accent2)}
-.ov-kpi-label{font-size:var(--fs-sm);color:var(--text3);margin-bottom:4px}
-.ov-kpi-value-row{display:flex;align-items:center;gap:10px}
+/* 标签不换行，过长省略；避免中文在任意字符间断行导致标题被拦腰截断 */
+.ov-kpi-label{font-size:var(--fs-sm);color:var(--text3);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ov-kpi-value-row{display:flex;align-items:center;gap:4px 10px;flex-wrap:wrap;min-width:0}
 .ov-kpi-value{font-size:26px;font-weight:700;font-family:var(--font-display);line-height:1.1}
 .ov-kpi-green .ov-kpi-value{color:var(--green)}
 .ov-kpi-blue .ov-kpi-value{color:var(--accent)}
 .ov-kpi-orange .ov-kpi-value{color:var(--orange)}
 .ov-kpi-purple .ov-kpi-value{color:var(--accent2)}
-.ov-kpi-sub{font-size:var(--fs-sm);color:var(--text3)}
+/* 副信息整段不拆行（原「失败 86」被挤成「失 / 败 86」） */
+.ov-kpi-sub{font-size:var(--fs-sm);color:var(--text3);white-space:nowrap}
 .ov-rate-bar{flex:1;height:6px;background:var(--track);border-radius:3px;overflow:hidden;min-width:60px}
 .ov-rate-fill{height:100%;border-radius:3px;background:var(--gradient-brand);transition:width .6s var(--ease-standard)}
 .ov-kpi-trend{font-size:var(--fs-xs);color:var(--text3);white-space:nowrap}
@@ -1149,9 +1177,9 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 }
 
 
-/* 日志面板折叠时调整主布局 grid */
+/* 日志面板折叠时调整主布局 grid（列宽与上方主栅格阶梯保持一致） */
 .app:has(.log-panel.collapsed){
-  grid-template-columns:220px minmax(0,1fr) 48px;
+  grid-template-columns:200px minmax(0,1fr) 48px;
 }
 @media(max-width:1500px){
   .app:has(.log-panel.collapsed){grid-template-columns:200px minmax(0,1fr) 48px}
