@@ -41,3 +41,6 @@ test_output.txt
 # ===== 本地虚拟环境（临时验证用，勿提交）=====
 .venv/
 .venv-*/
+
+# QA 验证临时截图目录
+.qa-shots/

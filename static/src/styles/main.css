@@ -121,7 +121,7 @@ body{
 /* Persistent log panel (right column) */
 .log-panel{
   background:var(--card-2);border-left:1px solid var(--glass-border);
-  overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:10px;
+  overflow-y:auto;overflow-x:auto;min-width:260px;padding:12px;display:flex;flex-direction:column;gap:10px;
   box-shadow:var(--shadow-sm), inset 1px 0 0 var(--glass-hi);
 }
 .log-panel-head{
@@ -531,13 +531,23 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 /* =========================================================
    Responsive
    ========================================================= */
-@media(max-width:1300px){
+@media(max-width:1500px){
   .app{grid-template-columns:200px minmax(0,1fr) 320px}
+  .ov-workspace{grid-template-columns:1fr minmax(240px,300px)}
   .log-panel{padding:10px}
 }
-@media(max-width:1160px){
-  .app{grid-template-columns:170px minmax(0,1fr) 280px}
-  .log-panel{padding:10px}
+@media(max-width:1350px){
+  .app{grid-template-columns:180px minmax(0,1fr) 280px}
+  .ov-workspace{grid-template-columns:1fr minmax(220px,260px)}
+  .log-panel{min-width:280px;overflow-x:auto;padding:10px}
+}
+@media(max-width:1200px){
+  .app{grid-template-columns:170px minmax(0,1fr)}
+  .log-panel{position:fixed;right:0;top:0;bottom:0;width:280px;max-width:88vw;z-index:var(--z-sidebar);
+    transform:translateX(100%);transition:transform var(--transition-normal)}
+  .log-panel.open{transform:none}
+  .log-fab{display:flex}
+  .ov-workspace{grid-template-columns:1fr minmax(220px,260px)}
 }
 @media(max-width:1024px){
   .app{grid-template-columns:1fr}
@@ -682,6 +692,9 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   box-shadow:0 -2px 16px rgba(0,0,0,.2);
   transform:translateY(120%);opacity:0;pointer-events:none;
   transition:transform .35s var(--ease-standard),opacity .3s ease}
+@media(max-width:1500px){.tmdb-sel-bar{left:200px;right:320px}}
+@media(max-width:1350px){.tmdb-sel-bar{left:180px;right:280px}}
+@media(max-width:1200px){.tmdb-sel-bar{left:170px;right:0}}
 .tmdb-sel-bar.active{transform:translateY(0);opacity:1;pointer-events:auto;border-color:var(--green-border-soft)}
 .tmdb-sel-count{font-size:var(--fs-base);font-weight:600;color:var(--green)}
 .tmdb-key-warning{background:rgba(251,191,36,.1);border:1px solid rgba(251,191,36,.3);
@@ -808,11 +821,17 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
   backdrop-filter:var(--blur);
 }
 /* 桌面端常驻日志面板占右侧栏，回顶按钮右移避开（OPT-28，CSS 基线；运行期 JS 会按实际宽度微调） */
-@media(min-width:1025px){
+@media(min-width:1501px){
   #tmdbBackToTop{ right: calc(380px + 24px); }
 }
-@media(min-width:1025px) and (max-width:1160px){
+@media(min-width:1351px) and (max-width:1500px){
+  #tmdbBackToTop{ right: calc(320px + 24px); }
+}
+@media(min-width:1201px) and (max-width:1350px){
   #tmdbBackToTop{ right: calc(280px + 24px); }
+}
+@media(max-width:1200px){
+  #tmdbBackToTop{ right: 24px; }
 }
 #tmdbBackToTop.visible{
   opacity:1;
@@ -897,12 +916,12 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 /* 工作区：左右分栏 */
 .ov-workspace{
   display:grid;
-  grid-template-columns:1fr 380px;
+  grid-template-columns:1fr minmax(260px,340px);
   gap:14px;
   margin-bottom:14px;
 }
 .ov-main-col{min-width:0}
-.ov-side-col{display:flex;flex-direction:column;gap:14px;min-width:0}
+.ov-side-col{display:flex;flex-direction:column;gap:14px;min-width:0;max-width:340px}
 
 /* 面板 */
 .ov-panel{
@@ -1034,7 +1053,7 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .ov-rec-scroll::-webkit-scrollbar{height:6px}
 .ov-rec-scroll::-webkit-scrollbar-thumb{background:var(--border3);border-radius:3px}
 .ov-rec-card{
-  flex:0 0 auto;width:140px;display:flex;flex-direction:column;
+  flex:0 0 auto;width:96px;display:flex;flex-direction:column;
   border-radius:var(--radius);overflow:hidden;cursor:pointer;
   background:var(--hover-wash);border:1px solid var(--border);
   transition:border-color var(--transition-fast),background var(--transition-fast),transform var(--transition-fast);
@@ -1056,14 +1075,12 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .ov-rec-btn:hover{filter:brightness(1.15)}
 .ov-rec-empty{padding:20px;text-align:center;font-size:var(--fs-sm);width:100%}
 
-/* 概览页响应式（栅格断点统一到全局 1300/1024/640，消除中间宽度错位跳动） */
-@media(max-width:1160px){
-  .ov-workspace{grid-template-columns:1fr}
-  .ov-side-col{flex-direction:row;flex-wrap:wrap}
-  .ov-side-col .ov-panel{flex:1;min-width:280px}
-}
+/* 概览页响应式（栅格断点统一到全局 1500/1350/1200/1024/640，消除中间宽度错位跳动） */
 @media(max-width:1024px){
   /* 原 900px 断点上移，与侧栏/日志栏折叠断点一致 */
+  .ov-workspace{grid-template-columns:1fr}
+  .ov-side-col{flex-direction:row;flex-wrap:wrap}
+  .ov-side-col .ov-panel{flex:1;min-width:240px}
   .ov-kpi-bar{grid-template-columns:repeat(2,1fr)}
 }
 @media(max-width:640px){
@@ -1136,11 +1153,14 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .app:has(.log-panel.collapsed){
   grid-template-columns:220px minmax(0,1fr) 48px;
 }
-@media(max-width:1280px){
+@media(max-width:1500px){
   .app:has(.log-panel.collapsed){grid-template-columns:200px minmax(0,1fr) 48px}
 }
-@media(max-width:1160px){
-  .app:has(.log-panel.collapsed){grid-template-columns:170px minmax(0,1fr) 48px}
+@media(max-width:1350px){
+  .app:has(.log-panel.collapsed){grid-template-columns:180px minmax(0,1fr) 48px}
+}
+@media(max-width:1200px){
+  .app:has(.log-panel.collapsed){grid-template-columns:170px minmax(0,1fr)}
 }
 @media(max-width:1024px){
   .app:has(.log-panel.collapsed){grid-template-columns:1fr}
