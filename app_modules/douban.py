@@ -2,7 +2,6 @@
 import re, time, urllib.parse
 from threading import Lock
 from utils import http_get, log
-from config import ConfigManager
 
 DOUBAN_BASE = "https://m.douban.com/rexxar/api/v2"
 
