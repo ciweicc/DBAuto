@@ -44,6 +44,15 @@ def _extract(dist_html):
     return css, (scripts[-1] if scripts else "")
 
 
+def _iter_css_rules(css):
+    """粗粒度 CSS 规则扫描：产出 (选择器, 声明块)。
+
+    产物是单行压缩结果，正则逐个 `{...}` 配对即可满足本用例需要
+    （@media/@supports 的外层块会先被 yield，再被内层规则覆盖，不影响判断）。
+    """
+    return [(m.group(1).strip(), m.group(2)) for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", css)]
+
+
 def test_dist_exists_and_non_trivial(dist):
     assert len(dist) > 50_000, "产物体积异常，疑似构建不完整"
     assert "DBAuto frontend bundle" in dist, "缺少构建标记注释"
@@ -959,3 +968,82 @@ def test_merged_frontend_has_no_second_tmdb_surface(dist):
         assert dist.count(token) == 1, "{} 在产物中出现 {} 次".format(token, dist.count(token))
     # 「热门推荐」旧面板（第二块海报墙）不得复活
     assert "热门推荐" not in dist, "旧的「热门推荐」面板标题仍残留"
+
+
+def test_discovery_selection_bar_is_viewport_fixed(dist):
+    """回归（issue #15 第 3 轮）：发现区多选操作条必须相对**视口**定位。
+
+    真凶是 CSS 包含块：`position:fixed` 的元素只要祖先里有 filter /
+    backdrop-filter / transform / perspective / contain:paint，就不再相对视口定位。
+    发现区的面板（.ov-panel）与卡片（.tmdb-card）都带 backdrop-filter，
+    于是选中栏被钉在页面深处 —— 实测 1440×900 下 top=1361（视口高只有 900），
+    用户点选资源后**看不到转存按钮**（issue 原话）。
+
+    这里做静态防复发：产物必须同时具备
+      1. 选中栏自身不引入 filter / backdrop-filter / transform / perspective；
+      2. `.ov-panel`（发现分区容器）不再带 backdrop-filter；
+      3. JS 侧有内联样式兜底（内联优先级高于同权重的类规则，正常样式表无法再降级它）。
+    真实视觉/命中测试由 scripts/check_discovery_dom.py 负责（9 组视口）。
+    """
+    css, _ = _extract(dist)
+    # 1. 选中栏本身的定位约束
+    guard = css[css.index("#tmdbSelBar{") + 1:]
+    guard = guard[:guard.index("}")]
+    for prop in ("filter:none", "backdrop-filter:none", "transform:none", "perspective:none"):
+        assert prop in guard, "#tmdbSelBar 缺少 `{}` 兜底（会被祖先/自身降级成非视口定位）".format(prop)
+
+    def _rule(selector):
+        i = css.index(selector)
+        return css[i:css.index("}", i)]
+
+    # 2. 发现分区容器不得再制造包含块
+    panel_rule = _rule(".ov-panel{")
+    assert "backdrop-filter" not in panel_rule, (
+        ".ov-panel 又加回了 backdrop-filter：它会成为 fixed 后代的包含块，"
+        "发现区的转存栏会再次跑出视口（issue #15 第 3 轮）"
+    )
+
+    # 3. 全量样式里不得再出现「把选中栏和带模糊的相邻选择器写在同一条规则」的写法：
+    #    产物经 esbuild minify 会去掉注释，因此用「规则选择器列表 → 声明块」的结构化扫描，
+    #    逐个找出含 backdrop-filter 的规则，检查它的选择器里有没有 .tmdb-sel-bar。
+    for sel, decl in _iter_css_rules(css):
+        if "backdrop-filter:var(--blur)" in decl:
+            assert ".tmdb-sel-bar" not in sel, (
+                "共享 backdrop-filter 规则又包含了 .tmdb-sel-bar：{}".format(sel))
+
+    # 4. 同理，任何一条带 filter / backdrop-filter 的规则都不得命中选中栏
+    for sel, decl in _iter_css_rules(css):
+        if "filter:none" in decl and "#tmdbSelBar" in sel:
+            assert "!important" in decl, "#tmdbSelBar 的 filter 兜底必须带 !important"
+
+
+def test_discovery_selection_bar_bounds_and_layering(dist):
+    """回归：选中栏的边界按内容区实测、层级高于 FAB，且 JS 有兜底。"""
+    css, _ = _extract(dist)
+    assert "--z-selbar" in css, "缺少 --z-selbar 层级令牌"
+    # 选中栏层级必须高于 FAB（150）与回到顶部（400）——否则右下角悬浮按钮会压住「开始转存」
+    tokens = _read(os.path.join(_SRC, "styles", "tokens.css"))
+    def _z(name):
+        s = tokens[tokens.index(name):]
+        return int(s[s.index(":") + 1:s.index(";")].strip())
+
+    assert _z("--z-selbar") > _z("--z-backtop") > _z("--z-fab"), \
+        "--z-selbar 必须高于 --z-backtop / --z-fab"
+    assert "z-index:var(--z-selbar)" in css, "选中栏未使用 --z-selbar"
+    # 选中态下两个 FAB 让位
+    assert "body:has(#tmdbPanel.sel-active) #tmdbBackToTop" in css, "回到顶部按钮未在选中态让位"
+    assert "body:has(#tmdbPanel.sel-active) .log-fab" in css, "日志 FAB 未在选中态让位"
+
+    js = _read(os.path.join(_JS_DIR, "tmdb.js"))
+    assert "function tmdbSelBarBounds" in js, "缺少选中栏边界计算"
+    assert "function applyTmdbSelBarBounds" in js, "缺少选中栏边界应用"
+    assert "function bindTmdbSelBarResize" in js, "缺少选中栏 resize 监听绑定"
+    assert "bindTmdbSelBarResize()" in js[js.index("async function initTmdbPage"):], \
+        "initTmdbPage 未绑定选中栏 resize 监听"
+    assert "function tmdbEnsureSelBarContainingBlock" in js, \
+        "缺少选中栏内联样式兜底（正常样式表无法再把它降级成非视口定位）"
+    # 移动端底部导航高度不应再硬编码，改为实测
+    bounds = js[js.index("function tmdbSelBarBounds"):]
+    bounds = bounds[:bounds.index("\nfunction applyTmdbSelBarBounds")]
+    assert "bottom-nav" in bounds, "未按底部导航实测高度让位"
+    assert "76px" not in bounds, "仍在硬编码移动端让位高度"

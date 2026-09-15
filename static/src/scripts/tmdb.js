@@ -79,6 +79,8 @@ var dscState = {
   allLoaded: false,     // 是否已加载完所有页
   _scrollBound: false,  // 滚动监听是否已绑定（防止重复绑定）
   _backToTopCreated: false, // “回到顶部”按钮是否已创建（防止重复创建）
+  _selBarResizeBound: false, // 选中栏边界是否已绑定 resize（防止重复绑定）
+  _selBarResizePending: false, // resize → rAF 合并开关
   _renderedCount: 0,    // 已渲染到 grid 的卡片数量（用于增量追加）
   lastScrollTrigger: 0, // 上次滚动触发加载的时间戳（节流用，单位 ms）
   lastAppendAt: 0,      // 上次“成功追加加载完成”的时间戳（追加后冷却用，单位 ms）
@@ -165,6 +167,8 @@ async function initTmdbPage(){
   await loadTmdbList();
   // 绑定无限滚动监听（只绑定一次）
   bindTmdbScroll();
+  // 绑定选中栏边界的 resize 监听（只绑定一次）
+  bindTmdbSelBarResize();
   // 创建“回到顶部”悬浮按钮（只创建一次）
   ensureTmdbBackToTop();
   updateTmdbVisibility();
@@ -726,15 +730,76 @@ function onTmdbGridKeydown(e){
   cards[next].focus();
 }
 
+/**
+ * 选中栏（#tmdbSelBar）的左右边界与底部安全区。
+ *
+ * 选中栏是 position:fixed 浮层，必须贴住「内容区」的实际边界：
+ * 基态 CSS 写的是 left:200px;right:340px（侧栏 + 日志栏的硬编码宽度），
+ * 在 1440~1600 这类视口下右侧多留 20~80px，按钮组被挤到换行、浮层高度从 54 涨到 92px；
+ * 而它又是固定定位，换行后「已选 N 部」与按钮会叠在一起，点了没反应。
+ *
+ * 这里改用 .content / 侧栏 / 日志栏的**实测**边界内联设置 left/right/bottom：
+ * 内联样式的优先级天然高于同权重的类规则，因此无需 !important，
+ * 也就不必再用 `style.right=''` 做「清空 → 交还媒体查询」的脆弱复位。
+ * 缺少 .content（测试页/桩数据）时返回而不写内联，交给 CSS 兜底。
+ */
+function tmdbSelBarBounds(){
+  var sc = document.querySelector('.content');
+  if(!sc) return null;
+  var sr = sc.getBoundingClientRect();
+  var left = Math.max(0, Math.round(sr.left));
+  var right = Math.max(0, Math.round(window.innerWidth - sr.right));
+  var bottom = 0;
+  // 移动端底部导航（≤640px 显示）会盖住浮层，按它的实测高度整体上移
+  var nav = document.querySelector('.bottom-nav');
+  if(nav){
+    var nr = nav.getBoundingClientRect();
+    if(nr.height > 0 && nr.bottom > window.innerHeight - 4 && nr.width > 0){
+      bottom = Math.round(nr.height);
+    }
+  }
+  return {left:left, right:right, bottom:bottom};
+}
+
 function updateTmdbSelBar(){
   var count = Object.keys(dscState.selected).length;
   getId('tmdbSelCount').textContent = '已选 '+count+' 部';
   var active = count > 0;
-  getId('tmdbSelBar').classList.toggle('active', active);
+  var bar = getId('tmdbSelBar');
+  bar.classList.toggle('active', active);
+  // 浮层显隐期间同步刷新边界（窗口缩放/侧栏收放/日志栏抽屉都会改变内容区宽度）
+  if(active) applyTmdbSelBarBounds(bar);
   // 选中栏为 fixed 浮层，会遮挡底部内容（含分页按钮）；
   // 选中时给页面预留底部空间，使「下一页」等可正常点击
   var host = document.getElementById(DSC_HOST_ID);
   if(host) host.classList.toggle('sel-active', active);
+}
+
+/** 把实测边界写到选中栏的内联样式（见 tmdbSelBarBounds 注释） */
+function applyTmdbSelBarBounds(bar){
+  bar = bar || getId('tmdbSelBar');
+  if(!bar) return;
+  var b = tmdbSelBarBounds();
+  if(!b) return;
+  bar.style.left = b.left + 'px';
+  bar.style.right = b.right + 'px';
+  bar.style.bottom = b.bottom + 'px';
+}
+
+// 窗口尺寸变化时刷新边界（只绑一次）。用 rAF 合并连续的 resize 事件。
+function bindTmdbSelBarResize(){
+  if(dscState._selBarResizeBound) return;
+  window.addEventListener('resize', function(){
+    if(dscState._selBarResizePending) return;
+    dscState._selBarResizePending = true;
+    var run = function(){
+      dscState._selBarResizePending = false;
+      if(Object.keys(dscState.selected).length) applyTmdbSelBarBounds();
+    };
+    if(typeof requestAnimationFrame === 'function') requestAnimationFrame(run);
+    else setTimeout(run, 100);
+  });
+  dscState._selBarResizeBound = true;
 }
 
 function clearTmdbSelection(){
@@ -843,8 +908,29 @@ function tmdbNearBottom(){
 
 // 滚动回调：仅在发现区真正可见、且未到底时追加下一页
 // 通过“时间戳节流 + 追加后冷却”避免鼠标滚轮大跳变导致的连续重复加载。
+// 选中栏浮层只有在「相对视口定位」时才贴得住底边。
+// 任何 filter / backdrop-filter / transform / perspective / contain:paint 都会
+// 把它降级为「相对最近祖先」定位（issue #15 第 3 轮的真凶：
+// .ov-panel 的 backdrop-filter 让按钮跑到面板内部、用户点了卡片却找不到转存按钮）。
+// CSS 侧已用 `#tmdbSelBar{filter:none!important}` 兜底；这里再用内联样式覆盖一遍，
+// 因为内联声明是「非 important 声明」里的最高优先级：
+// `!important` 类规则 > 内联 > 普通类规则 —— 两层叠加后，正常样式表里
+// 任何后加的规则都无法把选中栏再度降级。
+function tmdbEnsureSelBarContainingBlock(){
+  var bar = getId('tmdbSelBar');
+  if(!bar) return;
+  // 仅在浮层存在时校正（未选中时保持 CSS 的隐藏态，避免多余重排）
+  if(!bar.classList.contains('active')) return;
+  bar.style.filter = 'none';
+  bar.style.backdropFilter = 'none';
+  bar.style.webkitBackdropFilter = 'none';
+  bar.style.transform = 'none';
+  bar.style.perspective = 'none';
+}
+
 function tmdbOnScroll(){
   if(!dscState.initialized) return;
+  tmdbEnsureSelBarContainingBlock();
   // 可见性 + 回顶按钮：与本函数下方「是否追加加载」的判定共用同一次测量，
   // 这样即使在 loadingMore / allLoaded / 冷却 等提前 return 的分支里，
   // 按钮状态也能实时跟随滚动更新。
