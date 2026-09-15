@@ -169,3 +169,48 @@ def test_log_panel_not_auto_collapsed_on_desktop(dist):
     # 自动折叠必须带窄屏条件，禁止裸调用
     assert "tab === 'overview' && isNarrowViewport()" in tabs, \
         "桌面态仍会无条件折叠日志栏"
+
+
+def test_build_fingerprint_is_content_based(dist):
+    """回归：构建指纹必须是内容哈希，禁止写入易变的 git 提交号。
+
+    背景：产物随仓库提交，CI「产物漂移检查」会在当前提交上重建并要求
+    `git diff --quiet` 为空。若指纹写成 `git rev-parse HEAD`，则每次 commit
+    （尤其是 merge commit）都会让重建产生一行 diff，门禁对任何 PR 恒失败。
+    因此指纹必须只由构建输入决定，重建幂等。
+    """
+    m = re.search(r"^// (hash|sha):(\S*)$", dist, re.M)
+    assert m, "产物缺少构建指纹注释"
+    kind, value = m.group(1), m.group(2)
+    assert kind == "hash", (
+        "产物指纹应为内容哈希（hash:），当前为 {}:（提交号会导致漂移门禁恒失败）".format(kind)
+    )
+    assert re.fullmatch(r"[0-9a-f]{8,}", value), "指纹不是合法的十六进制内容哈希"
+
+    # 构建脚本中不得再出现基于 HEAD 的指纹来源（仅检查可执行语句，注释中的
+    # 「反面说明」不算违规）
+    for name in ("build.sh", "build.py"):
+        script = _read(os.path.join(_SRC, name))
+        code_lines = []
+        for line in script.splitlines():
+            stripped = line.strip()
+            if stripped.startswith("#") or stripped.startswith("//"):
+                continue  # 注释：build.sh 在此说明了「为什么不能用 HEAD」
+            code_lines.append(line)
+        code = "\n".join(code_lines)
+        assert "rev-parse" not in code, (
+            "{} 仍从 git HEAD 派生指纹，会让 CI 产物漂移门禁恒为失败".format(name)
+        )
+
+
+def test_build_rebuild_is_idempotent(dist):
+    """回归：同一份源文件重建两次，产物必须逐字节一致（漂移门禁的前提）。"""
+    build_sh = _read(_BUILD_SH)
+    if "hash:" not in build_sh:
+        pytest.skip("build.sh 尚未使用内容指纹")
+    if not shutil.which("bash"):
+        pytest.skip("无 bash，跳过重建幂等校验")
+    before = _read(_DIST)
+    subprocess.run(["bash", _BUILD_SH], capture_output=True, text=True, timeout=120)
+    after = _read(_DIST)
+    assert before == after, "重建后产物发生变化，CI 产物漂移检查将恒失败"

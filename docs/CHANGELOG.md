@@ -6,6 +6,24 @@
 > （例如 `500571b` 依赖锁定 + Dependabot + CI 漏洞扫描、`d465526` Docker 非 root + ruff 门禁、
 > `9563551` 前端构建 minify + 删除重复登录页，以及更早的 P0 治理基线）。
 
+## [当前] 修复 CI 产物漂移门禁恒失败 — 构建指纹改为内容哈希
+
+> 对应 [issue #3](https://cnb.cool/ciweicc/DBAuto/-/issues/3)（CI 失败诊断）的后续跟进。
+> 上一轮引入的「产物漂移检查」门禁存在自相矛盾设计，对**任何** PR 都恒失败。
+
+- **缺陷**：`static/src/build.sh` 把 `git rev-parse --short HEAD` 写入产物指纹注释
+  （`// sha:<HEAD>`），而 CI 的「Frontend build drift check」是在当前提交上重建产物后
+  要求 `git diff --quiet` 为空。提交号随每次 commit（尤其 merge commit）变化，
+  重建必然产生一行 diff —— 该门禁实际**对任何分支/PR 都无法通过**，
+  与本轮提交目标（防止只改 src 未重建）背道而驰。
+  实测：HEAD `6642745`（merge commit）下重建，产物 `sha:58fcfd4 → sha:6642745`，`git diff` 非空。
+- **修复**：指纹改为由构建输入（CSS + JS + body）派生的内容哈希 `// hash:<sha256 前 12 位>`，
+  与提交号解耦。同一份源文件重建逐字节一致（幂等），漂移检查恢复真实判别力：
+  只有「只改 src 未重建」或「手改产物」才会触发 diff。`build.sh` 与 `build.py` 同步修改。
+- **回归断言**（`tests/test_build.py` 新增 2 例）：
+  `test_build_fingerprint_is_content_based` 断言指纹为 `hash:` 且构建脚本可执行语句中
+  不再出现 `rev-parse`；`test_build_rebuild_is_idempotent` 断言重建后产物不变。
+
 ## [当前] 前端 UI 优化第四轮 — 撤销交互 / 对比度门禁 / 构建守护
 
 > 对应 [issue #1](https://cnb.cool/ciweicc/DBAuto/-/issues/1)「对这个项目的 UI 动线视觉设计进行优化」，

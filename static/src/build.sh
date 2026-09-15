@@ -67,17 +67,21 @@ for f in "${JS_FILES[@]}"; do
 done
 JS_CONTENT=$(minify "$JS_TMP" js)
 
-# 构建指纹：记录对应提交 sha，便于回溯产物版本（不含时间戳，避免每次构建产生无意义 diff）
-# 注意：git 调用可能因运行环境（CI/沙箱/无仓库）返回非 0；加 `|| true` 兜底，
-# 避免 `set -e` 在赋值语句处直接中断构建导致产物未生成。
-_git_sha=$(git -C "$SRC_DIR" rev-parse --short HEAD 2>/dev/null || true)
-if [ -z "$_git_sha" ]; then
-  _git_sha=$(git rev-parse --short HEAD 2>/dev/null || true)
-fi
-FINGERPRINT="sha:${_git_sha:-unknown}"
-
 # 读取 HTML body
 BODY_CONTENT=$(cat "$SRC_DIR/body.html")
+
+# 构建指纹：由「源文件内容」派生的稳定哈希，用于回溯产物版本。
+#
+# 注意（重要）：此处**不得**使用 `git rev-parse HEAD` 之类的提交号。
+# 产物随仓库提交，而 CI 的「产物漂移检查」会在当前提交上重建并要求
+# `git diff --quiet` 为空。提交号会随每次 commit（含 merge commit）变化，
+# 导致重建必然产生一行 diff、门禁对任何 PR 都恒为失败（本项目曾因此踩坑）。
+# 内容哈希只随「构建输入」变化，重建幂等，漂移检查才真正具备判别力。
+_content_hash() {
+  { printf '%s' "$CSS_CONTENT"; printf '%s' "$JS_CONTENT"; printf '%s' "$BODY_CONTENT"; } \
+    | sha256sum 2>/dev/null | cut -c1-12
+}
+FINGERPRINT="hash:$(_content_hash)"
 
 # 组装最终 HTML
 cat > "$DIST_FILE" << 'BUILD_EOF'
