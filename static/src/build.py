@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """DBAuto frontend build script (Python equivalent of build.sh)"""
-import os, subprocess, sys
+import hashlib
+import os
+import sys
 
 SRC_DIR = os.path.dirname(os.path.abspath(__file__))
 DIST_FILE = os.path.join(SRC_DIR, "..", "index_new.html")
@@ -41,16 +43,13 @@ js_content = "\n".join(js_parts)
 with open(os.path.join(SRC_DIR, "body.html"), "r", encoding="utf-8") as f:
     body_content = f.read()
 
-# Git SHA
-git_sha = "unknown"
-try:
-    git_sha = subprocess.check_output(
-        ["git", "-C", SRC_DIR, "rev-parse", "--short", "HEAD"],
-        stderr=subprocess.DEVNULL
-    ).decode("utf-8").strip()
-except Exception:
-    pass
-fingerprint = f"sha:{git_sha}"
+# 构建指纹：由「源文件内容」派生的稳定哈希（与 build.sh 一致）。
+#
+# 不得使用 git HEAD 提交号：产物随仓库提交，CI 的「产物漂移检查」会在当前
+# 提交上重建并要求 diff 为空；提交号每次 commit（含 merge）都变，会让门禁恒失败。
+# 内容哈希只随构建输入变化，重建幂等，漂移检查才具判别力。
+_content = (css_content + "\n" + js_content + "\n" + body_content).encode("utf-8")
+fingerprint = "hash:" + hashlib.sha256(_content).hexdigest()[:12]
 
 # Assemble HTML
 html = f"""<!DOCTYPE html>
