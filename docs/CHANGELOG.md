@@ -6,6 +6,30 @@
 > （例如 `500571b` 依赖锁定 + Dependabot + CI 漏洞扫描、`d465526` Docker 非 root + ruff 门禁、
 > `9563551` 前端构建 minify + 删除重复登录页，以及更早的 P0 治理基线）。
 
+## [当前] 修复仪表盘转存统计口径 — 改配置被算作转存成功
+
+> 对应 [issue #8](https://cnb.cool/ciweicc/DBAuto/-/issues/8) 追加反馈
+> 「修改配置时。修改配置的记录会归类到转存成功的计数里」。
+
+- **缺陷**：执行历史（`exec_history`）是混合流水，`transfer`（转存）、`config`（改配置）、
+  `expired_check`（失效检测）写在同一张表里。`compute_dashboard_stats()` 用
+  「排除 `expired_check`」的**黑名单**口径统计，于是**每次保存设置产生的 `config` 记录
+  都被当成一次转存**：概览页「今日转存」每改一次配置 +1，「N 次/周」同步虚高。
+- **附带误报**：`config` 记录没有 `data`（`data=None`），只走 `last_status` 分支，
+  把「上次成功」覆盖成「上次无有效结果」，并在「待办事项」里误报。
+- **复现**（修复前）：1 次真实转存 + 2 次改配置 + 1 次失效检测 →
+  `today_count=3`（应为 1）、`week_total=4`（应为 1）、`last_status=none`（应为 `success`）。
+- **修复**：统计口径改为**白名单** `TRANSFER_RECORD_TYPES = ("transfer",)` +
+  `is_transfer_record(record)`，`today_count` / `week_total` / `daily` / `last_status`
+  四个统计点统一走该判定。黑名单→白名单的收益是：将来新增记录类型默认**不**参与
+  转存统计，而不是默认被计入。
+- **未受影响**：「执行历史」页面仍展示全部类型（含「配置」筛选页签），
+  失效检测仍不参与转存统计（原有行为不回归）。
+- **回归断言**：新增 `tests/test_dashboard_stats.py`（14 项），覆盖
+  「改配置不计入今日转存 / 不计入 N 次/周 / 不改写上次状态 / 只有配置记录时统计为空 /
+  未知类型不计入（白名单语义）/ 真实失败转存仍被统计」。
+- **验证**：`pytest tests/` 178 项通过（164 → 178）；`ruff check .` 通过；
+  `bash static/src/build.sh` 重建产物逐字节幂等（本次只改后端统计口径，前端产物无变化）。
 ## [当前] 侧边栏实时任务日志可见性修复
 
 > 对应 [issue #11](https://cnb.cool/ciweicc/DBAuto/-/issues/11)「侧边栏的实时任务日志。无法显示完全」。

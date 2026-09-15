@@ -8,8 +8,34 @@ from validator import validate_string, validate_list
 from scheduler import schedule_status
 
 
+# 执行历史里属于「转存」的记录类型。
+#
+# 执行历史（exec_history）是一个**混合流水**：除 transfer 外还有 config（改配置）、
+# expired_check（失效检测），未来还可能有其他维护动作。仪表盘的「今日转存 /
+# 近 7 天成功率 / 上次转存状态」只应统计转存类记录，其他类型只用于「执行历史」列表展示。
+#
+# 修复（issue #8）：原实现用 `h_type != "expired_check"` 做排除，
+# config 记录（每次保存设置都会写入，且 `data` 为 None）被当成一次「转存」计入：
+#   - today_count  每改一次配置 +1，概览页「今日转存」直接虚高；
+#   - week_total 与「N 次/周」同步虚高；
+#   - config 记录没有 data，只走 last_status 分支，把「上次成功 X · 失败 Y」
+#     覆盖成「上次无有效结果」并在待办里误报。
+# 白名单比黑名单更稳：新增记录类型默认不参与转存统计，而不是默认被计入。
+TRANSFER_RECORD_TYPES = ("transfer",)
+
+
+def is_transfer_record(record):
+    """判断执行记录是否属于「转存」类（仪表盘转存统计的唯一口径）。"""
+    if not isinstance(record, dict):
+        return False
+    return record.get("type", "") in TRANSFER_RECORD_TYPES
+
+
 def compute_dashboard_stats():
-    """汇总仪表盘所需统计：今日转存、近 7 天成功/失败/总数、每日明细、上次状态。"""
+    """汇总仪表盘所需统计：今日转存、近 7 天成功/失败/总数、每日明细、上次状态。
+
+    统计口径：只统计 TRANSFER_RECORD_TYPES 里的记录（见 is_transfer_record）。
+    """
     data = load_exec_history()
     today_str = time.strftime("%Y-%m-%d")
     week_ago = time.time() - 7 * 86400
@@ -21,9 +47,10 @@ def compute_dashboard_stats():
     last_transfer = None
     last_status = "-"
     for h in data:
+        if not is_transfer_record(h):
+            continue
         h_time = h.get("time", "")
-        h_type = h.get("type", "")
-        if h_time.startswith(today_str) and h_type != "expired_check":
+        if h_time.startswith(today_str):
             today_count += 1
         try:
             h_ts = time.mktime(time.strptime(h_time, "%Y-%m-%d %H:%M:%S"))
@@ -45,23 +72,22 @@ def compute_dashboard_stats():
                 daily[day]["total"] += 1
         except (ValueError, OverflowError):
             pass
-        if h_type != "expired_check":
-            if not last_transfer:
-                last_transfer = h
-                d = h.get("data", {})
-                if isinstance(d, dict):
-                    ok = d.get("ok", 0)
-                    fail = d.get("failed", 0)
-                    if ok > 0 and fail == 0:
-                        last_status = "success"
-                    elif ok > 0 and fail > 0:
-                        last_status = "partial"
-                    elif fail > 0 and ok == 0:
-                        last_status = "fail"
-                    else:
-                        last_status = "none"
+        if not last_transfer:
+            last_transfer = h
+            d = h.get("data", {})
+            if isinstance(d, dict):
+                ok = d.get("ok", 0)
+                fail = d.get("failed", 0)
+                if ok > 0 and fail == 0:
+                    last_status = "success"
+                elif ok > 0 and fail > 0:
+                    last_status = "partial"
+                elif fail > 0 and ok == 0:
+                    last_status = "fail"
                 else:
                     last_status = "none"
+            else:
+                last_status = "none"
     # 近 7 天每日明细（含 0 值，按日期升序）
     daily_list = []
     now = time.time()
