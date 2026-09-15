@@ -810,18 +810,78 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .log-search:focus{outline:none;border-color:var(--accent);box-shadow:var(--focus-ring)}
 .log-search::placeholder{color:var(--text3)}
 
+/* ===== 设置页：分区索引（chips） ===== */
+.set-jump{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
+.set-jump-chip{
+  padding:6px 13px;border-radius:999px;border:1px solid var(--border);
+  background:var(--card-2);color:var(--text2);cursor:pointer;
+  font-size:var(--fs-sm);font-weight:600;font-family:var(--font-display);
+  transition:color var(--transition-fast),border-color var(--transition-fast),background var(--transition-fast)
+}
+.set-jump-chip:hover{color:var(--text);border-color:var(--border2)}
+.set-jump-chip.active{color:var(--accent);border-color:var(--accent);background:var(--accent-wash)}
+.set-jump-chip:focus-visible{outline:none;box-shadow:var(--focus-ring)}
+
 /* ===== 设置分组折叠 ===== */
 .settings-groups{display:flex;flex-direction:column;gap:14px;margin-top:4px}
-.settings-group{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--card)}
-.settings-group>summary{display:flex;align-items:center;gap:9px;padding:13px 16px;font-size:var(--fs-lg);font-weight:600;color:var(--text);
-  cursor:pointer;list-style:none;user-select:none;font-family:var(--font-display);transition:background var(--transition-fast)}
+.settings-group{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--card);scroll-margin-top:16px}
+.settings-group>summary{display:flex;align-items:center;gap:11px;padding:13px 16px;
+  cursor:pointer;list-style:none;user-select:none;transition:background var(--transition-fast)}
 .settings-group>summary::-webkit-details-marker{display:none}
 .settings-group>summary:hover{background:var(--card-2)}
-.settings-group>summary svg{width:18px;height:18px;color:var(--accent);flex-shrink:0}
-.settings-group>summary::after{content:'';margin-left:auto;width:8px;height:8px;border-right:2px solid var(--text3);border-bottom:2px solid var(--text3);
+/* 分组图标：给定尺寸的圆形徽标，避免裸 svg 依赖全局尺寸 */
+.set-group-ic{width:30px;height:30px;border-radius:var(--radius-sm);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--accent-wash);color:var(--accent)}
+.set-group-ic svg{width:17px;height:17px}
+.set-group-text{display:flex;flex-direction:column;gap:2px;min-width:0}
+.set-group-name{font-size:var(--fs-lg);font-weight:600;color:var(--text);font-family:var(--font-display);line-height:1.25}
+.set-group-desc{font-size:var(--fs-sm);color:var(--text3);line-height:1.35;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.set-group-badge{margin-left:auto;flex-shrink:0;font-size:var(--fs-xs);font-weight:600;color:var(--text3);
+  padding:3px 9px;border-radius:999px;background:var(--card-2);border:1px solid var(--border);font-family:var(--font-display)}
+.settings-group>summary::after{content:'';flex-shrink:0;width:8px;height:8px;margin-left:6px;
+  border-right:2px solid var(--text3);border-bottom:2px solid var(--text3);
   transform:rotate(45deg);transition:transform var(--transition-fast)}
 .settings-group:not([open])>summary::after{transform:rotate(-45deg)}
 .settings-group>.settings-grid{margin:0;padding:16px 16px 4px}
+
+/* ===== 设置页：字段提示与卡片动作位 ===== */
+.form-hint{font-size:var(--fs-sm);color:var(--text3);line-height:1.5;margin-top:6px}
+.form-hint a{color:var(--accent);text-decoration:none}
+.form-hint a:hover{text-decoration:underline}
+.form-hint code{font-family:var(--mono);font-size:var(--fs-xs);
+  padding:1px 5px;border-radius:var(--radius-xs);background:var(--card-2);border:1px solid var(--border)}
+.set-card-actions{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+
+/* 卡片等高 + 底部动作对齐：同一行卡片高度一致，内容不足时动作位贴底 */
+.settings-group .settings-grid{align-items:stretch}
+.settings-group .settings-grid>.card{display:flex;flex-direction:column}
+.settings-group .settings-grid>.card>.set-card-actions{margin-top:auto}
+/* 仅一张卡的分组：单列铺满主列，但限制卡片宽度上限。
+   表单项（label + input）在 720px+ 宽度下视线跨度过大、读起来累，
+   限制到 560px 后与「双列各 360px」的视觉节奏一致。 */
+.settings-group .settings-grid:has(> .card:only-child){grid-template-columns:minmax(0,var(--set-card-max,560px))}
+@media(max-width:1200px){
+  .settings-group .settings-grid:has(> .card:only-child){grid-template-columns:1fr}
+}
+
+/* ===== 设置页：保存条（替换原来「一张空卡 + 右下按钮」） ===== */
+/* 注意：不使用 position:sticky 悬停方案——实测在 1200/1280/1024 三档下，
+   吸底条会在滚动中段盖住「转存路径」的说明文字与下一页卡片标题。
+   这里改为常驻文档流：位置固定在分组列表之后，靠 100vh 之外不产生遮挡。 */
+.settings-savebar{
+  margin-top:14px;padding:12px 16px;
+  display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+  border:1px solid var(--glass-border-strong);border-radius:var(--radius-lg);
+  background:var(--glass-bg-strong);box-shadow:var(--shadow);
+  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur)
+}
+.settings-savebar-text{min-width:0}
+.settings-savebar-title{font-size:var(--fs-base);font-weight:600;color:var(--text);font-family:var(--font-display)}
+.settings-savebar-desc{font-size:var(--fs-sm);color:var(--text3);margin-top:2px}
+.settings-savebar-desc.dirty{color:var(--orange)}
+.settings-savebar .btn{flex-shrink:0}
 
 /* =========================================================
    TMDB 一键「回到顶部」悬浮按钮
@@ -1206,4 +1266,34 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 @media(max-width:1024px){
   .app:has(.log-panel.collapsed){grid-template-columns:1fr}
   .log-panel.collapsed{display:none}
+}
+
+/* ===== 设置页响应式：断点统一到全局 1500 / 1350 / 1200 / 1024 / 640 ===== */
+/* 主列被日志栏挤压时，单卡 300px 起步会让卡片内部 label 与输入框过窄，
+   在 1200px 以下改为单列堆叠，避免「两张卡各 360px 但内容断行」的拥挤感。 */
+/* ≤1200px：日志栏变为覆盖层，主列反而变宽，此时用 auto-fit 让「容器宽度」决定列数，
+   而不是硬性单列（硬性单列会把卡片拉成 900px+ 的巨型单卡）。 */
+@media(max-width:1200px){
+  .settings-group .settings-grid{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .settings-group .settings-grid:has(> .card:only-child){grid-template-columns:1fr}
+}
+@media(max-width:1024px){
+  /* 侧栏亦收起，主列最宽；两列更省纵向滚动 */
+  .settings-group .settings-grid{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+}
+@media(max-width:640px){
+  .settings-group .settings-grid{grid-template-columns:1fr;padding:12px 12px 2px}
+  .settings-group>summary{padding:12px 14px;gap:9px}
+  .set-group-desc{white-space:normal}
+  .set-group-badge{display:none}
+  .set-jump{
+    gap:6px;margin-bottom:12px;
+    overflow-x:auto;flex-wrap:nowrap;
+    -webkit-overflow-scrolling:touch;scrollbar-width:none;
+    padding-bottom:2px;
+  }
+  .set-jump::-webkit-scrollbar{display:none}
+  .set-jump-chip{flex:0 0 auto;padding:6px 12px}
+  .settings-savebar{padding:10px 14px}
+  .settings-savebar-desc{display:none}
 }
