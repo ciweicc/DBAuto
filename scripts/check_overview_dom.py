@@ -6,7 +6,7 @@
   对概览页首屏的**可量化缺陷**做断言 —— 这些指标用静态扫描
   （tests/test_build.py）表达不了，只能在渲染后测量：
 
-  1. 首屏工作区必须整体落在一屏内（**首屏工作区** = 概览指标 + 最近转存 + 发现快捷，
+  1. 首屏工作区必须整体落在一屏内（**首屏工作区** = 概览指标 + 最近转存 + 服务状态/待办，
      不含下方的 TMDB 发现分区；issue #14 之后发现区常驻概览页尾部，
      要求整页一屏会把筛选栏/海报墙直接判成溢出）。度量口径：
      取「发现区之前所有 #pageOverview > * 块」的最大底边作为首屏折叠线。
@@ -156,6 +156,9 @@ MEASURE = r"""
       return all.length ? all[all.length - 1].textContent : null; })(),
     catW: cat ? Math.round(cat.getBoundingClientRect().width) : null,
     catH: cat ? Math.round(cat.getBoundingClientRect().height) : null,
+    // issue #15：首屏上方的「发现快捷」横滑条与下方发现区内容重复，已整栏移除。
+    // 这里断言「同一批热门数据只有一份渲染」，防复发（比静态扫描更接近真实 DOM）。
+    quickPanel: !!q('#pageOverview .ov-panel-rec, #ovRecScroll'),
     discoveryInOverview: !!(q('#pageOverview #tmdbPanel')),
     discoveryFilters: !!q('#pageOverview #tmdbFilters .tmdb-filter-group'),
     legacyTmdbPage: !!q('#pageTmdb'),
@@ -252,7 +255,9 @@ def main():
                     fail("指标行高不一致：{}".format(m["statRowH"]))
                 if m["tableOverflowX"] > 0:
                     fail("最近转存表出现横向滚动条 {}px".format(m["tableOverflowX"]))
-                # 首屏工作区（概览指标 + 最近转存 + 发现快捷）必须落在一屏内。
+                if m["quickPanel"]:
+                    fail("「发现快捷」横滑条仍存在（与下方发现区内容重复）")
+                # 首屏工作区（概览指标 + 最近转存 + 服务状态/待办）必须落在一屏内。
                 # 注：这里不能再断言「#pageOverview 的最后一个块的底边」——
                 # issue #14 之后发现区（TMDB 工作台）常驻概览页底部，它是滚下去用的，
                 # 把它算进首屏会让断言恒为失败（用户明确要的就是「同页承载」）。
