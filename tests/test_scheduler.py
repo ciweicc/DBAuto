@@ -33,11 +33,17 @@ class TestNextFireTime:
         now = _now_local()
         past = now - timedelta(hours=1)
         ts = "{}:{:02d}".format(past.hour, past.minute)
+        # 按 _next_fire_time 的真实语义构造预期值：今天该时刻若已过则滚到明天。
+        # 不能断言「必然滚到明天」：当 now 位于 00:00-00:59 时，now-1h 跨回昨日 23:xx，
+        # 格式化成 "23:xx" 后会被解析为今天的 23:xx（未来而非过去），此时结果落在今天。
+        hh, mm = past.hour, past.minute
+        candidate = now.replace(hour=hh, minute=mm, second=0, microsecond=0)
+        if candidate <= now:
+            candidate = candidate + timedelta(days=1)
         nxt = _next_fire_time(ts, None, 0, None)
         assert nxt is not None
         assert nxt > now
-        # 过去的时间点应滚动到明天
-        assert (nxt - now).days >= 1 or (nxt.date() > now.date())
+        assert nxt == candidate
 
     def test_no_schedule_returns_none(self):
         assert _next_fire_time(None, None, 0, None) is None
