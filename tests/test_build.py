@@ -263,3 +263,78 @@ def test_local_verify_skill_landed():
     assert "api/sse" in content, "验证 skill 未禁止拉取 SSE 长连接"
     assert "nohup" in content, "验证 skill 未要求后台服务重定向输出"
     assert "static/src/build.sh" in content, "验证 skill 未指明产物重建入口"
+
+
+# ============================================================
+# 设置页视觉优化（issue #1 后续）回归断言
+# ============================================================
+
+def test_settings_page_has_jump_nav(dist):
+    """设置页约 3 屏高，必须有分区快速定位入口（chips）且目标分组存在。"""
+    assert 'class="set-jump"' in dist, "产物缺少设置页分区索引"
+    assert 'aria-label="设置分区快速定位"' in dist, "分区索引缺少无障碍名称"
+    for gid in ("setGroupSource", "setGroupTransfer", "setGroupPath", "setGroupAuth"):
+        assert 'id="{}"'.format(gid) in dist, "缺少设置分组 {}".format(gid)
+        assert 'data-target="{}"'.format(gid) in dist, "分区索引未覆盖 {}".format(gid)
+    js = _read(os.path.join(_JS_DIR, "settings.js"))
+    assert "jumpToSettingsGroup" in js, "缺少分区跳转实现"
+    assert "suspendSettingsJumpSpy" in js, (
+        "滚动监听未做跳转期挂起，点击 chip 的高亮会被平滑滚动途中的中间分组覆盖"
+    )
+
+
+def test_settings_group_headers_have_description(dist):
+    """分组头需含「名称 + 说明」，避免只有一行标题导致的信息量不足。"""
+    css, _ = _extract(dist)
+    for cls in (".set-group-ic", ".set-group-name", ".set-group-desc", ".set-group-badge"):
+        assert cls in css, "缺少分组头样式 {}".format(cls)
+    assert dist.count('class="set-group-desc"') >= 4, "分组说明缺失（应覆盖 4 个分组）"
+
+
+def test_settings_savebar_replaces_empty_card(dist):
+    """旧的「一张空卡 + 右下按钮」保存条应替换为带说明的保存条。"""
+    assert 'class="settings-savebar"' in dist, "缺少设置页保存条"
+    assert 'id="settingsDirtyHint"' in dist, "保存条缺少改动提示位"
+    assert "旧称" not in dist
+    # 旧的 save-card 空卡结构必须清除
+    assert 'class="card save-card"' not in dist, "旧保存空卡仍残留"
+    css, _ = _extract(dist)
+    assert ".settings-savebar" in css
+    # sticky 悬停方案会遮挡滚动中段内容，禁止回归
+    savebar_block = re.search(r"\.settings-savebar\{(.*?)\}", css, re.S)
+    assert savebar_block, "未找到 .settings-savebar 样式块"
+    assert "position:sticky" not in savebar_block.group(1).replace(" ", ""), (
+        "保存条不得使用 sticky 悬停（实测会盖住滚动中段的输入框与说明文字）"
+    )
+
+
+def test_settings_cards_equal_height(dist):
+    """同一行卡片必须等高（此前 343/303/214 参差，底部留白不一致）。"""
+    css, _ = _extract(dist)
+    compact = re.sub(r"\s+", "", css)
+    assert "align-items:stretch" in compact, "设置网格未做等高拉伸"
+    assert ".settings-group.settings-grid>.card{display:flex;flex-direction:column}" in compact, (
+        "缺少设置卡片 flex 纵向布局（底部动作位依赖该布局）"
+    )
+    assert ".settings-group.settings-grid>.card>.set-card-actions{margin-top:auto}" in compact, (
+        "卡片动作位未贴底，同行卡片底部留白不一致"
+    )
+    # 单卡分组需限制卡片宽度，避免巨型单卡
+    assert "--set-card-max" in css, "单卡分组缺少宽度上限令牌"
+
+
+def test_settings_field_hints_present(dist):
+    """关键字段需有 .form-hint 说明（此前仅 TMDB 一处 inline 样式说明）。"""
+    css, _ = _extract(dist)
+    assert ".form-hint" in css, "缺少 .form-hint 样式"
+    assert dist.count('class="form-hint"') >= 6, "字段说明覆盖不足"
+    # 不应再残留 inline 的 12px 说明块写法
+    assert 'style="font-size:12px;color:var(--text2)' not in dist, "仍有 inline 说明写法残留"
+
+
+def test_settings_declares_missing_lock_icon(dist):
+    """回归：设置页用到的图标必须在 sprite 中定义（此前 icon-lock 未定义，渲染为空白）。"""
+    used = set(re.findall(r'href="#(icon-[a-z-]+)"', dist))
+    defined = set(re.findall(r'id="(icon-[a-z-]+)"', dist))
+    missing = sorted(used - defined)
+    assert not missing, "产物引用了未定义的图标：{}".format(missing)

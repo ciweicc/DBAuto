@@ -38,6 +38,7 @@
   <symbol id="icon-stop" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="6" y="4" width="12" height="16"/></symbol>
   <symbol id="icon-filter" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 19 14 12.46 22 3"/></symbol>
   <symbol id="icon-empty" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+  <symbol id="icon-lock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></symbol>
   <symbol id="icon-eye" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></symbol>
   <symbol id="icon-eye-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/></symbol>
   <symbol id="icon-contrast" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 3a9 9 0 0 0 0 18z" fill="currentColor"/></symbol>
@@ -444,47 +445,113 @@
           <p>配置数据源、转存服务与认证信息</p>
         </div>
 
+        <!-- 分区索引：设置页较长（约 3 屏），顶部给出定位入口 -->
+        <nav class="set-jump" aria-label="设置分区快速定位">
+          <button type="button" class="set-jump-chip" data-target="setGroupSource" onclick="jumpToSettingsGroup('setGroupSource', this)">数据源</button>
+          <button type="button" class="set-jump-chip" data-target="setGroupTransfer" onclick="jumpToSettingsGroup('setGroupTransfer', this)">转存服务</button>
+          <button type="button" class="set-jump-chip" data-target="setGroupPath" onclick="jumpToSettingsGroup('setGroupPath', this)">转存路径</button>
+          <button type="button" class="set-jump-chip" data-target="setGroupAuth" onclick="jumpToSettingsGroup('setGroupAuth', this)">认证与缓存</button>
+        </nav>
+
         <div class="settings-groups">
-          <details class="settings-group" open>
-            <summary><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-search"/></svg> 数据源与转存</summary>
+          <!-- 数据源 -->
+          <details class="settings-group" id="setGroupSource" open>
+            <summary>
+              <span class="set-group-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-search"/></svg></span>
+              <span class="set-group-text">
+                <span class="set-group-name">数据源</span>
+                <span class="set-group-desc">资源搜索与影视元数据来源</span>
+              </span>
+              <span class="set-group-badge">2 项</span>
+            </summary>
             <div class="settings-grid">
-          <div class="card">
-            <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-search"/></svg> 搜索服务</div>
-            <div class="form-group"><label for="cfg_pansou">PanSou 地址</label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"></div>
-          </div>
-          <div class="card">
-            <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg> TMDB 数据源</div>
-            <div class="form-group" style="margin-bottom:0"><label for="cfg_tmdb_api_key">API Key</label><div class="pwd-wrap"><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div></div>
-            <div class="form-group" style="margin-top:8px"><label for="cfg_tmdb_base_url">API 地址（可选）</label><input type="text" id="cfg_tmdb_base_url" placeholder="留空自动切换 api.tmdb.org / api.themoviedb.org"></div>
-            <div class="form-group" style="margin-top:8px"><label for="cfg_tmdb_proxy">代理（可选）</label><input type="text" id="cfg_tmdb_proxy" placeholder="如 http://127.0.0.1:7890，留空则直连"></div>
-            <div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.5">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener" style="color:var(--accent);text-decoration:none">TMDB 官网</a> 申请 API Key。国内网络访问 api.tmdb.org 常被干扰（TLS 握手失败），若榜单无法加载，请在此填写代理地址（如 Clash / V2Ray 的 HTTP 代理）</div>
-          </div>
-          <div class="card">
-            <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-transfer"/></svg> 转存服务</div>
-            <div class="form-group"><label for="cfg_qas">QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"></div>
-            <div class="form-group" style="margin-bottom:0"><label for="cfg_qas_token">QAS Token</label><div class="pwd-wrap"><input type="password" id="cfg_qas_token" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div></div>
-          </div>
-          <div class="card">
-            <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg> 转存路径</div>
-            <div class="form-group"><label for="cfg_path_category_base">榜单分类路径前缀</label><input type="text" id="cfg_path_category_base" placeholder="/影视"></div>
-            <div style="font-size:12px;color:var(--text2);margin:-4px 0 8px;line-height:1.5">实际路径 = 前缀 + 分类名，如 /影视/电影、/影视/电视剧</div>
-            <div class="form-group"><label for="cfg_path_search">搜索转存路径</label><input type="text" id="cfg_path_search" placeholder="/批量转存/手动搜索存"></div>
-            <div class="form-group" style="margin-bottom:0"><label for="cfg_path_tmdb">TMDB 转存路径</label><input type="text" id="cfg_path_tmdb" placeholder="/批量转存/TMDB"></div>
-          </div>
-          <div class="card">
-            <div class="card-title" style="justify-content:space-between"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-lock"/></svg> 管理认证 <button class="btn btn-outline btn-sm" id="refreshDoubanBtn" onclick="refreshDoubanCache()">刷新豆瓣缓存</button></div>
-            <div class="form-group"><label for="cfg_auth_user">用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
-            <div class="form-group" style="margin-bottom:0"><label for="cfg_auth_pass">密码</label><div class="pwd-wrap"><input type="password" id="cfg_auth_pass" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div></div>
-          </div>
+              <div class="card">
+                <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-search"/></svg> 搜索服务</div>
+                <div class="form-group"><label for="cfg_pansou">PanSou 地址</label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"><div class="form-hint">用于搜索网盘资源，需填写可访问的完整地址</div></div>
+              </div>
+              <div class="card">
+                <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg> TMDB 数据源</div>
+                <div class="form-group"><label for="cfg_tmdb_api_key">API Key</label><div class="pwd-wrap"><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div></div>
+                <div class="form-group"><label for="cfg_tmdb_base_url">API 地址（可选）</label><input type="text" id="cfg_tmdb_base_url" placeholder="留空自动切换 api.tmdb.org / api.themoviedb.org"></div>
+                <div class="form-group"><label for="cfg_tmdb_proxy">代理（可选）</label><input type="text" id="cfg_tmdb_proxy" placeholder="如 http://127.0.0.1:7890，留空则直连"></div>
+                <div class="form-hint">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">TMDB 官网</a> 申请 API Key。国内网络访问 api.tmdb.org 常被干扰（TLS 握手失败），若榜单无法加载，请填写代理地址（如 Clash / V2Ray 的 HTTP 代理）。</div>
+              </div>
+            </div>
+          </details>
+
+          <!-- 转存服务 -->
+          <details class="settings-group" id="setGroupTransfer" open>
+            <summary>
+              <span class="set-group-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-transfer"/></svg></span>
+              <span class="set-group-text">
+                <span class="set-group-name">转存服务</span>
+                <span class="set-group-desc">QAS 接口地址与访问凭据</span>
+              </span>
+              <span class="set-group-badge">1 项</span>
+            </summary>
+            <div class="settings-grid">
+              <div class="card">
+                <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-transfer"/></svg> 转存服务</div>
+                <div class="form-group"><label for="cfg_qas">QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"><div class="form-hint">接收转存指令的 QAS 服务地址</div></div>
+                <div class="form-group"><label for="cfg_qas_token">QAS Token</label><div class="pwd-wrap"><input type="password" id="cfg_qas_token" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div><div class="form-hint">用于鉴权，留空表示保持现有 Token 不变</div></div>
+              </div>
+            </div>
+          </details>
+
+          <!-- 转存路径 -->
+          <details class="settings-group" id="setGroupPath" open>
+            <summary>
+              <span class="set-group-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg></span>
+              <span class="set-group-text">
+                <span class="set-group-name">转存路径</span>
+                <span class="set-group-desc">三类转存目标的保存目录</span>
+              </span>
+              <span class="set-group-badge">3 项</span>
+            </summary>
+            <div class="settings-grid">
+              <div class="card">
+                <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg> 转存路径</div>
+                <div class="form-group"><label for="cfg_path_category_base">榜单分类路径前缀</label><input type="text" id="cfg_path_category_base" placeholder="/影视"><div class="form-hint">实际路径 = 前缀 + 分类名，如 /影视/电影、/影视/电视剧</div></div>
+                <div class="form-group"><label for="cfg_path_search">搜索转存路径</label><input type="text" id="cfg_path_search" placeholder="/批量转存/手动搜索存"></div>
+                <div class="form-group"><label for="cfg_path_tmdb">TMDB 转存路径</label><input type="text" id="cfg_path_tmdb" placeholder="/批量转存/TMDB"></div>
+                <div class="form-hint">三项路径均须以 <code>/</code> 开头；留空则使用默认值。</div>
+              </div>
+            </div>
+          </details>
+
+          <!-- 认证与缓存 -->
+          <details class="settings-group" id="setGroupAuth" open>
+            <summary>
+              <span class="set-group-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-lock"/></svg></span>
+              <span class="set-group-text">
+                <span class="set-group-name">认证与缓存</span>
+                <span class="set-group-desc">管理后台登录凭据与缓存维护</span>
+              </span>
+              <span class="set-group-badge">2 项</span>
+            </summary>
+            <div class="settings-grid">
+              <div class="card">
+                <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-lock"/></svg> 管理认证</div>
+                <div class="form-group"><label for="cfg_auth_user">用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
+                <div class="form-group"><label for="cfg_auth_pass">密码</label><div class="pwd-wrap"><input type="password" id="cfg_auth_pass" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div><div class="form-hint">修改后需使用新凭据重新登录；密码留空表示不修改</div></div>
+              </div>
+              <div class="card">
+                <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-refresh"/></svg> 缓存维护</div>
+                <div class="form-hint" style="margin-top:0">豆瓣缓存用于榜单与候选集，数据陈旧时可手动刷新。</div>
+                <div class="set-card-actions">
+                  <button class="btn btn-outline btn-sm" id="refreshDoubanBtn" onclick="refreshDoubanCache()">刷新豆瓣缓存</button>
+                </div>
+              </div>
             </div>
           </details>
         </div>
-        <div class="settings-grid">
-          <div class="card save-card">
-            <div class="row" style="justify-content:flex-end;width:100%">
-              <button class="btn btn-primary btn-sm" id="saveSettingsBtn" onclick="saveConfig(false)">保存设置</button>
-            </div>
+
+        <div class="settings-savebar" role="group" aria-label="保存设置">
+          <div class="settings-savebar-text">
+            <div class="settings-savebar-title">保存配置</div>
+            <div class="settings-savebar-desc" id="settingsDirtyHint">改动会同时写入配置与转存路径</div>
           </div>
+          <button class="btn btn-primary btn-sm" id="saveSettingsBtn" onclick="saveConfig(false)">保存设置</button>
         </div>
       </section>
 
