@@ -882,7 +882,6 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .set-jump-chip:focus-visible{outline:none;box-shadow:var(--focus-ring)}
 
 /* ===== 设置分组折叠 ===== */
-.settings-groups{display:flex;flex-direction:column;gap:14px;margin-top:4px}
 .settings-group{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--card);scroll-margin-top:16px}
 .settings-group>summary{display:flex;align-items:center;gap:11px;padding:13px 16px;
   cursor:pointer;list-style:none;user-select:none;transition:background var(--transition-fast)}
@@ -913,17 +912,71 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
   padding:1px 5px;border-radius:var(--radius-xs);background:var(--card-2);border:1px solid var(--border)}
 .set-card-actions{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
 
-/* 卡片等高 + 底部动作对齐：同一行卡片高度一致，内容不足时动作位贴底 */
-.settings-group .settings-grid{align-items:stretch}
+/* ===== 设置页：分组并排（消灭「卡片被拉到容器宽 + 同行空白」） ===== */
+/* 问题（issue #15）：分组是 flex 纵向单列，容器 1440px 宽时每个分组独占整行，
+   分组内 1 张卡被 auto-fit 拉到 1340px；「搜索服务」内容仅 149px 高，
+   却与 254px 高的「TMDB 数据源」等高（flex stretch），单卡留下 106px 纯空白。
+   实测 2560px 视口下设置页 1756px 高，约 72% 是空白。
+   修法：分组按内容宽度并排（外层 2 列），组内再按内容宽度决定 1~3 列，
+   并按内容高度分配尺寸，而不是按容器宽度。 */
+.settings-groups{
+  display:grid;gap:14px;margin-top:4px;align-items:start;
+  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
+}
+/* 分组：<details> 默认 block，margin 归零避免并排布局下错位。
+   注意 `display` 必须显式声明成 grid，且只给**单列**模板 —— 之前把
+   auto-fit/minmax(300px) 写在分组上，会把 summary 与 .settings-grid
+   当成两个可并排的网格子项，卡片被塞进 350px 窄列（实测更糟）。
+   组内多列由子元素 .settings-grid 自己负责。 */
+.settings-group{
+  grid-column:span 1;margin:0;
+  display:grid;grid-template-columns:minmax(0,1fr);
+}
+/* 内容多的分组（2 张卡）横跨整行，组内卡片并排 —— 两张卡各自都放得下；
+   内容少的分组（单卡）只占半行，另一半交给下一个分组，不再留空。
+   注意：外层固定 2 列，因此 span 只允许 1 / 2，超过会被浏览器截断为整行。 */
+.settings-group:has(.settings-grid>.card:nth-child(2)){grid-column:1/-1}
+/* 折叠头（summary）必须横跨整个分组，否则会被当成网格子项塞进第一列 */
+.settings-group>summary{grid-column:1/-1}
+/* 组内卡片：列宽上限用 max-width 表达，**不能**写进 minmax 的上界 ——
+   写了会把每列轨道钉死在 660px，878px 容器里只能放下 1 列，两卡反而退回纵向堆叠。
+   正确做法：轨道用 auto-fit/minmax(300px,1fr) 均分，再用卡片的 max-width 限制跨度。 */
+.settings-group>.settings-grid{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+.settings-group>.settings-grid>.card{width:100%;max-width:var(--set-card-max,660px);
+  container-type:inline-size;container-name:settings-card}
+
+/* 卡片内字段容器：默认单列；卡片宽度 ≥600px（宽卡单列铺排）时由容器查询改为两列，
+   把「留空不修改」这类提示占掉的纵向空间收掉，同时不再出现 640px 宽的空输入框。 */
+.settings-group .set-fields{display:grid;grid-template-columns:minmax(0,1fr);gap:0 18px;align-content:start}
+.settings-group .set-fields>.form-group{min-width:0}
+/* 两列表段时让奇数个字段的最后一项横跨整行：否则末尾会空出半格，
+   与相邻卡片的等高拉伸叠在一起，形成一片纯空白。 */
+.settings-group .set-fields>.form-group:last-child:nth-child(odd){grid-column:1/-1}
+/* 提示占满整行，避免被拆到两列时与相邻字段错位 */
+.settings-group .set-fields>.form-hint{grid-column:1/-1;margin-top:2px}
+
+/* 单卡分组：组宽 > 单卡上限时会留下右侧空白（1024px 下「转存服务」= 984px 组
+   里放 660px 的卡）。此类分组放开宽度上限，让卡片铺满组宽 —— 字段由容器查询
+   自动铺成两列，纵向更短，也不会出现偏置观感。 */
+.settings-group:has(> .settings-grid > .card:only-child){--set-card-max:100%}
+/* 多卡分组（如「数据源」两卡并排）：轨道下界 300px —— 容器 ≥632px 即可并排；
+   容器更窄时 auto-fit 自动退回单列，卡片吃满宽度（字段随之走两列）。
+   注意下界不能取 440px：878px 容器（1440px 视口）会因差 18px 判不出两列，
+   退回单列后页面反而高出 130px。 */
+.settings-group:has(> .settings-grid > .card:nth-child(2))>.settings-grid{
+  grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
+}
+
+/* 卡片高度：**不再**用 align-items:stretch 强行等高。
+   并排的两张卡内容量差一倍（149px vs 338px）时，等高会把短卡撑出 202px 纯空白
+   —— 这正是 issue #15 的主要观感问题。改为按内容高度排布（start + 行高自适应），
+   卡片自身仍是纵向 flex，底部动作位在「同一张卡内」靠 margin-top:auto 贴底。 */
+.settings-group .settings-grid{align-items:start}
 .settings-group .settings-grid>.card{display:flex;flex-direction:column}
 .settings-group .settings-grid>.card>.set-card-actions{margin-top:auto}
-/* 仅一张卡的分组：单列铺满主列，但限制卡片宽度上限。
-   表单项（label + input）在 720px+ 宽度下视线跨度过大、读起来累，
-   限制到 560px 后与「双列各 360px」的视觉节奏一致。 */
-.settings-group .settings-grid:has(> .card:only-child){grid-template-columns:minmax(0,var(--set-card-max,560px))}
-@media(max-width:1200px){
-  .settings-group .settings-grid:has(> .card:only-child){grid-template-columns:1fr}
-}
+/* 卡片里的字段区在卡片被行高拉长时（短卡与高卡同行）吃掉多余高度，
+   让内边距上下均衡，而不是全部堆在底部形成一块空白。 */
+.settings-group .settings-grid>.card>.set-fields{flex:1 1 auto;align-content:start}
 
 /* ===== 设置页：保存条（替换原来「一张空卡 + 右下按钮」） ===== */
 /* 注意：不使用 position:sticky 悬停方案——实测在 1200/1280/1024 三档下，
@@ -1390,19 +1443,30 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 }
 
 /* ===== 设置页响应式：断点统一到全局 1500 / 1350 / 1200 / 1024 / 640 ===== */
+/* 分组并排的下限：容器容不下「3 列标准块」时退到整行，避免分组内出现单列窄卡；
+   分组内再按 auto-fit 自行决定 1~3 列。 */
+@media(max-width:1500px){
+  .settings-groups{grid-template-columns:minmax(0,1fr)}
+  .settings-group{grid-column:1/-1}
+}
 /* 主列被日志栏挤压时，单卡 300px 起步会让卡片内部 label 与输入框过窄，
-   在 1200px 以下改为单列堆叠，避免「两张卡各 360px 但内容断行」的拥挤感。 */
-/* ≤1200px：日志栏变为覆盖层，主列反而变宽，此时用 auto-fit 让「容器宽度」决定列数，
-   而不是硬性单列（硬性单列会把卡片拉成 900px+ 的巨型单卡）。 */
+   此时让 auto-fit 按容器宽度决定列数，而不是硬性单列（硬性单列会把卡片
+   拉成 900px+ 的巨型单卡，反而制造新的空白）。 */
 @media(max-width:1200px){
   .settings-group .settings-grid{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
-  .settings-group .settings-grid:has(> .card:only-child){grid-template-columns:1fr}
 }
 @media(max-width:1024px){
   /* 侧栏亦收起，主列最宽；两列更省纵向滚动 */
   .settings-group .settings-grid{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
 }
+/* 宽卡（单列占满）时字段本身改为两列铺排：纵向更短，且两侧仍被 max-width 限宽。
+   窄卡（多列并排，卡宽 < 600px）保持单列字段，避免输入框被压到 200px 以下。 */
+@container settings-card (min-width: 600px){
+  .settings-group>.settings-grid>.card>.set-fields{grid-template-columns:1fr 1fr}
+}
 @media(max-width:640px){
+  .settings-groups{grid-template-columns:minmax(0,1fr)}
+  .settings-group{grid-column:1/-1;grid-template-columns:minmax(0,1fr)}
   .settings-group .settings-grid{grid-template-columns:1fr;padding:12px 12px 2px}
   .settings-group>summary{padding:12px 14px;gap:9px}
   .set-group-desc{white-space:normal}

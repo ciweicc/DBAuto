@@ -468,14 +468,18 @@
             <div class="settings-grid">
               <div class="card">
                 <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-search"/></svg> 搜索服务</div>
-                <div class="form-group"><label for="cfg_pansou">PanSou 地址</label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"><div class="form-hint">用于搜索网盘资源，需填写可访问的完整地址</div></div>
+                <div class="set-fields">
+                  <div class="form-group"><label for="cfg_pansou">PanSou 地址</label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"><div class="form-hint">用于搜索网盘资源，需填写可访问的完整地址</div></div>
+                </div>
               </div>
               <div class="card">
                 <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg> TMDB 数据源</div>
-                <div class="form-group"><label for="cfg_tmdb_api_key">API Key</label><div class="pwd-wrap"><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div></div>
-                <div class="form-group"><label for="cfg_tmdb_base_url">API 地址（可选）</label><input type="text" id="cfg_tmdb_base_url" placeholder="留空自动切换 api.tmdb.org / api.themoviedb.org"></div>
-                <div class="form-group"><label for="cfg_tmdb_proxy">代理（可选）</label><input type="text" id="cfg_tmdb_proxy" placeholder="如 http://127.0.0.1:7890，留空则直连"></div>
-                <div class="form-hint">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">TMDB 官网</a> 申请 API Key。国内网络访问 api.tmdb.org 常被干扰（TLS 握手失败），若榜单无法加载，请填写代理地址（如 Clash / V2Ray 的 HTTP 代理）。</div>
+                <div class="set-fields">
+                  <div class="form-group"><label for="cfg_tmdb_api_key">API Key</label><div class="pwd-wrap"><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div></div>
+                  <div class="form-group"><label for="cfg_tmdb_base_url">API 地址（可选）</label><input type="text" id="cfg_tmdb_base_url" placeholder="留空自动切换 api.tmdb.org / api.themoviedb.org"></div>
+                  <div class="form-group"><label for="cfg_tmdb_proxy">代理（可选）</label><input type="text" id="cfg_tmdb_proxy" placeholder="如 http://127.0.0.1:7890，留空则直连"></div>
+                  <div class="form-hint">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">TMDB 官网</a> 申请 API Key。国内网络访问 api.tmdb.org 常被干扰（TLS 握手失败），若榜单无法加载，请填写代理地址（如 Clash / V2Ray 的 HTTP 代理）。</div>
+                </div>
               </div>
             </div>
           </details>
@@ -493,8 +497,10 @@
             <div class="settings-grid">
               <div class="card">
                 <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-transfer"/></svg> 转存服务</div>
-                <div class="form-group"><label for="cfg_qas">QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"><div class="form-hint">接收转存指令的 QAS 服务地址</div></div>
-                <div class="form-group"><label for="cfg_qas_token">QAS Token</label><div class="pwd-wrap"><input type="password" id="cfg_qas_token" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div><div class="form-hint">用于鉴权，留空表示保持现有 Token 不变</div></div>
+                <div class="set-fields">
+                  <div class="form-group"><label for="cfg_qas">QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"><div class="form-hint">接收转存指令的 QAS 服务地址</div></div>
+                  <div class="form-group"><label for="cfg_qas_token">QAS Token</label><div class="pwd-wrap"><input type="password" id="cfg_qas_token" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div><div class="form-hint">用于鉴权，留空表示保持现有 Token 不变</div></div>
+                </div>
               </div>
             </div>
           </details>
@@ -512,10 +518,12 @@
             <div class="settings-grid">
               <div class="card">
                 <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg> 转存路径</div>
-                <div class="form-group"><label for="cfg_path_category_base">榜单分类路径前缀</label><input type="text" id="cfg_path_category_base" placeholder="/影视"><div class="form-hint">实际路径 = 前缀 + 分类名，如 /影视/电影、/影视/电视剧</div></div>
-                <div class="form-group"><label for="cfg_path_search">搜索转存路径</label><input type="text" id="cfg_path_search" placeholder="/批量转存/手动搜索存"></div>
-                <div class="form-group"><label for="cfg_path_tmdb">TMDB 转存路径</label><input type="text" id="cfg_path_tmdb" placeholder="/批量转存/TMDB"></div>
-                <div class="form-hint">三项路径均须以 <code>/</code> 开头；留空则使用默认值。</div>
+                <div class="set-fields">
+                  <div class="form-group"><label for="cfg_path_category_base">榜单分类路径前缀</label><input type="text" id="cfg_path_category_base" placeholder="/影视"><div class="form-hint">实际路径 = 前缀 + 分类名，如 /影视/电影、/影视/电视剧</div></div>
+                  <div class="form-group"><label for="cfg_path_search">搜索转存路径</label><input type="text" id="cfg_path_search" placeholder="/批量转存/手动搜索存"></div>
+                  <div class="form-group"><label for="cfg_path_tmdb">TMDB 转存路径</label><input type="text" id="cfg_path_tmdb" placeholder="/批量转存/TMDB"></div>
+                  <div class="form-hint">三项路径均须以 <code>/</code> 开头；留空则使用默认值。</div>
+                </div>
               </div>
             </div>
           </details>
@@ -533,8 +541,10 @@
             <div class="settings-grid">
               <div class="card">
                 <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-lock"/></svg> 管理认证</div>
-                <div class="form-group"><label for="cfg_auth_user">用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
-                <div class="form-group"><label for="cfg_auth_pass">密码</label><div class="pwd-wrap"><input type="password" id="cfg_auth_pass" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div><div class="form-hint">修改后需使用新凭据重新登录；密码留空表示不修改</div></div>
+                <div class="set-fields">
+                  <div class="form-group"><label for="cfg_auth_user">用户名</label><input type="text" id="cfg_auth_user" placeholder="root"></div>
+                  <div class="form-group"><label for="cfg_auth_pass">密码</label><div class="pwd-wrap"><input type="password" id="cfg_auth_pass" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div><div class="form-hint">修改后需使用新凭据重新登录；密码留空表示不修改</div></div>
+                </div>
               </div>
               <div class="card">
                 <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-refresh"/></svg> 缓存维护</div>

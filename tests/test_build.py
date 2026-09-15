@@ -350,6 +350,93 @@ def test_settings_declares_missing_lock_icon(dist):
     assert not missing, "产物引用了未定义的图标：{}".format(missing)
 
 
+def test_settings_groups_pack_side_by_side(dist):
+    """issue #15：分组不得再纵向独占整行。
+
+    基线：.settings-groups 是 flex 纵向单列，1440px 容器下每个分组独占一行，
+    组内单卡被 auto-fit 拉到 1340px，页面高 1756px、空白占比约 72%。
+    """
+    css, _ = _extract(dist)
+    compact = re.sub(r"\s+", "", css)
+    groups = re.search(r"\.settings-groups\{(.*?)\}", css, re.S)
+    assert groups, "未找到 .settings-groups 样式块"
+    block_css = groups.group(1).replace(" ", "")
+    assert "display:grid" in block_css, (
+        ".settings-groups 必须用 grid 才能让分组并排，flex 纵向单列是其独占整行的根因"
+    )
+    assert "flex-direction:column" not in block_css, (
+        ".settings-groups 回退成了 flex 纵向单列（分组会再次独占整行）"
+    )
+    assert compact.count("grid-template-columns:minmax(0,1fr)minmax(0,1fr)") >= 1, (
+        ".settings-groups 未声明双列轨道，分组无法并排"
+    )
+    # 分组自身必须是网格容器，否则组内 grid-template-columns 不生效。
+    # 注意 .settings-group 有多个样式块（边框块在前），必须遍历全部再判定。
+    group_blocks = re.findall(r"\.settings-group\{(.*?)\}", css, re.S)
+    assert group_blocks, "未找到 .settings-group 样式块"
+    assert any("display:grid" in b.replace(" ", "") for b in group_blocks), (
+        "<details class=\"settings-group\"> 默认 block，必须显式声明 display:grid"
+    )
+    # summary 必须横跨整组，否则会被当作网格子项塞进第一列
+    assert ".settings-group>summary{grid-column:1/-1}" in compact, (
+        "分组折叠头未横跨整组，会被当成网格子项塞进第一列"
+    )
+
+
+def test_settings_cards_not_force_equal_height(dist):
+    """issue #15：同行卡片不得被强行等高。
+
+    基线：「搜索服务」内容 149px，与 241px 的「TMDB 数据源」同行被 stretch
+    拉到同高 337px，底部空出 202px。等高拉伸必须去掉，改为按内容高度排布。
+    """
+    css, _ = _extract(dist)
+    compact = re.sub(r"\s+", "", css)
+    assert ".settings-group.settings-grid{align-items:start}" in compact, (
+        "卡片仍被 align-items:stretch 强行等高（短卡会被撑出整块空白）"
+    )
+    assert ".settings-group.settings-grid{align-items:stretch}" not in compact, (
+        "align-items:stretch 未清除干净，等高会再次撑出空白"
+    )
+    # 卡片宽度上限必须用 max-width 表达，不能写进 minmax 上界
+    assert "max-width:var(--set-card-max" in compact, (
+        "卡片缺少 max-width 宽度上限"
+    )
+    assert "minmax(300px,var(--set-card-max" not in compact.replace(" ", ""), (
+        "卡片宽度上限被写进 minmax 上界，会把轨道钉死、同组卡片退回纵向堆叠"
+    )
+
+
+def test_settings_fields_two_column_on_wide_cards(dist):
+    """宽卡（单列铺满）时字段走两列 —— 把「留空不修改」等提示占的纵向空间收掉。"""
+    css, _ = _extract(dist)
+    compact = re.sub(r"\s+", "", css)
+    assert 'class="set-fields"' in dist, "缺少卡片字段容器 .set-fields"
+    assert dist.count('class="set-fields"') >= 5, "字段容器未覆盖设置页各卡片"
+    assert ".set-fields{display:grid;grid-template-columns:minmax(0,1fr)" in compact, (
+        "缺少 .set-fields 基础（单列）样式"
+    )
+    assert "@containersettings-card" in compact, (
+        "缺少按卡片宽度切换字段列数的容器查询（卡片内两列依赖它）"
+    )
+    assert "container-name:settings-card" in compact, (
+        "卡片未声明具名容器，容器查询无法命中"
+    )
+    # 奇数个字段的最后一项必须横跨整行，否则两列布局末尾会空出半格
+    assert ".set-fields>.form-group:last-child:nth-child(odd){grid-column:1/-1}" in compact, (
+        "两列表段时末尾字段未跨列，会留出半格空白"
+    )
+
+
+def test_settings_dom_script_present(dist):
+    """设置页空白度量脚本必须落库，且可被 JSON 化的机器人报告消费。"""
+    path = os.path.join(_ROOT, "scripts", "check_settings_dom.py")
+    assert os.path.isfile(path), "缺少设置页 DOM 度量脚本 scripts/check_settings_dom.py"
+    body = _read(path)
+    assert "MAX_CARD_BLANK" in body and "blankOf" in body, "脚本未度量卡片底部空白"
+    assert "--json" in body and "--serve" in body, "脚本缺少 --json / --serve 入口"
+    assert "return 1 if problems else 0" in body, "脚本未在发现问题时返回非零退出码"
+
+
 # ============================================================
 # 概览页信息密度与优先级（issue #8）回归断言
 # ============================================================
