@@ -30,6 +30,12 @@ python scripts/check_contrast.py                 # 改了 tokens.css 的文本/�
 bash static/src/build.sh                         # 改了 static/src/**（必须重建并提交产物）
 ```
 
+概览页（issue #8 重构后）的 DOM 度量走查（9 组视口，自带静态服务）：
+
+```bash
+python3 scripts/check_overview_dom.py --serve    # 失败非零退出；无 playwright 时跳过
+```
+
 产物是否漂移（等价于 CI 门禁）：
 
 ```bash

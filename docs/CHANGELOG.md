@@ -6,6 +6,50 @@
 > （例如 `500571b` 依赖锁定 + Dependabot + CI 漏洞扫描、`d465526` Docker 非 root + ruff 门禁、
 > `9563551` 前端构建 minify + 删除重复登录页，以及更早的 P0 治理基线）。
 
+## [当前] 前端 UI 优化第六批 — 概览页显示密度与信息优先级重构
+
+> 对应 [issue #8](https://cnb.cool/ciweicc/DBAuto/-/issues/8)「对概览页的显示密度和优先级提出优化方案」，
+> 承接 `docs/UI_Roadmap_Next.md` 第十节。
+
+- **首屏由「三段式竖排」改为两列**：旧布局是「4 张 KPI 卡 → 工作区（最近转存 + 状态/待办）
+  → 热门推荐」纵向堆叠，900px 视口下「热门推荐」要从 y=560~904 才开始，必然落在折叠线以下。
+  现在「转存概览 + 最近转存」与「热门推荐」同处首屏：1920/1600/1440/1366/1280/1200/1024
+  实测首屏底边 816px，整体落在一屏内（脚本 `scripts/check_overview_dom.py` 可复跑）。
+- **KPI 卡改为行式指标列表**：卡片布局在中间宽度必须折成 2×2，导致卡片高度在
+  93/103/132px 之间随窗口漂移、行内出现 81/93 参差（`min-height` 还会掩盖这种高度差）。
+  行式布局（标签 + 值 + 副信息 + 动作，行高固定 54px）没有这个退化路径。
+- **移除重复信息**：「转存库」卡片与「最近转存」面板标题重复，删除并改由
+  面板副标题（`最近 10 条 / 共 13 条`）与概览头部（`转存库 13 条 · 上次成功`）表达。
+- **信息优先级**：状态/待办只展开「需要关注」的项（未配置调度 / 上次失败），
+  常态项压成一行 `运行状态：全部正常 · v1.1.0`；最近转存由硬编码 8 条提升到面板容量 10 条，
+  取消面板内滚动，「查看全部 → 历史记录」成为唯一出口；热门推荐降级到首屏之后。
+- **修复状态语义错误**：存储里 `status` 为 `exists`（幂等跳过）的条目此前一律渲染成
+  绿色「已转存」。现按 `ok/done`、`exists/skipped`、`fail/error/invalid`、`downloading`
+  分别渲染「已转存 / 已存在跳过 / 失败 / 进行中」，未知状态回退看 `shareurl`。
+- **修复空日期排序**：`date` 为空串的条目在降序比较下会排到列表**最前**并显示为 `-`；
+  现统一显示 `—` 且排到末尾，日期格式统一为 `MM/DD HH:MM`。
+- **修复热门推荐海报恒为占位图**：后端契约是 `items:[{poster,title,year,rating}]`，
+  前端读的是 `results/poster_path/release_date/vote_average`，字段全部落空。
+- **修复移动端分类前缀被压成竖排单字**：≤640px 卡片化时 `.ov-table-cat` 实测宽 10px，
+  原因是 `table-layout:fixed` 的列宽仍作用于 block 化后的行；现改为 `display:block`
+  且前缀按内容取宽（实测 30px），文案也由 `movie/tv` 改为「电影 / 剧集 / 综艺」。
+- **概览两列自适应改用主列实测宽度**：`@media(max-width:1350px)` 在 1280~1440 会误判
+  （`viewport:1440` 因滚动条得 `innerWidth=1425`，但主列实宽 846~920px 完全放得下），
+  改为 `ResizeObserver` 观测主列宽度并设置 `.app[data-ov-narrow]`（阈值 860px）。
+- **补齐缺失样式 / 清理死代码**：补 `ov-dot-warn/-error`、`ov-badge-skip/-fail/-run/-muted`、
+  `ov-todo-icon-*`、`ov-rec-skel`；删除 `.ov-status-dot`、`.ov-st-*`、`.ov-todo-danger/-warning/-info`、
+  `.ov-rec-btn/-rating`、`.ov-cell-title`、`.ov-kpi-bar/-card/-label/-value-row/-trend/-schedule`、
+  `.ov-workspace/-main-col/-side-col`、`.ov-health-item/-name/-val` 等 10 类死 CSS。
+- **补齐 `html[data-density="standard"]` 令牌分支**：此前密度令牌只在 comfortable/compact
+  下覆盖，用户从紧凑切回标准档时不会复位。
+- **验证**：构建产物重建逐字节幂等；`pytest tests/` 164 项通过（`test_build.py` 22 → 32 项）；
+  `ruff check .` 通过；对比度 18 组全部达标；新增 `scripts/check_overview_dom.py`
+  在 9 组视口下断言「首屏一屏内 / 指标行等高 / 无横向滚动 / 状态与日期语义 / 移动端前缀宽度」，
+  0 处问题。走查 6 个 Tab 无横向溢出、无新增 JS 报错。
+- **回归断言**（`tests/test_build.py` 新增 10 项）：首屏布局、宽度驱动而非媒体查询、
+  跳过状态区分、取消三重截断、日期排序与格式、推荐字段契约、面板内滚动、骨架屏与死 CSS、
+  堆叠规则集中、指标行文本度量统一。
+
 ## [当前] Agent 交付规范落库 — 长任务规范 / 读图配额 / 完成门禁
 
 > 对应 [issue #5](https://cnb.cool/ciweicc/DBAuto/-/issues/5)（CI/CD 流水线构建失败诊断）。

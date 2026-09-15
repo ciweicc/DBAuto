@@ -14,6 +14,8 @@ function initTimeSelects(){
 
 async function init(){
   initTheme(); initDensity(); initTimeSelects(); updateSoundBtn(); initShortcuts();
+  // 概览页栅格由「主列实测宽度」驱动（见 overview.js / docs/UI_Roadmap_Next.md 第十节）
+  initOverviewViewport();
   try{ C = await apiGet('/api/categories'); }
   catch(e){ showToast('认证失败，请重新登录', false); setTimeout(function(){ location.href = '/login.html'; }, 1500); return; }
   parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
