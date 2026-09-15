@@ -8,6 +8,17 @@ var ovState = { loaded:false, loading:false, hasData:false };
 // 更多走「查看全部 → 历史记录」，避免「最近 8 条 / 查看全部 / 面板内滚动」三重截断。
 var OV_RECENT_LIMIT = 10;
 
+// 首屏两列要同时满足两条约束（issue #15 第 4 轮）：
+//   1. 左列不得有纯空白 → 左列按内容取高（3 行指标 + 状态/待办）；
+//   2. 右列不得面板内滚动（历史上被判定为「三重截断」回归）。
+// 用「左列内容高 → 反推右列该放几行」会形成正反馈（面板越高留的行越多，
+// 行越多面板越高），实测在 1366×900 上从 268px 一路涨到 384px。
+// 因此改为**固定行数**：两列高度都由 CSS 算出来，JS 不做尺寸反推。
+// 4 行 ≈ 4×37 + 表头 33 + 脚注 34 + 面板头 46 = 261px，
+// 与左列 3 行指标（天然高 54px×3 + 面板头 46px = 208px，按 68px 上限拉伸后 250px）
+// 基本齐平；再多一行左列就会出现明显余白。
+var OV_RECENT_ROWS_FIT = 4;
+
 // 主列宽度低于该值时，概览内部的「指标 | 状态」两列改为堆叠。
 // 用主列实测宽度而非 viewport 断点：侧栏/日志栏/滚动条都会改变主列可用宽度，
 // 用 media query 判断会在 1280~1440 这类中间宽度上误判（见 docs/UI_Roadmap_Next.md 第十节）。
@@ -231,15 +242,22 @@ function renderOvRecent(hist){
 
   var total = (hist && hist.total);
   if(typeof total !== 'number') total = items.length;
+  // 渲染行数：固定 OV_RECENT_ROWS_FIT（由 CSS 的高度预算反推而来，见常量注释），
+  // 实际条数更少时按实际条数显示。宽度足够时（≥900px）两列并排，
+  // 窄屏上下堆叠、不再需要控制行数，直接铺满 OV_RECENT_LIMIT。
+  var stacked = window.matchMedia && window.matchMedia('(max-width:900px)').matches;
+  var cap = stacked ? OV_RECENT_LIMIT : OV_RECENT_ROWS_FIT;
+  var shownLimit = Math.min(OV_RECENT_LIMIT, cap);
+  var shown = Math.min(items.length, shownLimit);
   var subEl = document.getElementById('ovRecentSub');
-  if(subEl) subEl.textContent = '最近 ' + Math.min(items.length, OV_RECENT_LIMIT) + ' 条 / 共 ' + total + ' 条';
+  if(subEl) subEl.textContent = '最近 ' + shown + ' 条 / 共 ' + total + ' 条';
 
   if(!items.length){
     tbody.innerHTML = '<tr><td colspan="5" class="ov-table-empty">暂无转存记录</td></tr>';
     return;
   }
   tbody.innerHTML = '';
-  items.slice(0, OV_RECENT_LIMIT).forEach(function(item){
+  items.slice(0, shownLimit).forEach(function(item){
     var tr = document.createElement('tr');
     // 2.3 移动端表格卡片化：td 携带 data-label，<640px 时由 CSS 渲染为字段行
     tr.innerHTML =

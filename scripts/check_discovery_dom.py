@@ -36,6 +36,7 @@ import json
 import os
 import sys
 import threading
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DIST = os.path.join(ROOT, "static", "index_new.html")
@@ -190,8 +191,18 @@ def main():
                     continue
 
                 cards[0].click()
-                # 等浮层 transition（.35s）结束再测量，避免把动画中间态判成缺陷
-                page.wait_for_timeout(700)
+                # 等浮层 transition 结束再测量，避免把动画中间态判成缺陷。
+                # 用「轮询直到 opacity 达到下限」而不是固定 sleep：浮层的
+                # transform .35s + opacity .3s 在超宽视口/机器忙时可能超出 700ms，
+                # 固定等待会把「还在动画中」误判成「浮层不可见」，
+                # 实测在 2560×1392 上偶发（同样的产物时通过时失败）。
+                deadline = time.time() + 4.0
+                while time.time() < deadline:
+                    probe = page.evaluate(
+                        "() => parseFloat(getComputedStyle(document.querySelector('#tmdbSelBar')).opacity)")
+                    if probe >= MIN_OPACITY:
+                        break
+                    page.wait_for_timeout(100)
                 m.update(page.evaluate(MEASURE))
                 report.append(m)
 

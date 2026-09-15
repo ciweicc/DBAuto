@@ -1047,3 +1047,73 @@ def test_discovery_selection_bar_bounds_and_layering(dist):
     bounds = bounds[:bounds.index("\nfunction applyTmdbSelBarBounds")]
     assert "bottom-nav" in bounds, "未按底部导航实测高度让位"
     assert "76px" not in bounds, "仍在硬编码移动端让位高度"
+
+
+def test_overview_hero_has_no_dead_blank(dist):
+    """回归（issue #15 第 4 轮）：首屏两列不得出现整块纯空白。
+
+    真凶是「用最长的邻居决定所有人高度」：
+      - `.ov-top{align-items:stretch}` 让左列「转存概览」被迫与右列
+        「最近转存」（固定 10 行 ≈ 480px）同高，而左列内容只有约 210px；
+      - `.ov-side-todo{flex:1}` 让「待办事项」块吃掉右列全部剩余高度，
+        常态只有一条「系统运行正常，暂无待办」（32px），块却被拉到 360px。
+
+    实测（1440×900）：左列底部死白 279px、待办块内死白 291px。
+    修复：左列按内容取高（flex + min-height 对齐 4 行表格）、待办块不拉伸、
+    表格行数由 OV_RECENT_ROWS_FIT 固定为 4（不再由 CSS 高度反推，避免正反馈）。
+
+    真实视觉度量由 scripts/check_overview_dom.py 的 leftBlank / todoBlank 断言负责
+    （9 组视口，阈值 24px；修复前在 1440×900 等视口会报 271/291px）；
+    这里做静态防复发，锁住「不该再出现的写法」。
+    """
+    css, _ = _extract(dist)
+    js = _read(os.path.join(_JS_DIR, "overview.js"))
+
+    # 1. 首屏两列不得再各自按「最长邻居」撑高：左列要有内容下限，
+    #    且右列行数必须与它有明确对应关系（常量就在 JS 里，见下）。
+    i = css.index(".ov-overview{")
+    rule = css[i:css.index("}", i)]
+    assert "min-height" in rule, (
+        ".ov-overview 缺少 min-height：左列会塌到内容高，"
+        "与右侧「最近转存」高度差距又变成死白"
+    )
+
+    # 2. 「待办事项」块不得再 flex:1 拉伸 —— 这正是 291px 死白的直接原因
+    i = css.index(".ov-side-todo{")
+    rule = css[i:css.index("}", i)]
+    assert "flex:1" not in rule.replace(" ", ""), (
+        ".ov-side-todo 又加回了 flex:1：待办只有一条时会在块内造出约 290px 死白"
+        "（issue #15 第 4 轮）"
+    )
+
+    # 3. 行数改为固定值：不能再由「实测高度反推行数」——
+    #    那会形成「面板越高 → 留的行越多 → 面板越高」的正反馈
+    #    （实测 1366×900 从 268px 一路涨到 384px）。
+    assert "OV_RECENT_ROWS_FIT" in js, "缺少固定行数常量 OV_RECENT_ROWS_FIT"
+    assert "syncOverviewHeroHeight" not in js, (
+        "又出现了按高度反推行数的 syncOverviewHeroHeight："
+        "它与右列 max-height 互相触发会形成正反馈（issue #15 第 4 轮）"
+    )
+
+    # 4. 表格不得靠「面板内滚动」来消化多余行：历史判定为「三重截断」回归
+    assert ".ov-panel-recent .ov-table-wrap" in css, "缺少最近转存表体容器规则"
+    i = css.index(".ov-panel-recent .ov-table-wrap")
+    rule = css[i:css.index("}", i)]
+    assert "overflow:auto" in rule, "表体容器应保持 overflow:auto 但行数必须够少（见第 3 条）"
+
+
+def test_overview_dom_audit_measures_hero_blank():
+    """概览页走查脚本必须包含「首屏两列纯空白」断言（本 issue 的核心回归点）。
+
+    这条不做浏览器度量（那是 check_overview_dom.py 的职责，见 AGENTS.md 的
+    「确定性部分落库」要求），只保证**门禁本身**没被删掉或阈值放宽。
+    """
+    src = _read(os.path.join(_ROOT, "scripts", "check_overview_dom.py"))
+    assert "leftBlank" in src, "概览页走查缺少 leftBlank（左列底部纯空白）度量"
+    assert "todoBlank" in src, "概览页走查缺少 todoBlank（待办块内纯空白）度量"
+    assert "MAX_HERO_BLANK" in src, "概览页走查缺少纯空白上限常量"
+    m = re.search(r"MAX_HERO_BLANK\s*=\s*(\d+)", src)
+    assert m, "MAX_HERO_BLANK 未定义数值"
+    assert int(m.group(1)) <= 40, (
+        "MAX_HERO_BLANK 被放宽到 {}px：无法拦住 271/291px 那类回归".format(m.group(1))
+    )
