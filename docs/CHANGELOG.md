@@ -66,7 +66,7 @@
   - `tests/test_build.py` 新增 6 项回归断言（自动折叠已移除、默认展开 + 显式恢复、
     窄屏展开进抽屉、高度非硬编码、定位到最新 + 续行缩进、提示行存在），并把原
     `test_log_panel_not_auto_collapsed_on_desktop` 从「仅桌面态」收紧为「任何视口都不得自动折叠」。
-  - `python -m pytest tests/ -q` 171 项通过；`ruff check .` 通过；
+  - `python -m pytest tests/ -q` 185 项通过（含 master 本次并入的 14 项统计口径断言）；`ruff check .` 通过；
     对比度 18 组全部达标；`scripts/check_overview_dom.py` 9 组视口 0 处问题（无回归）；
     构建产物重建逐字节幂等。
 
