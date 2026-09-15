@@ -9,6 +9,13 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      # 与 .env.example / docker/Dockerfile / docker-compose.yml 保持一致。
+      # 原因：config.LOCAL_TZ 由 TZ 环境变量推导（缺省回退东八区），而
+      # routes_history 的「今日」统计走 time.strftime/localtime（系统时区）。
+      # runner 默认 TZ 未设置且系统为 UTC，两者会在 UTC 16:00-23:59
+      # （= 北京 00:00-07:59）对不上，导致「今日转存」类断言失败。
+      TZ: Asia/Shanghai
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
