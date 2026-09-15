@@ -45,11 +45,14 @@ function switchTab(tab){
   // TMDB "回到顶部"按钮：离开 TMDB 页时隐藏，返回时按当前滚动位置刷新可见性
   if(tab !== 'tmdb') tmdbHideBackToTop();
   else tmdbUpdateBackToTop();
-  // 概览页时收起日志面板（给内容更多空间）。
-  // 仅在「窄屏 + 折叠态非用户主动选择」时自动收起：
-  // 桌面态（>1200px）日志栏是常驻功能区（见 410498f / 58fcfd4 的 P0 修复），
-  // 无条件收起会把它压成 48px 且无展开入口，等于功能缺失。
-  if(tab === 'overview' && isNarrowViewport() && !userSetLogPanelState()) collapseLogPanel();
+  // 概览页不再自动收起日志面板。
+  //
+  // 历史缺陷：这里曾以「窄屏 + 用户未显式选择」为条件自动 collapseLogPanel()，
+  // 结果是 ≤1200px 打开概览页时，正在跑的任务日志被压成 48px 轨道、一条都看不到
+  // （issue #11「侧边栏的实时任务日志无法显示完全」）。
+  // 日志栏本身已是常驻功能区（见 410498f / 58fcfd4 的 P0 修复），
+  // 「给内容更多空间」应由用户点折叠按钮显式完成，而不是打开页面就默认隐藏。
+  // 相应地 FAB / 折叠按钮是该功能的显式出口，无需再靠自动折叠来"提醒"。
 }
 
 // 方向键在标签间导航（ARIA tabs 模式：左右 / Home / End 切换并自动激活）
@@ -73,10 +76,26 @@ document.addEventListener('keydown', function(e){
   tabs[idx].focus();
 });
 
-// 日志面板：窄屏判定 + 用户显式选择记忆（供概览页自动收起策略使用）
+// 日志面板：窄屏判定 + 用户显式选择记忆
 function isNarrowViewport(){
   return window.matchMedia && window.matchMedia('(max-width:1200px)').matches;
 }
 function userSetLogPanelState(){
   try{ return localStorage.getItem('logPanelCollapsed') !== null; }catch(e){ return false; }
+}
+// 首屏恢复折叠态：默认（无记忆）为展开。
+//
+// 历史上这里「用户未显式选择时自动 collapse」，叠加 ≤1200px 的窄屏判定后，
+// 窄屏/移动端一打开页面日志栏就是 48px 折叠轨道 —— 正在运行的任务日志
+// 一条都看不见（issue #11）。现在只有用户自己点过折叠按钮才恢复折叠。
+function restoreLogPanelState(){
+  var panel = document.getElementById('logPanel');
+  if(!panel) return;
+  var saved = null;
+  try{ saved = localStorage.getItem('logPanelCollapsed'); }catch(e){ saved = null; }
+  if(saved === '1') collapseLogPanel();
+  else {
+    if(panel.classList.contains('collapsed')) panel.classList.remove('collapsed');
+    _syncLogPanelA11y();
+  }
 }

@@ -6,6 +6,46 @@
 > （例如 `500571b` 依赖锁定 + Dependabot + CI 漏洞扫描、`d465526` Docker 非 root + ruff 门禁、
 > `9563551` 前端构建 minify + 删除重复登录页，以及更早的 P0 治理基线）。
 
+## [当前] 侧边栏实时任务日志可见性修复
+
+> 对应 [issue #11](https://cnb.cool/ciweicc/DBAuto/-/issues/11)「侧边栏的实时任务日志。无法显示完全」。
+
+- **修复窄屏默认折叠导致的「日志整体消失」**：`switchTab` 里有一条
+  「概览页 + 窄屏（≤1200px）+ 用户未显式选择 → `collapseLogPanel()`」的分支。
+  结果是 1200 / 1100 / 1024 / 390 这些宽度下**一打开页面日志栏就被压成 48px 轨道**
+  （`logLines` 实测 `visibleLines=0`，一条日志都渲染不出来），移动端更彻底（宽 0px）。
+  该自动折叠现已移除：默认展开，「给内容更多空间」交给用户显式点折叠按钮。
+  新增 `restoreLogPanelState()` 取代原来的 DOMContentLoaded 分支 —— **只有**
+  `localStorage.logPanelCollapsed === '1'`（用户自己折叠过）才恢复折叠。
+- **修复窄屏「点展开没反应」**：≤1200px 日志栏是 `translateX(100%)` 的覆盖层，
+  `expandLogPanel()` 只去掉 `.collapsed` 仍停在屏幕外。现在窄屏展开会同时加 `.open`，
+  FAB / 折叠按钮才真正把抽屉推到可视区（实测展开后 280~390px、日志区 359~580px）。
+- **修复日志不定位到最新**：`renderLog` / `applyLogSearch` 只渲染、不改 `scrollTop`，
+  状态同步后停在最旧一行（实测 `scrollTop=0`、最新一条在 5544px 之外），
+  用户自然读成「日志显示不完全」。现在渲染后统一回到末尾（暂停时除外），
+  并新增常驻提示行 `#logHint`（「最新 N 条 · 已定位到末尾」/「已暂停滚动 · 共 N 条」），
+  提示随 `scroll` 事件实时更新。
+- **解除日志区 340px 硬上限**：旧 `max-height:340px` 在 900px 高的屏幕上只用了约 1/3 屏
+  （实测日志区 340px、视口内仅 4 行）。现改为 `max-height:max(340px, calc(100dvh - 320px))`，
+  1366x900 实测 580px（约 2 倍），1920x1080 实测 760px；移动抽屉内 `max-height:none`
+  并让日志卡片纵向铺满。
+- **超长日志行续行缩进**：折行后续行顶到行首，与时间戳正文错位、观感像被截断；
+  现在对折行的行标记 `.wrapped`，用 `padding-left:2em` + `text-indent:-2em` 让续行与正文对齐
+  （窗口 resize 后重新判定）。**不再用 `-webkit-line-clamp` 或截断文案来「解决」显示问题。**
+- **验证**：
+  - 新增 `scripts/check_log_panel_dom.py`（DOM 度量走查，9 组视口）。它在**修复前**的产物上
+    报出 32 处问题（含「打开页面日志栏默认折叠」「日志区高度 340px」「窄屏 FAB 无效」
+    「一条日志都没渲染」），在修复后报 0 处问题 —— 即修复前失败、修复后通过，具备判别力。
+    > 注：该脚本依赖 playwright + chromium。本机 `pip install playwright` 后
+    > 还需补齐 `libatk/libgbm/libnss3` 等系统库，否则 chromium 启动即缺共享库退出；
+    > 脚本按仓库既有约定在缺少依赖时以退出码 0 跳过。
+  - `tests/test_build.py` 新增 6 项回归断言（自动折叠已移除、默认展开 + 显式恢复、
+    窄屏展开进抽屉、高度非硬编码、定位到最新 + 续行缩进、提示行存在），并把原
+    `test_log_panel_not_auto_collapsed_on_desktop` 从「仅桌面态」收紧为「任何视口都不得自动折叠」。
+  - `python -m pytest tests/ -q` 171 项通过；`ruff check .` 通过；
+    对比度 18 组全部达标；`scripts/check_overview_dom.py` 9 组视口 0 处问题（无回归）；
+    构建产物重建逐字节幂等。
+
 ## [当前] 前端 UI 优化第六批 — 概览页显示密度与信息优先级重构
 
 > 对应 [issue #8](https://cnb.cool/ciweicc/DBAuto/-/issues/8)「对概览页的显示密度和优先级提出优化方案」，

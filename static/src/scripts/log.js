@@ -17,6 +17,26 @@ function renderLog(){
   el.textContent='';
   for(var i=0;i<logBefore.length;i++){if(matchFilter(logBefore[i])) appendLine(logBefore[i])}
   if(!logPaused){el.scrollTop=el.scrollHeight}
+  updateLogHint();
+}
+// 超长日志行折行后需要缩进，否则续行顶到行首、时间戳与正文错位，
+// 视觉上像「内容被截断」。折行缩进在 CSS 里通过 --log-wrap-pad 生效，
+// 这里实测首行行盒宽度与容器宽度的比值来判定是否需要缩进。
+function markWrap(lineEl){
+  var el = document.getElementById('log');
+  if(!el) return;
+  var pad = getComputedStyle(el).paddingLeft ? parseFloat(getComputedStyle(el).paddingLeft) : 0;
+  var avail = el.clientWidth - pad * 2;
+  if(avail <= 0) return;
+  // 用单行渲染测宽：整数宽度即可，避免引入 canvas 测量成本
+  var probe = document.createElement('span');
+  probe.className = lineEl.className;
+  probe.style.cssText = 'position:absolute;visibility:hidden;white-space:pre;left:-9999px';
+  probe.textContent = lineEl.textContent;
+  document.body.appendChild(probe);
+  var need = probe.getBoundingClientRect().width > avail;
+  document.body.removeChild(probe);
+  if(need) lineEl.classList.add('wrapped');
 }
 function appendLine(line){
   var el = document.getElementById('log');
@@ -29,6 +49,7 @@ function appendLine(line){
   lineEl.className = 'log-line ' + cls;
   lineEl.textContent = line;
   el.appendChild(lineEl);
+  markWrap(lineEl);
   if(!logPaused)el.scrollTop=el.scrollHeight;
 }
 function setLogFilter(btn,type){
@@ -39,6 +60,9 @@ function setLogFilter(btn,type){
 }
 function togglePause(){
   logPaused=!logPaused;
+  var logEl = document.getElementById('log');
+  if(logEl && !logPaused) logEl.scrollTop = logEl.scrollHeight; // 恢复滚动时回到最新
+  updateLogHint();
   var pauseIcon = logPaused ? 'icon-play' : 'icon-pause';
   var pauseBtnEl = document.getElementById('pauseBtn');
   pauseBtnEl.textContent='';
@@ -70,6 +94,26 @@ function applyLogSearch(kw){
     if(kw && line.toLowerCase().indexOf(kw)<0) continue;
     if(matchFilter(line)) appendLine(line);
   }
+  // 搜索结果同样定位到最新，避免翻到顶部后误以为「日志不全」
+  if(!logPaused) el.scrollTop = el.scrollHeight;
+  updateLogHint();
+}
+
+// 日志区底部提示：明确「当前看到的是最新」还是「已暂停/翻到了历史」。
+// 旧版更新时会把 scrollTop 置 0（停在最旧一行），且没有任何提示，
+// 用户会以为日志"显示不全"（issue #11）。
+function updateLogHint(){
+  var el = document.getElementById('log');
+  var hint = document.getElementById('logHint');
+  if(!el || !hint) return;
+  var overflowing = el.scrollHeight > el.clientHeight + 1;
+  if(!overflowing){ hint.textContent = '共 ' + logBefore.length + ' 条'; return; }
+  var atTop = el.scrollTop <= 4;
+  var atBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 4;
+  if(logPaused && atTop) hint.textContent = '已暂停 · 显示最早 ' + logBefore.length + ' 条';
+  else if(logPaused) hint.textContent = '已暂停滚动 · 共 ' + logBefore.length + ' 条';
+  else if(atBottom) hint.textContent = '最新 ' + logBefore.length + ' 条 · 已定位到末尾';
+  else hint.textContent = '历史记录 · 共 ' + logBefore.length + ' 条';
 }
 
 // 复制全部日志
@@ -263,16 +307,36 @@ function collapseLogPanel(){
 }
 function expandLogPanel(){
   var panel = document.getElementById('logPanel');
-  if(panel && panel.classList.contains('collapsed')) panel.classList.remove('collapsed');
+  if(!panel) return;
+  // 窄屏/移动端：日志栏是「覆盖层抽屉」，仅去掉 .collapsed 仍是 translateX(100%)
+  // 的屏幕外状态；必须同时打开 .open，否则展开动作看起来无效。
+  if(isNarrowViewport()) panel.classList.add('open');
+  if(panel.classList.contains('collapsed')) panel.classList.remove('collapsed');
   _syncLogPanelA11y();
   if(typeof tmdbUpdateBackToTop==='function') tmdbUpdateBackToTop();
+  // 展开后定位到最新一条：否则长日志停在最早一行，仍像"显示不全"
+  var el = document.getElementById('log');
+  if(el && !logPaused) el.scrollTop = el.scrollHeight;
+  updateLogHint();
 }
 // 恢复折叠状态；桌面态若恢复为折叠则同步显示展开入口
 (function(){
   try{
     document.addEventListener('DOMContentLoaded', function(){
-      if(localStorage.getItem('logPanelCollapsed') === '1') collapseLogPanel();
-      else _syncLogPanelA11y();
+      restoreLogPanelState();
+      var el = document.getElementById('log');
+      if(el) el.addEventListener('scroll', updateLogHint, {passive:true});
+      // 窗口尺寸变化后折行判定会变，重新标注一次
+      var rt = null;
+      window.addEventListener('resize', function(){
+        if(rt) clearTimeout(rt);
+        rt = setTimeout(function(){
+          document.querySelectorAll('#log .log-line.wrapped').forEach(function(n){ n.classList.remove('wrapped'); markWrap(n); });
+          var e2 = document.getElementById('log');
+          if(e2 && !logPaused) e2.scrollTop = e2.scrollHeight;
+          updateLogHint();
+        }, 150);
+      });
     });
   }catch(e){}
 })();
