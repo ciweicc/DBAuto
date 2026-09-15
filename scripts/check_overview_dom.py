@@ -6,7 +6,10 @@
   对概览页首屏的**可量化缺陷**做断言 —— 这些指标用静态扫描
   （tests/test_build.py）表达不了，只能在渲染后测量：
 
-  1. 首屏工作区必须整体落在一屏内（全部块底边 ≤ 视口高，且无内部滚动）；
+  1. 首屏工作区必须整体落在一屏内（**首屏工作区** = 概览指标 + 最近转存 + 发现快捷，
+     不含下方的 TMDB 发现分区；issue #14 之后发现区常驻概览页尾部，
+     要求整页一屏会把筛选栏/海报墙直接判成溢出）。度量口径：
+     取「发现区之前所有 #pageOverview > * 块」的最大底边作为首屏折叠线。
   2. 指标行等高且副信息不被裁切（曾出现 81/93 参差 + 「失败 86」被挤断）；
   3. 最近转存表不得出现横向滚动条；
   4. 面板内不得出现纵向滚动容器（概览整体滚动交给 .content）；
@@ -98,6 +101,10 @@ MEASURE = r"""
 () => {
   const q = s => document.querySelector(s);
   const content = q('.content');
+  // 折叠线必须与「当前滚动位置」无关：先把滚动容器归零再测量。
+  // （issue #14 之后发现区常驻概览页底部，页面首屏之后还有内容，
+  //  若沿用「任何与视口相交的块」这种相对判定，滚动位置一变结论就变。）
+  content.scrollTop = 0;
   const rows = [...document.querySelectorAll('.ov-stat-row')];
   const recRows = [...document.querySelectorAll('#ovRecentBody tr')];
   const scrollers = [...document.querySelectorAll('#pageOverview *')].filter(e =>
@@ -110,8 +117,31 @@ MEASURE = r"""
     viewportH: window.innerWidth >= 640 ? window.innerHeight : 0,
     docOverflowX: document.documentElement.scrollWidth - window.innerWidth,
     contentOverflowX: content.scrollWidth - content.clientWidth,
-    lastBlockBottom: Math.round([...document.querySelectorAll('#pageOverview > *')]
-      .map(e => e.getBoundingClientRect().bottom).reduce((a, b) => Math.max(a, b), 0)),
+    // 首屏工作区折叠线：最后一个「顶边仍在视口内」的块。
+    // issue #14 之后发现区（TMDB）常驻概览页底部：它是「滚下去用」的工作台，
+    // 只要它整个在折叠线以下就不算首屏内容；若它已探进视口（顶边可见），
+    // 说明首屏已经把用户带到了发现区，此时它的底边才是真正的首屏下沿。
+    lastBlockBottom: Math.round((() => {
+      const sr = content.getBoundingClientRect();
+      let bottom = 0;
+      [...document.querySelectorAll('#pageOverview > *')].forEach(e => {
+        const r = e.getBoundingClientRect();
+        if (r.top > sr.bottom) return;       // 完全在视口之下：属于下一页内容
+        if (r.bottom > bottom) bottom = r.bottom;
+      });
+      return bottom;
+    })()),
+    // 首屏工作区下沿 = 发现区之前所有块的底边（发现区本身不算首屏，见下方校验注释）
+    screenBottom: Math.round((() => {
+      const host = q('#tmdbPanel');
+      let bottom = 0;
+      [...document.querySelectorAll('#pageOverview > *')].forEach(e => {
+        if (host && (e === host || e.contains(host))) return;
+        const b = e.getBoundingClientRect().bottom;
+        if (b > bottom) bottom = b;
+      });
+      return bottom;
+    })()),
     statRowH: rows.map(r => Math.round(r.getBoundingClientRect().height)),
     statRowClipped: rows.filter(r => r.querySelector('.ov-stat-line') &&
       r.querySelector('.ov-stat-line').scrollWidth > r.querySelector('.ov-stat-line').clientWidth + 1).length,
@@ -126,6 +156,9 @@ MEASURE = r"""
       return all.length ? all[all.length - 1].textContent : null; })(),
     catW: cat ? Math.round(cat.getBoundingClientRect().width) : null,
     catH: cat ? Math.round(cat.getBoundingClientRect().height) : null,
+    discoveryInOverview: !!(q('#pageOverview #tmdbPanel')),
+    discoveryFilters: !!q('#pageOverview #tmdbFilters .tmdb-filter-group'),
+    legacyTmdbPage: !!q('#pageTmdb'),
   };
 }
 """
@@ -219,8 +252,13 @@ def main():
                     fail("指标行高不一致：{}".format(m["statRowH"]))
                 if m["tableOverflowX"] > 0:
                     fail("最近转存表出现横向滚动条 {}px".format(m["tableOverflowX"]))
-                if on_screen and m["lastBlockBottom"] > height:
-                    fail("首屏工作区超出视口：底边 {} > {}".format(m["lastBlockBottom"], height))
+                # 首屏工作区（概览指标 + 最近转存 + 发现快捷）必须落在一屏内。
+                # 注：这里不能再断言「#pageOverview 的最后一个块的底边」——
+                # issue #14 之后发现区（TMDB 工作台）常驻概览页底部，它是滚下去用的，
+                # 把它算进首屏会让断言恒为失败（用户明确要的就是「同页承载」）。
+                # 首屏折叠线 = 发现区之前那些块的底边（见 MEASURE.screenBottom）。
+                if on_screen and m["screenBottom"] > height:
+                    fail("首屏工作区超出视口：底边 {} > {}".format(m["screenBottom"], height))
                 if "ov-table-wrap" in m["scrollers"]:
                     fail("最近转存仍在面板内滚动（高度与左侧概览脱钩）")
                 if not {"已转存", "已存在跳过"} <= set(m["statuses"]):
@@ -231,6 +269,12 @@ def main():
                     fail("空日期条目未排在列表末尾")
                 if width <= 640 and m["catW"] is not None and m["catW"] < 24:
                     fail("移动端分类前缀被压成竖排单字（宽 {}px）".format(m["catW"]))
+                # issue #14：TMDB 的发现区必须住在概览页里（不再有第二个页面），
+                # 且筛选栏存在 —— 「原版筛选栏移植到概览页」正是这次的诉求本身。
+                if not m["discoveryInOverview"]:
+                    fail("发现区（#tmdbPanel）未落在 #pageOverview 内")
+                if not m["discoveryFilters"]:
+                    fail("概览页内没有渲染出 TMDB 筛选栏（#tmdbFilters）")
                 page.close()
             browser.close()
     finally:
@@ -241,8 +285,9 @@ def main():
         print(json.dumps({"problems": problems, "report": report}, ensure_ascii=False, indent=2))
     else:
         for m in report:
-            print("{:<26} 指标行高 {:<16} 表格溢出 {:<3} 首屏底边 {:<6} 状态 {}".format(
-                m["label"], str(m["statRowH"]), m["tableOverflowX"], m["lastBlockBottom"],
+            print("{:<26} 指标行高 {:<16} 表格溢出 {:<3} 首屏底边 {:<6} 发现区 {} 状态 {}".format(
+                m["label"], str(m["statRowH"]), m["tableOverflowX"], m["screenBottom"],
+                "页内" if m["discoveryInOverview"] else "缺失",
                 "/".join(m["statuses"])))
         print()
         if problems:

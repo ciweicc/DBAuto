@@ -2,15 +2,17 @@
 // 页面容器 id 映射：手动/定时/历史保持原 id（categories/schedule/transfer/history.js 依赖）
 var PAGE_IDS = {
   overview: 'pageOverview',
-  tmdb: 'pageTmdb',
   manual: 'tabManual',
   schedule: 'tabSchedule',
   history: 'tabHistory',
   settings: 'tabSettings'
 };
-var PAGES = ['overview', 'tmdb', 'manual', 'schedule', 'history', 'settings'];
-// 底部导航与 BOTTOM_NAV 顺序保持一致：概览 / 发现 / 转存 / 定时 / 历史 / 设置
-var BOTTOM_NAV = ['overview', 'tmdb', 'manual', 'schedule', 'history', 'settings'];
+// issue #14：TMDB 不再是一个「页面」，而是概览页里的「发现」分区。
+// 因此它从 PAGE_IDS / PAGES / BOTTOM_NAV 三处一起消失 ——
+// 少一个页面、少一份导航项，TMDB 也只有一套 DOM（筛选栏只有一份）。
+var PAGES = ['overview', 'manual', 'schedule', 'history', 'settings'];
+// 底部导航与 BOTTOM_NAV 顺序保持一致：概览 / 转存 / 定时 / 历史 / 设置
+var BOTTOM_NAV = ['overview', 'manual', 'schedule', 'history', 'settings'];
 
 function switchTab(tab){
   currentTab = tab;
@@ -40,11 +42,11 @@ function switchTab(tab){
   if(tab === 'overview') loadOverviewPage();
   if(tab === 'schedule') loadSchedule();
   if(tab === 'history') loadExecHistory();
-  if(tab === 'tmdb') initTmdbPage();
   if(tab === 'settings') loadConfig();
-  // TMDB "回到顶部"按钮：离开 TMDB 页时隐藏，返回时按当前滚动位置刷新可见性
-  if(tab !== 'tmdb') tmdbHideBackToTop();
-  else tmdbUpdateBackToTop();
+  // 发现区的「回到顶部」按钮挂在概览页尾部：切到概览时按滚动位置刷新可见性，
+  // 切到其它 Tab 时压掉（否则悬浮按钮会漂在转存/设置等页面上）
+  if(tab === 'overview'){ if(typeof updateTmdbVisibility === 'function') updateTmdbVisibility(); }
+  else if(typeof tmdbHideBackToTop === 'function') tmdbHideBackToTop();
   // 概览页不再自动收起日志面板。
   //
   // 历史缺陷：这里曾以「窄屏 + 用户未显式选择」为条件自动 collapseLogPanel()，

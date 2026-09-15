@@ -60,32 +60,66 @@ with sync_playwright() as p:
     page.goto(URL, wait_until="load", timeout=15000)
     page.wait_for_timeout(1200)
 
-    # 1) 导航：侧边栏 5 项，无 TMDB；默认「概览」active
+    # 1) 导航：侧边栏 5 项，无独立 TMDB 目的地（issue #14：发现页合并进概览）
     nav_count = page.eval_on_selector_all(".side-nav .side-nav-item", "els => els.length")
     nav_labels = page.eval_on_selector_all(".side-nav .side-nav-item", "els => els.map(e => e.textContent.trim())")
     tmdb_nav = page.query_selector('.side-nav-item[data-tab="tmdb"]')
-    overview_active = page.eval_on_selector('.side-nav-item[data-tab="dashboard"]', "el => el.classList.contains('active')")
+    overview_active = page.eval_on_selector('.side-nav-item[data-tab="overview"]', "el => el.classList.contains('active')")
     print("side-nav count:", nav_count, "| labels:", nav_labels)
     print("tmdb side-nav exists:", tmdb_nav is not None, "| overview active:", overview_active)
     assert nav_count == 5, "侧边栏应仅 5 项"
-    assert tmdb_nav is None, "不应再有 TMDB 侧边栏项"
+    assert tmdb_nav is None, "不应再有 TMDB 侧边栏项（发现页由概览页深链进入）"
     assert overview_active, "概览应为默认 active"
     assert "概览" in nav_labels and "TMDB" not in nav_labels, "标签应为 概览 且无 TMDB"
+    assert page.eval_on_selector(".bottom-nav", "el => el.querySelectorAll('.nav-item').length") == 5, \
+        "移动端底部导航应与侧栏一致（5 项，无独立发现目的地）"
 
-    # 2) 默认页同时含指标卡 与 TMDB 网格
-    has_dash = page.query_selector("#dashToday") is not None
+    # 2) 概览首屏：指标 + 快照面板（无 TMDB 网格 —— 那是发现页的）
+    has_kpi = page.query_selector("#ovTodayCount") is not None
+    has_rec = page.query_selector("#ovRecScroll") is not None
     has_grid = page.query_selector("#tmdbGrid") is not None
-    print("overview has #dashToday:", has_dash, "| has #tmdbGrid:", has_grid)
-    assert has_dash and has_grid, "概览页应同时含指标卡与 TMDB 网格"
+    print("overview has #ovTodayCount:", has_kpi, "| #ovRecScroll:", has_rec, "| #tmdbGrid:", has_grid)
+    assert has_kpi and has_rec, "概览页应含指标行与 TMDB 快照面板"
+    assert page.eval_on_selector("#pageOverview", "el => el.classList.contains('active')"), "概览应默认可见"
 
-    # 3) TMDB 网格渲染出卡片（initTmdbPage 已默认触发）
+    # 3) 快照面板渲染出海报卡（与发现页同一份 /api/tmdb/list 契约）
+    snap_cards = page.eval_on_selector_all("#ovRecScroll .ov-rec-card", "els => els.length")
+    dash_today = page.eval_on_selector("#ovTodayCount", "el => el.textContent")
+    print("snapshot cards rendered:", snap_cards, "| today:", dash_today)
+    assert snap_cards == 2, "快照面板应渲染 2 张卡片"
+    assert dash_today == "3", "指标行 today_count 应为 3"
+
+    # 4) 快照快捷条 -> **同页**发现区（issue #14 第三轮：TMDB 已并入概览页）
+    assert has_grid, "概览页内应直接含有 TMDB 网格（#tmdbGrid）"
+    assert page.eval_on_selector("#pageOverview #tmdbPanel", "el => !!el"), \
+        "发现区必须落在概览页内（不再有独立页面）"
+    page.click("#ovRecScroll .ov-rec-card")
+    page.wait_for_timeout(900)
+    scrolled = page.eval_on_selector(".content", "el => el.scrollTop")
+    print("content scrollTop after snapshot click:", scrolled)
+    assert scrolled > 0, "点击快照卡片应滚到同页的发现区"
+
+    # 5) 筛选栏就在概览页内，且开关可折叠（「原版筛选栏」的落点）
+    for sel in ("#tmdbFilters", "#tmdbMediaType", "#tmdbListType", "#tmdbSort",
+                "#tmdbMinRating", "#tmdbYear", "#tmdbProviderBtn", "#tmdbGenreChips"):
+        assert page.query_selector("#pageOverview " + sel) is not None, "概览页内缺少筛选控件 " + sel
+    page.click("#tmdbFilterToggle")
+    page.wait_for_timeout(150)
+    assert page.eval_on_selector("#tmdbFilters", "el => el.classList.contains('collapsed')"), \
+        "筛选栏应可收起"
+    page.click("#tmdbFilterToggle")
+    page.wait_for_timeout(150)
+    assert not page.eval_on_selector("#tmdbFilters", "el => el.classList.contains('collapsed')"), \
+        "筛选栏应可再次展开"
+
+    # 6) 网格渲染出卡片（与快照同一个 /api/tmdb/list 契约）
     cards = page.eval_on_selector_all("#tmdbGrid .tmdb-card", "els => els.length")
-    dash_today = page.eval_on_selector("#dashToday", "el => el.textContent")
-    print("tmdb cards rendered:", cards, "| dashToday:", dash_today)
-    assert cards == 2, "TMDB 网格应渲染 2 张卡片"
-    assert dash_today == "3", "指标卡 today_count 应为 3"
+    print("tmdb cards rendered in overview:", cards)
+    assert cards == 2, "发现区应渲染 2 张卡片"
+    assert page.eval_on_selector("#tmdbMediaType", "el => el.value") == "movie", \
+        "概览内的筛选默认分类应为 movie"
 
-    # 4) 选片 -> 选择条 active
+    # 7) 选片 -> 选择条 active -> 转存（同页，进度在常驻日志面板）
     page.click("#tmdbGrid .tmdb-card")
     page.wait_for_timeout(200)
     sel_active = page.eval_on_selector("#tmdbSelBar", "el => el.classList.contains('active')")
@@ -94,21 +128,12 @@ with sync_playwright() as p:
     assert sel_active, "选片后选择条应 active"
     assert "1" in sel_count, "应选择 1 部"
 
-    # 5) 开始转存 -> 切到手动页（日志面板常驻）
     page.click("#tmdbSelBar .btn-primary")
-    page.wait_for_timeout(400)
-    manual_active = page.eval_on_selector("#tabManual", "el => getComputedStyle(el).display !== 'none'")
-    print("after transfer, manual tab visible:", manual_active)
-    assert manual_active, "转存应切换到手动页"
+    page.wait_for_timeout(500)
+    assert page.eval_on_selector("#pageOverview", "el => el.classList.contains('active')"), \
+        "转存后仍应留在概览页（TMDB 不再是独立页面）"
 
-    # 6) 切回概览，TMDB 仍在
-    page.click('.side-nav-item[data-tab="dashboard"]')
-    page.wait_for_timeout(400)
-    grid_still = page.eval_on_selector_all("#tmdbGrid .tmdb-card", "els => els.length")
-    print("back to overview, tmdb cards:", grid_still)
-    assert grid_still == 2, "切回概览后 TMDB 网格应仍在"
-
-    # 7) 其它页可正常切换
+    # 8) 其它页可正常切换
     for t in ("manual", "schedule", "history", "settings"):
         page.click('.side-nav-item[data-tab="%s"]' % t)
         page.wait_for_timeout(150)

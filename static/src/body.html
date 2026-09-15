@@ -59,7 +59,6 @@
     </div>
     <nav class="side-nav" role="tablist">
       <button class="side-nav-item active" role="tab" aria-selected="true" data-tab="overview" onclick="switchTab('overview')" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-dashboard"/></svg>概览</button>
-      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="tmdb" onclick="switchTab('tmdb')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-tmdb"/></svg>发现</button>
       <button class="side-nav-item" role="tab" aria-selected="false" data-tab="manual" onclick="switchTab('manual')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>转存</button>
       <button class="side-nav-item" role="tab" aria-selected="false" data-tab="schedule" onclick="switchTab('schedule')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg>定时</button>
       <button class="side-nav-item" role="tab" aria-selected="false" data-tab="history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg>历史</button>
@@ -86,6 +85,7 @@
       </div>
       <div class="topbar-actions">
         <button class="icon-btn search-toggle-btn" onclick="toggleMobileSearch()" title="搜索" aria-label="搜索"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg></button>
+        <button class="icon-btn" id="discoveryJumpBtn" onclick="jumpToDiscovery()" title="前往发现（TMDB）" aria-label="前往发现（TMDB）"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-tmdb"/></svg></button>
         <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="切换主题" aria-label="切换主题"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-moon"/></svg></button>
         <button class="icon-btn" onclick="toggleDensity()" id="densityBtn" title="切换密度" aria-label="切换密度"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg></button>
       </div>
@@ -94,7 +94,7 @@
     <div class="content">
 <!-- ===== 概览（首页） ===== -->
       <section class="page active" id="pageOverview">
-<!-- 顶部一屏工作区：左侧「转存概览 + 最近转存」，右侧「热门推荐」 -->
+<!-- 顶部一屏工作区：左侧「转存概览」，右侧「最近转存」（发现区在其下方） -->
         <div class="ov-top">
           <div class="ov-overview">
             <div class="ov-overview-head">
@@ -116,7 +116,7 @@
                     <span class="ov-stat-sub" id="ovTodaySub"></span>
                   </div>
                   <div class="ov-stat-action">
-                    <button class="ov-kpi-btn" onclick="switchTab('tmdb')">去发现</button>
+                    <button class="ov-kpi-btn" onclick="jumpToDiscovery()">去发现</button>
                   </div>
                 </div>
 
@@ -197,46 +197,44 @@
           </div>
         </div>
 
-        <!-- 底部：热门推荐（与 TMDB 页共享的轻量数据源，仅保留一张海报卡的高度） -->
+        <!-- 底部：发现（TMDB）——完整筛选栏 + 海报网格 + 多选转存 + 分页。
+             issue #14：原「TMDB 资源浏览」页整块搬进概览页，因此这里不再复制
+             第二份海报墙/筛选栏；上方那条快捷横滑条只是「滚到这里」的入口。 -->
         <div class="ov-panel ov-panel-rec">
           <div class="ov-panel-head">
             <div class="ov-panel-title">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3-1.072-2.143-.224-4.054 2-6 .5 2.5 2 4.9 4 6.5 2 1.6 3 3.5 3 5.5a7 7 0 1 1-14 0c0-1.153.433-2.294 1-3a2.5 2.5 0 0 0 2.5 2.5z"/></svg>
-              热门推荐
+              发现快捷
             </div>
-            <button class="ov-link-btn" onclick="switchTab('tmdb')">更多 →</button>
+            <span class="ov-panel-sub" id="ovRecSub">热门电影 · 第 1 页</span>
+            <button class="ov-link-btn" onclick="jumpToDiscovery()">去筛选 / 转存 ↓</button>
           </div>
           <div class="ov-rec-scroll" id="ovRecScroll">
             <div class="ov-rec-empty">加载中...</div>
           </div>
         </div>
-      </section>
 
-
-
-<!-- ===== 资源浏览（TMDB） ===== -->
-      <section class="page" id="pageTmdb">
-        <div class="page-head">
-          <h1>TMDB 资源浏览</h1>
-          <p>浏览热门影视，按需筛选并一键转存到网盘</p>
-        </div>
-            <div class="tmdb-embed" style="margin-top:20px">
+        <!-- ===== 发现（TMDB）=====
+             原「TMDB 资源浏览」页整块并入这里：筛选栏 / 海报网格 / 多选 / 分页只有这一份，
+             外层的页面容器已删除（少一个页面就是这次改动的目的本身）。 -->
+        <section class="ov-panel ov-panel-discovery" id="tmdbPanel" aria-labelledby="tmdbPanelTitle">
+          <div class="ov-panel-head tmdb-head">
+            <div class="ov-panel-title" id="tmdbPanelTitle">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-tmdb"/></svg>
+              发现
+            </div>
+            <span class="ov-panel-sub" id="tmdbHeadSub"></span>
+            <button class="btn btn-outline btn-sm" id="tmdbFilterToggle" onclick="toggleTmdbFilters()" aria-expanded="true" aria-controls="tmdbFilters" title="收起/展开筛选条件">收起筛选</button>
+            <button class="btn btn-outline btn-sm" onclick="refreshTmdbCache()">刷新缓存</button>
+          </div>
 
           <div id="tmdbKeyWarning" class="tmdb-key-warning" style="display:none">
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L8 2 3 7v4a6 6 0 0 0 6 6 6 6 0 0 0 6-6V7l-5-5-2.29 1.86z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
             <span>未配置 TMDB API Key，请在「设置」页面填入后保存</span>
           </div>
 
-          <div class="card">
-            <div class="card-title" style="justify-content:space-between">
-              <span><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="2.18" ry="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg> TMDB 数据源</span>
-              <div style="display:flex;gap:8px">
-                <button class="btn btn-outline btn-sm" id="tmdbFilterToggle" onclick="toggleTmdbFilters()" aria-expanded="true" title="收起/展开筛选条件">收起筛选</button>
-                <button class="btn btn-outline btn-sm" onclick="refreshTmdbCache()">刷新缓存</button>
-              </div>
-            </div>
-
-            <div class="tmdb-filters" id="tmdbFilters">
+          <!-- 首层筛选：常用条件（分类 / 榜单 / 地区 / 语言）直接铺开，保持「原版筛选栏」的一眼可改 -->
+          <div class="tmdb-filters" id="tmdbFilters">
             <div class="tmdb-filter-bar">
               <div class="tmdb-filter-group">
                 <label for="tmdbMediaType">分类</label>
@@ -257,41 +255,49 @@
                 <label for="tmdbLanguage">语言</label>
                 <select class="tmdb-select" id="tmdbLanguage" onchange="onTmdbFilterChange()"></select>
               </div>
-              <div class="tmdb-filter-group">
-                <label for="tmdbSort">排序</label>
-                <select class="tmdb-select" id="tmdbSort" onchange="onTmdbFilterChange()">
-                  <option value="popularity.desc">按热度</option>
-                  <option value="vote_average.desc">按评分</option>
-                  <option value="release_date.desc">按时间</option>
-                  <option value="vote_count.desc">按投票数</option>
-                </select>
-              </div>
-              <div class="tmdb-filter-group">
-                <label for="tmdbMinRating">最低评分</label>
-                <input type="number" id="tmdbMinRating" min="0" max="10" step="0.5" value="0" onchange="onTmdbFilterChange()">
-              </div>
-              <div class="tmdb-filter-group">
-                <label for="tmdbYear">年份</label>
-                <input type="number" id="tmdbYear" min="1900" max="2030" placeholder="全部" onchange="onTmdbFilterChange()">
-              </div>
-              <div class="tmdb-filter-group">
-                <label for="tmdbProviderBtn">流媒体平台</label>
-                <div class="tmdb-multiselect" id="tmdbProviderWrap">
-                  <button type="button" class="tmdb-select tmdb-ms-trigger" id="tmdbProviderBtn" disabled
-                          onclick="toggleProviderDropdown(event)" aria-haspopup="true" aria-expanded="false">
-                    <span id="tmdbProviderLabel">全部平台</span>
-                    <svg class="tmdb-ms-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
-                  </button>
-                  <div class="tmdb-ms-panel" id="tmdbProviderPanel" style="display:none"></div>
-                </div>
-              </div>
             </div>
 
-            <div class="form-group" style="margin-bottom:12px">
-              <label>类型筛选</label>
-              <div class="tmdb-genre-chips" id="tmdbGenreChips"></div>
-            </div>
-            </div>
+            <!-- 高级筛选（仅「发现」榜单有效）：排序 / 评分 / 年份 / 平台 / 类型。
+                 与本模块同名的 #tmdbAdv 是这些控件的表单语义开关：
+                 折叠时置 disabled，避免 Tab 键走进不可见控件。 -->
+            <fieldset class="tmdb-adv" id="tmdbAdv">
+              <legend class="tmdb-adv-legend">高级筛选<span class="tmdb-adv-hint">仅「发现」榜单有效</span></legend>
+              <div class="tmdb-filter-bar">
+                <div class="tmdb-filter-group">
+                  <label for="tmdbSort">排序</label>
+                  <select class="tmdb-select" id="tmdbSort" onchange="onTmdbFilterChange()">
+                    <option value="popularity.desc">按热度</option>
+                    <option value="vote_average.desc">按评分</option>
+                    <option value="release_date.desc">按时间</option>
+                    <option value="vote_count.desc">按投票数</option>
+                  </select>
+                </div>
+                <div class="tmdb-filter-group">
+                  <label for="tmdbMinRating">最低评分</label>
+                  <input type="number" id="tmdbMinRating" min="0" max="10" step="0.5" value="0" onchange="onTmdbFilterChange()">
+                </div>
+                <div class="tmdb-filter-group">
+                  <label for="tmdbYear">年份</label>
+                  <input type="number" id="tmdbYear" min="1900" max="2030" placeholder="全部" onchange="onTmdbFilterChange()">
+                </div>
+                <div class="tmdb-filter-group">
+                  <label for="tmdbProviderBtn">流媒体平台</label>
+                  <div class="tmdb-multiselect" id="tmdbProviderWrap">
+                    <button type="button" class="tmdb-select tmdb-ms-trigger" id="tmdbProviderBtn" disabled
+                            onclick="toggleProviderDropdown(event)" aria-haspopup="true" aria-expanded="false">
+                      <span id="tmdbProviderLabel">全部平台</span>
+                      <svg class="tmdb-ms-caret" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+                    </button>
+                    <div class="tmdb-ms-panel" id="tmdbProviderPanel" style="display:none"></div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="form-group" style="margin-bottom:12px">
+                <label>类型筛选</label>
+                <div class="tmdb-genre-chips" id="tmdbGenreChips"></div>
+              </div>
+            </fieldset>
           </div>
 
           <div class="tmdb-sel-bar" id="tmdbSelBar">
@@ -310,9 +316,8 @@
             <span id="tmdbPageInfo" style="font-size:13px;color:var(--text2);font-weight:600"></span>
             <button class="btn btn-outline btn-sm" id="tmdbNextBtn" onclick="tmdbNextPage()">下一页</button>
           </div>
-      
-      </div>
-</section>
+        </section>
+      </section>
 
       <!-- ===== 手动转存 ===== -->
       <section class="page" id="tabManual">
@@ -634,10 +639,6 @@
     <button class="nav-item active" type="button" role="tab" aria-selected="true" onclick="switchTab('overview')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-dashboard"/></svg>
       <span>概览</span>
-    </button>
-    <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('tmdb')">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-tmdb"/></svg>
-      <span>发现</span>
     </button>
     <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('manual')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>

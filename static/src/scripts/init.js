@@ -21,6 +21,9 @@ async function init(){
   parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
   checkRunningStatus(); loadDashboard();
   switchTab(currentTab);
+  // 发现区常驻概览页：首屏就绪后按需初始化（渲染海报墙与筛选选项）。
+  // 不放在 switchTab 里是因为 switchTab 可能先于其它模块的 DOM 就绪被调用。
+  if(currentTab === 'overview'){ try{ initTmdbPage(); }catch(e){ console.error('TMDB init error', e); } }
   initSSE();
 }
 

@@ -6,6 +6,68 @@
 > （例如 `500571b` 依赖锁定 + Dependabot + CI 漏洞扫描、`d465526` Docker 非 root + ruff 门禁、
 > `9563551` 前端构建 minify + 删除重复登录页，以及更早的 P0 治理基线）。
 
+## [当前] TMDB 并入概览页 — 一个页面，一套筛选栏
+
+> 对应 [issue #14](https://cnb.cool/ciweicc/DBAuto/-/issues/14) 第三轮追问：
+> 「我想直接把完整的筛选栏功能，就是 TMDB 页面的功能，原版的移植到概览页，
+> 这样就可以少一个页面」。
+
+**背景（前两轮的取舍被推翻）**：PR #16 的结论是「TMDB 只留发现页一个目的地，
+概览只做快照 + 跳转」。用户明确表示要的是**反过来**——把 TMDB 整块搬进概览页。
+本轮按用户诉求重做：**不再有两个页面，也不再有第二块海报墙**。
+
+**改动（结构性，非样式微调）**：
+
+- `#pageTmdb` 页面容器**删除**；原 TMDB 的筛选栏 / 多选 / 转存 / 分页
+  **整块迁移**为概览页内的 `#tmdbPanel` 发现分区（DOM 与 ID 原样保留，
+  `#tmdbGrid / #tmdbFilters / #tmdbSelBar / #tmdbPagination` 全站只此一份）。
+- 导航收敛：侧栏「发现」与移动端底栏「发现」移除（5 项，与 `BOTTOM_NAV` 严格对齐）；
+  顶栏新增 TMDB 图标按钮作为移动端/窄屏的直达入口，⌘K 命令面板的「前往发现」保留。
+- 概览页首屏保留一条「发现快捷」横滑条（原「热门推荐 / TMDB 快照」）：
+  点任意海报 → `jumpToDiscovery()` 滚到下方发现分区，不再跳页。
+- `PAGE_IDS / PAGES / BOTTOM_NAV` 同步去掉 `tmdb`；
+  `switchTab('overview')` 时按滚动位置刷新发现分区状态（回顶按钮 / 滚动加载）。
+
+**关键实现细节（都是踩出来的）**：
+
+- **作用域查找白名单**：为了让同一套 ID 在概览页里工作，`tmdb.js` 的 DOM 访问
+  统一走 `getId()/query()/queryAll()`。但**不能**把所有 `getElementById()` 一律
+  改写成「先查 `#tmdbPanel` 作用域」——页面级节点（`#log` 日志区、`#stopBtn`）会
+  解析成 null，实测在 `getId('log').textContent=''` 上抛 TypeError、**转存直接中断**。
+  因此只对 TMDB 自己的控件做作用域解析，`log/stopBtn/logPanel/searchInput`
+  留在全局白名单里。
+- **回到概览不再重置筛选**：旧版每次进 TMDB 都无脑 `loadTmdbList()`（回第 1 页）。
+  TMDB 常驻概览后若沿用，用户翻到第 5 页、去设置再回来会「凭空回到第 1 页」。
+  改为 `enterTmdbDiscovery()`：筛选未变则只滚回发现区，变了才重载。
+- **滚动加载 / 回顶按钮改按「发现区是否可见」判定**（`updateTmdbVisibility()`），
+  不再用「页面是否激活」——否则在概览页顶部滚动就会触发无限加载、
+  回顶按钮也会浮在概览工作区上。翻页回顶改为回到发现区顶部而非整页顶部。
+- **筛选栏折叠回归可达性**：折叠（`display:none`）时把高级筛选控件的表单语义
+  一并置 `disabled`，否则 Tab 键会依次走进 5 个不可见控件。
+- **顺手修掉一个既有的初始化中断**：`initTmdbPage()` 读 `opts.languages.map(...)`
+  时没有兜底，桩数据 / 老接口只给 `countries` 或 `regions` 时抛
+  `undefined.map`，整段初始化中断（海报墙空着、地区/语言下拉全空）。
+  另外 `movie_list_types` 只认 `code` 字段，拿到 `{id,name}` 会渲染出
+  `value="undefined"` 的下拉项。两处都补了字段兜底。
+  未配置 API Key 时的早 `return` 也改为「只提示、不早退」，否则整块发现区停在空壳。
+- **首屏度量口径修正**：`check_overview_dom.py` 原先断言「`#pageOverview` 最后一个块
+  的底边 ≤ 视口高」。发现区常驻概览页后，该断言会恒为失败（它的底边天然在折叠线以下）。
+  改为「发现区之前那些块的最大底边」= 首屏折叠线，并显式断言「发现区在 `#pageOverview` 内」
+  「概览页内渲染出了筛选栏」。另外折叠线测量前先把 `.content.scrollTop` 归零，
+  使结论与滚动位置无关。
+
+**验证证据**：
+
+- `pytest tests/ -q` → **198 passed**（`test_build.py` 52 项，本轮新增 7 项防复发断言：
+  单页化 / 原版筛选字段齐全 / 作用域白名单 / 进入不重置 / 可见性判定 / 折叠可达性 / 单套表面）。
+- `ruff check .` 通过；`check_contrast.py` 18 组 0 组未达标。
+- DOM 走查：概览 9 组（新增「发现区页内」「筛选栏已渲染」两项断言）、
+  日志栏 10 组、设置页 9 组，全部 exit 0。
+- E2E：`merge_test`（已重写为单页断言：点快照→滚到同页发现区→筛选栏可折叠→
+  选片→转存后仍在概览页）、`smoke_test`、`phase3_test`、`phase4_test`、`phase5_test`
+  全部退出码 0。
+- 产物重建幂等（`bash static/src/build.sh` 后 `git diff` 为空）。
+
 ## [当前] 设置页空白空间整改 — 分组并排 + 取消强制等高
 
 > 对应 [issue #15](https://cnb.cool/ciweicc/DBAuto/-/issues/15)

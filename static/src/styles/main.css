@@ -115,8 +115,10 @@ body{
   flex:1;overflow-y:auto;padding:16px 20px;
   max-width:var(--content-max,1440px);width:100%;margin:0 auto;
 }
-/* 内容宽度分级（2.5）：TMDB 海报网格受益于更宽的画布，激活页为发现页时放宽 */
-.content:has(#pageTmdb.active){max-width:none}
+/* 内容宽度分级（2.5）：TMDB 海报网格受益于更宽的画布。
+   issue #14 后发现区常驻概览页（#pageTmdb 已不存在），
+   因此放宽条件改挂在「概览页处于激活态」上。 */
+.content:has(#pageOverview.active){max-width:none}
 .page{display:none}
 .page.active{display:block}
 
@@ -781,8 +783,10 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 @media(max-width:640px){.tmdb-sel-bar{bottom:calc(64px + env(safe-area-inset-bottom,0px))}}
 /* 选中栏为 fixed 浮层，会遮挡页面底部内容（含「下一页」分页按钮）；
    选中时给页面预留底部空间，使分页与末行网格不被浮层覆盖 */
-#pageTmdb.sel-active{padding-bottom:96px}
-@media(max-width:640px){#pageTmdb.sel-active{padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))}}
+/* 多选操作条是 fixed 浮层：选中时给发现分区留出底部空间，避免盖住分页按钮。
+   旧版留白挂在 #pageTmdb 上；issue #14 后 TMDB 常驻概览页，改挂发现分区自身。 */
+.ov-panel-discovery.sel-active{padding-bottom:96px}
+@media(max-width:640px){.ov-panel-discovery.sel-active{padding-bottom:calc(150px + env(safe-area-inset-bottom,0px))}}
 
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}50%{opacity:.45}}
@@ -1066,7 +1070,7 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
    首屏信息架构：核心指标 / 最近转存 / 待办（详见 docs/UI_Roadmap_Next.md 第十节）
    ======================================== */
 
-/* ---- 首屏两列：左「概览 + 最近转存」，右「热门推荐」 ---- */
+/* ---- 首屏两列：左「概览」，右「最近转存」（发现区在其下方整块铺开） ---- */
 .ov-top{
   display:grid;
   /* 右列固定宽度，保证海报卡（2:3 比例）不被压扁 */
@@ -1155,7 +1159,7 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .ov-side-title{display:flex;align-items:center;font-size:var(--fs-sm);font-weight:600;color:var(--text2);margin-bottom:6px}
 .ov-side-todo{flex:1;min-height:0}
 
-/* ---- 面板（最近转存 / 热门推荐） ---- */
+/* ---- 面板（最近转存 / 发现快捷 / 发现区） ---- */
 .ov-panel{
   background:var(--card);
   border:1px solid var(--border2);
@@ -1268,7 +1272,42 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .ov-todo-btn:hover{border-color:var(--border3)}
 .ov-todo-empty{padding:6px 0;font-size:var(--fs-sm);color:var(--text3)}
 
-/* ---- 热门推荐（底部，仅一张海报卡高度） ---- */
+/* ---- 发现（TMDB）：整块住在概览页里的筛选 + 海报墙 ----
+   issue #14 第三轮：TMDB 不再是独立页面，筛选栏/网格/分页都在这里，
+   因此下面这些规则不再依赖 #pageTmdb 的 display，只负责分区内部的排版。 */
+.ov-panel-discovery{
+  margin-top:16px;
+  display:flex;flex-direction:column;gap:0;
+}
+/* 发现区是「一整个工作台」：面板内不再套第二层卡片边框，避免框套框的噪声 */
+.ov-panel-discovery .tmdb-filters{padding:14px 16px 0}
+.ov-panel-discovery #tmdbKeyWarning{margin:12px 16px 0}
+.ov-panel-discovery .tmdb-grid{padding:0 16px}
+.ov-panel-discovery .tmdb-pagination{padding:0 16px 16px}
+.ov-panel-discovery .tmdb-empty{margin:0 16px}
+/* 标题行右侧的按钮组：面板标题 + 副标题占据剩余宽度 */
+.ov-panel-discovery .ov-panel-head{gap:8px;flex-wrap:wrap}
+.ov-panel-discovery .ov-panel-title{flex-shrink:0}
+.ov-panel-discovery .ov-panel-sub{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* 首层筛选与高级筛选的分隔与标注 */
+.tmdb-adv{
+  border:none;margin:0 0 14px;padding:0;
+}
+.tmdb-adv[disabled]{opacity:.62}
+.tmdb-adv-legend{
+  display:flex;align-items:center;gap:6px;padding:0 0 8px;
+  font-size:var(--fs-xs);font-weight:600;color:var(--text2);
+  text-transform:uppercase;letter-spacing:.5px;
+}
+.tmdb-adv-hint{font-weight:500;color:var(--text3);text-transform:none;letter-spacing:0}
+/* 折叠后的筛选栏也要有「被收起」的视觉落点（否则只剩标题行，像内容丢了） */
+.tmdb-filters.collapsed{padding-bottom:0}
+.tmdb-filters.collapsed::after{
+  content:'筛选条件已收起 · 点右上角「展开筛选」恢复';
+  display:block;padding:0 0 12px;font-size:var(--fs-sm);color:var(--text3);
+}
+
+/* ---- 发现快捷（底部横滑条，仅一张海报卡高度；发现区紧随其后） ---- */
 .ov-panel-rec .ov-panel-head{border-bottom-color:rgba(191,90,242,0.2)}
 .ov-rec-scroll{
   display:flex;gap:10px;padding:12px 16px;overflow-x:auto;

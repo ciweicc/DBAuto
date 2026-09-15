@@ -378,7 +378,11 @@ function renderOvTodos(dash, hist){
 }
 
 /**
- * 热门推荐横滑
+ * 「发现」快捷横滑条
+ *
+ * 位置与职责（issue #14 第三轮）：TMDB 的完整能力（筛选栏 / 多选 / 转存 / 分页）
+ * 已经**原版搬进概览页**，本横滑条只是首屏上方的「进入发现区的快捷方式」——
+ * 点任意一张海报就滚到下方 #tmdbPanel 并聚焦筛选栏，不再有第二个页面。
  *
  * 数据源是 TMDB 列表接口（字段 poster/title/rating/year），
  * 旧实现读的是 poster_path/release_date/vote_average 等上游原始字段，
@@ -409,7 +413,14 @@ function renderOvRecs(tmdb){
 
     var card = document.createElement('div');
     card.className = 'ov-rec-card';
-    card.onclick = function(){ switchTab('tmdb'); };
+    // 点击 → 滚到本页的发现区（同一页，无跳转；键盘 Enter/Space 等价）
+    card.setAttribute('role', 'button');
+    card.setAttribute('tabindex', '0');
+    card.setAttribute('aria-label', '前往本页发现区查看：' + title);
+    card.onclick = function(){ jumpToDiscovery(); };
+    card.onkeydown = function(e){
+      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); jumpToDiscovery(); }
+    };
     var fallbackHtml =
       '<div class="ov-rec-poster-fallback"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>';
     var posterHtml = src
@@ -423,6 +434,14 @@ function renderOvRecs(tmdb){
       '</div>';
     el.appendChild(card);
   });
+}
+
+/** 首屏快捷横滑条 / 「去发现」按钮的统一入口：滚到发现区并确保它已初始化 */
+function jumpToDiscovery(){
+  if(typeof openDiscovery === 'function'){ openDiscovery(); return; }
+  var host = document.getElementById('tmdbPanel');
+  var sc = document.querySelector('.content');
+  if(host && sc) sc.scrollTo({ top: sc.scrollTop + host.getBoundingClientRect().top - sc.getBoundingClientRect().top - 12, behavior: 'smooth' });
 }
 
 /**
