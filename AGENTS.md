@@ -20,12 +20,16 @@ python -m pytest tests/test_build.py -q      # 产物结构 / 防复发断言
 ruff check .                                 # 静态检查（仅 E9 + F821）
 python scripts/check_contrast.py             # 对比度门禁（改 tokens.css 后必跑）
 python scripts/check_overview_dom.py --serve # 概览页 DOM 度量走查（改概览页后必跑）
+python scripts/check_log_panel_dom.py --serve # 日志栏 DOM 度量走查（改日志栏后必跑）
+python scripts/check_settings_dom.py --serve  # 设置页空白度量走查（改设置页后必跑）
 ```
 
 > `scripts/check_overview_dom.py` 需要 playwright + chromium；缺少时会以退出码 0
 > 跳过，不会阻断 CI。它是「改概览页 → 先跑脚本拿数值证据」的入口，
 > 能替代大部分截图走查（首屏一屏内 / 指标行等高 / 无横向滚动 / 状态与日期语义 /
-> 移动端分类前缀宽度）。
+> 移动端分类前缀宽度）。`scripts/check_settings_dom.py` 同理，重点断言「卡片底部
+> 纯空白 ≤40px / 超宽视口页高 ≤1500px / 无横向溢出」，对应 issue #15 的
+> 「卡片占位过多、大片空白」。
 
 > 不要调用 `static/src/build.py`：它是历史遗留实现，输出与 `build.sh`
 > 存在细微差异（换行/指纹派生方式），用它重建会把产物改成漂移版本。
