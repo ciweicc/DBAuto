@@ -38,11 +38,27 @@ function toggleLogDrawer(){
   if(!isNarrowViewport()){
     if(p.classList.contains('collapsed')){ expandLogPanel(); toggleScrim(false); return; }
   }
-  toggleScrim(p.classList.toggle('open'));
+  // 窄屏抽屉：只有 .open 能让日志栏离开 translateX(100%) 的屏幕外位置。
+  // issue #11 复盘：这里此前只 toggle('open')，但若面板同时带着 .collapsed
+  // （例如从宽屏折叠态缩窄窗口），.collapsed 的 !important 宽度会把抽屉压回
+  // 48px 轨道 —— 点了像没反应。打开时一并清掉折叠态，保证抽屉真正可见。
+  var willOpen = !p.classList.contains('open');
+  if(willOpen){
+    p.classList.add('open');
+    if(p.classList.contains('collapsed')) p.classList.remove('collapsed');
+    _syncLogPanelA11y();
+  }else{
+    p.classList.remove('open');
+  }
+  toggleScrim(willOpen);
+  if(willOpen && typeof positionLogDrawerAtLatest === 'function') positionLogDrawerAtLatest();
 }
 function closeDrawers(){
   var s = document.querySelector('.sidebar'); if(s) s.classList.remove('open');
-  var p = document.getElementById('logPanel'); if(p) p.classList.remove('open');
+  var p = document.getElementById('logPanel');
+  // 注意：窄屏下日志抽屉必须能被切换页签关掉；但宽屏的「常驻日志栏」
+  // 不是抽屉，不能因为切页签就被移除可见性。
+  if(p && isNarrowViewport()) p.classList.remove('open');
   var sc = document.getElementById('overlayScrim'); if(sc) sc.classList.remove('show');
 }
 function toggleScrim(show){

@@ -315,20 +315,38 @@ function expandLogPanel(){
   _syncLogPanelA11y();
   if(typeof tmdbUpdateBackToTop==='function') tmdbUpdateBackToTop();
   // 展开后定位到最新一条：否则长日志停在最早一行，仍像"显示不全"
+  positionLogDrawerAtLatest();
+}
+// 把日志区滚到最新一条并刷新底部提示。
+// 抽屉刚从屏幕外归位时（display/高度在这一帧才确定）立即读 scrollHeight 会拿到
+// 旧值，因此再补一次 next-frame 定位；两处都做是为了宽屏展开也保持即时。
+function positionLogDrawerAtLatest(){
   var el = document.getElementById('log');
-  if(el && !logPaused) el.scrollTop = el.scrollHeight;
+  if(!el) return;
+  if(!logPaused) el.scrollTop = el.scrollHeight;
   updateLogHint();
+  requestAnimationFrame(function(){
+    if(logPaused) return;
+    el.scrollTop = el.scrollHeight;
+    updateLogHint();
+  });
 }
 // 恢复折叠状态；桌面态若恢复为折叠则同步显示展开入口
 (function(){
   try{
     document.addEventListener('DOMContentLoaded', function(){
       restoreLogPanelState();
+      // 首屏再归一化一次：restoreLogPanelState 之后视口可能仍是窄屏，
+      // 此时任何遗留的折叠态都会让日志栏不可见（issue #11）。
+      if(typeof normalizeLogPanelForViewport === 'function') normalizeLogPanelForViewport();
       var el = document.getElementById('log');
       if(el) el.addEventListener('scroll', updateLogHint, {passive:true});
       // 窗口尺寸变化后折行判定会变，重新标注一次
       var rt = null;
       window.addEventListener('resize', function(){
+        // 宽窄视口切换要立即归一化：宽→窄若残留 .collapsed，日志栏会停在
+        // 屏幕外/48px 轨道（issue #11 现场），这里不等防抖、先修状态。
+        if(typeof normalizeLogPanelForViewport === 'function') normalizeLogPanelForViewport();
         if(rt) clearTimeout(rt);
         rt = setTimeout(function(){
           document.querySelectorAll('#log .log-line.wrapped').forEach(function(n){ n.classList.remove('wrapped'); markWrap(n); });
