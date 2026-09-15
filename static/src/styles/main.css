@@ -556,9 +556,42 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   align-items:center;justify-content:center;box-shadow:var(--shadow)}
 .log-fab svg{width:22px;height:22px}
 
+/* 抽屉态（窄屏 / 移动端）：日志栏脱出网格轨道，从右侧覆盖在内容之上。
+   issue #11 复盘：≤1200px 时 .log-panel 变成 translateX(100%) 的屏幕外抽屉，
+   但只有 .open 能让它回到可视区。此前「首屏恢复 / 窗口从宽缩窄 / 点 FAB」
+   三条路径都可能只切换 .collapsed 而不加 .open，结果日志栏整块停在屏幕外，
+   用户看到的只有右下角那个按钮 —— 「日志一条都看不到」。
+   min-width 必须归零：基础态 .log-panel{min-width:260px} 会覆盖抽屉的
+   width:280px 的收缩能力；而 1024 断点的兜底规则又把它拉回 260px（宽度为负）。 */
+.log-panel.open{
+  position:fixed;right:0;top:0;bottom:0;left:auto;
+  width:min(360px,88vw);max-width:100%;min-width:0;
+  transform:none;visibility:visible;
+  z-index:var(--z-sidebar);
+  box-shadow:var(--shadow-lg, var(--shadow));
+  border-left:1px solid var(--glass-border);
+}
+/* 抽屉态不得再退回 48px 折叠轨道，否则 .open 等于没生效 */
+.log-panel.open.collapsed{
+  width:min(360px,88vw) !important;min-width:0 !important;flex:none !important;
+}
+.log-panel.open .log-toggle-btn{display:none}
+/* 抽屉必须以 flex 列布局撑满高度，否则日志区拿不到剩余空间 */
+.log-panel.open{display:flex;flex-direction:column;gap:10px}
+.log-panel.open .log-card{display:flex;flex-direction:column;min-height:0;flex:1 1 auto}
+.log-panel.open .log-box{max-height:none;min-height:180px;flex:1 1 auto}
+
 /* =========================================================
    Responsive
    ========================================================= */
+/* 超宽屏（≥1901px）：主列不再无限拉宽。
+   根因：.app 第三列是 minmax(0,1fr)，2560px 下主列宽 2020px，
+   而 .content{max-width:1440px;margin:0 auto} 只把内容居中，
+   于是主列左侧留下约 290px 空白带、日志栏却被推到最右边（视觉上「日志栏跑到屏幕外」）。
+   这里把主列限制到内容实际需要的宽度，多出的空间由 grid 居中分配。 */
+@media(min-width:1901px){
+  .app{grid-template-columns:200px minmax(0,1440px) 340px;justify-content:center}
+}
 @media(max-width:1500px){
   .app{grid-template-columns:200px minmax(0,1fr) 320px}
   .log-panel{padding:10px}
@@ -601,7 +634,9 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   .topbar h1,.topbar .topbar-title{display:none}
   .bottom-nav{display:block}
   .log-panel{width:100%;max-width:100%;top:auto;bottom:0;height:72vh;transform:translateY(100%);border-left:none;border-top:1px solid var(--border)}
-  .log-panel.open{transform:none}
+  /* 移动端抽屉：宽度必须被手机上拉满、且不能残留「右侧覆盖层」的宽度上限，
+     否则 translateX 归零后仍有 47px 停在屏幕外（issue #11 的残留表现） */
+  .log-panel.open{transform:none;left:0;right:0;width:100%;max-width:100%;min-width:0}
   /* 移动抽屉里给日志区留出抽屉内可用高度，避免仍按桌面 340px 上限只露几行 */
   .log-panel .log-box{max-height:none;min-height:180px;flex:1 1 auto}
   .log-panel .log-card{display:flex;flex-direction:column;min-height:0}

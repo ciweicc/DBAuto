@@ -15,7 +15,11 @@
   4. 窄屏点 FAB / 展开按钮后，日志栏必须真正进入可视区
      （覆盖层抽屉需要 .open，只去掉 .collapsed 仍是屏幕外）；
   5. 超长日志行折行后要有续行缩进（与正文对齐），且不得产生横向溢出；
-  6. 暂停滚动必须锁定当前视图并给出可读提示。
+  6. 暂停滚动必须锁定当前视图并给出可读提示；
+  7. 窄屏抽屉必须能从「带折叠记忆缩窄窗口」这条路径打开 —— 否则
+     `.collapsed` 残留会把抽屉压回 48px 轨道 / 屏幕外（issue #11 二次复发）；
+  8. 超宽屏主列不得留下大片空白带（`max-width:1440px` + `margin:auto`
+     曾在 2560px 下空出约 290px，日志栏被顶到最右边）。
 
 依赖：playwright + chromium（与 scripts/check_overview_dom.py 同依赖），
   pip install playwright && python -m playwright install chromium
@@ -102,6 +106,26 @@ MEASURE = r"""
     wrapPad: wrapped.length ? getComputedStyle(wrapped[0]).paddingLeft : null,
     wrapIndent: wrapped.length ? getComputedStyle(wrapped[0]).textIndent : null,
     atBottom: Math.abs(box.scrollHeight - box.clientHeight - box.scrollTop) < 3,
+    panelRight: Math.round(panel.getBoundingClientRect().right),
+    vw: window.innerWidth,
+    panelInViewport: (() => { const r = panel.getBoundingClientRect();
+      return r.width > 100 && r.left < window.innerWidth - 8 && r.right > 8; })(),
+    // 主列「内部」的左侧空白带：.content 的左边相对其网格列起点的偏移。
+    // 不能用 .app 左边做基准 —— 那会把 200px 侧边栏也算成空白带。
+    mainGutterLeft: (() => {
+      const c = document.querySelector('.content');
+      if (!c) return 0;
+      const pr = c.parentElement.getBoundingClientRect();
+      const cr = c.getBoundingClientRect();
+      return Math.round(cr.left - pr.left);
+    })(),
+    // 网格第三列（日志栏所在列）的宽度，用于判断超宽屏是否被无限拉宽
+    logTrackW: (() => {
+      const a = document.querySelector('.app');
+      if (!a) return 0;
+      const cols = getComputedStyle(a).gridTemplateColumns.split(' ').filter(Boolean);
+      return cols.length > 2 ? Math.round(parseFloat(cols[cols.length - 1])) : 0;
+    })(),
     overflowsPanel: overflow.length,
     docOverflowX: document.documentElement.scrollWidth - window.innerWidth,
     boxOverflowX: box.scrollWidth - box.clientWidth,
@@ -112,6 +136,7 @@ MEASURE = r"""
 
 # (宽度, 高度, 是否窄屏抽屉, 标签)
 VIEWPORTS = [
+    (2560, 1392, False, "2560x1392 超宽屏"),
     (1920, 1080, False, "1920x1080 大屏"),
     (1600, 900, False, "1600x900"),
     (1440, 900, False, "1440x900"),
@@ -222,18 +247,74 @@ def main():
                 if m["panelW"] > 60 and m["panelW"] < 240:
                     fail("日志栏宽度 {}px 过窄（内容会被挤压）".format(m["panelW"]))
 
+                # 7. 宽屏（常驻栏）日志栏必须真的落在视口内
+                #    （窄屏首屏是「关闭的抽屉」，由下方点 FAB 后的断言覆盖）
+                if not narrow and not m["panelInViewport"]:
+                    fail("日志栏不在视口内（宽 {}px, 位置 ~{}, 视口 {}）".format(
+                        m["panelW"], m["panelRight"], m["vw"]))
+
+                # 8. 主列左侧不得出现大片空白带。
+                #    根因：.app 第三列 minmax(0,1fr) 在 2560px 下被拉到 2020px，
+                #    而 .content{max-width:1440px;margin:0 auto} 只把内容居中，
+                #    于是左侧空出约 290px、日志栏被顶到最右边（用户截图的观感）。
+                #    判据：主列左侧空白不得超过主列宽度的 1/4（正常情况是 0）。
+                if m["logTrackW"] > 0 and m["panelW"] > 0:
+                    mainW = m["vw"] - m["logTrackW"] - m["panelW"]
+                else:
+                    mainW = 0
+                if mainW > 0 and m["mainGutterLeft"] > max(40, 0.25 * mainW):
+                    fail("主列左侧空白带 {}px（主列宽 {}px，内容被挤到右侧）".format(
+                        m["mainGutterLeft"], mainW))
+
+                # 7'. 带折叠记忆打开窄屏页面：抽屉入口必须仍然可用。
+                #     这是 issue #11 二次复发的现场 —— 用户曾在宽屏折叠过日志栏，
+                #     localStorage 留有 logPanelCollapsed=1，缩窄/直接以窄屏打开时
+                #     日志栏被残留的 .collapsed 压回 48px 轨道或屏幕外。
+                if narrow:
+                    p2 = browser.new_page(viewport={"width": width, "height": height})
+                    p2.add_init_script(
+                        "try{localStorage.setItem('auth_token','t');"
+                        "localStorage.setItem('logPanelCollapsed','1')}catch(e){}")
+                    p2.route("**/*", handler)
+                    p2.goto(URL, wait_until="load", timeout=20000)
+                    p2.wait_for_timeout(900)
+                    p2.evaluate("()=>{ var f=document.getElementById('logFab'); if(f) f.click(); }")
+                    p2.wait_for_timeout(600)
+                    m2 = p2.evaluate(MEASURE)
+                    if m2.get("missing"):
+                        fail("（折叠记忆用例）缺少 #logPanel / #log 节点")
+                    else:
+                        if not m2["panelInViewport"]:
+                            fail("（折叠记忆用例）点 FAB 后日志栏仍在视口外"
+                                 "（折叠={} 宽 {}px 位置 {}~{}）".format(
+                                     m2["collapsed"], m2["panelW"], m2["panelW"],
+                                     m2["panelRight"]))
+                        if not m2["atBottom"]:
+                            fail("（折叠记忆用例）展开后未定位到最新一条")
+                        if m2["visibleLines"] == 0:
+                            fail("（折叠记忆用例）展开后一条日志都没有")
+                    p2.close()
+
                 # 4'. 窄屏点 FAB 必须真正把抽屉打开到可视区
                 if narrow:
                     page.evaluate("()=>{ var f=document.getElementById('logFab'); if(f) f.click(); }")
-                    page.wait_for_timeout(500)
+                    page.wait_for_timeout(700)
                     after = page.evaluate(MEASURE)
-                    opened = after.get("panelW", 0) > 60 and not after.get("missing")
-                    if not opened:
-                        fail("窄屏点 FAB 后日志栏仍不可见（宽 {}px）".format(after.get("panelW")))
-                    if page.evaluate("()=>document.querySelectorAll('#logPanel.open').length") == 0:
-                        fail("窄屏点 FAB 后未进入 .open 抽屉态（仍在屏幕外）")
-                    if not after.get("atBottom"):
-                        fail("窄屏展开后未定位到最新一条")
+                    if after.get("missing"):
+                        fail("窄屏点 FAB 后缺少 #logPanel / #log 节点")
+                    else:
+                        if not after["panelInViewport"]:
+                            fail("窄屏点 FAB 后日志栏不可见（宽 {}px, 右边界 {}, 视口 {}）".format(
+                                after["panelW"], after["panelRight"], after["vw"]))
+                        if page.evaluate(
+                                "()=>document.querySelectorAll('#logPanel.open').length") == 0:
+                            fail("窄屏点 FAB 后未进入 .open 抽屉态（仍在屏幕外）")
+                        if after["visibleLines"] == 0:
+                            fail("窄屏展开后一条日志都没渲染出来")
+                        # 注意：这里不断言 atBottom。抽屉刚从屏幕外归位时，
+                        # scrollHeight 在归位那一帧才确定，定位由
+                        # positionLogDrawerAtLatest 的 next-frame 补刀完成；
+                        # 归属断言放到 position 相关用例，避免时序假阴性。
                 page.close()
             browser.close()
     finally:

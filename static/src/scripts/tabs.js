@@ -98,4 +98,33 @@ function restoreLogPanelState(){
     if(panel.classList.contains('collapsed')) panel.classList.remove('collapsed');
     _syncLogPanelA11y();
   }
+  // 折叠记忆是「用户在宽屏点的」——它只应影响网格轨道内的常驻日志栏。
+  // 若当前视口是窄屏（抽屉态），那条记忆会把日志栏变成屏幕外的一块
+  // （或 48px 轨道），用户打开页面时一条日志都看不到（issue #11）。
+  // 因此窄屏首屏一律清掉遗留的折叠态，保证抽屉有一个可用的初始状态。
+  if(isNarrowViewport() && panel.classList.contains('collapsed')){
+    panel.classList.remove('collapsed');
+    _syncLogPanelA11y();
+  }
+}
+
+// 视口在「宽屏常驻栏」与「窄屏抽屉」之间切换时，必须归一化 class 状态，
+// 否则会残留对方的态：窄→宽残留 .open（无视觉影响但语义错）、
+// 宽→窄残留 .collapsed（日志栏直接藏起来，正是 issue #11 的现场）。
+function normalizeLogPanelForViewport(){
+  var panel = document.getElementById('logPanel');
+  if(!panel) return;
+  var narrow = isNarrowViewport();
+  var changed = false;
+  if(narrow){
+    if(panel.classList.contains('collapsed')){ panel.classList.remove('collapsed'); changed = true; }
+  }else{
+    if(panel.classList.contains('open')){ panel.classList.remove('open'); changed = true; }
+  }
+  if(changed) _syncLogPanelA11y();
+  if(narrow && panel.classList.contains('open')){
+    toggleScrim(true);
+  }else if(typeof toggleScrim === 'function'){
+    toggleScrim(false);
+  }
 }
