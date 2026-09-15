@@ -30,12 +30,30 @@
   > E2E / 冒烟测试（`*_test.py`）依赖 playwright 与实时服务，不在默认 `pytest` 收集范围内
   > （见 `pyproject.toml` 的 `python_files = ["test_*.py"]`）。
 - 静态检查：`ruff check app_modules tests`（当前仅启用 `E9` 语法错误与 `F821` 未定义名称）。
+- 前端构建产物校验（改了 `static/src/**` 后**必须**重建并一起提交产物）：
+
+  ```bash
+  bash static/src/build.sh          # 重建 static/index_new.html
+  python -m pytest tests/test_build.py -q   # 括号配平 / JS 语法 / 模块清单 / 功能残留
+  ```
+
+  > CI 会重建产物并比对 `git diff`，**只有源码、产物不一致就会失败**。
+  > 请勿直接手工编辑 `static/index_new.html`。
+- 对比度门禁（改动 `static/src/styles/tokens.css` 的文本/语义色后必跑）：
+
+  ```bash
+  python scripts/check_contrast.py --report docs/UI_Contrast_Report.md
+  ```
+
+  > 阈值 WCAG 2.1 AA（≥ 4.5:1）；不达标请调整令牌取值，不要调低阈值。
+- **删功能必删样式**：下线功能时同步清理其 CSS 与 JS（如「想看」功能），
+  `tests/test_build.py` 会对已知残留做零容忍断言。
 
 ## 分支策略
 
 1. 从 `master` 切出特性分支（如 `p2-improvements`、`fix-xxx`）。
 2. 在分支上完成改动并提交（保持提交小而聚焦、信息清晰，参考现有 `chore:` / `feat:` 前缀）。
-3. 发起 Pull Request 到 `master`，通过 CI（tests / lint / frontend-build / dependency-scan / Trivy）后，
+3. 发起 Pull Request 到 `master`，通过 CI（tests / lint / frontend-build / frontend-drift / contrast-audit / dependency-scan / Trivy）后，
    由维护者 review 并合并。
 4. **不要**直接 push 到 `master`，也不要自行将特性分支 merge 到 `master`。
 

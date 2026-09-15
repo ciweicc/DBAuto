@@ -31,6 +31,11 @@ function toggleSidebar(){
 function toggleLogDrawer(){
   var p = document.getElementById('logPanel');
   if(!p) return;
+  // 桌面态：折叠态由 .collapsed 控制（网格轨道内常驻），FAB 应展开而非切换抽屉，
+  // 否则折叠后既无展开入口、FAB 又不起作用（曾导致日志栏"消失"）。
+  if(!isNarrowViewport()){
+    if(p.classList.contains('collapsed')){ expandLogPanel(); toggleScrim(false); return; }
+  }
   toggleScrim(p.classList.toggle('open'));
 }
 function closeDrawers(){

@@ -234,14 +234,27 @@ async function exportHistory(){
   catch(e){showToast('导出失败',false)}
 }
 async function clearExecHistory(){
-  var ok=await showConfirm('清空执行历史','确定要清空所有执行历史吗？此操作不可撤销。','清空','取消');
+  // 3.3 撤销交互：确认后清空，toast 提供「撤销」（5s 内有效，走后端快照恢复）
+  var ok=await showConfirm('清空执行历史','确定要清空所有执行历史吗？清空后 5 秒内可撤销。','清空','取消');
   if(!ok)return;
   try{
     var d=await apiPost('/api/exec_history/manage',{action:'clear'});
     if(d.success){
+      var removed = d.removed || 0;
       execHistoryData=[];histMore=false;renderExecHistory();
-      showToast('已清空执行历史',true);
+      if(!removed){showToast('执行历史已是空的',true);return}
+      showToast('已清空 '+removed+' 条执行历史',true,5000,{ac:{label:'撤销',onClick:restoreExecHistory}});
     }else showToast(d.message||'清空失败',false);
   }catch(e){showToast('清空失败',false)}
+}
+async function restoreExecHistory(){
+  try{
+    var d=await apiPost('/api/exec_history/manage',{action:'restore'});
+    if(d.success){
+      histPage=1;histMore=true;
+      await loadExecHistory();
+      showToast('已恢复执行历史',true);
+    }else showToast(d.message||'撤销失败，记录可能已被覆盖',false);
+  }catch(e){showToast('撤销失败',false)}
 }
 

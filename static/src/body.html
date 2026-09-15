@@ -493,6 +493,11 @@
 
   <!-- Log panel (persistent) -->
   <aside class="log-panel" id="logPanel">
+    <!-- 折叠态下的展开入口（此前只有 CSS 没有 DOM，折叠后无法展开） -->
+    <button class="log-toggle-btn" id="logToggleBtn" onclick="toggleLogPanel()"
+      title="展开执行日志" aria-label="展开执行日志" aria-expanded="false" aria-controls="logCard">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+    </button>
     <div class="card log-card" id="logCard">
       <div class="card-title" style="justify-content:space-between">
         <div style="display:flex;align-items:center;gap:14px">
