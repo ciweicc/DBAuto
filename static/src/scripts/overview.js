@@ -26,18 +26,15 @@ async function loadOverviewPage(){
     // 避免双概览 UI 重复拉取；/api/history 与 TMDB 推荐以轻量缓存去重（OPT-07）。
     var results = await Promise.allSettled([
       fetchDashboardAll(false),
-      cachedApiGet('/api/history', 15000, false),
-      cachedApiGet('/api/tmdb/list?media_type=movie&list_type=trending&page=1', 60000, false)
+      cachedApiGet('/api/history', 15000, false)
     ]);
     var dash = results[0].status === 'fulfilled' ? results[0].value : null;
     var hist = results[1].status === 'fulfilled' ? results[1].value : null;
-    var tmdb = results[2].status === 'fulfilled' ? results[2].value : null;
 
     renderOvKpi(dash, hist);
     renderOvRecent(hist);
     renderOvHealth(dash);
     renderOvTodos(dash, hist);
-    renderOvRecs(tmdb);
     ovState.loaded = true;
     ovState.hasData = true;
   }catch(e){
@@ -64,14 +61,6 @@ function renderOvSkeletons(){
         '</tr>';
     }
     tbody.innerHTML = rows;
-  }
-  var rec = document.getElementById('ovRecScroll');
-  if(rec){
-    var cards = '';
-    for(var j = 0; j < 7; j++){
-      cards += '<div class="ov-rec-skel"><span class="ov-skel ov-skel-poster"></span><span class="ov-skel ov-skel-line"></span></div>';
-    }
-    rec.innerHTML = cards;
   }
 }
 
@@ -374,65 +363,6 @@ function renderOvTodos(dash, hist){
       : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>';
     item.innerHTML = '<span class="ov-todo-icon ov-todo-icon-' + t.icon + '">' + iconSvg + '</span><span class="ov-todo-text">' + esc(t.text) + '</span>' + (t.action ? '<button class="ov-todo-btn" onclick="' + t.action + '">' + esc(t.actionText) + '</button>' : '');
     el.appendChild(item);
-  });
-}
-
-/**
- * 「发现」快捷横滑条
- *
- * 位置与职责（issue #14 第三轮）：TMDB 的完整能力（筛选栏 / 多选 / 转存 / 分页）
- * 已经**原版搬进概览页**，本横滑条只是首屏上方的「进入发现区的快捷方式」——
- * 点任意一张海报就滚到下方 #tmdbPanel 并聚焦筛选栏，不再有第二个页面。
- *
- * 数据源是 TMDB 列表接口（字段 poster/title/rating/year），
- * 旧实现读的是 poster_path/release_date/vote_average 等上游原始字段，
- * 结果每张卡都退化成 36px 的占位图标。此处按接口契约取字段。
- */
-function renderOvRecs(tmdb){
-  var el = document.getElementById('ovRecScroll');
-  if(!el) return;
-  var items = [];
-  if(tmdb){
-    if(Array.isArray(tmdb.items)) items = tmdb.items.slice(0, 12);
-    else if(Array.isArray(tmdb.results)) items = tmdb.results.slice(0, 12);
-    else if(Array.isArray(tmdb)) items = tmdb.slice(0, 12);
-  }
-
-  if(!items.length){
-    el.innerHTML = '<div class="ov-rec-empty">暂无推荐数据</div>';
-    return;
-  }
-
-  el.innerHTML = '';
-  items.forEach(function(item){
-    var title = item.title || item.name || item.original_title || item.original_name || '未知';
-    var rating = item.rating || item.vote_average || 0;
-    var poster = item.poster || item.poster_path || '';
-    var src = /^https?:/.test(poster) ? poster : (poster ? TMDB_IMG_BASE + poster : '');
-    var year = item.year || (item.release_date || item.first_air_date || '').slice(0, 4);
-
-    var card = document.createElement('div');
-    card.className = 'ov-rec-card';
-    // 点击 → 滚到本页的发现区（同一页，无跳转；键盘 Enter/Space 等价）
-    card.setAttribute('role', 'button');
-    card.setAttribute('tabindex', '0');
-    card.setAttribute('aria-label', '前往本页发现区查看：' + title);
-    card.onclick = function(){ jumpToDiscovery(); };
-    card.onkeydown = function(e){
-      if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); jumpToDiscovery(); }
-    };
-    var fallbackHtml =
-      '<div class="ov-rec-poster-fallback"><svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="20" height="20" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg></div>';
-    var posterHtml = src
-      ? '<img class="ov-rec-img" src="' + esc(src) + '" alt="" loading="lazy" decoding="async" onerror="this.style.display=\'none\'">' + fallbackHtml
-      : fallbackHtml;
-    card.innerHTML =
-      '<div class="ov-rec-poster">' + posterHtml + '</div>' +
-      '<div class="ov-rec-info">' +
-        '<div class="ov-rec-title" title="' + esc(title) + '">' + esc(title) + '</div>' +
-        '<div class="ov-rec-meta">' + (year ? esc(year) + ' · ' : '') + (rating ? '★ ' + Number(rating).toFixed(1) : '') + '</div>' +
-      '</div>';
-    el.appendChild(card);
   });
 }
 

@@ -2,6 +2,56 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
+## [当前] 移除「发现快捷」横滑条 — 同一批热门数据只渲染一份
+
+> 对应 [issue #15](https://cnb.cool/ciweicc/DBAuto/-/issues/15)
+> 「把发现快捷那个栏去掉。内容重复了」。
+
+**缺陷（真实 DOM 取证）**：issue #14 把 TMDB 整块搬进概览页之后，首屏上方那条
+「发现快捷」横滑条与下方 `#tmdbPanel` 发现区**读的是同一个接口**
+（`/api/tmdb/list?media_type=movie&list_type=trending&page=1`）、渲染的是同一批
+「海报 + 标题 + 评分」，只是尺寸不同（88px 小卡 vs 完整网格）。
+
+在 1440x900 视口下用确定性桩数据实测（同一批 12 条热门）：
+
+| | 「发现快捷」栏标题数 | 发现区标题数 |
+| --- | --- | --- |
+| 移除前 | **12 条**（与发现区逐条相同） | 12 条 |
+| 移除后 | **DOM 不存在** | 12 条 |
+
+也就是说首屏凭空多出一整栏、外加一次重复的 TMDB 请求，信息量为零。
+
+**改动**：
+
+- 删除 `static/src/body.html` 里的 `.ov-panel-rec` 面板（标题「发现快捷」+
+  `#ovRecScroll` 横滑条 + 「去筛选 / 转存」按钮）。
+- 删除 `overview.js` 的 `renderOvRecs()`、骨架屏里的海报卡骨架，
+  以及概览加载时那次 `/api/tmdb/list` 请求（`Promise.allSettled` 收敛回 2 个）。
+- 删除对应 CSS（`.ov-panel-rec / .ov-rec-scroll / .ov-rec-card / .ov-rec-*`）
+  与骨架样式（`.ov-rec-skel / .ov-skel-poster / .ov-skel-line`）。
+- **保留** `jumpToDiscovery()`：顶栏 TMDB 图标按钮、指标行「去发现」、
+  ⌘K「前往 发现（TMDB）」仍依赖它滚到发现区。
+- `--ov-rec-w` 令牌保留（现在只描述首屏右列「服务状态 + 待办」的宽度），
+  注释与 `tokens.css` 说明同步更新。
+
+**防复发**：
+
+- `tests/test_build.py` 新增 `test_discovery_quick_panel_removed`：断言
+  `renderOvRecs / ovRecScroll / ov-rec-* / 发现快捷` 在产物中不存在、
+  概览页不再拉 `/api/tmdb/list`，同时断言 `#tmdbPanel` 仍在概览页内
+  （去重复不等于把发现能力一起删掉）。同时删除已随面板下线的
+  `test_overview_recommendation_poster_uses_api_contract`（其渲染代码已不存在）。
+- `scripts/check_overview_dom.py` 新增真实 DOM 断言 `quickPanel`：
+  `#pageOverview .ov-panel-rec, #ovRecScroll` 必须不存在。
+
+**验证证据**：
+
+- `pytest tests/ -q` → **198 passed**（删 1 项失效断言、增 1 项防复发断言）。
+- 概览页 DOM 走查 9 组视口 **0 处问题**（首屏底边 551，与移除前一致；发现区仍在页内、
+  筛选栏仍在渲染）；设置页 9 组、日志栏 10 组均 0 处问题（无回归）。
+- `ruff check .` 通过；`check_contrast.py` 18 组 0 组未达标。
+- 产物由 `bash static/src/build.sh` 重建（229901 bytes），未手工编辑。
+
 > 说明：底层工程治理与安全加固（P0 / P1 层级）已由仓库既有提交等价实现并合并至 `master`
 > （例如 `500571b` 依赖锁定 + Dependabot + CI 漏洞扫描、`d465526` Docker 非 root + ruff 门禁、
 > `9563551` 前端构建 minify + 删除重复登录页，以及更早的 P0 治理基线）。

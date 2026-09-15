@@ -1073,7 +1073,7 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 /* ---- 首屏两列：左「概览」，右「最近转存」（发现区在其下方整块铺开） ---- */
 .ov-top{
   display:grid;
-  /* 右列固定宽度，保证海报卡（2:3 比例）不被压扁 */
+  /* 右列固定宽度：右列承载「服务状态 + 待办」，宽度按内容稳定 */
   grid-template-columns:minmax(0,1fr) var(--ov-rec-w,300px);
   gap:14px;
   margin-bottom:14px;
@@ -1159,7 +1159,7 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .ov-side-title{display:flex;align-items:center;font-size:var(--fs-sm);font-weight:600;color:var(--text2);margin-bottom:6px}
 .ov-side-todo{flex:1;min-height:0}
 
-/* ---- 面板（最近转存 / 发现快捷 / 发现区） ---- */
+/* ---- 面板（最近转存 / 发现区） ---- */
 .ov-panel{
   background:var(--card);
   border:1px solid var(--border2);
@@ -1233,9 +1233,6 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .ov-skel-sm{width:60%}
 .ov-skel-md{width:72%}
 .ov-skel-dot{width:16px;height:16px;border-radius:50%}
-.ov-rec-skel{flex:0 0 auto;width:88px;display:flex;flex-direction:column;gap:6px}
-.ov-skel-poster{width:88px;height:132px}
-.ov-skel-line{width:70%}
 @keyframes ovSkelPulse{0%,100%{opacity:.35}50%{opacity:.7}}
 @media(prefers-reduced-motion:reduce){
   .ov-skel{animation:none;opacity:.5}
@@ -1307,30 +1304,6 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
   display:block;padding:0 0 12px;font-size:var(--fs-sm);color:var(--text3);
 }
 
-/* ---- 发现快捷（底部横滑条，仅一张海报卡高度；发现区紧随其后） ---- */
-.ov-panel-rec .ov-panel-head{border-bottom-color:rgba(191,90,242,0.2)}
-.ov-rec-scroll{
-  display:flex;gap:10px;padding:12px 16px;overflow-x:auto;
-  scrollbar-width:thin;
-}
-.ov-rec-scroll::-webkit-scrollbar{height:6px}
-.ov-rec-scroll::-webkit-scrollbar-thumb{background:var(--border3);border-radius:3px}
-.ov-rec-card{
-  flex:0 0 auto;width:88px;display:flex;flex-direction:column;
-  border-radius:var(--radius);overflow:hidden;cursor:pointer;
-  background:var(--hover-wash);border:1px solid var(--border);
-  transition:border-color var(--transition-fast),background var(--transition-fast),transform var(--transition-fast);
-}
-.ov-rec-card:hover{border-color:var(--accent);background:var(--accent-wash);transform:translateY(-2px)}
-.ov-rec-poster{position:relative;width:100%;aspect-ratio:2/3;background:var(--card-2);overflow:hidden}
-.ov-rec-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
-.ov-rec-poster-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text3)}
-.ov-rec-poster-fallback svg{width:36px;height:36px;opacity:.55}
-.ov-rec-info{padding:6px 8px;min-width:0}
-.ov-rec-title{font-size:var(--fs-sm);font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ov-rec-meta{display:flex;gap:6px;margin-top:2px;font-size:var(--fs-xs);color:var(--text3);white-space:nowrap}
-.ov-rec-empty{padding:20px;text-align:center;font-size:var(--fs-sm);width:100%}
-
 /* ---- 概览页响应式 ----
    栅格断点统一到全局 1500/1350/1200/1024/640；
    「指标 | 状态」两列与首屏两列的切换由主列实测宽度驱动（.app[data-ov-narrow="1"]），
@@ -1353,9 +1326,8 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
   .ov-top{--ov-rec-w:300px}
 }
 @media(max-width:900px){
-  /* 首屏两列改上下堆叠：推荐移到最近转存下方 */
+  /* 首屏两列改上下堆叠 */
   .ov-top{grid-template-columns:minmax(0,1fr)}
-  .ov-rec-card{width:96px}
 }
 @media(max-width:640px){
   .content{padding:12px 14px}

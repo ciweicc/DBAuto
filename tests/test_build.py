@@ -454,14 +454,36 @@ def test_overview_first_screen_fits_in_one_viewport(dist):
     """
     css, _ = _extract(dist)
     compact = re.sub(r"\s+", "", css)
-    # 首屏两列栅格：左「概览+最近转存」，右「热门推荐」
+    # 首屏两列栅格：左「概览+最近转存」，右「服务状态 + 待办」
     assert ".ov-top{display:grid" in compact.replace(" ", ""), "缺少概览首屏两列栅格"
-    assert "--ov-rec-w" in css, "右侧推荐列宽度未令牌化，海报卡尺寸会随窗口漂移"
+    assert "--ov-rec-w" in css, "右列宽度未令牌化，首屏两列会随窗口漂移"
     assert ".ov-overview-body{display:grid" in compact.replace(" ", ""), "缺少「指标 | 状态」两列栅格"
     # 禁止回归到旧的「KPI 条 → 工作区 → 推荐」三段式竖排
     for dead in (".ov-kpi-bar", ".ov-kpi-card", ".ov-workspace", ".ov-main-col", ".ov-side-col"):
         assert dead not in css, "旧概览布局类 {} 仍残留，首屏会重新被推长".format(dead)
-    assert "ov-panel-rec" in dist, "发现快捷面板缺失"
+
+
+def test_discovery_quick_panel_removed(dist):
+    """回归（issue #15）：概览页不得再有「发现快捷」横滑条。
+
+    背景：TMDB 整块并入概览页（issue #14）之后，首屏上方的「发现快捷」横滑条
+    与下方 `#tmdbPanel` 发现区**共用同一份热门数据**（同一接口、同样的海报 + 标题 + 评分），
+    只是把同一批内容渲染了两遍（一份 88px 小卡、一份完整网格），
+    用户判定为「内容重复」，要求整栏去掉。
+    """
+    js = _overview_js()
+    init_js = _read(os.path.join(_JS_DIR, "init.js"))
+    for dead_js in ("renderOvRecs", "ov-rec-card", "ovRecScroll", "ov-rec-skel"):
+        assert dead_js not in js, "「发现快捷」残留逻辑：{}".format(dead_js)
+    assert "ovRecScroll" not in init_js, "init 仍在初始化「发现快捷」"
+    # 概览页不再为「发现快捷」单独拉一份 TMDB 列表（数据源收敛到发现区一处）
+    assert "/api/tmdb/list" not in js, "概览页仍在重复拉取 TMDB 列表"
+    # 注意用类名精确匹配：`.ov-panel-recent`（最近转存，保留）是它的前缀
+    for dead in (r"\.ov-panel-rec(?!ent)", r"\.ov-rec-scroll\b", r"\.ov-rec-card\b", r"\.ov-rec-empty\b"):
+        assert not re.search(dead, dist), "「发现快捷」残留 DOM/样式：{}".format(dead)
+    assert "发现快捷" not in dist, "「发现快捷」标题仍残留"
+    # 去重后「发现区」必须仍在概览页内（不能顺手把发现能力一起删掉）
+    assert 'id="tmdbPanel"' in dist, "概览页内的发现区被误删"
 
 
 def test_overview_layout_uses_measured_width_not_viewport_media_queries(dist):
@@ -537,22 +559,6 @@ def test_overview_date_sorting_and_format():
     assert "'—'" in js or "\\u2014" in js, "空日期缺少兜底显示"
     # 旧实现直接 date.slice(5,16)，且用 '-' 兜底（与真实日期不可区分）
     assert "item.date.slice(5, 16)" not in js, "仍残留无保护的日期切片"
-
-
-def test_overview_recommendation_poster_uses_api_contract(dist):
-    """回归：热门推荐必须按后端契约取名（items/poster/year/rating）。
-
-    后端 `get_tmdb_list` 返回 `{items:[{poster,title,year,rating,...}]}`，
-    旧实现读 `results/poster_path/release_date/vote_average`，
-    结果每张卡都退化成 36px 占位图标。
-    """
-    js = _overview_js()
-    assert "tmdb.items" in js, "未按契约读取 items 字段"
-    assert "item.poster" in js and "item.year" in js and "item.rating" in js, \
-        "未按契约读取 poster/year/rating 字段"
-    # 卡片必须真有海报位（aspect-ratio 保证高度，不依赖图片加载成功）
-    css, _ = _extract(dist)
-    assert "aspect-ratio:2/3" in css.replace(" ", ""), "海报位缺少固定宽高比，图片缺失时会塌成一行"
 
 
 def test_overview_no_panel_level_scrolling_content(dist):
