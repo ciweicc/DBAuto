@@ -30,6 +30,75 @@
   未知类型不计入（白名单语义）/ 真实失败转存仍被统计」。
 - **验证**：`pytest tests/` 178 项通过（164 → 178）；`ruff check .` 通过；
   `bash static/src/build.sh` 重建产物逐字节幂等（本次只改后端统计口径，前端产物无变化）。
+## [当前] 侧边栏实时任务日志修复（第二轮）— 抽屉无入口 + 超宽屏日志栏被挤出
+
+> 对应 [issue #11](https://cnb.cool/ciweicc/DBAuto/-/issues/11) 的**第二次反馈**
+> 「问题依旧存在」。上一轮修复（下方那条）解决的是「默认折叠 + 不定位到最新 + 340px 上限」，
+> 但**没有覆盖用户实际所处的那条路径**，因此反馈复现。
+
+用户截图（浏览器视口约 1200px，窗口 2560px 全屏）逐像素分析后确认两个独立根因：
+
+- **根因 1：≤1200px 的日志抽屉没有任何可用的打开入口。**
+  ≤1200px 时 `.log-panel` 变成 `position:fixed; transform:translateX(100%)` 的覆盖层，
+  **只有 `.open` 能把它移回可视区**，但三条入口都可能只切 `.collapsed`：
+  1. 首屏 `restoreLogPanelState()` 直接照搬宽屏时期的 `logPanelCollapsed=1` 记忆；
+  2. 从宽屏把窗口缩到 ≤1200px 时没有任何归一化，残留的 `.collapsed`
+     被 `width:48px !important` 压回 48px 轨道；
+  3. FAB 的 `toggleLogDrawer()` 只 `toggle('open')`，未清 `.collapsed` ——
+     即使加上了 `.open`，`.collapsed` 的 `!important` 仍把面板压成 48px 轨道，
+     看起来"点了没反应"。
+  截图实测：面板左边界 = 2560（= 视口右边界，整块在屏幕外）、右下角只有一个
+  48px 圆形 FAB 被挤出视口仅剩 19px 可见（y 167~209）。
+
+- **根因 2：超宽屏下主列被拉宽到 2020px，`.content` 居中后左侧空出约 290px 空白带。**
+  `.app` 第三列是 `minmax(0,1fr)`，2560px 下主列 2020px；
+  而 `.content{max-width:1440px;margin:0 auto}` 只把内容居中 ——
+  于是内容被挤到主列右侧、左边空一大片，日志栏却被顶到屏幕最右边。
+  截图像素证据：日志区左边界 x=2513，视口宽 2560，日志栏"贴死"右边缘。
+  这是"日志栏跑到屏幕外"的观感来源。
+
+修复：
+
+- **新增 `.log-panel.open` 抽屉态规则**：`position:fixed; right:0; left:auto;
+  width:min(360px,88vw); min-width:0`。`min-width:0` 是关键 ——
+  基础态 `.log-panel{min-width:260px}` 与 1024 断点的兜底规则会覆盖抽屉宽度，
+  算出负宽度后内容被压没。
+- **新增 `.log-panel.open.collapsed` 兜底**：`width:min(360px,88vw) !important`，
+  保证叠态时不会塌回 48px 轨道。
+- **新增 `normalizeLogPanelForViewport()`**：宽窄视口切换时归一化 class ——
+  窄屏丢弃 `.collapsed`、宽屏丢弃 `.open`，并同步 scrim。
+  `resize` 时**立即**调用（不等 150ms 防抖），避免宽→窄期间日志栏消失在屏幕外。
+- **`restoreLogPanelState()` 增加窄屏分支**：折叠记忆是宽屏点的，
+  窄屏首屏一律丢弃，保证抽屉有可用初始状态。
+- **`toggleLogDrawer()` 打开抽屉时一并清 `.collapsed`** 并调
+  `positionLogDrawerAtLatest()`；`closeDrawers()` 只在窄屏移除 `.open`，
+  避免切页签把宽屏常驻日志栏也关掉。
+- **新增 `positionLogDrawerAtLatest()`**：抽屉从屏幕外归位时 `scrollHeight`
+  要在归位那一帧才确定，故补一次 `requestAnimationFrame` 定位。
+- **移动端抽屉宽度拉满**：≤640px 时 `.log-panel.open{left:0;right:0;width:100%;
+  max-width:100%;min-width:0}`（此前 390px 视口实测仍有 47px 停在屏幕外）。
+- **超宽屏主列夹宽**：新增 `@media(min-width:1901px)`，把主列限制为
+  `minmax(0,1440px)` 并用 `justify-content:center` 分配剩余空间，
+  消除左侧空白带（实测 2560px 下空白带 290px → 0）。
+
+验证：
+
+- `scripts/check_log_panel_dom.py` 扩展为 **10 组视口 + 折叠记忆用例**，
+  新增断言：日志栏必须落在视口内、主列左侧空白带上限、
+  以及**「带 `logPanelCollapsed=1` 打开窄屏页面并点 FAB」**用例。
+  **判别力验证**：把脚本跑在修复前的产物上 → 报出 8 处问题
+  （4 组窄屏 × 「FAB 点不开 / 一条日志都没有」）；跑在修复后 → 0 处问题。
+  超宽屏实测：`mainGutterLeft` 290px → **0px**，`panelX` 2220 → 1930（不再贴死右边缘）。
+- 窄屏抽屉实测（点 FAB 后）：1200px→面板 840~1200（宽 360）、1100px→740~1100、
+  1024px→664~1024、390px→0~390，均 `atBottom=true`、`visibleLines=61`；
+  带折叠记忆的场景同样通过。
+- `tests/test_build.py` 新增 2 项回归断言（`test_log_panel_drawer_reachable_from_every_entry`
+  覆盖三条入口 + `.open` 的 `min-width:0`；`test_ultrawide_content_has_no_blank_gutter`
+  覆盖超宽屏夹宽），并把走查脚本入口断言同步到新指标。
+- `python -m pytest tests/ -q` → **187 项通过**；`ruff check .` 通过；对比度 18 组达标；
+  `scripts/check_overview_dom.py` 9 组视口 0 处问题（无回归）；
+  `bash static/src/build.sh` 重建产物逐字节幂等。
+
 ## [当前] 侧边栏实时任务日志可见性修复
 
 > 对应 [issue #11](https://cnb.cool/ciweicc/DBAuto/-/issues/11)「侧边栏的实时任务日志。无法显示完全」。

@@ -625,6 +625,92 @@ def test_log_panel_has_position_hint(dist):
     assert ".log-hint" in main_css, "缺少提示行样式"
 
 
+def test_log_panel_drawer_reachable_from_every_entry(dist):
+    """回归：窄屏抽屉必须能从「首屏 / 缩窄窗口 / 点 FAB」三条路径真正打开。
+
+    issue #11 二次复发（2026-09-15 用户第二次反馈「问题依旧存在」）的根因：
+    ≤1200px 时 `.log-panel` 是 `translateX(100%)` 的覆盖层，只有 `.open`
+    能让它回到可视区。但三条入口都可能只切 `.collapsed` 而漏掉 `.open`：
+
+      1. 从宽屏（用户折叠过）把窗口缩到 ≤1200px —— `.collapsed` 残留，
+         抽屉被 `width:48px !important` 压回轨道，日志一条看不到；
+      2. 点 FAB (`toggleLogDrawer`) —— 旧实现只 `toggle('open')`，
+         若面板同时带 `.collapsed`，视觉上仍是被压扁的轨道；
+      3. 首屏恢复 —— 折叠记忆是宽屏点的，窄屏照搬即等于藏起日志栏。
+
+    这里断言三处归一化逻辑存在，且 `.open` 抽屉必须解除 min-width 束缚。
+    """
+    tabs = _read(os.path.join(_JS_DIR, "tabs.js"))
+    assert "function normalizeLogPanelForViewport" in tabs, \
+        "缺少宽窄视口切换时的日志栏状态归一化函数"
+    norm = tabs[tabs.index("function normalizeLogPanelForViewport"):]
+    norm = norm[:norm.index("\n}")]
+    assert "classList.remove('collapsed')" in norm, \
+        "归一化未处理「窄屏残留折叠态」（日志栏会停在屏幕外）"
+    assert "classList.remove('open')" in norm, \
+        "归一化未处理「宽屏残留抽屉态」"
+    # 首屏恢复也必须做窄屏归一化
+    restore = tabs[tabs.index("function restoreLogPanelState"):]
+    restore = restore[:restore.index("\n}")]
+    assert "isNarrowViewport()" in restore, \
+        "restoreLogPanelState 未在窄屏丢弃遗留折叠记忆"
+
+    init_js = _read(os.path.join(_JS_DIR, "init.js"))
+    drawer = init_js[init_js.index("function toggleLogDrawer"):]
+    drawer = drawer[:drawer.index("\n}")]
+    assert "classList.add('open')" in drawer, "toggleLogDrawer 未打开抽屉"
+    assert "classList.remove('collapsed')" in drawer, \
+        "toggleLogDrawer 打开抽屉时未清除折叠态（会被 48px !important 压回轨道）"
+
+    # resize 路径：宽→窄必须立刻归一化，不能等防抖
+    log_js = _read(os.path.join(_JS_DIR, "log.js"))
+    resize = log_js[log_js.index("window.addEventListener('resize'"):]
+    resize = resize[:resize.index("}, 150);")]
+    assert "normalizeLogPanelForViewport()" in resize, \
+        "resize 未归一化日志栏状态（宽→窄会残留折叠态）"
+
+    # CSS：`.open` 抽屉必须解除基础态的 min-width:260px 束缚，
+    # 否则 1024 断点的兜底规则会让宽度算成负值、抽屉内容被压没。
+    main_css = _read(MAIN_CSS)
+    # 取「块首」那条 .log-panel.open{ 规则（媒体查询里的缩进版本另算）
+    starts = [i for i, l in enumerate(main_css.splitlines())
+              if l.startswith(".log-panel.open{")]
+    assert starts, "缺少 .log-panel.open 抽屉规则"
+    lines = main_css.splitlines()
+    block = []
+    for l in lines[starts[0]:]:
+        block.append(l)
+        if l.rstrip().endswith("}"):
+            break
+    rule = re.sub(r"/\*.*?\*/", "", "".join(block), flags=re.S).replace(" ", "")
+    assert "position:fixed" in rule, ".open 抽屉未脱离网格轨道（仍是静态定位）"
+    assert "transform:none" in rule, ".open 抽屉未把自己移回可视区"
+    assert "min-width:0" in rule, \
+        ".open 抽屉未解除 min-width:260px，1024 断点下会被压成负宽度"
+    assert ".log-panel.open.collapsed{" in main_css, \
+        "缺少 .open.collapsed 兜底规则（叠态时仍会塌回 48px 轨道）"
+
+
+def test_ultrawide_content_has_no_blank_gutter(dist):
+    """回归：超宽屏下主列不得留下大片空白带。
+
+    `.app` 第三列是 `minmax(0,1fr)`，2560px 下主列宽 2020px；而
+    `.content{max-width:1440px;margin:0 auto}` 只把内容居中 ——
+    结果是主列左侧空出约 290px 空白，日志栏却被顶到屏幕最右边，
+    看起来就像「日志栏跑到屏幕外」（用户 2560px 截图的真实观感）。
+    修复方式：≥1901px 把主列夹到内容实际需要的宽度，多余空间交给
+    grid 居中分配。
+    """
+    main_css = _read(MAIN_CSS)
+    start = main_css.index("@media(min-width:1901px)")
+    block = main_css[start:start + 400]
+    block = re.sub(r"/\*.*?\*/", "", block, flags=re.S).replace(" ", "")
+    assert "grid-template-columns:200pxminmax(0,1440px)340px" in block, \
+        "超宽屏未把主列夹到 1440px（空白带会复现）"
+    assert "justify-content:center" in block, \
+        "超宽屏未居中分配剩余空间"
+
+
 def test_log_panel_dom_audit_entrypoint_present():
     """issue #11 的 DOM 度量走查脚本必须存在且可执行（本地取证入口）。"""
     script = os.path.join(_ROOT, "scripts", "check_log_panel_dom.py")
