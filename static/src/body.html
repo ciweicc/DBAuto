@@ -94,109 +94,110 @@
     <div class="content">
 <!-- ===== 概览（首页） ===== -->
       <section class="page active" id="pageOverview">
-        <!-- KPI 条 -->
-        <div class="ov-kpi-bar">
-          <div class="ov-kpi-card ov-kpi-green">
-            <div class="ov-kpi-info">
-              <div class="ov-kpi-label">今日转存</div>
-              <div class="ov-kpi-value-row">
-                <span class="ov-kpi-value" id="ovTodayCount">-</span>
-                <span class="ov-kpi-sub" id="ovTodaySub"></span>
+<!-- 顶部一屏工作区：左侧「转存概览 + 最近转存」，右侧「热门推荐」 -->
+        <div class="ov-top">
+          <div class="ov-overview">
+            <div class="ov-overview-head">
+              <span class="ov-overview-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-activity"/></svg>
+                转存概览
+              </span>
+              <span class="ov-overview-sub" id="ovOverviewSub"></span>
+              <button class="ov-link-btn" onclick="switchTab('history')">历史记录 →</button>
+            </div>
+
+            <div class="ov-overview-body">
+              <!-- 核心指标：行式列表，每行一条完整信息（标签 + 值 + 副信息 + 动作） -->
+              <div class="ov-stat-list">
+                <div class="ov-stat-row ov-stat-green">
+                  <div class="ov-stat-line">
+                    <span class="ov-stat-label">今日转存</span>
+                    <span class="ov-stat-value" id="ovTodayCount">-</span>
+                    <span class="ov-stat-sub" id="ovTodaySub"></span>
+                  </div>
+                  <div class="ov-stat-action">
+                    <button class="ov-kpi-btn" onclick="switchTab('tmdb')">去发现</button>
+                  </div>
+                </div>
+
+                <div class="ov-stat-row ov-stat-blue">
+                  <div class="ov-stat-line">
+                    <span class="ov-stat-label">近 7 天成功率</span>
+                    <span class="ov-stat-value" id="ovWeekRate">-</span>
+                    <span class="ov-stat-sub" id="ovWeekRateLabel"></span>
+                  </div>
+                  <div class="ov-stat-action">
+                    <span class="ov-stat-meta" id="ovWeekRateSub"></span>
+                  </div>
+                  <div class="ov-stat-bar"><div class="ov-rate-bar"><div class="ov-rate-fill" id="ovWeekBar"></div></div></div>
+                </div>
+
+                <div class="ov-stat-row ov-stat-orange">
+                  <div class="ov-stat-line">
+                    <span class="ov-stat-label">下次调度</span>
+                    <span class="ov-stat-sub ov-stat-sched" id="ovNextSchedule"><span class="ov-kpi-muted">加载中...</span></span>
+                  </div>
+                  <div class="ov-stat-action">
+                    <button class="ov-kpi-btn ov-kpi-btn-outline" id="runNowBtn" onclick="runScheduleNow()">立即执行</button>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 系统状态与待办：只保留「需要关注」的信息，常态项压成一行摘要 -->
+              <div class="ov-side">
+                <div class="ov-side-block">
+                  <div class="ov-side-title">
+                    服务状态
+                    <button class="ov-link-btn" onclick="switchTab('settings')">设置 →</button>
+                  </div>
+                  <div class="ov-health-list" id="ovHealthList">
+                    <div class="ov-health-row"><span class="ov-dot"></span><span class="ov-health-label">检测中…</span></div>
+                  </div>
+                </div>
+                <div class="ov-side-block ov-side-todo">
+                  <div class="ov-side-title">待办事项</div>
+                  <div class="ov-todo-list" id="ovTodoList">
+                    <div class="ov-todo-empty">加载中...</div>
+                  </div>
+                </div>
               </div>
             </div>
-            <button class="ov-kpi-btn" onclick="switchTab('tmdb')">去发现</button>
           </div>
-          <div class="ov-kpi-card ov-kpi-blue">
-            <div class="ov-kpi-info">
-              <div class="ov-kpi-label">7天成功率</div>
-              <div class="ov-kpi-value-row">
-                <span class="ov-kpi-value" id="ovWeekRate">-</span>
-                <div class="ov-rate-bar"><div class="ov-rate-fill" id="ovWeekBar"></div></div>
+
+          <!-- 最近转存：与概览同处首屏，面板随左侧内容自动等高 -->
+          <div class="ov-panel ov-panel-recent">
+            <div class="ov-panel-head">
+              <div class="ov-panel-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-cloud-download"/></svg>
+                最近转存
               </div>
+              <span class="ov-panel-sub" id="ovRecentSub">最近 10 条</span>
+              <button class="ov-link-btn" onclick="switchTab('history')">查看全部 →</button>
             </div>
-            <span class="ov-kpi-trend" id="ovWeekTrend"></span>
-          </div>
-          <div class="ov-kpi-card ov-kpi-orange">
-            <div class="ov-kpi-info">
-              <div class="ov-kpi-label">下次调度</div>
-              <div class="ov-kpi-schedule" id="ovNextSchedule">
-                <span class="ov-kpi-muted">加载中...</span>
-              </div>
+            <div class="ov-table-wrap">
+              <table class="ov-table">
+                <thead>
+                  <tr>
+                    <th>标题</th>
+                    <th>时间</th>
+                    <th>状态</th>
+                    <th class="ov-col-lib">库内</th>
+                    <th class="ov-col-link">链接</th>
+                  </tr>
+                </thead>
+                <tbody id="ovRecentBody">
+                  <tr><td colspan="5" class="ov-table-empty">加载中...</td></tr>
+                </tbody>
+              </table>
             </div>
-            <button class="ov-kpi-btn ov-kpi-btn-outline" id="runNowBtn" onclick="runScheduleNow()">立即执行</button>
-          </div>
-          <div class="ov-kpi-card ov-kpi-purple">
-            <div class="ov-kpi-info">
-              <div class="ov-kpi-label">转存库</div>
-              <div class="ov-kpi-value-row">
-                <span class="ov-kpi-value" id="ovPendingCount">0</span>
-                <span class="ov-kpi-sub" id="ovPendingSub"></span>
-              </div>
+            <div class="ov-recent-foot">
+              <span class="ov-recent-note">「库内」表示该资源已在转存历史中；豆瓣榜单为幂等转存，重复执行会跳过而不产生新链接</span>
+              <button class="ov-link-btn" onclick="switchTab('history')">打开历史 →</button>
             </div>
-            <button class="ov-kpi-btn ov-kpi-btn-outline" onclick="switchTab('history')">查看全部</button>
           </div>
         </div>
 
-        <!-- 主工作区：左右分栏 -->
-        <div class="ov-workspace">
-          <!-- 左侧：最近转存 -->
-          <div class="ov-main-col">
-            <div class="ov-panel">
-              <div class="ov-panel-head">
-                <div class="ov-panel-title">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-cloud-download"/></svg>
-                  最近转存
-                </div>
-                <span class="ov-panel-sub" id="ovRecentSub">最近 8 条</span>
-                <button class="ov-link-btn" onclick="switchTab('history')">查看全部 →</button>
-              </div>
-              <div class="ov-table-wrap">
-                <table class="ov-table">
-                  <thead>
-                    <tr>
-                      <th>标题</th>
-                      <th style="width:130px">时间</th>
-                      <th style="width:80px">状态</th>
-                      <th style="width:50px">链接</th>
-                    </tr>
-                  </thead>
-                  <tbody id="ovRecentBody">
-                    <tr><td colspan="4" class="ov-table-empty">加载中...</td></tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-
-          <!-- 右侧：系统状态 + 待办 -->
-          <div class="ov-side-col">
-            <div class="ov-panel">
-              <div class="ov-panel-head">
-                <div class="ov-panel-title">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-activity"/></svg>
-                  服务状态
-                </div>
-              </div>
-              <div class="ov-health-list" id="ovHealthList">
-                <div class="ov-health-row"><span class="ov-dot"></span><span class="ov-health-label">检测中...</span><span class="ov-health-value">-</span></div>
-              </div>
-            </div>
-
-            <div class="ov-panel ov-panel-todo">
-              <div class="ov-panel-head">
-                <div class="ov-panel-title">
-                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-alert-circle"/></svg>
-                  待办事项
-                </div>
-              </div>
-              <div class="ov-todo-list" id="ovTodoList">
-                <div class="ov-todo-empty">加载中...</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 底部：热门推荐 -->
+        <!-- 底部：热门推荐（与 TMDB 页共享的轻量数据源，仅保留一张海报卡的高度） -->
         <div class="ov-panel ov-panel-rec">
           <div class="ov-panel-head">
             <div class="ov-panel-title">

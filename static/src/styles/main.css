@@ -551,20 +551,13 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
    ========================================================= */
 @media(max-width:1500px){
   .app{grid-template-columns:200px minmax(0,1fr) 320px}
-  .ov-workspace{grid-template-columns:1fr minmax(240px,300px)}
   .log-panel{padding:10px}
-  /* KPI 数值随空间收缩，避免与右侧按钮争抢后把副信息挤断行 */
-  .ov-kpi-card{padding:12px 14px}
-  .ov-kpi-value{font-size:23px}
+  /* 指标行按钮随空间收缩，避免与数值争抢宽度 */
   .ov-kpi-btn{padding:6px 12px}
 }
 @media(max-width:1350px){
   .app{grid-template-columns:180px minmax(0,1fr) 290px}
-  .ov-workspace{grid-template-columns:1fr minmax(220px,260px)}
   .log-panel{min-width:280px;overflow-x:hidden;padding:10px}
-  /* 主列已被压到 ~700px，4 列 KPI 每格不足 170px，降级为 2×2 */
-  .ov-kpi-bar{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .ov-kpi-value{font-size:22px}
 }
 @media(max-width:1200px){
   .app{grid-template-columns:170px minmax(0,1fr)}
@@ -572,7 +565,6 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
     transform:translateX(100%);transition:transform var(--transition-normal)}
   .log-panel.open{transform:none}
   .log-fab{display:flex}
-  .ov-workspace{grid-template-columns:1fr minmax(220px,260px)}
 }
 @media(max-width:1024px){
   .app{grid-template-columns:1fr}
@@ -743,7 +735,14 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}50%{opacity:.45}}
 
-/* ===== 密度切换（宽松 / 标准 / 紧凑）：主要影响 TMDB 资源网格列数 ===== */
+/* ===== 密度切换（宽松 / 标准 / 紧凑）：主要影响 TMDB 资源网格列数 =====
+   显式声明「标准」档的密度令牌，保证标准档在用户先切到宽松/紧凑再切回时复位。 */
+html[data-density="standard"]{
+  --card-pad:12px;
+  --space-md:12px;
+  --space-lg:16px;
+  --space-xl:20px;
+}
 html[data-density="comfortable"]{
   --card-pad:14px;
   --space-md:12px;
@@ -951,52 +950,81 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 
 /* ========================================
    Overview Page（概览首页）
+   首屏信息架构：核心指标 / 最近转存 / 待办（详见 docs/UI_Roadmap_Next.md 第十节）
    ======================================== */
 
-/* KPI 条 */
-.ov-kpi-bar{
+/* ---- 首屏两列：左「概览 + 最近转存」，右「热门推荐」 ---- */
+.ov-top{
   display:grid;
-  grid-template-columns:repeat(4,minmax(0,1fr));
-  gap:12px;
+  /* 右列固定宽度，保证海报卡（2:3 比例）不被压扁 */
+  grid-template-columns:minmax(0,1fr) var(--ov-rec-w,300px);
+  gap:14px;
   margin-bottom:14px;
+  align-items:stretch;
 }
-.ov-kpi-card{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  min-width:0;
-  padding:14px 16px;
-  border-radius:var(--radius-lg);
+.ov-overview{
+  display:flex;flex-direction:column;min-width:0;
   background:var(--card);
   border:1px solid var(--border2);
+  border-radius:var(--radius-lg);
   -webkit-backdrop-filter:var(--blur);
   backdrop-filter:var(--blur);
-  transition:border-color var(--transition-fast),transform var(--transition-fast);
+  overflow:hidden;
 }
-.ov-kpi-card:hover{border-color:var(--border3)}
-.ov-kpi-info{min-width:0;flex:1;overflow:hidden}
-.ov-kpi-green{border-left:3px solid var(--green)}
-.ov-kpi-blue{border-left:3px solid var(--accent)}
-.ov-kpi-orange{border-left:3px solid var(--orange)}
-.ov-kpi-purple{border-left:3px solid var(--accent2)}
-/* 标签不换行，过长省略；避免中文在任意字符间断行导致标题被拦腰截断 */
-.ov-kpi-label{font-size:var(--fs-sm);color:var(--text3);margin-bottom:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.ov-kpi-value-row{display:flex;align-items:center;gap:4px 10px;flex-wrap:wrap;min-width:0}
-.ov-kpi-value{font-size:26px;font-weight:700;font-family:var(--font-display);line-height:1.1}
-.ov-kpi-green .ov-kpi-value{color:var(--green)}
-.ov-kpi-blue .ov-kpi-value{color:var(--accent)}
-.ov-kpi-orange .ov-kpi-value{color:var(--orange)}
-.ov-kpi-purple .ov-kpi-value{color:var(--accent2)}
-/* 副信息整段不拆行（原「失败 86」被挤成「失 / 败 86」） */
-.ov-kpi-sub{font-size:var(--fs-sm);color:var(--text3);white-space:nowrap}
+.ov-overview-head{
+  display:flex;align-items:center;gap:8px;flex-wrap:wrap;
+  padding:12px 16px;
+  border-bottom:1px solid var(--border);
+}
+.ov-overview-title{display:flex;align-items:center;gap:6px;font-size:var(--fs-lg);font-weight:600;color:var(--text)}
+.ov-overview-sub{font-size:var(--fs-sm);color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ov-overview-body{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) minmax(220px,var(--ov-side-w));
+  gap:0;
+  flex:1;
+  min-height:0;
+}
+/* 主列偏窄时由 JS 设置 data-ov-narrow：改为上下堆叠，避免两列都被压到无法阅读 */
+.app[data-ov-narrow="1"] .ov-overview-body{grid-template-columns:minmax(0,1fr)}
+
+/* ---- 指标列表：每行一条完整信息，行高统一 54px ---- */
+.ov-stat-list{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)}
+.app[data-ov-narrow="1"] .ov-stat-list{border-right:none;border-bottom:1px solid var(--border)}
+.ov-stat-row{
+  display:grid;
+  grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;
+  gap:8px 10px;
+  padding:9px 16px;
+  min-height:54px;
+  border-left:3px solid transparent;
+  transition:background var(--transition-fast);
+}
+.ov-stat-row + .ov-stat-row{border-top:1px solid var(--border)}
+.ov-stat-row:hover{background:var(--hover-wash)}
+.ov-stat-green{border-left-color:var(--green)}
+.ov-stat-blue{border-left-color:var(--accent)}
+.ov-stat-orange{border-left-color:var(--orange)}
+.ov-stat-line{display:flex;align-items:baseline;gap:8px;min-width:0;overflow:hidden}
+.ov-stat-label{font-size:var(--fs-sm);color:var(--text3);flex-shrink:0}
+.ov-stat-value{font-size:var(--fs-xl);font-weight:700;font-family:var(--font-display);line-height:1.1;flex-shrink:0}
+.ov-stat-green .ov-stat-value{color:var(--green)}
+.ov-stat-blue .ov-stat-value{color:var(--accent)}
+.ov-stat-orange .ov-stat-value{color:var(--orange)}
+/* 副信息：宽度不足时省略而不是换行，保证每行等高（避免 4 张卡 81/93 参差） */
+.ov-stat-sub{font-size:var(--fs-sm);color:var(--text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}
+.ov-stat-sched{color:var(--text);font-weight:600}
+.ov-stat-meta{font-size:var(--fs-xs);color:var(--text3);white-space:nowrap}
+.ov-stat-action{flex-shrink:0}
+/* 进度条独占一行，但用负外边距抵消它带来的行高增量：
+   三行指标必须等高（曾出现 54/56/54 参差） */
+.ov-stat-bar{grid-column:1 / -1;margin:-4px 0 -4px}
+.ov-stat-bar .ov-rate-bar{min-width:0}
 .ov-rate-bar{flex:1;height:6px;background:var(--track);border-radius:3px;overflow:hidden;min-width:60px}
 .ov-rate-fill{height:100%;border-radius:3px;background:var(--gradient-brand);transition:width .6s var(--ease-standard)}
-.ov-kpi-trend{font-size:var(--fs-xs);color:var(--text3);white-space:nowrap}
-.ov-kpi-schedule{display:flex;flex-direction:column;gap:2px}
-.ov-kpi-sched-row{display:flex;align-items:center;gap:8px;font-size:var(--fs-base)}
-.ov-kpi-sched-name{color:var(--text2);min-width:32px}
-.ov-kpi-sched-time{font-weight:600;color:var(--text)}
+.ov-kpi-muted{color:var(--text3);font-weight:400}
+
 .ov-kpi-btn{
   padding:7px 14px;border-radius:var(--radius-sm);border:none;cursor:pointer;
   font-size:var(--fs-sm);font-weight:600;font-family:var(--font-display);
@@ -1006,20 +1034,15 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .ov-kpi-btn:hover{filter:brightness(1.1);transform:scale(1.02)}
 .ov-kpi-btn-outline{background:var(--hover-wash);color:var(--text);border:1px solid var(--border2)}
 .ov-kpi-btn-outline:hover{background:var(--hover-wash);border-color:var(--border3)}
-.ov-kpi-btn-red{background:var(--red);color:#fff}
-.ov-kpi-btn-red:hover{filter:brightness(1.1)}
 
-/* 工作区：左右分栏 */
-.ov-workspace{
-  display:grid;
-  grid-template-columns:1fr minmax(260px,340px);
-  gap:14px;
-  margin-bottom:14px;
-}
-.ov-main-col{min-width:0}
-.ov-side-col{display:flex;flex-direction:column;gap:14px;min-width:0;max-width:340px}
+/* ---- 右列：服务状态 + 待办 ---- */
+.ov-side{display:flex;flex-direction:column;min-width:0;background:var(--bg-deep)}
+.ov-side-block{padding:12px 16px}
+.ov-side-block + .ov-side-block{border-top:1px solid var(--border)}
+.ov-side-title{display:flex;align-items:center;font-size:var(--fs-sm);font-weight:600;color:var(--text2);margin-bottom:6px}
+.ov-side-todo{flex:1;min-height:0}
 
-/* 面板 */
+/* ---- 面板（最近转存 / 热门推荐） ---- */
 .ov-panel{
   background:var(--card);
   border:1px solid var(--border2);
@@ -1033,31 +1056,170 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
   padding:12px 16px;
   border-bottom:1px solid var(--border);
 }
-.ov-panel-title{display:flex;align-items:center;gap:6px;font-size:var(--fs-lg);font-weight:600;color:var(--text)}
-.ov-panel-sub{font-size:var(--fs-sm);color:var(--text3);margin-left:auto}
+.ov-panel-title{display:flex;align-items:center;gap:6px;font-size:var(--fs-lg);font-weight:600;color:var(--text);white-space:nowrap}
+.ov-panel-sub{font-size:var(--fs-sm);color:var(--text3);white-space:nowrap}
 .ov-link-btn{
   background:none;border:none;cursor:pointer;font-size:var(--fs-sm);color:var(--accent);
-  font-family:var(--font-display);padding:0;margin-left:auto;
+  font-family:var(--font-display);padding:0;margin-left:auto;white-space:nowrap;
 }
 .ov-link-btn:hover{text-decoration:underline}
 
-/* 最近转存表格 */
-.ov-table-wrap{overflow-x:auto;max-height:320px;overflow-y:auto}
-.ov-table{width:100%;border-collapse:collapse;font-size:var(--fs-base)}
+/* ---- 最近转存：与左侧概览等高，「查看全部」已是唯一出口（不再面板内滚动） ---- */
+.ov-panel-recent{display:flex;flex-direction:column}
+.ov-panel-recent .ov-table-wrap{flex:1;min-height:0;overflow:auto}
+.ov-table{width:100%;border-collapse:collapse;font-size:var(--fs-base);table-layout:fixed}
 .ov-table thead{position:sticky;top:0;z-index:1}
 .ov-table thead th{
   padding:8px 12px;text-align:left;font-size:var(--fs-xs);font-weight:600;color:var(--text3);
   background:var(--card-2);border-bottom:1px solid var(--border2);white-space:nowrap;
 }
-.ov-table tbody td{padding:8px 12px;border-bottom:1px solid var(--border);white-space:nowrap}
+.ov-table tbody td{padding:8px 12px;border-bottom:1px solid var(--border);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .ov-table tbody tr{transition:background var(--transition-fast)}
 .ov-table tbody tr:hover{background:var(--hover-wash)}
 .ov-table tbody tr:last-child td{border-bottom:none}
-.ov-cell-title{max-width:260px;overflow:hidden;text-overflow:ellipsis;font-weight:500}
+.ov-table .ov-table-title{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
+/* 分类前缀固定宽度，避免「电影/剧集」宽度差导致标题列参差 */
+.ov-table .ov-table-cat{
+  display:inline-block;min-width:2.6em;margin-right:6px;padding:1px 4px;
+  border-radius:var(--radius-xs);background:var(--hover-wash);
+  font-size:var(--fs-xs);color:var(--text3);text-align:center;vertical-align:1px;
+}
+.ov-table .ov-table-date{font-variant-numeric:tabular-nums;color:var(--text2)}
+/* 固定列宽：标题自适应，其余列按内容给足宽度（fixed 布局下不会再出现横向滚动条） */
+.ov-table .ov-col-lib,.ov-table .ov-table-lib{width:52px}
+.ov-table .ov-col-link,.ov-table .ov-table-actions{width:48px;text-align:center}
+.ov-table .ov-table-actions a{display:inline-flex}
 .ov-table-empty{text-align:center;color:var(--text3);padding:24px !important}
+.ov-table-nolink{color:var(--text3)}
+.ov-lib-ok{color:var(--green)}
+.ov-recent-foot{
+  display:flex;align-items:center;gap:10px;
+  padding:8px 16px;border-top:1px solid var(--border);background:var(--card-2);
+}
+.ov-recent-note{font-size:var(--fs-xs);color:var(--text3);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ov-recent-foot .ov-link-btn{margin-left:auto}
 
-/* ===== 2.3 移动端表格卡片化：<640px 时数据表逐行转为卡片 ===== */
+/* ---- 状态徽标 ---- */
+.ov-badge{
+  display:inline-block;padding:1px 7px;border-radius:var(--radius-xs);
+  font-size:var(--fs-xs);font-weight:600;white-space:nowrap;
+}
+.ov-badge-success{color:var(--green);background:var(--green-wash)}
+.ov-badge-skip{color:var(--orange);background:var(--orange-wash)}
+.ov-badge-fail{color:var(--red);background:var(--red-wash)}
+.ov-badge-run{color:var(--accent);background:var(--accent-wash)}
+.ov-badge-muted{color:var(--text3);background:var(--hover-wash)}
+
+/* ---- 骨架屏 ---- */
+.ov-skel{display:inline-block;height:12px;border-radius:var(--radius-xs);background:var(--hover-wash);animation:ovSkelPulse 1.4s ease-in-out infinite}
+.ov-skel-title{width:70%}
+.ov-skel-sm{width:60%}
+.ov-skel-md{width:72%}
+.ov-skel-dot{width:16px;height:16px;border-radius:50%}
+.ov-rec-skel{flex:0 0 auto;width:88px;display:flex;flex-direction:column;gap:6px}
+.ov-skel-poster{width:88px;height:132px}
+.ov-skel-line{width:70%}
+@keyframes ovSkelPulse{0%,100%{opacity:.35}50%{opacity:.7}}
+@media(prefers-reduced-motion:reduce){
+  .ov-skel{animation:none;opacity:.5}
+}
+
+/* ---- 服务健康 / 待办 ---- */
+.ov-health-list{display:flex;flex-direction:column;gap:2px}
+.ov-health-row{display:flex;align-items:center;gap:8px;padding:3px 0;font-size:var(--fs-sm)}
+.ov-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0;background:var(--text3)}
+.ov-dot-ok{background:var(--green);box-shadow:0 0 6px rgba(48,209,88,0.5)}
+.ov-dot-warn{background:var(--orange)}
+.ov-dot-error{background:var(--red)}
+.ov-health-label{color:var(--text3);flex-shrink:0}
+.ov-health-value{color:var(--text);font-weight:600;margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+.ov-todo-list{display:flex;flex-direction:column;gap:6px}
+.ov-todo-item{
+  display:flex;align-items:center;gap:8px;padding:7px 10px;
+  border-radius:var(--radius-sm);font-size:var(--fs-sm);cursor:pointer;
+  transition:background var(--transition-fast);
+}
+.ov-todo-item:last-child{margin-bottom:0}
+.ov-todo-icon{flex-shrink:0;display:inline-flex}
+.ov-todo-icon-check{color:var(--green)}
+.ov-todo-icon-alert{color:var(--red)}
+.ov-todo-icon-clock{color:var(--orange)}
+.ov-todo-icon-send{color:var(--accent)}
+.ov-todo-text{flex:1;color:var(--text2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ov-todo-btn{
+  flex-shrink:0;padding:2px 8px;border-radius:var(--radius-xs);cursor:pointer;
+  border:1px solid var(--border2);background:var(--card-2);color:var(--accent);
+  font-size:var(--fs-xs);font-family:var(--font-display);
+}
+.ov-todo-btn:hover{border-color:var(--border3)}
+.ov-todo-empty{padding:6px 0;font-size:var(--fs-sm);color:var(--text3)}
+
+/* ---- 热门推荐（底部，仅一张海报卡高度） ---- */
+.ov-panel-rec .ov-panel-head{border-bottom-color:rgba(191,90,242,0.2)}
+.ov-rec-scroll{
+  display:flex;gap:10px;padding:12px 16px;overflow-x:auto;
+  scrollbar-width:thin;
+}
+.ov-rec-scroll::-webkit-scrollbar{height:6px}
+.ov-rec-scroll::-webkit-scrollbar-thumb{background:var(--border3);border-radius:3px}
+.ov-rec-card{
+  flex:0 0 auto;width:88px;display:flex;flex-direction:column;
+  border-radius:var(--radius);overflow:hidden;cursor:pointer;
+  background:var(--hover-wash);border:1px solid var(--border);
+  transition:border-color var(--transition-fast),background var(--transition-fast),transform var(--transition-fast);
+}
+.ov-rec-card:hover{border-color:var(--accent);background:var(--accent-wash);transform:translateY(-2px)}
+.ov-rec-poster{position:relative;width:100%;aspect-ratio:2/3;background:var(--card-2);overflow:hidden}
+.ov-rec-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
+.ov-rec-poster-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text3)}
+.ov-rec-poster-fallback svg{width:36px;height:36px;opacity:.55}
+.ov-rec-info{padding:6px 8px;min-width:0}
+.ov-rec-title{font-size:var(--fs-sm);font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.ov-rec-meta{display:flex;gap:6px;margin-top:2px;font-size:var(--fs-xs);color:var(--text3);white-space:nowrap}
+.ov-rec-empty{padding:20px;text-align:center;font-size:var(--fs-sm);width:100%}
+
+/* ---- 概览页响应式 ----
+   栅格断点统一到全局 1500/1350/1200/1024/640；
+   「指标 | 状态」两列与首屏两列的切换由主列实测宽度驱动（.app[data-ov-narrow="1"]），
+   不再使用 viewport 媒体查询——滚动条会让 innerWidth 比 viewport 小十余像素，
+   侧栏与日志栏的展开状态也会改变主列宽度，media query 判定会在中间宽度误判。 */
+@media(max-width:1500px){
+  /* 主列变窄：右列海报改小一档，避免挤压左侧面板 */
+  .ov-top{--ov-rec-w:262px}
+  .ov-stat-row{padding:9px 14px}
+}
+@media(max-width:1350px){
+  .ov-top{--ov-rec-w:236px}
+}
+/* 当右侧日志栏退出桌面常驻布局（≤1200px）时主列反而变宽：右列宽度回调 */
+@media(max-width:1200px){
+  .ov-top{--ov-rec-w:280px}
+}
+@media(max-width:1024px){
+  /* 侧栏收起后主列最宽，右侧推荐列恢复满宽海报 */
+  .ov-top{--ov-rec-w:300px}
+}
+@media(max-width:900px){
+  /* 首屏两列改上下堆叠：推荐移到最近转存下方 */
+  .ov-top{grid-template-columns:minmax(0,1fr)}
+  .ov-rec-card{width:96px}
+}
 @media(max-width:640px){
+  .content{padding:12px 14px}
+  /* 窄屏：调度行允许换行。行内为「标签 + 时间」两段文本，行盒统一 16px，
+     两段各自占一行时是 33px（2 × 16 + 行距），比另两行的 36px 文本量少 3px；
+     在基准 54px 的行高上这 3px 的差异不可见（其余行相同），故保留 min-height。 */
+  .ov-stat-sched{white-space:normal}
+  .ov-stat-row{padding:9px 12px}
+  /* 指标行文本度量统一：值 / 副信息 / 按钮共用 16px 行盒 */
+  .ov-stat-value{font-size:var(--fs-base);line-height:16px}
+  .ov-stat-sub,.ov-stat-sched{line-height:16px}
+  .ov-kpi-btn{padding:5px 12px;line-height:16px}
+  .ov-overview-sub,.ov-recent-note{display:none}
+  .ov-side{padding:0}
+
+  /* 2.3 移动端表格卡片化：数据表逐行转为卡片（每行一个字段） */
   .data-table{min-width:0}
   .data-table thead{display:none}
   .data-table tbody tr{display:block;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;background:var(--card-2)}
@@ -1071,122 +1233,21 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
   .data-table td[colspan],.ov-table td.ov-table-empty{display:block;text-align:center}
 
   .ov-table-wrap{overflow:visible;max-height:none}
+  .ov-table{display:block;table-layout:auto}
   .ov-table thead{display:none}
-  .ov-table tbody tr{display:block;border:1px solid var(--border);border-radius:var(--radius);margin-bottom:8px;background:var(--card-2);padding:2px 0}
-  .ov-table tbody tr:hover{background:var(--card-2)}
-  .ov-table tbody td{display:flex;justify-content:space-between;align-items:center;gap:12px;white-space:normal}
+  .ov-table tbody{display:block}
+  /* 标题列自带分类前缀，不再重复渲染「标题」标签行 */
+  .ov-table tbody tr{display:block;border-bottom:1px solid var(--border);background:transparent}
+  .ov-table tbody tr:last-child{border-bottom:none}
+  .ov-table tbody tr:hover{background:transparent}
+  .ov-table tbody td{display:flex;justify-content:space-between;align-items:center;gap:12px;white-space:normal;width:auto}
   .ov-table tbody td[data-label]::before{content:attr(data-label);font-size:var(--fs-xs);color:var(--text3);flex-shrink:0}
-  .ov-table .ov-table-title{white-space:normal;overflow:visible;text-overflow:clip}
+  .ov-table .ov-table-title{display:flex;justify-content:flex-start;align-items:center;gap:0;width:auto;max-width:none;white-space:normal;overflow:visible;text-overflow:clip}
+  /* 分类前缀在卡片标题行必须按内容取宽，否则会被压成竖排单字 */
+  .ov-table .ov-table-cat{flex:0 0 auto;min-width:2.6em;width:auto;vertical-align:baseline}
+  .ov-table .ov-table-lib,.ov-table .ov-table-actions{width:auto}
+  .ov-panel-recent .ov-table-wrap{max-height:none;overflow:visible}
 }
-.ov-status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;vertical-align:middle}
-.ov-st-ok{color:var(--green);font-size:var(--fs-sm);font-weight:600}
-.ov-st-fail{color:var(--red);font-size:var(--fs-sm);font-weight:600}
-.ov-st-skip{color:var(--orange);font-size:var(--fs-sm)}
-.ov-st-run{color:var(--accent);font-size:var(--fs-sm);font-weight:600}
-.ov-st-other{color:var(--text3);font-size:var(--fs-sm)}
-.ov-action{cursor:pointer;font-size:var(--fs-sm);padding:2px 8px;border-radius:4px;transition:background var(--transition-fast)}
-.ov-action-retry{color:var(--orange)}
-.ov-action-retry:hover{background:var(--orange-wash)}
-.ov-action-stop{color:var(--red)}
-.ov-action-stop:hover{background:var(--red-wash)}
-.ov-action-open{color:var(--accent)}
-.ov-action-open:hover{background:var(--accent-wash-strong)}
-.ov-muted{color:var(--text3)}
-
-/* 批量操作栏 */
-.ov-batch-bar{
-  display:flex;align-items:center;gap:8px;
-  padding:8px 16px;border-top:1px solid var(--border);
-  background:var(--hover-wash);
-}
-.ov-batch-info{font-size:var(--fs-sm);color:var(--text3);margin-right:auto}
-.ov-batch-btn{
-  padding:4px 12px;border-radius:var(--radius-xs);border:1px solid var(--border2);
-  background:var(--card-2);color:var(--text);font-size:var(--fs-xs);cursor:pointer;
-  font-family:var(--font-display);transition:background var(--transition-fast),border-color var(--transition-fast);
-}
-.ov-batch-btn:hover{border-color:var(--border3)}
-.ov-batch-btn-danger{color:var(--red);border-color:var(--red-border)}
-.ov-batch-btn-danger:hover{background:var(--red-wash)}
-
-/* 服务健康 */
-.ov-health-list{padding:8px 16px}
-.ov-health-item{display:flex;align-items:center;gap:10px;padding:6px 0;font-size:var(--fs-base)}
-.ov-health-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
-.ov-dot-ok{background:var(--green);box-shadow:0 0 6px rgba(48,209,88,0.5)}
-.ov-dot-fail{background:var(--red)}
-.ov-dot-unknown{background:var(--text3)}
-.ov-health-name{flex:1;color:var(--text2)}
-.ov-health-val{font-size:var(--fs-sm)}
-.ov-ok{color:var(--green)}
-
-/* 待办事项 */
-.ov-panel-todo .ov-panel-head{border-bottom-color:rgba(255,159,10,0.2)}
-.ov-todo-list{padding:8px 16px}
-.ov-todo-item{
-  display:flex;align-items:center;gap:8px;padding:9px 12px;margin-bottom:6px;
-  border-radius:var(--radius-sm);font-size:var(--fs-sm);cursor:pointer;
-  transition:background var(--transition-fast);
-}
-.ov-todo-item:last-child{margin-bottom:0}
-.ov-todo-danger{background:var(--red-wash)}
-.ov-todo-danger:hover{background:var(--red-wash-strong)}
-.ov-todo-warning{background:var(--orange-wash)}
-.ov-todo-warning:hover{background:var(--orange-wash-strong)}
-.ov-todo-info{background:var(--accent-wash)}
-.ov-todo-info:hover{background:var(--accent-wash-strong)}
-.ov-todo-icon{flex-shrink:0}
-.ov-todo-text{flex:1;color:var(--text2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ov-todo-action{color:var(--accent);font-size:var(--fs-xs);white-space:nowrap;flex-shrink:0}
-.ov-todo-empty{padding:16px;text-align:center;font-size:var(--fs-sm)}
-
-/* 热门推荐 */
-.ov-panel-rec .ov-panel-head{border-bottom-color:rgba(191,90,242,0.2)}
-.ov-rec-scroll{
-  display:flex;gap:10px;padding:12px 16px;overflow-x:auto;
-  scrollbar-width:thin;
-}
-.ov-rec-scroll::-webkit-scrollbar{height:6px}
-.ov-rec-scroll::-webkit-scrollbar-thumb{background:var(--border3);border-radius:3px}
-.ov-rec-card{
-  flex:0 0 auto;width:96px;display:flex;flex-direction:column;
-  border-radius:var(--radius);overflow:hidden;cursor:pointer;
-  background:var(--hover-wash);border:1px solid var(--border);
-  transition:border-color var(--transition-fast),background var(--transition-fast),transform var(--transition-fast);
-}
-.ov-rec-card:hover{border-color:var(--accent);background:var(--accent-wash);transform:translateY(-2px)}
-.ov-rec-poster{position:relative;width:100%;aspect-ratio:2/3;background:var(--card-2);overflow:hidden}
-.ov-rec-img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;display:block}
-.ov-rec-poster-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--text3)}
-.ov-rec-poster-fallback svg{width:36px;height:36px;opacity:.55}
-.ov-rec-info{padding:8px 10px;min-width:0}
-.ov-rec-title{font-size:var(--fs-base);font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ov-rec-meta{display:flex;gap:6px;margin-top:3px;font-size:var(--fs-xs);color:var(--text3)}
-.ov-rec-rating{color:var(--orange);font-weight:600}
-.ov-rec-btn{
-  flex-shrink:0;padding:4px 10px;border-radius:var(--radius-xs);border:none;cursor:pointer;
-  font-size:var(--fs-xs);font-weight:600;font-family:var(--font-display);
-  background:var(--green);color:#fff;transition:filter var(--transition-fast);
-}
-.ov-rec-btn:hover{filter:brightness(1.15)}
-.ov-rec-empty{padding:20px;text-align:center;font-size:var(--fs-sm);width:100%}
-
-/* 概览页响应式（栅格断点统一到全局 1500/1350/1200/1024/640，消除中间宽度错位跳动） */
-@media(max-width:1024px){
-  /* 原 900px 断点上移，与侧栏/日志栏折叠断点一致 */
-  .ov-workspace{grid-template-columns:1fr}
-  .ov-side-col{flex-direction:row;flex-wrap:wrap}
-  .ov-side-col .ov-panel{flex:1;min-width:240px}
-  .ov-kpi-bar{grid-template-columns:repeat(2,1fr)}
-}
-@media(max-width:640px){
-  .ov-kpi-bar{grid-template-columns:1fr}
-  .ov-kpi-card{padding:12px}
-  .ov-kpi-value{font-size:22px}
-  .ov-side-col{flex-direction:column}
-  .ov-rec-card{width:118px}
-}
-
 /* ========================================
    日志面板折叠
    ======================================== */

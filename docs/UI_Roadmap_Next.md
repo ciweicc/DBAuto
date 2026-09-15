@@ -279,3 +279,133 @@
 | 1024×900 | 深色 / 浅色 | ✅ 侧栏收起、双列 |
 | 640×900 | 深色 | ✅ 单列、chips 横向滚动 |
 | 390 / 360 | 深色 / 浅色 | ✅ 单列，保存条不遮内容 |
+
+---
+
+## 十、第六批实施结果（本轮）— 概览页显示密度与优先级
+
+> 触发：issue #8「对概览页的显示密度和优先级提出优化方案」。
+> 基线数据全部来自 `scripts/check_overview_dom.py`（真实浏览器 + 确定性桩数据），
+> 而非主观判断。
+
+### 10.1 走查发现的缺陷（渲染实测）
+
+| # | 缺陷 | 实测证据（900px 高视口） |
+|---|---|---|
+| 1 | **首屏被推到折叠线以下** | 「热门推荐」面板在 1280/1440 从 y=599 才开始；`contentH` 845（1920）→ 1135（1024/900/760），768 以下内容整体溢出视口 |
+| 2 | **KPI 卡高度随窗口漂移** | 1920/1600 为 93/103px，1440/1280 为 132px；1024/760 折成 2×2 后变成 81/81/93/93（单行卡 81、双行卡 93 参差） |
+| 3 | **一屏内只有 8 条最近转存** | `items.slice(0, 8)` 硬截断 + 「最近 8 条」文案 + 「查看全部」入口 + 320px 面板内滚动，同一份数据被截了三层 |
+| 4 | **状态语义错误** | 存储里 `status` 为 `exists`（幂等跳过）的条目，一律渲染为绿色 `ov-badge-success`「已转存」，把跳过误报成成功 |
+| 5 | **空日期打乱排序** | `date` 为空串的条目在 `localeCompare` 降序下排到列表**最前**，并显示为 `-`（与真实日期不可区分） |
+| 6 | **热门推荐海报恒为占位图** | 后端契约为 `items:[{poster,title,year,rating}]`，前端却读 `results/poster_path/release_date/vote_average`，`poster` 恒为空 → 每张卡只剩 36px 图标 |
+| 7 | **移动端分类前缀被压成竖排单字** | ≤640px 卡片化后 `.ov-table-cat` 实测宽度 **10px**（「电影」二字竖排），截图确认 |
+| 8 | **`ov-dot-warn` / `ov-badge-skip` 等类无样式** | `renderOvHealth` 产出 `ov-dot-warn`，CSS 只定义了 `ov-dot-ok/fail/unknown` |
+| 9 | **死 CSS** | `.ov-status-dot`、`.ov-st-*`、`.ov-todo-danger/-warning/-info`、`.ov-rec-rating/-btn`、`.ov-cell-title`、`.ov-health-item/-name/-val` 均已无引用 |
+| 10 | **`data-density="standard"` 无令牌声明** | 密度令牌只在 comfortable/compact 下覆盖，缺 `standard` 分支（用户切回标准档时不会复位） |
+
+### 10.2 实施的改动
+
+**1. 信息架构：从「三段式竖排」改为「首屏两列」**
+
+```
+┌─ 转存概览（指标行 + 服务状态/待办）────┬─ 最近转存 ────────────┐
+│ 今日转存 3      共 10 次成功   [去发现] │ 标题 时间 状态 库内 链接 │
+│ 近 7 天成功率 91%  成功 10 · 失败 1     │ …（10 行，全量可见）    │
+│ 下次调度 转存 … · 检测 …      [立即执行]│                        │
+│ ── 服务状态 | 待办 ─────────────────── │ ── 「库内」含义说明 ──── │
+├────────────────────────────────────────┴────────────────────────┤
+│ 热门推荐（与 TMDB 页共享数据源）                                  │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+- 旧的四张等宽 KPI 卡 → **行式指标列表**（标签 + 值 + 副信息 + 动作，行高固定 54px）。
+  卡片式布局在中间宽度必须折成 2×2，是缺陷 2 的根因；行式布局没有这个退化路径。
+- 「转存库总数」卡片与「最近转存」面板标题重复，**移除**，改由面板副标题表达
+  （`最近 10 条 / 共 13 条`）与概览头部（`转存库 13 条 · 上次成功`）。
+- 「热门推荐」与「最近转存」同处首屏右侧/顶部，不再被推到折叠线以下。
+
+**2. 首次给出「三、优先级」判断**（issue 标题的后半句）
+
+- **决策区**（服务状态 + 待办）经评估后与指标区同列：它决定「要不要现在动手」，
+  必须留在首屏；但常态项（调度运行中、上次成功、版本号）压成一行
+  `运行状态：全部正常 · v1.1.0`，只把「未配置调度 / 上次失败」展开成独立行。
+- **信息区**（最近转存 10 行）从 8 条提升到面板容量，去掉面板内滚动，
+  「查看全部 → 历史记录」成为唯一出口。
+- **消费区**（热门推荐）保留数据结构但降级到首屏之后，高度收敛为一行海报卡。
+
+**3. 概览两列自适应改用「主列实测宽度」驱动**
+
+`@media(max-width:1350px)` 这类 viewport 断点在 1280~1440 区间会误判：
+Playwright 的 `viewport:{width:1440}` 因滚动条得到 `innerWidth=1425`，媒体查询命中，
+但主列实际宽度（846~920px）完全放得下两列。侧栏折叠、日志栏宽度同样改变主列宽度。
+改为 `initOverviewViewport()` 用 `ResizeObserver` 观测 `.main` 宽度，设置
+`.app[data-ov-narrow]`，阈值 `OV_NARROW_PX = 860`。
+
+**4. 语义与数据修复**
+
+- `ovRecentState()`：`ok/done` → 已转存、`exists/skipped` → **已存在跳过**、
+  `fail/error/invalid` → 失败、`downloading/running` → 进行中，未知时回退看 `shareurl`。
+- `ovDateShort()`：空值显示 `—`，否则 `MM/DD HH:MM`；排序把空日期压到末尾。
+- `renderOvRecs()`：按契约读 `items/poster/year/rating`，`poster` 为完整 URL 时直接用，
+  否则拼 `TMDB_IMG_BASE`。
+- 补齐 `ov-dot-warn`、`ov-dot-error`、`ov-badge-skip/-fail/-run/-muted`、
+  `ov-todo-icon-*`、`ov-rec-skel` 等缺失样式；删除 10 处死 CSS。
+- 补齐 `html[data-density="standard"]` 令牌分支。
+
+**5. 窄屏 640px 卡片化修复**
+
+`.ov-table` 改为 `display:block`、去掉 `table-layout:fixed`（卡片形态下固定列宽
+会把 `.ov-table-cat` 压成 10px），分类前缀 `flex:0 0 auto` 且文案改为
+`电影 / 剧集 / 综艺`（原为 `movie/tv`）。
+
+### 10.3 验收数据（`scripts/check_overview_dom.py`）
+
+修复前（1920/1600/1440/1280/1200/1100/1024/900/760/390 十档实测）：
+
+```
+ 1920 contentH=845(视口845)  推荐面板 y=560    KPI 卡高 93  行高[37]
+ 1440 contentH=845(视口845)  推荐面板 y=599    KPI 卡高 132
+ 1024 contentH=1135(+290)    推荐面板 y=904    卡片 81/81/93/93
+  760 contentH=1135(+290)    推荐面板 y=904    卡片 81/81/93/93
+  390 contentH=2305(+1466)   分类前缀宽 10px（竖排）
+```
+
+修复后：
+
+```
+1920x1080 大屏   指标行高 [54, 54, 54]  表格溢出 0  首屏底边 816 ≤ 1080
+1440x900         指标行高 [54, 54, 54]  表格溢出 0  首屏底边 816 ≤  900
+1366/1280/1200/1024 同上（不再是「媒体查询命中就堆叠」）
+ 760x900（两列堆叠） 指标行高 [54, 54, 54]  首屏底边 1206（预期，两列堆叠）
+ 390x844（移动端）   指标行高 [54, 54, 54]  分类前缀 30px（横排）
+```
+
+- 9 组视口 × 深色/浅色 × 标准/紧凑：指标行裁切 0、横向溢出 0、面板内滚动 0；
+- 6 个 Tab 切换：横向溢出 0、JS 报错 0（TMDB 桩数据不全导致的 `initTmdbPage`
+  报错在改动前就已存在，已对照确认非本次引入）。
+
+### 10.4 回归验证与门禁
+
+- `bash static/src/build.sh` 重建产物，重建逐字节幂等（`test_build_rebuild_is_idempotent`）；
+- `pytest tests/ -q` **164 项通过**（`tests/test_build.py` 由 22 项增至 **32 项**）；
+- `ruff check .` 通过；`python3 scripts/check_contrast.py` 18 组全部达标；
+- 新增 `scripts/check_overview_dom.py`：9 组视口的 DOM 度量断言，可复跑，
+  失败时非零退出（无 playwright 时以 0 跳过，不影响轻量 CI 阶段）。
+
+### 10.5 防复发断言（`tests/test_build.py` 新增 10 项）
+
+| 断言 | 拦截的历史缺陷 |
+|---|---|
+| `test_overview_first_screen_fits_in_one_viewport` | 首屏重排回「KPI 条 / 工作区 / 推荐」竖排、旧布局类残留 |
+| `test_overview_layout_uses_measured_width_not_viewport_media_queries` | 两列结构退回 viewport 媒体查询 |
+| `test_overview_marks_skipped_items_distinctly` | 「跳过」重新被渲染成绿色「已转存」 |
+| `test_overview_recent_list_has_no_triple_cap` | `slice(0, 8)` 硬截断与面板内 320px 滚动回归 |
+| `test_overview_date_sorting_and_format` | 空日期排到最前、`date.slice(5,16)` 无保护 |
+| `test_overview_recommendation_poster_uses_api_contract` | 读错字段导致海报恒为占位图 |
+| `test_overview_no_panel_level_scrolling_content` | 面板内滚动容器复活 |
+| `test_overview_skeleton_and_density` | 骨架屏被删 / 死 CSS 回流 |
+| `test_overview_stacking_switch_is_deterministic` | 堆叠规则散落 |
+| `test_overview_stat_rows_share_one_text_metric` | 指标行宽屏/窄屏下高度参差（81/93、52/54） |
+
+> 取舍说明：`min-height` 会掩盖同 Grid 行内的高度差（不报错但内容溢出），
+> 因此断言的是「统一文本度量 + 已补偿的换行行数」，而不是「整行高度相等」。

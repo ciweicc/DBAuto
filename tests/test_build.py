@@ -338,3 +338,180 @@ def test_settings_declares_missing_lock_icon(dist):
     defined = set(re.findall(r'id="(icon-[a-z-]+)"', dist))
     missing = sorted(used - defined)
     assert not missing, "产物引用了未定义的图标：{}".format(missing)
+
+
+# ============================================================
+# 概览页信息密度与优先级（issue #8）回归断言
+# ============================================================
+
+def _overview_js():
+    return _read(os.path.join(_JS_DIR, "overview.js"))
+
+
+def test_overview_first_screen_fits_in_one_viewport(dist):
+    """概览页首屏工作区必须整体落在一屏内。
+
+    现状问题（issue #8）：桌面 900px 视口下，KPI 条（4 张卡，高 93~132px 随窗口浮动）
+    + 工作区 + 「热门推荐」竖排堆叠，内容高度 845~1135px，推荐面板要从 560/904 才开始，
+    必然被推到折叠线以下；KPI 卡又在 1350px 处折成 2×2，导致模块高度在窗口变化时上下浮动。
+    """
+    css, _ = _extract(dist)
+    compact = re.sub(r"\s+", "", css)
+    # 首屏两列栅格：左「概览+最近转存」，右「热门推荐」
+    assert ".ov-top{display:grid" in compact.replace(" ", ""), "缺少概览首屏两列栅格"
+    assert "--ov-rec-w" in css, "右侧推荐列宽度未令牌化，海报卡尺寸会随窗口漂移"
+    assert ".ov-overview-body{display:grid" in compact.replace(" ", ""), "缺少「指标 | 状态」两列栅格"
+    # 禁止回归到旧的「KPI 条 → 工作区 → 推荐」三段式竖排
+    for dead in (".ov-kpi-bar", ".ov-kpi-card", ".ov-workspace", ".ov-main-col", ".ov-side-col"):
+        assert dead not in css, "旧概览布局类 {} 仍残留，首屏会重新被推长".format(dead)
+    assert "ov-panel-rec" in dist, "热门推荐面板缺失"
+
+
+def test_overview_layout_uses_measured_width_not_viewport_media_queries(dist):
+    """回归：概览页两列切换必须由「主列实测宽度」驱动，不得用 viewport 媒体查询。
+
+    背景：Playwright 的 `viewport:{width:1440}` 会因滚动条让 `window.innerWidth=1425`，
+    侧栏折叠、日志栏宽度同样会改变主列宽度；用 media query 判定会在 1280~1440
+    这段「媒体查询命中但空间其实够用」的区间错误堆叠（本项目已实测复现）。
+    """
+    js = _overview_js()
+    assert "initOverviewViewport" in js, "缺少概览自适应入口"
+    assert "ResizeObserver" in js, "未使用 ResizeObserver 观测主列宽度"
+    assert 'data-ov-narrow' in js, "未通过数据属性驱动堆叠布局"
+    assert "OV_NARROW_PX" in js, "缺少窄布局阈值常量"
+    # init 必须接线
+    init_js = _read(os.path.join(_JS_DIR, "init.js"))
+    assert "initOverviewViewport()" in init_js, "init() 未调用概览自适应入口"
+
+    # 概览自己的断点不得再用 media query 控制两列结构（宽度类断点只允许调右列宽）
+    main_css = _read(MAIN_CSS)
+    overview_start = main_css.index("Overview Page（概览首页）")
+    overview_css = main_css[overview_start:]
+    overview_css = overview_css[:overview_css.index("日志面板折叠")]
+    for m in re.finditer(r"@media\((max|min)-width:(\d+)px\)\{(.*?)\n\}", overview_css, re.S):
+        body = m.group(3)
+        assert ".ov-overview-body{grid-template-columns:minmax(0,1fr)}" not in body, (
+            "概览两列结构仍由 viewport 媒体查询控制（{}px），中间宽度会误堆叠".format(m.group(2))
+        )
+        assert ".ov-stat-list" not in body, "指标列表的堆叠不应由 viewport 媒体查询控制"
+
+
+def test_overview_marks_skipped_items_distinctly():
+    """回归：跳过（幂等转存）不得再显示成绿色「已转存」。
+
+    存储里 `status` 为 `exists`（已在库内跳过）或 `ok`，
+    旧实现每行都渲染 `ov-badge-success`「已转存」，把跳过误报为成功。
+    """
+    js = _overview_js()
+    assert "ovRecentState" in js, "缺少条目状态判定函数"
+    for token in ("'exists'", "'ok'", "ov-badge-skip", "ov-badge-fail", "item.status"):
+        assert token in js, "条目状态判定缺少分支：{}".format(token)
+    assert "已存在跳过" in js, "跳过状态没有独立文案"
+    # 旧的「无条件已转存」写法不得回归
+    assert re.search(r"ov-badge ov-badge-success\">已转存<", js) is None, (
+        "仍有无条件渲染「已转存」的写法"
+    )
+
+
+def test_overview_recent_list_has_no_triple_cap(dist):
+    """回归：最近转存列表不得再「硬编码 8 条 + 查看全部 + 面板内滚动」三重截断。"""
+    js = _overview_js()
+    assert "OV_RECENT_LIMIT" in js, "渲染上限未抽成常量"
+    m = re.search(r"OV_RECENT_LIMIT\s*=\s*(\d+)", js)
+    assert m and int(m.group(1)) >= 10, "最近转存渲染上限过小（应为面板容量，而非 8 条）"
+    assert "slice(0, 8)" not in js, "仍残留硬编码 8 条截断"
+    assert "item.title.length > 30" not in js, "仍对标题做硬截断（应交给 CSS 省略）"
+    # 面板内滚动应取消：列表交给「查看全部」出口
+    css, _ = _extract(dist)
+    compact = re.sub(r"\s+", "", css)
+    assert ".ov-panel-recent.ov-table-wrap{flex:1;min-height:0;overflow:auto}" in compact, (
+        "最近转存面板未改为随内容等高（面板内滚动会让高度与左侧概览脱钩）"
+    )
+    # 旧的面板内滚动约束（.ov-table-wrap{overflow-x:auto;max-height:320px}）不得回归
+    assert ".ov-table-wrap{overflow-x:auto;max-height:320px" not in compact, \
+        "最近转存面板仍被限制在 320px 内滚动"
+
+
+def test_overview_date_sorting_and_format():
+    """回归：空日期不得插到列表最前，日期格式统一为 MM/DD HH:MM。"""
+    js = _overview_js()
+    assert "ovDateShort" in js, "缺少日期格式化函数"
+    assert "if(da && !db) return -1" in js, "排序未对空日期做兜底（空串会排到最前）"
+    assert "'—'" in js or "\\u2014" in js, "空日期缺少兜底显示"
+    # 旧实现直接 date.slice(5,16)，且用 '-' 兜底（与真实日期不可区分）
+    assert "item.date.slice(5, 16)" not in js, "仍残留无保护的日期切片"
+
+
+def test_overview_recommendation_poster_uses_api_contract(dist):
+    """回归：热门推荐必须按后端契约取名（items/poster/year/rating）。
+
+    后端 `get_tmdb_list` 返回 `{items:[{poster,title,year,rating,...}]}`，
+    旧实现读 `results/poster_path/release_date/vote_average`，
+    结果每张卡都退化成 36px 占位图标。
+    """
+    js = _overview_js()
+    assert "tmdb.items" in js, "未按契约读取 items 字段"
+    assert "item.poster" in js and "item.year" in js and "item.rating" in js, \
+        "未按契约读取 poster/year/rating 字段"
+    # 卡片必须真有海报位（aspect-ratio 保证高度，不依赖图片加载成功）
+    css, _ = _extract(dist)
+    assert "aspect-ratio:2/3" in css.replace(" ", ""), "海报位缺少固定宽高比，图片缺失时会塌成一行"
+
+
+def test_overview_no_panel_level_scrolling_content(dist):
+    """回归：概览页不应出现「内容整体不足一屏但被容器裁掉」的度量。"""
+    css, _ = _extract(dist)
+    compact = re.sub(r"\s+", "", css)
+    # 概览内部的两列各自不滚动，滚动交给 .content
+    assert ".ov-overview{display:flex;flex-direction:column" in compact, "概览容器未做纵向弹性布局"
+    assert ".ov-side{display:flex;flex-direction:column" in compact, "概览右列未做纵向弹性布局"
+
+
+def test_overview_skeleton_and_density(dist):
+    """3.2 骨架屏必须覆盖概览首载（避免数字与行高跳变）。"""
+    js = _overview_js()
+    assert "renderOvSkeletons" in js, "缺少概览骨架屏"
+    assert "ovState.hasData" in js, "缺少首载标记（每次切 Tab 都会重铺骨架）"
+    css, _ = _extract(dist)
+    assert ".ov-skel" in css, "缺少骨架屏样式"
+    assert "prefers-reduced-motion" in css and "ovSkelPulse" in css, "骨架屏动画未做无障碍降级"
+    # 概览的行式 KPI 结构
+    assert ".ov-stat-row" in css, "缺少指标行样式"
+    for dead in (".ov-kpi-label", ".ov-kpi-value-row", ".ov-kpi-trend", ".ov-kpi-schedule",
+                 ".ov-status-dot", ".ov-st-ok", ".ov-rec-btn"):
+        assert dead not in css, "概览/杂项死样式仍残留：{}".format(dead)
+
+
+def test_overview_stacking_switch_is_deterministic(dist):
+    """回归：概览两列切换只依赖 JS 阈值，不得散落视口断点。"""
+    main_css = _read(MAIN_CSS)
+    overview_start = main_css.index("Overview Page（概览首页）")
+    overview_css = main_css[overview_start:]
+    overview_css = overview_css[:overview_css.index("日志面板折叠")]
+    assert '.app[data-ov-narrow="1"] .ov-overview-body{grid-template-columns:minmax(0,1fr)}' in overview_css, \
+        "缺少窄主列的堆叠规则"
+    assert "1350px" in overview_css  # 断点仍统一到全局阶梯（但仅用于调右列宽）
+
+
+def test_overview_stat_rows_share_one_text_metric():
+    """回归：概览指标行的文本度量必须统一，且其换行行数必须显式声明。
+
+    背景：窄屏下调度行由「标签 + 时间 + 按钮」三段组成，三段总高超过基准行高
+    （19.5px 行距时三行 = 58.5px），会与另外两行（54px）不一致；
+    而 `min-height` 会掩盖高度差（不报错但内容溢出）。
+    因此这里断言「统一行盒 + 已补偿的行数」，而不是断言整行高度相等。
+    """
+    main_css = _read(MAIN_CSS)
+    start = main_css.index("Overview Page（概览首页）")
+    block = main_css[start:main_css.index("日志面板折叠")]
+
+    # 指标行内所有文本/按钮在窄屏断点下共用同一行盒（16px），换行行数因而可预期
+    narrow = block[block.index("@media(max-width:640px)"):]
+    narrow = narrow[:narrow.index("\n}")]
+    narrow_compact = re.sub(r"\s+", "", narrow)
+    for sel in (".ov-stat-value", ".ov-stat-sub,.ov-stat-sched", ".ov-kpi-btn"):
+        assert sel + "{line-height:16px}" in narrow_compact or "line-height:16px}" in narrow_compact, \
+            "窄屏下 {} 未统一 16px 行盒（换行后会与其他指标行不等高）".format(sel)
+
+    # 调度行的换行行数补偿必须写明（3 段 = 3 行 × 16px + 2 × 9px 内边距 = 66px）
+    assert "两段各自占一行时是 33px" in block, "未声明调度行的换行行数假设"

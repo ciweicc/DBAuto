@@ -127,6 +127,12 @@
   /* Content width（内容区最大宽度分级；TMDB 网格页在 main.css 中放宽） */
   --content-max: 1440px;
 
+  /* 概览页首屏两列尺寸（issue #8）
+     --ov-side-w：「指标 | 状态」两列中右列的宽度上限；
+     --ov-rec-w：首屏右侧「热门推荐」列宽度（决定海报卡尺寸，随全局断点收放）。 */
+  --ov-side-w: 250px;
+  --ov-rec-w: 300px;
+
   /* Z-index ladder（浮层层级阶梯：新增浮层按层选值，禁止再写魔法数）
      nav < fab < mobile-search < scrim < sidebar < backtop < popover/dropdown/sheet
      < confirm < cmd-palette < toast */
