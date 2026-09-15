@@ -16,6 +16,21 @@
 
 ## 🚀 快速开始
 
+### 镜像来源
+
+本项目在 GitHub 与 CNB 两个平台**各自独立构建**，产物分别推送到两个制品库，**互不影响**，任选其一即可（公共 tag 同名，提交级 tag 格式不同，见下）：
+
+| 制品库 | 镜像地址 | 由谁构建 | 适用网络 |
+|--------|----------|----------|----------|
+| GitHub Container Registry | `ghcr.io/ciweicc/dbauto` | GitHub Actions（`.github/workflows/docker-build.yml`） | 海外 |
+| CNB 制品库 | `docker.cnb.cool/ciweicc/dbauto` | CNB 云原生构建（`.cnb.yml`） | 国内 |
+
+- 均为 `linux/amd64` + `linux/arm64` 多架构镜像。
+- 公共 tag（两边同名，可直接替换镜像地址使用）：`latest`（各自平台默认分支的最新构建）、版本号（如 `1.1.0`）、分支名（`master`）。
+- 提交级 tag 两边**格式不同**：GitHub 为 `sha-<7位短SHA>`（如 `sha-f3b78f4`），CNB 为 `<8位短SHA>`（如 `f3b78f48`）。
+- 推送 `v*` 标签时，两个平台都会额外产出与标签同名的 tag。
+- 两边的 `latest` **分别跟随各自平台默认分支的最新构建**。若需要严格可复现，请使用版本号或提交级 tag，不要用 `latest`。
+
 ### Docker 部署
 
 ```bash
@@ -26,6 +41,7 @@ docker run -d \
   -v /opt/douban-history:/data/douban-history \
   -e AUTH_PASS=your_password \
   ghcr.io/ciweicc/dbauto:latest
+# 国内网络可将镜像地址换成 docker.cnb.cool/ciweicc/dbauto:latest
 ```
 
 启动后访问 `http://localhost:3001` 登录，在设置页面（⚙️）中配置 PanSou、QAS 地址和 Token。
@@ -54,7 +70,9 @@ docker run -d \
 
 ```bash
 docker stop dbauto && docker rm dbauto
-docker pull ghcr.io/ciweicc/dbauto:latest
+# 拉取你使用的那一个制品库（两者独立构建，内容分别来自各自平台的默认分支）
+docker pull ghcr.io/ciweicc/dbauto:latest              # GitHub Actions 构建
+# docker pull docker.cnb.cool/ciweicc/dbauto:latest    # CNB 云原生构建
 # 然后重新执行上面的 docker run 命令
 ```
 
