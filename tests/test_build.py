@@ -159,16 +159,26 @@ def test_log_panel_has_expand_affordance(dist):
 
 
 def test_log_panel_not_auto_collapsed_on_desktop(dist):
-    """回归：桌面态概览页不得无条件自动折叠日志栏（会压成 48px 且无入口）。
+    """回归：日志栏不得被自动折叠（桌面态与窄屏态都不允许）。
 
-    对应 410498f / 58fcfd4 修复的同类 P0 缺陷：日志栏是桌面常驻功能区。
+    对应 410498f / 58fcfd4 修复的同类 P0 缺陷：日志栏是常驻功能区。
+    该用例最初只约束「桌面态不得无条件折叠」，允许「窄屏 + 用户未选择」时自动折叠；
+    但 issue #11 正是这条窄屏分支造成的 —— ≤1200px 打开页面即折叠、实时日志全不可见。
+    因此现在收紧为：任何视口都不得自动折叠，只保留用户显式选择与展开入口。
     """
     tabs = _read(os.path.join(_JS_DIR, "tabs.js"))
-    assert "isNarrowViewport" in tabs, "概览页自动折叠未做窄屏判定"
+    # 窄屏判定与用户选择记忆仍是展开/入口逻辑的依赖，必须保留
+    assert "isNarrowViewport" in tabs, "缺少窄屏判定（展开入口依赖它）"
     assert "userSetLogPanelState" in tabs, "未尊重用户显式折叠选择"
-    # 自动折叠必须带窄屏条件，禁止裸调用
-    assert "tab === 'overview' && isNarrowViewport()" in tabs, \
-        "桌面态仍会无条件折叠日志栏"
+    # 自动折叠（无论是否带窄屏条件）必须彻底移除
+    assert "tab === 'overview' && isNarrowViewport()" not in tabs, \
+        "仍保留「窄屏自动折叠日志栏」分支（issue #11 的成因）"
+    # 残留的折叠调用只允许出现在「用户显式选择」的恢复分支里
+    calls = [l.strip() for l in tabs.splitlines()
+             if "collapseLogPanel()" in l and not l.strip().startswith("//")]
+    assert calls == ["if(saved === '1') collapseLogPanel();"], \
+        "存在 restoreLogPanelState 之外的折叠调用（疑似自动折叠残留）：{}".format(calls)
+    assert "saved === '1'" in tabs, "恢复分支未按用户显式选择判断"
 
 
 def test_build_fingerprint_is_content_based(dist):
@@ -515,3 +525,110 @@ def test_overview_stat_rows_share_one_text_metric():
 
     # 调度行的换行行数补偿必须写明（3 段 = 3 行 × 16px + 2 × 9px 内边距 = 66px）
     assert "两段各自占一行时是 33px" in block, "未声明调度行的换行行数假设"
+
+
+# ---------------------------------------------------------------- 日志面板（issue #11）
+def test_log_panel_not_auto_collapsed_on_any_viewport(dist):
+    """回归：日志栏不得在校窄视口下自动折叠（issue #11 的直接成因）。
+
+    `switchTab` 曾以「概览页 + 窄屏 + 用户未显式选择」为条件自动 `collapseLogPanel()`，
+    结果 ≤1200px 打开概览页时日志栏被压成 48px 轨道、正在运行的任务日志一条不可见。
+    现在自动折叠已彻底移除，"给内容更多空间"交由用户显式点击折叠按钮。
+    """
+    tabs = _read(os.path.join(_JS_DIR, "tabs.js"))
+    assert "collapseLogPanel()" in tabs, "缺少折叠函数"
+    # switchTab 内的自动折叠必须已移除
+    switch_body = tabs[tabs.index("function switchTab"):tabs.index("// 方向键在标签间导航")]
+    # 只保留可执行代码：注释里会提到历史缺陷，不能算「仍在自动折叠」
+    code = "\n".join(l for l in switch_body.splitlines() if not l.strip().startswith("//"))
+    assert "collapseLogPanel()" not in code, \
+        "switchTab 仍会自动折叠日志栏（窄屏打开页面即看不到实时日志）"
+
+
+def test_log_panel_defaults_expanded_and_restores_user_choice(dist):
+    """回归：首屏默认展开，只在用户自己折叠过时才恢复折叠。"""
+    tabs = _read(os.path.join(_JS_DIR, "tabs.js"))
+    assert "function restoreLogPanelState" in tabs, "缺少折叠态恢复函数"
+    body = tabs[tabs.index("function restoreLogPanelState"):]
+    body = body[:body.index("\n}")]
+    # 只有显式 '1' 才折叠；其余（含无记录）一律展开
+    assert "saved === '1'" in body, "恢复逻辑未按显式选择判断"
+    assert "classList.remove('collapsed')" in body, "默认分支未清理折叠态"
+
+    log_js = _read(os.path.join(_JS_DIR, "log.js"))
+    assert "restoreLogPanelState()" in log_js, "DOMContentLoaded 未调用折叠态恢复"
+
+
+def test_log_panel_narrow_expand_opens_drawer(dist):
+    """回归：窄屏点展开/FAB 必须进入 .open 抽屉态。
+
+    ≤1200px 时日志栏是 `translateX(100%)` 的覆盖层，只去掉 `.collapsed`
+    仍然是屏幕外状态，展开动作会「看起来无效」。
+    """
+    log_js = _read(os.path.join(_JS_DIR, "log.js"))
+    body = log_js[log_js.index("function expandLogPanel"):]
+    body = body[:body.index("\n}")]
+    assert "isNarrowViewport()" in body, "expandLogPanel 未处理窄屏抽屉态"
+    assert "classList.add('open')" in body, "expandLogPanel 未打开覆盖层抽屉"
+
+
+def test_log_panel_capacity_not_hardcoded(dist):
+    """回归：日志区高度必须随视口增长，不得写死小上限。
+
+    旧实现 `max-height:340px` 在 900px 高的屏幕上只用了约 1/3 屏，
+    用户感知为「实时任务日志显示不完全」（issue #11）。
+    """
+    main_css = _read(MAIN_CSS)
+    start = main_css.index("/* Log */")
+    block = main_css[start:start + 1200]
+    # 去注释后只比对真实声明，避免注释里提到旧值就误判
+    block = re.sub(r"/\*.*?\*/", "", block, flags=re.S).replace(" ", "")
+    assert "max-height:340px;" not in block, "日志区仍写死 340px 上限"
+    assert "max-height:max(340px,calc(100dvh-320px))" in block, \
+        "日志区高度未改为随视口增长"
+
+
+def test_log_panel_pins_to_latest(dist):
+    """回归：日志必须定位到最新一条，且折行续行有缩进。
+
+    旧实现 `renderLog` 只渲染、不定滚动位置，状态同步后 scrollTop 停在 0
+    （最旧一行），最新日志在数屏之外 —— 表现为「日志无法显示完全」。
+    """
+    log_js = _read(os.path.join(_JS_DIR, "log.js"))
+    # renderLog / applyLogSearch 都必须回到末尾
+    render = log_js[log_js.index("function renderLog"):log_js.index("function appendLine")]
+    assert "scrollTop=el.scrollHeight" in render.replace(" ", ""), "renderLog 未定位到最新"
+    search = log_js[log_js.index("function applyLogSearch"):log_js.index("function updateLogHint")]
+    assert "scrollTop" in search, "搜索后未定位滚动位置"
+    # 折行标记 + 续行缩进
+    assert "function markWrap" in log_js, "缺少折行检测（续行缩进无法生效）"
+    assert "wrapped" in log_js, "未标记折行行"
+    main_css = _read(MAIN_CSS)
+    assert ".log-line.wrapped" in main_css, "缺少折行续行缩进样式"
+    # 缩进方式：padding-left 推开续行 + text-indent 回拉首行（minify 可能重排空格）
+    wrap_rule = [l for l in main_css.splitlines() if ".log-line.wrapped" in l]
+    assert wrap_rule, "缺少 .log-line.wrapped 规则"
+    rule = wrap_rule[0].replace(" ", "")
+    assert "--log-wrap-pad" in rule, "续行缩进未使用 --log-wrap-pad 变量"
+    assert "text-indent:calc(-1*var(--log-wrap-pad))" in rule, \
+        "续行缩进未通过 text-indent 回拉首行（首行会整体右移）"
+
+
+def test_log_panel_has_position_hint(dist):
+    """回归：日志区需常驻位置提示，暂停时锁定并给出可读文案。"""
+    assert 'id="logHint"' in dist, "产物缺少日志位置提示节点"
+    log_js = _read(os.path.join(_JS_DIR, "log.js"))
+    assert "function updateLogHint" in log_js, "缺少提示更新函数"
+    for token in ("已定位到末尾", "已暂停"):
+        assert token in log_js, "提示文案缺少 {!r}".format(token)
+    main_css = _read(MAIN_CSS)
+    assert ".log-hint" in main_css, "缺少提示行样式"
+
+
+def test_log_panel_dom_audit_entrypoint_present():
+    """issue #11 的 DOM 度量走查脚本必须存在且可执行（本地取证入口）。"""
+    script = os.path.join(_ROOT, "scripts", "check_log_panel_dom.py")
+    assert os.path.isfile(script), "缺少 scripts/check_log_panel_dom.py"
+    src = _read(script)
+    for token in ("panelVisible", "atBottom", "wrappedCount", "check_log_panel_dom.py"):
+        assert token in src, "走查脚本缺少断言 {}".format(token)

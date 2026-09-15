@@ -39,6 +39,18 @@
 
   > CI 会重建产物并比对 `git diff`，**只有源码、产物不一致就会失败**。
   > 请勿直接手工编辑 `static/index_new.html`。
+- 概览页 / 侧边栏日志面板的 DOM 度量走查（改动对应区域后必跑；需 playwright + chromium，
+  缺依赖时以退出码 0 跳过）：
+
+  ```bash
+  python scripts/check_overview_dom.py --serve   # 首屏密度 / 表格溢出 / 状态语义
+  python scripts/check_log_panel_dom.py --serve  # 日志栏可见性 / 定位最新 / 折行缩进
+  ```
+
+  > 这两个脚本替代大部分截图走查：用 `getBoundingClientRect` / 计算样式取数值证据，
+  > 断言「打开页面日志栏可见」「日志定位到最新」「高度随视口增长」等可量化缺陷。
+  > 历史教训：只截图肉眼判断，既耗上下文配额，又会漏掉「窄屏默认折叠」这类
+  > 静默失效（截图里正常，窄屏下日志区高 0px）。
 - 对比度门禁（改动 `static/src/styles/tokens.css` 的文本/语义色后必跑）：
 
   ```bash
