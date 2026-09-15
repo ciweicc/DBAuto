@@ -14,6 +14,10 @@ _history_lock = Lock()
 _exec_cache = None
 _exec_lock = Lock()
 _exec_limit = 200
+# 清空执行历史的「撤销」快照（仅保留最近一次清空，进程内有效）
+# 说明：单实例约束下（见 docs/SCALING.md）内存快照即可满足撤销需求，
+# 不引入软删除列，避免污染查询路径与索引。
+_exec_undo = None
 
 
 def _get_db():
@@ -317,10 +321,56 @@ def update_exec_record(record_id, detail=None, status=None, data=None):
 
 
 def clear_exec_history():
-    global _exec_cache
+    global _exec_cache, _exec_undo
     with _exec_lock:
         with _db_lock:
             conn = _get_db()
+            rows = conn.execute(
+                "SELECT id, type, detail, status, time, data FROM exec_history ORDER BY time DESC"
+            ).fetchall()
             conn.execute("DELETE FROM exec_history")
             conn.commit()
+        # 清空前留存快照，供 restore_exec_history() 撤销
+        snapshot = []
+        for row in rows:
+            item = {
+                "id": row["id"],
+                "type": row["type"],
+                "detail": row["detail"],
+                "status": row["status"],
+                "time": row["time"],
+                "data": None,
+            }
+            if row["data"]:
+                try:
+                    item["data"] = json.loads(row["data"])
+                except (json.JSONDecodeError, ValueError):
+                    item["data"] = None
+            snapshot.append(item)
+        _exec_undo = snapshot
         _exec_cache = []
+        return len(snapshot)
+
+
+def restore_exec_history():
+    """撤销最近一次 clear_exec_history()：写回快照。
+
+    返回 (ok, count)：无快照时 ok 为 False（可能已被另一次清空覆盖或进程重启）。
+    """
+    global _exec_cache, _exec_undo
+    with _exec_lock:
+        if not _exec_undo:
+            return False, 0
+        snapshot = _exec_undo
+        _exec_undo = None
+        with _db_lock:
+            conn = _get_db()
+            for item in snapshot:
+                conn.execute(
+                    "INSERT OR REPLACE INTO exec_history (id, type, detail, status, time, data) VALUES (?, ?, ?, ?, ?, ?)",
+                    (item["id"], item["type"], item["detail"], item["status"], item["time"],
+                     json.dumps(item["data"], ensure_ascii=False) if item["data"] is not None else None)
+                )
+            conn.commit()
+        _exec_cache = None
+        return True, len(snapshot)

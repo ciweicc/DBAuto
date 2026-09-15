@@ -45,8 +45,11 @@ function switchTab(tab){
   // TMDB "回到顶部"按钮：离开 TMDB 页时隐藏，返回时按当前滚动位置刷新可见性
   if(tab !== 'tmdb') tmdbHideBackToTop();
   else tmdbUpdateBackToTop();
-  // 概览页时收起日志面板（给内容更多空间）
-  if(tab === 'overview') collapseLogPanel();
+  // 概览页时收起日志面板（给内容更多空间）。
+  // 仅在「窄屏 + 折叠态非用户主动选择」时自动收起：
+  // 桌面态（>1200px）日志栏是常驻功能区（见 410498f / 58fcfd4 的 P0 修复），
+  // 无条件收起会把它压成 48px 且无展开入口，等于功能缺失。
+  if(tab === 'overview' && isNarrowViewport() && !userSetLogPanelState()) collapseLogPanel();
 }
 
 // 方向键在标签间导航（ARIA tabs 模式：左右 / Home / End 切换并自动激活）
@@ -69,3 +72,11 @@ document.addEventListener('keydown', function(e){
   switchTab(next);
   tabs[idx].focus();
 });
+
+// 日志面板：窄屏判定 + 用户显式选择记忆（供概览页自动收起策略使用）
+function isNarrowViewport(){
+  return window.matchMedia && window.matchMedia('(max-width:1200px)').matches;
+}
+function userSetLogPanelState(){
+  try{ return localStorage.getItem('logPanelCollapsed') !== null; }catch(e){ return false; }
+}

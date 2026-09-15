@@ -1,7 +1,8 @@
 # routes_history.py — 历史记录管理路由 Mixin
 import os
 import time
-from storage import load_history, save_history, load_exec_history, clear_exec_history
+from storage import (load_history, save_history, load_exec_history,
+                     clear_exec_history, restore_exec_history)
 from utils import log, sse_broadcast
 from validator import validate_string, validate_list
 from scheduler import schedule_status
@@ -282,10 +283,21 @@ class HistoryRouteMixin:
                 return True
 
             if action == "clear":
-                clear_exec_history()
+                removed = clear_exec_history()
                 log("清空执行历史")
                 sse_broadcast("exec_history_update", {"action": "clear"})
-                self._send_json({"success": True})
+                self._send_json({"success": True, "removed": removed})
+                return True
+
+            if action == "restore":
+                # 撤销最近一次清空（前端「撤销」按钮，5s 内有效语义由前端控制）
+                ok, restored = restore_exec_history()
+                if not ok:
+                    self._send_json({"success": False, "message": "没有可恢复的记录"}, 409)
+                    return True
+                log("恢复执行历史 {} 条".format(restored))
+                sse_broadcast("exec_history_update", {"action": "restore"})
+                self._send_json({"success": True, "restored": restored})
                 return True
 
             self._send_json({"success": False, "message": "unknown action: {}".format(action)}, 400)

@@ -232,28 +232,47 @@ async function checkExpired(){
 
 
 // ============ 日志面板折叠/展开 ============
+// 折叠态同步：更新展开按钮的 aria-expanded / 标题，并在桌面态显示 FAB 作为备用入口。
+function _syncLogPanelA11y(){
+  var panel = document.getElementById('logPanel');
+  if(!panel) return;
+  var collapsed = panel.classList.contains('collapsed');
+  var btn = document.getElementById('logToggleBtn');
+  if(btn){
+    btn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    btn.setAttribute('aria-label', collapsed ? '展开执行日志' : '收起执行日志');
+    btn.title = collapsed ? '展开执行日志' : '收起执行日志';
+  }
+  // 桌面态折叠后网格轨道只剩 48px，FAB 提供还原入口（窄屏 FAB 由媒体查询控制）
+  var fab = document.getElementById('logFab');
+  if(fab && !isNarrowViewport()) fab.style.display = collapsed ? 'flex' : 'none';
+}
 function toggleLogPanel(){
   var panel = document.getElementById('logPanel');
   if(!panel) return;
   panel.classList.toggle('collapsed');
   try{ localStorage.setItem('logPanelCollapsed', panel.classList.contains('collapsed') ? '1' : '0'); }catch(e){}
+  _syncLogPanelA11y();
   if(typeof tmdbUpdateBackToTop==='function') tmdbUpdateBackToTop(); // OPT-28：面板态变化时刷新回顶按钮避让
 }
 function collapseLogPanel(){
   var panel = document.getElementById('logPanel');
   if(panel && !panel.classList.contains('collapsed')) panel.classList.add('collapsed');
+  _syncLogPanelA11y();
   if(typeof tmdbUpdateBackToTop==='function') tmdbUpdateBackToTop();
 }
 function expandLogPanel(){
   var panel = document.getElementById('logPanel');
   if(panel && panel.classList.contains('collapsed')) panel.classList.remove('collapsed');
+  _syncLogPanelA11y();
   if(typeof tmdbUpdateBackToTop==='function') tmdbUpdateBackToTop();
 }
-// 恢复折叠状态
+// 恢复折叠状态；桌面态若恢复为折叠则同步显示展开入口
 (function(){
   try{
-    if(localStorage.getItem('logPanelCollapsed') === '1'){
-      document.addEventListener('DOMContentLoaded', function(){ collapseLogPanel(); });
-    }
+    document.addEventListener('DOMContentLoaded', function(){
+      if(localStorage.getItem('logPanelCollapsed') === '1') collapseLogPanel();
+      else _syncLogPanelA11y();
+    });
   }catch(e){}
 })();

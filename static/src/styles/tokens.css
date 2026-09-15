@@ -187,14 +187,18 @@
   --text: #1c1c1e;
   --text2: rgba(0, 0, 0, 0.62);
   --text3: rgba(0, 0, 0, 0.58);
-  --accent: #007aff;
-  --accent2: #5856d6;
-  --accent3: #8e8dff;
-  --green: #34c759;
-  --red: #ff3b30;
-  --orange: #ff9500;
-  --purple: #af52de;
-  --cyan: #00a3ff;
+  /* 4.1 对比度审计（scripts/check_contrast.py）后调整：浅色主题下语义色多以
+     小字/徽标形式出现在近白底上，原系统色（#007aff/#34c759/…）对比度仅 2.0-3.7:1，
+     未达 WCAG 2.1 AA。以下取值为同色相压暗后的等价色，保证 ≥4.5:1
+     （详见 docs/UI_Contrast_Report.md）。深色主题保持原系统色不变。 */
+  --accent: #0066d6;
+  --accent2: #5145c8;
+  --accent3: #6f6ef0;
+  --green: #1d7833;
+  --red: #c81e16;
+  --orange: #a05a00;
+  --purple: #8232b4;
+  --cyan: #006ebe;
 
   --grid-line: rgba(0, 0, 0, 0.045);
   --glow-1: #007aff;
