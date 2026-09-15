@@ -900,6 +900,12 @@ PanSou 资源搜索。
 #### GET /api/dashboard/stats
 获取仪表盘统计数据。
 
+> **统计口径**：只统计执行历史里 `type == "transfer"` 的记录
+> （见 `routes_history.TRANSFER_RECORD_TYPES` / `is_transfer_record()`）。
+> `exec_history` 是混合流水，`config`（改配置）与 `expired_check`（失效检测）
+> 也会写入同表，但它们**不参与**转存统计 —— 否则每保存一次设置，
+> 「今日转存」就会 +1（issue #8）。
+
 **响应**：
 ```json
 {
