@@ -214,3 +214,52 @@ def test_build_rebuild_is_idempotent(dist):
     subprocess.run(["bash", _BUILD_SH], capture_output=True, text=True, timeout=120)
     after = _read(_DIST)
     assert before == after, "重建后产物发生变化，CI 产物漂移检查将恒失败"
+
+
+def _read_agent_docs():
+    """Agent 协作约束文件（AGENTS.md 等），缺失则视为空。
+
+    这些文件是为 AI/NPC 协作者写的硬性约束，历史教训是「约束只在 prompt 里、
+    没落库」时下一个 Agent 会重复踩坑（如批量截图触发上下文超限导致整个
+    回合报废、把手工验证当 CI 门禁）。因此把关键条目固化为断言。
+    """
+    path = os.path.join(_ROOT, "AGENTS.md")
+    return _read(path) if os.path.isfile(path) else ""
+
+
+def test_agents_md_users_are_referenced_by_build_scripts():
+    """构建脚本互相引用时，AGENTS.md 必须存在并指向 build.sh（唯一正确入口）。"""
+    agents = _read_agent_docs()
+    assert agents, "缺少 AGENTS.md：Agent 交付规范未落库"
+    assert "static/src/build.sh" in agents, "AGENTS.md 未指明前端重建入口"
+
+
+def test_agents_md_caps_screenshot_usage():
+    """回归：Agent 约束必须包含读图配额。
+
+    背景：本项目两次运行的失败原因都是「批量截图 → 上下文超限 →
+    `500 Internal error: request entity too large`」，一次都没能产出 PR。
+    只有把配额写进仓库内可读的约束文件，下一次运行才不会重犯。
+    """
+    agents = _read_agent_docs()
+    assert "request entity too large" in agents, "未记录上下文超限的失败教训"
+    assert "读图" in agents or "截图" in agents, "未约束截图/读图使用"
+    assert re.search(r"(≤|<=|上限)\s*8\s*张", agents), "未给出读图数量硬上限"
+
+
+def test_agents_md_requires_local_evidence_before_delivery():
+    """回归：Agent 约束必须要求「先本地验证、再交付 PR」，而非依赖 CI 试错。"""
+    agents = _read_agent_docs()
+    assert "任务完成门禁" in agents, "缺少可比对的完成门禁章节"
+    for token in ("本地", "提交 PR"):
+        assert token in agents, "完成门禁缺少关键字：{}".format(token)
+
+
+def test_local_verify_skill_landed():
+    """回归：本地验证流程必须作为可复用的 skill 落库，而不是只活在会话里。"""
+    skill = os.path.join(_ROOT, ".cnb", "skills", "dbauto-local-verify", "SKILL.md")
+    assert os.path.isfile(skill), "缺少 .cnb/skills/dbauto-local-verify/SKILL.md"
+    content = _read(skill)
+    assert "api/sse" in content, "验证 skill 未禁止拉取 SSE 长连接"
+    assert "nohup" in content, "验证 skill 未要求后台服务重定向输出"
+    assert "static/src/build.sh" in content, "验证 skill 未指明产物重建入口"

@@ -47,7 +47,7 @@
 
   > 阈值 WCAG 2.1 AA（≥ 4.5:1）；不达标请调整令牌取值，不要调低阈值。
 - **删功能必删样式**：下线功能时同步清理其 CSS 与 JS（如「想看」功能），
-  `tests/test_build.py` 会对已知残留做零容忍断言。
+  `tests/test_build.py` 会对已知残留做零容忍断言（新增 Agent 交付规范断言见 `AGENTS.md`）。
 
 ## 分支策略
 
@@ -56,6 +56,21 @@
 3. 发起 Pull Request 到 `master`，通过 CI（tests / lint / frontend-build / frontend-drift / contrast-audit / dependency-scan / Trivy）后，
    由维护者 review 并合并。
 4. **不要**直接 push 到 `master`，也不要自行将特性分支 merge 到 `master`。
+
+## AI / 自动化协作者
+
+本仓库有 NPC / CodeBuddy 等 Agent 参与，规范见根目录 [`AGENTS.md`](../AGENTS.md)，
+可复用的本地验证流程见 skill `.cnb/skills/dbauto-local-verify/SKILL.md`。要点：
+
+- **先本地验证，再交付 PR**：结论必须有仓库内可复跑的证据（测试 / 脚本输出）支撑；
+  验证手段若是临时脚本，把其中确定性的部分固化到 `tests/`，不要只留在会话里。
+- **上下文是最稀缺资源**：服务必须 `nohup ... >/tmp/x.log 2>&1 &` 后台起，
+  禁止 `curl -N` 拉取 `/api/sse`（永不返回），禁止无参数 `git status`/`git diff`
+  和 `cat static/index_new.html`（约 220KB）。
+- **读图配额**：截图/PNG 单次任务 ≤ 8 张、单轮 ≤ 2 张。默认用断言脚本
+  （DOM 度量、计算样式、元素存在性）代替看图，只有断言无法表达的视觉问题才截图。
+  历史教训：连续读图会触发模型侧 `500 request entity too large`，直接报废整个回合。
+- **不轮询 CI**：推送后立即结束，失败会自动重新唤起 Agent；AI 不合并 PR。
 
 ## 代码风格
 
