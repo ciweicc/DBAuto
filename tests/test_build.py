@@ -461,7 +461,7 @@ def test_overview_first_screen_fits_in_one_viewport(dist):
     # 禁止回归到旧的「KPI 条 → 工作区 → 推荐」三段式竖排
     for dead in (".ov-kpi-bar", ".ov-kpi-card", ".ov-workspace", ".ov-main-col", ".ov-side-col"):
         assert dead not in css, "旧概览布局类 {} 仍残留，首屏会重新被推长".format(dead)
-    assert "ov-panel-rec" in dist, "热门推荐面板缺失"
+    assert "ov-panel-rec" in dist, "发现快捷面板缺失"
 
 
 def test_overview_layout_uses_measured_width_not_viewport_media_queries(dist):
@@ -805,3 +805,151 @@ def test_log_panel_dom_audit_entrypoint_present():
     src = _read(script)
     for token in ("panelVisible", "atBottom", "wrappedCount", "check_log_panel_dom.py"):
         assert token in src, "走查脚本缺少断言 {}".format(token)
+
+
+# ------------------------------------------------ TMDB 并入概览页（issue #14 第三轮）
+def test_tmdb_merged_into_overview_single_page(dist):
+    """回归：TMDB 必须只有一块界面，且这块界面就在概览页里。
+
+    用户诉求（issue #14 追问）：「把 TMDB 页面的完整筛选栏原版移植到概览页，
+    这样就可以少一个页面」。因此：
+      - 产物里不得再有独立的 #pageTmdb 页面容器；
+      - 发现分区 #tmdbPanel 必须落在 #pageOverview 内部；
+      - 导航（侧栏 / 底栏 / 页面 id 表）里都不再有 tmdb 目的地。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert 'id="pageTmdb"' not in body, "独立 TMDB 页面容器仍然存在（应已并入概览页）"
+    # 只查「代码里的引用」，不查注释文案：注释里提到历史页面名是说明，不是残留
+    compact = re.sub(r"<!--.*?-->", "", body, flags=re.S)
+    assert "pageTmdb" not in compact, "源文件仍引用旧页面容器 #pageTmdb"
+    assert 'id="pageTmdb"' not in body and "getElementById('pageTmdb')" not in dist, \
+        "产物仍引用旧页面容器 #pageTmdb"
+
+    ov_start = body.index('id="pageOverview"')
+    ov_end = body.index("<!-- ===== 手动转存 ===== -->")
+    overview = body[ov_start:ov_end]
+    assert 'id="tmdbPanel"' in overview, "发现分区 #tmdbPanel 不在概览页内"
+    for node in ('id="tmdbGrid"', 'id="tmdbFilters"', 'id="tmdbSelBar"',
+                 'id="tmdbPagination"', 'id="tmdbMediaType"', 'id="tmdbListType"',
+                 'id="tmdbGenreChips"'):
+        assert overview.count(node) == 1, "{} 不在概览页内或出现多次".format(node)
+
+    # 导航里不得再有 tmdb
+    assert 'data-tab="tmdb"' not in body, "侧栏仍有「发现」导航项"
+    assert "TAB_IDS" not in body
+    tabs = _read(os.path.join(_JS_DIR, "tabs.js"))
+    assert "tmdb:" not in tabs.split("var PAGES")[0], "PAGE_IDS 仍然映射 tmdb 页面"
+    m = re.search(r"var BOTTOM_NAV = \[(.*?)\]", tabs)
+    navs = [x.strip().strip("'\"") for x in m.group(1).split(",") if x.strip()]
+    assert "tmdb" not in navs and len(navs) == 5, "底部导航应回到 5 项且不含 tmdb"
+
+
+def test_tmdb_filters_are_the_original_set(dist):
+    """回归：概览页里的筛选栏必须是**原版那套**（不是精简过的仿制品）。
+
+    原版字段：分类 / 榜单类型 / 地区 / 语言 / 排序 / 最低评分 / 年份 / 流媒体平台多选
+    + 类型（genre）筛选 chips。少一个都算「移植不完整」。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    for token in ('id="tmdbMediaType"', 'id="tmdbListType"', 'id="tmdbRegion"',
+                  'id="tmdbLanguage"', 'id="tmdbSort"', 'id="tmdbMinRating"',
+                  'id="tmdbYear"', 'id="tmdbProviderWrap"', 'id="tmdbProviderBtn"',
+                  'id="tmdbProviderPanel"', 'id="tmdbGenreChips"',
+                  'id="tmdbFilterToggle"', 'id="tmdbTransferBtn"'):
+        assert token in body, "筛选/操作控件缺失：{}".format(token)
+    js = _read(os.path.join(_JS_DIR, "tmdb.js"))
+    for fn in ("toggleProviderDropdown", "toggleProviderOption", "clearProviderSelection",
+               "selectAllTmdbVisible", "clearTmdbSelection", "transferTmdbSelection",
+               "tmdbPrevPage", "tmdbNextPage", "onTmdbGridKeydown", "toggleTmdbFilters"):
+        assert "function " + fn in js, "原版交互函数缺失：{}".format(fn)
+
+
+def test_tmdb_scoped_lookup_keeps_page_level_ids_global(dist):
+    """回归：作用域查找只能作用于「TMDB 自己的」控件，页面级 id 必须保持全局。
+
+    背景：为了让同一套 ID 在概览页里工作，tmdb.js 的 DOM 访问统一走 getId()。
+    如果把 getElementById() 一律改写成「先查 #tmdbPanel 作用域」，
+    页面级节点（#log 日志区 / #stopBtn）会解析成 null ——
+    实测在 `getId('log').textContent=''` 上抛 TypeError，转存直接中断。
+    """
+    js = _read(os.path.join(_JS_DIR, "tmdb.js"))
+    assert "DSC_GLOBAL_IDS" in js, "缺少页面级 id 白名单"
+    for gid in ("log", "stopBtn"):
+        assert "{}:1".format(gid) in js, "页面级 id {} 未列入全局白名单".format(gid)
+    assert "function _dscLocalId" in js, "缺少作用域 id 推导函数"
+    # 作用域查找必须带「找不到就回退全局」的兜底
+    body = js[js.index("function getId("):]
+    body = body[:body.index("\n}")]
+    assert "document.getElementById(id)" in body, "getId 缺少全局兜底"
+
+
+def test_tmdb_enter_keeps_filters_instead_of_resetting(dist):
+    """回归：从其它 Tab 切回概览时，不得把发现区的筛选/页码打回默认。
+
+    旧版每次 switchTab('tmdb') 都会无脑 loadTmdbList()（回第 1 页）；
+    TMDB 常驻概览后若沿用该逻辑，用户翻到第 5 页、去设置再回来会「凭空回到第 1 页」。
+    """
+    js = _read(os.path.join(_JS_DIR, "tmdb.js"))
+    assert "function enterTmdbDiscovery" in js, "缺少发现区进入函数"
+    assert "dscState.entering" in js, "缺少「正在进入」守卫"
+    # 进入期间 onTmdbFilterChange 只同步控件态，不重载列表
+    change = js[js.index("function onTmdbFilterChange"):]
+    change = change[:change.index("\n}")]
+    assert "dscState.entering" in change, "onTmdbFilterChange 未识别「正在进入」态"
+    assert "syncTmdbDiscoverControls();" in change, "进入态未同步筛选控件可用态"
+    tabs = _read(os.path.join(_JS_DIR, "tabs.js"))
+    assert "updateTmdbVisibility" in tabs, "switchTab 未在切回概览时刷新发现区状态"
+
+
+def test_tmdb_visibility_gates_scroll_and_back_to_top(dist):
+    """回归：无限滚动与「回到顶部」必须以「发现区是否可见」为准。
+
+    发现区常驻概览页时，用「页面是否激活」判断会让滚动加载在概览页顶部就被触发；
+    回顶按钮也会浮在概览工作区上。
+    """
+    js = _read(os.path.join(_JS_DIR, "tmdb.js"))
+    assert "function updateTmdbVisibility" in js, "缺少发现区可见性判定"
+    assert "function tmdbBlockVisible" in js, "缺少可见性读取"
+    scroll = js[js.index("function tmdbOnScroll"):]
+    scroll = scroll[:scroll.index("\n}")]
+    assert "tmdbBlockVisible()" in scroll, "滚动加载未按发现区可见性判定"
+    assert "pageTmdb" not in scroll, "滚动加载仍在判断旧的 #pageTmdb"
+    # 翻页回顶应回到发现区顶部，而不是整页顶部
+    nx = js[js.index("function tmdbNextPage"):]
+    nx = nx[:nx.index("\n}")]
+    assert "scrollTmdbPanelIntoView()" in nx, "翻页未回到发现区顶部（会把用户甩出发现区）"
+    # 快照/命令面板统一走 jumpToDiscovery（同页滚动，不再切页面）
+    ov = _read(os.path.join(_JS_DIR, "overview.js"))
+    assert "function jumpToDiscovery" in ov, "概览缺少「去发现」入口函数"
+    assert "jumpToDiscovery()" in _read(os.path.join(_JS_DIR, "globals.js")), \
+        "命令面板的「前往发现」未接线到同页入口"
+
+
+def test_discovery_adv_block_shares_disabled_state(dist):
+    """回归：筛选栏折叠时，高级筛选控件的表单语义必须一起关闭。
+
+    折叠只是 CSS display:none，Tab 键仍会依次走进 5 个不可见控件（键盘用户凭空多按十几次）。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert 'id="tmdbAdv"' in body, "缺少高级筛选分组容器"
+    assert "<fieldset" in body.split('id="tmdbAdv"')[0][-200:] + body.split('id="tmdbAdv"')[1][:200], \
+        "高级筛选分组不是 fieldset（无法一次性关闭表单语义）"
+    js = _read(os.path.join(_JS_DIR, "tmdb.js"))
+    body_fn = js[js.index("function toggleTmdbFilters"):]
+    body_fn = body_fn[:body_fn.index("\n}")]
+    assert "tmdbAdv" in body_fn and "disabled" in body_fn, \
+        "toggleTmdbFilters 未同步高级筛选控件的 disabled"
+    # 原版字段：options 字段名兜底（曾因读到 countries/languages 以外的字段名让整段初始化中断）
+    assert "opts.regions || opts.countries" in js or "opts.countries || opts.regions" in js, \
+        "地区选项读取未兼容多字段名"
+    assert "(opts.languages || [])" in js or "opts.languages || []" in js, \
+        "语言选项读取未做缺失兜底"
+
+
+def test_merged_frontend_has_no_second_tmdb_surface(dist):
+    """回归：产物里 TMDB 只能有一套表面（同构节点必须唯一）。"""
+    for token in ('id="tmdbGrid"', 'id="tmdbFilters"', 'id="tmdbSelBar"',
+                  'id="tmdbPagination"', 'id="tmdbMediaType"', 'id="tmdbListType"'):
+        assert dist.count(token) == 1, "{} 在产物中出现 {} 次".format(token, dist.count(token))
+    # 「热门推荐」旧面板（第二块海报墙）不得复活
+    assert "热门推荐" not in dist, "旧的「热门推荐」面板标题仍残留"

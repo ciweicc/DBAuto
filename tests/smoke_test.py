@@ -68,23 +68,31 @@ with sync_playwright() as p:
     print("log-panel box:", box(".log-panel"))
     print("app grid columns:", page.eval_on_selector(".app", "el => getComputedStyle(el).gridTemplateColumns"))
 
-    tabs = ["dashboard", "manual", "schedule", "history", "settings"]
+    # 页面 id 映射与 tabs.js 的 PAGE_IDS 一致（概览=pageOverview，其余 tabXxx）
+    tabs = [("overview", "pageOverview"), ("manual", "tabManual"),
+            ("schedule", "tabSchedule"), ("history", "tabHistory"),
+            ("settings", "tabSettings")]
     results = {}
-    for t in tabs:
+    for t, pid in tabs:
         page.click(f'.side-nav-item[data-tab="{t}"]')
         page.wait_for_timeout(300)
-        pid = "pageDashboard" if t == "dashboard" else "tab" + t.capitalize()
         visible = page.eval_on_selector("#" + pid, "el => getComputedStyle(el).display !== 'none'")
         nav_active = page.eval_on_selector(f'.side-nav-item[data-tab="{t}"]', "el => el.classList.contains('active')")
         results[t] = {"page_visible": visible, "nav_active": nav_active}
+    # issue #14：TMDB（发现）不再是导航目的地，由概览页快照 / 搜索进入
+    assert page.query_selector('.side-nav-item[data-tab="tmdb"]') is None, \
+        "侧栏不应再有「发现」导航项"
+    assert all(r["page_visible"] and r["nav_active"] for r in results.values()), \
+        "页签切换异常: " + json.dumps(results, ensure_ascii=False)
     print("tab switch results:", json.dumps(results, ensure_ascii=False))
     print("log-panel visible on settings page:", page.eval_on_selector(".log-panel", "el => getComputedStyle(el).display !== 'none'"))
 
-    # density spot checks
-    dash_cards = page.eval_on_selector_all(".dash .dcard", "els => els.length")
-    print("dashboard .dcard count:", dash_cards)
-    sched_status = page.eval_on_selector("#schedLastTransfer", "el => el.textContent")
-    print("schedLastTransfer text:", sched_status)
+    # 概览页关键节点抽查（对应 PAGE_IDS.overview 的现行结构）
+    ov_nodes = page.eval_on_selector_all(
+        "#pageOverview #ovTodayCount, #pageOverview #ovRecScroll, #pageOverview #ovRecentBody",
+        "els => els.length")
+    print("overview key nodes:", ov_nodes)
+    assert ov_nodes == 3, "概览页缺少指标行 / 快照面板 / 最近转存表"
 
     print("PAGE ERRORS:", json.dumps(page_errors, ensure_ascii=False))
     print("CONSOLE ERR/WARN:", json.dumps(console_errors[:20], ensure_ascii=False))

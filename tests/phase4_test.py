@@ -63,11 +63,13 @@ with sync_playwright() as p:
     page.goto(URL, wait_until="load", timeout=15000)
     page.wait_for_timeout(800)
 
-    # 仪表盘默认页渲染校验
-    dash_today = page.eval_on_selector("#dashToday", "el => el.textContent")
-    dash_next = page.eval_on_selector("#dashNext", "el => el.textContent")
+    # 概览（首页）渲染校验。
+    # 旧「运行概览」模块（#dashToday / #dashNext）已在设置页重构中移除，
+    # 其数据由概览页指标行承载（#ovTodayCount / #ovNextSchedule）。
+    dash_today = page.eval_on_selector("#ovTodayCount", "el => el.textContent")
+    dash_next = page.eval_on_selector("#ovNextSchedule", "el => el.textContent")
     header_ver = page.eval_on_selector("#headerVersion", "el => el.textContent")
-    print("dashToday:", dash_today, "| dashNext:", repr(dash_next), "| headerVersion:", header_ver)
+    print("ovTodayCount:", dash_today, "| ovNextSchedule:", repr(dash_next), "| headerVersion:", header_ver)
 
     # 切到调度页 -> 状态条
     page.click('.side-nav-item[data-tab="schedule"]')
@@ -94,9 +96,11 @@ with sync_playwright() as p:
     # 断言：聚合接口被使用，旧接口不再被首屏使用
     assert counts.get("/api/dashboard/all", 0) == 1, "dashboard/all 应恰好请求 1 次"
     assert counts.get("/api/settings/all", 0) >= 1, "settings/all 至少请求 1 次"
-    for old in ("/api/dashboard/stats", "/api/version", "/api/config", "/api/schedule"):
+    # /api/config 是 TMDB 数据源（API Key / 代理）的读数来源，issue #14 之后
+    # 发现区常驻概览页首屏，因此它被 TMDB 初始化读取属于预期（旧版本是发现页才读）。
+    for old in ("/api/dashboard/stats", "/api/version", "/api/schedule"):
         assert counts.get(old, 0) == 0, "首屏不应再请求旧接口: %s (实际 %s)" % (old, counts.get(old, 0))
-    assert dash_today == "3", "dashToday 应为 3"
+    assert dash_today == "3", "概览今日转存应为 3"
     assert "12:00" in dash_next and "03:00" in dash_next, "dashNext 应显示转存/检测时间"
     assert header_ver == "v1.1.0", "headerVersion 应为 v1.1.0"
     assert sched_t != "-" and sched_e != "-", "调度状态条应有值"
