@@ -1,0 +1,79 @@
+# CNB 云原生构建配置
+#
+# 与 GitHub Actions 的 .github/workflows/docker-build.yml 构成「双份构建、推不同仓库」：
+#   GitHub Actions   → ghcr.io（需要配置 DOCKERHUB_* / 依赖 GITHUB_TOKEN）
+#   CNB 云原生构建    → docker.cnb.cool 内置制品库
+#                     凭据由流水线自动注入（CNB_TOKEN / CNB_TOKEN_USER_NAME），无需任何 secrets
+#
+# 触发规则：
+#   master 分支 push         → 构建多架构镜像，推 latest / 版本号 / 分支名 / 短 SHA 四个 tag
+#   v* 标签 push             → 构建多架构镜像，推 标签名 / 短 SHA 两个 tag
+#   master 分支 pull_request → 仅构建 linux/amd64 校验 Dockerfile，不推送
+#
+# 说明：PR 事件属于 CNB 的「不可信事件」，其 CNB_TOKEN 对制品库只有只读权限，
+#       因此 PR 流水线只做构建校验、不做推送。
+#
+# 文档：https://docs.cnb.cool/zh/build/trigger-rule.html
+#       https://docs.cnb.cool/zh/artifact/docker.html
+
+master:
+  push:
+    - name: docker-build
+      services:
+        - docker
+      env:
+        IMAGE_BASE: ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}
+      stages:
+        - name: resolve version
+          script: |
+            VERSION=$(grep -m1 '^version' pyproject.toml | cut -d'"' -f2)
+            echo -n "${IMAGE_BASE}:${VERSION:-0.0.0}"
+          exports:
+            info: VERSION_TAG
+        - name: docker build and push
+          script: |
+            set -e
+            docker login -u "$CNB_TOKEN_USER_NAME" -p "$CNB_TOKEN" "$CNB_DOCKER_REGISTRY"
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              -f docker/Dockerfile \
+              -t "${IMAGE_BASE}:latest" \
+              -t "${VERSION_TAG}" \
+              -t "${IMAGE_BASE}:${CNB_BRANCH}" \
+              -t "${IMAGE_BASE}:${CNB_COMMIT_SHORT}" \
+              --push \
+              .
+
+  pull_request:
+    - name: docker-build-check
+      services:
+        - docker
+      stages:
+        - name: docker build only
+          script: |
+            set -e
+            docker buildx build \
+              --platform linux/amd64 \
+              -f docker/Dockerfile \
+              -t dbauto:pr-check \
+              .
+
+v*:
+  tag_push:
+    - name: docker-build-tag
+      services:
+        - docker
+      env:
+        IMAGE_BASE: ${CNB_DOCKER_REGISTRY}/${CNB_REPO_SLUG_LOWERCASE}
+      stages:
+        - name: docker build and push
+          script: |
+            set -e
+            docker login -u "$CNB_TOKEN_USER_NAME" -p "$CNB_TOKEN" "$CNB_DOCKER_REGISTRY"
+            docker buildx build \
+              --platform linux/amd64,linux/arm64 \
+              -f docker/Dockerfile \
+              -t "${IMAGE_BASE}:${CNB_BRANCH}" \
+              -t "${IMAGE_BASE}:${CNB_COMMIT_SHORT}" \
+              --push \
+              .
