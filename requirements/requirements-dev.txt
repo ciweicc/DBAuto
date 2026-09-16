@@ -24,7 +24,7 @@ pytest==9.1.1 \
     # via
     #   -r requirements/requirements-dev.in
     #   pytest-rerunfailures
-pytest-rerunfailures==16.6 \
-    --hash=sha256:29dbfee46f542073c888e0ed4e81c51e15b9096f49a299eb1a759629c601684a \
-    --hash=sha256:6af2d1ebd6e5cb79666ac408942cd6a0672a49fefd8523664770718560795e13
+pytest-rerunfailures==16.6.1 \
+    --hash=sha256:0c38d314a0a7e32795f2dbdeeb2b3d141ecf3d3abe10c8c32dae223d45ac7b3d \
+    --hash=sha256:20ac38d31f9319c4e8f43fe0d0e9c22755508e8e7987a88de6d7fd93fc6bdabb
     # via -r requirements/requirements-dev.in
