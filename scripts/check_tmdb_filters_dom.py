@@ -13,7 +13,12 @@
      A4. 高级筛选整块必须有独立内层底卡（与面板底色不同）；
      A5. 类型 chips 必须是胶囊（圆角 ≥ 100px），选中态必须落在强调色系（蓝），
          旧版用的是绿色 (--green)，与页面主色不是一套；
-     A6. 移动端 chips 不得过矮（≥32px，触控目标）。
+     A6. 移动端 chips 不得过矮（≥32px，触控目标）；
+     A7. 「高级筛选」标题行必须整体落在内层底卡的内边距流内 —— 标题 / 提示胶囊
+         不得被底卡上边框横切（issue #24：fieldset > legend 会被 UA 样式提到
+         fieldset 边框上排版，实测顶边相对 fieldset 为 0px，而普通子元素是
+         +46px，于是面板上边框从「高级筛选」与「仅「发现」榜单有效」中间穿过，
+         观感即「字体重叠」）。
   B. 结构（分层与命名）
      B1. 模块标题必须是「TMDB 发现」（用户明确要求重命名）；
      B2. 筛选栏必须有「快捷筛选」分组标题栏（分层是这次改动的重点之一）；
@@ -56,6 +61,8 @@ MIN_CHIP_TOUCH = 32        # 移动端 chips 触控高度下限（px）
 MAX_PANEL_ALPHA = 0.6      # 面板底色 alpha 上限（保持磨砂，禁止实底遮罩）
 MAX_BAR_H = 66             # 筛选栏字段行高度上限（超过说明被挤成两行，对齐失败）
 MIN_RESET_W = 60           # 重置按钮最小宽度（px）
+# 标题行相对底卡内容盒顶边的溢出上限（px）。>0 即被上边框横切；留 0.5px 抗亚像素。
+MAX_LEGEND_OVERFLOW = 0.5
 
 # ---------------------------------------------------------------- 桩数据
 # 与 app_modules/tmdb.py 的 MOVIE_LIST_TYPES / TV_LIST_TYPES 契约一致。
@@ -145,6 +152,30 @@ MEASURE = r"""
     chipHeights: chips.map(c => Math.round(c.getBoundingClientRect().height)),
     chipOnColor: chipOn ? getComputedStyle(chipOn).color : null,
     capTitles: qa('#tmdbFilters .tmdb-fcap-title').map(e => e.textContent.trim()),
+    // A7：标题行是否被底卡上边框横切（issue #24）。
+    // 判据：内容盒顶边 = 底卡顶边 + 边框 + 内边距；标题/胶囊顶边必须 ≥ 该值。
+    advLegend: (() => {
+      const legend = q('#tmdbAdv .tmdb-adv-legend');
+      const hint = q('#tmdbAdv .tmdb-adv-hint');
+      if (!adv || !legend) return null;
+      const aRect = adv.getBoundingClientRect();
+      const aCs = getComputedStyle(adv);
+      const contentTop = aRect.top + parseFloat(aCs.borderTopWidth)
+                       + parseFloat(aCs.paddingTop);
+      const lr = legend.getBoundingClientRect();
+      const hr = hint ? hint.getBoundingClientRect() : null;
+      return {
+        // 正数 = 溢出到内容盒之上（会被上边框横切）
+        legendOverflow: +(contentTop - lr.top).toFixed(1),
+        hintOverflow: hr ? +(contentTop - hr.top).toFixed(1) : null,
+        // legend 必须已不再是 <legend>（用普通 div，才回到内边距流内）
+        tagName: legend.tagName.toLowerCase(),
+        hasLegendTag: !!q('#tmdbAdv > legend'),
+        // legend 底边不得越过 fieldset 底边（不能靠「溢出到卡片外」来规避）
+        legendBottomInside: +(lr.bottom - aRect.bottom).toFixed(1),
+        advH: Math.round(aRect.height),
+      };
+    })(),
     reset: resetR ? {w: Math.round(resetR.width), h: Math.round(resetR.height),
                      text: (reset.textContent || '').trim()} : null,
   };
@@ -297,6 +328,25 @@ def main():
                 if m["chipHeights"] and width <= 480 and min(m["chipHeights"]) < MIN_CHIP_TOUCH:
                     fail("移动端 chips 过矮（最小 {}px < {}px，不好点）".format(
                         min(m["chipHeights"]), MIN_CHIP_TOUCH))
+                # ---- A7 标题行不得被底卡上边框横切（issue #24） ----
+                lg = m.get("advLegend")
+                if not lg:
+                    fail("高级筛选标题行（#tmdbAdv .tmdb-adv-legend）未渲染")
+                else:
+                    if lg["hasLegendTag"] or lg["tagName"] == "legend":
+                        fail("高级筛选标题行仍是 <legend>：UA 样式会把它提到 fieldset "
+                             "边框上排版，标题/胶囊会被面板上边框横切（issue #24）")
+                    if lg["legendOverflow"] > MAX_LEGEND_OVERFLOW:
+                        fail("「高级筛选」标题行溢出底卡内容盒 {:.1f}px（上限 {:.1f}px）"
+                             "—— 标题被内层底卡上边框横切，即「字体重叠」".format(
+                                 lg["legendOverflow"], MAX_LEGEND_OVERFLOW))
+                    if lg["hintOverflow"] is not None and lg["hintOverflow"] > MAX_LEGEND_OVERFLOW:
+                        fail("「仅「发现」榜单有效」胶囊溢出底卡内容盒 {:.1f}px（上限 {:.1f}px）"
+                             "—— 胶囊被底卡上边框横切".format(
+                                 lg["hintOverflow"], MAX_LEGEND_OVERFLOW))
+                    if lg["legendBottomInside"] > 0:
+                        fail("「高级筛选」标题行底边超出底卡 {:.1f}px（标题应整行落在卡内）"
+                             .format(lg["legendBottomInside"]))
 
                 # ---- B 结构与命名 ----
                 if m["panelTitle"] != "TMDB 发现":
@@ -358,6 +408,9 @@ def main():
                 m["label"], m["panelTitle"], m["selectCount"], str(m["bgDiff"]),
                 str(m["selectRadius"]), m["groupIcons"], m["groupCount"], str(m["advBgDiff"]),
                 str(m["chipRadius"]), "有" if m["reset"] else "无"))
+            lg = m.get("advLegend") or {}
+            print("      A7 标题行溢出 高级筛选={}px 胶囊={}px 标签={}".format(
+                lg.get("legendOverflow"), lg.get("hintOverflow"), lg.get("tagName")))
         print()
         if problems:
             print("发现 {} 处问题：".format(len(problems)))

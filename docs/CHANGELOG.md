@@ -2,6 +2,56 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
+## [当前] 高级筛选标题被内层底卡上边框横切（「字体重叠」）
+
+> 对应 [issue #24](https://cnb.cool/ciweicc/DBAuto/-/issues/24)：
+> 「这里的字体出现重叠」。
+
+**先量，再改。** 截图里看着像「字体重叠」，量出来是**排版越位**：
+高级筛选的标题行整行被提到了内层底卡的上边框上，卡片边框从
+「高级筛选」与「仅「发现」榜单有效」胶囊中间横穿过去。
+
+**根因：`fieldset > legend` 的 UA 特殊排版**
+
+标题行原本写在 `<fieldset id="tmdbAdv"><legend class="tmdb-adv-legend">` 里。
+UA 样式会把 `legend` 提到 fieldset 的**边框上**排版，而不是放进内边距流。
+浏览器实测（1440×900）两个对照：
+
+- 在 fieldset 首位插一个普通 `div`：顶边相对 fieldset 为 **+46.5px**（内边距流内）；
+- 同一个位置的 `<legend>`：顶边相对 fieldset 为 **+0px**（落在边框上）。
+
+于是内层底卡内容盒顶边在 **259px**，而标题行顶边在 **244px** ——
+溢出 **15px**，胶囊同样溢出 15px、标题文字溢出 12.7px，
+正好被 `border-radius:10px` 的上边框切开。
+
+**改动**
+
+- `static/src/body.html`：标题行由 `<legend>` 换成 `<div class="tmdb-adv-legend">`，
+  回到 fieldset 的内边距流内。`<fieldset>` 保留（折叠时用 `disabled` 级联关闭内部
+  控件的能力不能丢），分组语义与无障碍名改由 `role="group"` + `aria-label="高级筛选"` 承担；
+- `static/src/styles/main.css`：给 `.tmdb-adv-legend` 补注释说明「必须是普通块级元素，
+  不能退回 legend」，样式本身不变。
+
+**验证证据（可复核）**
+
+- 浏览器实测（9 组视口，2560×1392 → 390×844）：标题行溢出 **15px → 0px**，
+  胶囊溢出 15px → 0px，标签名 `legend → div`，标题行底边不再越出底卡；
+- 明暗两主题、筛选栏展开/收起两种状态各测一遍，溢出均为 0px；
+  折叠时 `#tmdbAdv.disabled === true`，`disabled` 级联仍然有效；
+- `tests/test_build.py` 新增 2 项静态防复发断言：
+  `test_adv_legend_is_not_fieldset_legend`（产物无 `<legend>`、源码用 div、
+  fieldset 与 `role=group`/`aria-label` 都在）、
+  `test_discovery_dom_script_asserts_adv_legend_overflow`（守住 A7 几何断言与阈值）；
+- `scripts/check_tmdb_filters_dom.py` 新增 **A7 几何断言**：
+  用 `getBoundingClientRect` 比「内容盒顶边（含边框 + 内边距）」与标题/胶囊顶边，
+  上限 `MAX_LEGEND_OVERFLOW = 0.5px`；
+- **反向对照**：把 `<div>` 改回 `<legend>` 后，A7 在 9 组视口全部报
+  「溢出底卡内容盒 15.0px」，静态断言同时失败 —— 证明门禁不是恒通过；
+- `pytest tests/ -q` → **209 passed**（207 → 209）；
+- 筛选栏 9 组 / 发现区 9 组 / 概览页 9 组 / 设置页 9 组 / 日志栏 10 组 DOM 走查均 0 处问题；
+- 对比度 18 组 0 未达标；`ruff check .` 通过；
+- 产物已用 `bash static/src/build.sh` 重建并提交，二次重建逐字节幂等。
+
 ## [当前] 概览「最近转存」去掉重复的历史入口 — 同一面板只留一个出口
 
 > 用户反馈：「这 4 个箭头指向的跳转都同时指向了历史页面，我不需要这么多的入口，

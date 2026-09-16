@@ -1276,3 +1276,61 @@ def test_tmdb_filters_dom_audit_is_committed():
         "缺少「改乱筛选条件是否真的生效」的前置校验："
         "否则重置断言会在「其实没改」的情况下恒为通过"
     )
+
+
+# ---------------------------------------------------------------- 高级筛选标题行（issue #24）
+def test_adv_legend_is_not_fieldset_legend(dist):
+    """回归：高级筛选标题行不得用 <legend>（issue #24「字体重叠」的直接成因）。
+
+    `fieldset > legend` 在 UA 样式里被提到 fieldset 边框上排版：实测 legend 顶边
+    相对 fieldset 为 0px，而同一位置的普通子元素是 +46px。于是内层底卡的上边框
+    从「高级筛选」标题与「仅「发现」榜单有效」胶囊中间横穿，看起来就是字体重叠。
+
+    这里守两道：产物里不能有 <legend>，源码里必须是普通 div；
+    几何层面的「溢出 0px」由 scripts/check_tmdb_filters_dom.py 的 A7 断言覆盖。
+    """
+    assert "<legend" not in dist, (
+        "产物里仍有 <legend>：fieldset 的 legend 会被提到边框上排版，"
+        "高级筛选标题会被内层底卡上边框横切（issue #24）"
+    )
+    assert 'class="tmdb-adv-legend"' in dist, "高级筛选标题行被误删"
+    # 标题行的容器必须是 div（普通块级元素才会回到 fieldset 的内边距流内）
+    m = re.search(r'<div class="tmdb-adv-legend">', dist)
+    assert m, "高级筛选标题行不是 <div class=\"tmdb-adv-legend\">"
+
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert "<legend" not in body, "body.html 仍在使用 <legend>"
+    # fieldset 的表单语义必须保留（折叠时置 disabled 靠它级联到内部控件）
+    assert re.search(r'<fieldset class="tmdb-adv" id="tmdbAdv"[^>]*>', body), \
+        "高级筛选的 fieldset 被移除：折叠时无法用 disabled 级联关闭内部控件"
+    assert "disabled" in _read(os.path.join(_JS_DIR, "tmdb.js")), "折叠时的 disabled 级联被移除"
+    # legend 换 div 后，无障碍名改由 role=group + aria-label 承担，不能两头都丢
+    assert 'role="group"' in body and 'aria-label="高级筛选"' in body, \
+        "换成 div 后缺少 role=group / aria-label，分组语义与无障碍名丢失"
+
+    # 样式层：标题行必须仍声明为 flex 行（回到内边距流后才谈得上对齐）
+    main_css = _read(MAIN_CSS)
+    block = main_css[main_css.index(".tmdb-adv-legend{"):]
+    block = block[:block.index("}")]
+    assert "display:flex" in block, "标题行不再是 flex 行，图标/标题/胶囊无法基线对齐"
+
+
+def test_discovery_dom_script_asserts_adv_legend_overflow():
+    """回归：A7 几何断言必须留在走查脚本里，且阈值不得被放宽。
+
+    静态测试只能证明「没有 legend 标签」，证明不了「标题确实落在卡内」——
+    后者只有渲染后量 getBoundingClientRect 才知道，所以两条都要在。
+    """
+    src = _read(os.path.join(_ROOT, "scripts", "check_tmdb_filters_dom.py"))
+    assert "MAX_LEGEND_OVERFLOW" in src, "缺少标题行溢出上限常量"
+    m = re.search(r"MAX_LEGEND_OVERFLOW\s*=\s*([\d.]+)", src)
+    assert m, "MAX_LEGEND_OVERFLOW 未定义数值"
+    assert float(m.group(1)) <= 0.5, (
+        "MAX_LEGEND_OVERFLOW 被放宽到 {}：旧版实测溢出 15px，放宽阈值等于放行回归".format(
+            m.group(1)))
+    assert "legendOverflow" in src and "hintOverflow" in src, "缺少标题/胶囊溢出测量"
+    # 正数即「溢出到内容盒之上」，判定必须比上限严格
+    assert "legendOverflow\"] > MAX_LEGEND_OVERFLOW" in src, "标题溢出断言丢失"
+    assert "hintOverflow\"] > MAX_LEGEND_OVERFLOW" in src, "胶囊溢出断言丢失"
+    assert "contentTop" in src and "borderTopWidth" in src and "paddingTop" in src, \
+        "内容盒顶边的计算口径丢失（必须含边框 + 内边距）"
