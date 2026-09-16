@@ -364,7 +364,7 @@ function renderOvTodos(dash, hist){
 
   // 今日无转存
   if((stats.today_count||0) === 0){
-    todos.push({icon:'send', text:'今日还没有转存记录', action:'switchTab(\'tmdb\')', actionText:'去 TMDB 发现'});
+    todos.push({icon:'send', text:'今日还没有转存记录', action:'jumpToDiscovery()', actionText:'去 TMDB 发现'});
   }
 
   if(!todos.length){
@@ -386,10 +386,20 @@ function renderOvTodos(dash, hist){
 
 /** 首屏 / 指标行「去 TMDB 发现」按钮的统一入口：滚到发现区并确保它已初始化 */
 function jumpToDiscovery(){
+  // issue #24：发现区（#tmdbPanel）常驻**概览页**，它没有独立的 Tab 页面。
+  // 旧实现走 openDiscovery()，该函数只做「滚到发现区 + 首载一次列表」，
+  // 当用户当前停在概览页时不会产生任何可见位移（发现区已经初始化过，
+  // 而它就在同一块首屏的正下方）—— 用户点按钮的观感就是「跳转无效」。
+  // 因此这里显式补齐两件事：① 确保停在概览页；② 把发现区滚到可视区顶部。
+  if(typeof currentTab === 'string' && currentTab !== 'overview'
+     && typeof switchTab === 'function'){
+    switchTab('overview');
+  }
   if(typeof openDiscovery === 'function'){ openDiscovery(); return; }
+  if(typeof scrollTmdbPanelIntoView === 'function'){ scrollTmdbPanelIntoView(); return; }
   var host = document.getElementById('tmdbPanel');
   var sc = document.querySelector('.content');
-  if(host && sc) sc.scrollTo({ top: sc.scrollTop + host.getBoundingClientRect().top - sc.getBoundingClientRect().top - 12, behavior: 'smooth' });
+  if(host && sc) sc.scrollTo({ top: Math.max(0, sc.scrollTop + host.getBoundingClientRect().top - sc.getBoundingClientRect().top - 12), behavior: 'smooth' });
 }
 
 /**
