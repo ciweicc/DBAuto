@@ -273,9 +273,10 @@ function updateTmdbListTypeOptions(listTypes){
   }
 }
 
-async function loadTmdbGenres(){
+async function loadTmdbGenres(force){
   var mt = getId('tmdbMediaType').value;
-  if(mt === dscState.media_type && dscState.genres.length) return;
+  // force：重置筛选时即便「分类没变、缓存还在」也要重建 chips（把选中态打回「全部」）
+  if(!force && mt === dscState.media_type && dscState.genres.length) return;
   dscState.media_type = mt;
   try{
     var d = await apiGet('/api/tmdb/genres?media_type='+mt);
@@ -381,6 +382,23 @@ function clearProviderSelection(ev){
   dscState.providers = [];
   dscState.providerAnchor = -1;
   renderProviderSelection();
+}
+
+/** 只把平台多选的「选中态 + 标签」刷到当前 state，不触发任何列表加载。
+ *
+ * 为什么不能直接用 renderProviderSelection()：它在 list_type=discover 时会顺带
+ * loadTmdbList()，而 loadTmdbList() 会按当时的评分/年份/类型反推榜单类型 ——
+ * 在「重置筛选」的中途调用它，会让重置结果被重新推导回 discover
+ * （实测：点重置后榜单类型仍是 discover）。重置路径只需要刷 UI。 */
+function syncProviderSelectionUi(){
+  var selSet = {};
+  dscState.providers.forEach(function(id){ selSet[id] = true; });
+  queryAll('#tmdbProviderPanel .tmdb-ms-option').forEach(function(o){
+    var on = !!selSet[parseInt(o.dataset.pid, 10)];
+    o.classList.toggle('on', on);
+    o.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  updateProviderLabel();
 }
 
 function renderProviderSelection(){
@@ -806,6 +824,59 @@ function clearTmdbSelection(){
   dscState.selected = {};
   queryAll('.tmdb-card.selected').forEach(function(c){c.classList.remove('selected')});
   updateTmdbSelBar();
+}
+
+// 重置全部筛选条件（issue #15 第 5 轮新增的重置按钮）。
+//
+// 为什么需要它：这一版把筛选做成了「有层次、有选中态」的实体（底卡 / 图标 /
+// 高亮的平台多选 / 胶囊选中态），一旦用户改花了眼，上一版那种「全部控件长得一样」
+// 的界面至少还能靠扫视发现异常，现在必须给一个一键回退的出口。
+//
+// 语义：回到「首次打开发现区」的状态 —— 分类=电影、榜单=首个榜单、地区=首个地区、
+// 语言=首个语言、排序=按热度、评分=0、年份=空、平台=全部、类型=全部。
+// 重置后**保留**用户当前翻到的页面对齐方式（走 onTmdbFilterChange → 回第 1 页）。
+function resetTmdbFilters(){
+  var mt = getId('tmdbMediaType');
+  if(mt) mt.value = 'movie';
+  // 榜单选项随分类变化：先按「电影」重建选项（保持既有选择逻辑，重新指向默认榜单）
+  dscState.genres = [];
+  if(dscState.options){
+    updateTmdbListTypeOptions(dscState.options.movie_list_types);
+    var ltEl = getId('tmdbListType');
+    if(ltEl && ltEl.options.length) ltEl.selectedIndex = 0;
+  }
+  var rgEl = getId('tmdbRegion');
+  if(rgEl && rgEl.options.length) rgEl.selectedIndex = 0;
+  var lgEl = getId('tmdbLanguage');
+  if(lgEl && lgEl.options.length) lgEl.selectedIndex = 0;
+  var sortEl = getId('tmdbSort');
+  if(sortEl && sortEl.options.length) sortEl.selectedIndex = 0;
+  var minEl = getId('tmdbMinRating');
+  if(minEl) minEl.value = 0;
+  var yearEl = getId('tmdbYear');
+  if(yearEl) yearEl.value = '';
+  var chips = queryAll('#tmdbGenreChips .chip');
+  chips.forEach(function(c){c.classList.remove('on')});
+  var allChip = query('#tmdbGenreChips .chip[data-gid="0"]');
+  if(allChip) allChip.classList.add('on');
+  // 顺序很重要（这里踩过一次坑，写清楚避免回归）：
+  // clearProviderSelection() → renderProviderSelection() 在「当前是 discover 榜单」时
+  // 会顺手 loadTmdbList()；而 loadTmdbList() 会用「当时的 dscState.genre_id /
+  // #tmdbMinRating / #tmdbYear」重新推导 list_type —— 若此时 genre 还没清零，
+  // 它会把榜单再改回 discover（并把重建后的 <select> 写回 discover），
+  // 表现就是「点了重置，榜单类型没变」。所以必须：
+  //   ① 先把 genre_id / 评分 / 年份 这些「会让 loadTmdbList 反推 discover」的量清零，
+  //   ② 再动平台多选（它可能触发一次 loadTmdbList），
+  //   ③ 最后走 onTmdbFilterChange() 做一次权威的收尾同步。
+  dscState.genre_id = 0;
+  dscState.providers = [];
+  dscState.providerAnchor = -1;
+  syncProviderSelectionUi();
+  closeProviderDropdown();
+  dscState.genres = [];
+  loadTmdbGenres(true);
+  onTmdbFilterChange();
+  showToast('筛选条件已重置');
 }
 
 async function transferTmdbSelection(){
