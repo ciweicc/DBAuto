@@ -686,15 +686,47 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 [data-theme="light"] ::-webkit-scrollbar-track{background:rgba(0,0,0,.03)}
 
 /* ===== TMDB Page ===== */
+/* ---- 筛选控件（issue #15 第 5 轮视觉升级）----
+   上一版是「一行十来个同款深色方块平铺在面板底上」，用户反馈「太素」。
+   这一版做了四件事，每一条都可度量（见 scripts/check_discovery_dom.py）：
+     1. 字段自带底卡（.tmdb-field-bg）：控件不再是浮在面板上的裸方块；
+     2. 字段配图标（.tmdb-ficon），标签从大写英文风格改为带图标的中文小标；
+     3. 底卡带顶部 1px 高光 + 2px 高亮描边，焦点/悬停有明确发光，层次可辨；
+     4. 分「快捷筛选 / 高级筛选」两层，各自有图标化标题栏，不再是一整片散沙。 */
 .tmdb-filter-bar{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;margin-bottom:14px}
-.tmdb-filter-group{display:flex;flex-direction:column;gap:4px;flex:1 1 130px;min-width:0;max-width:200px}
-.tmdb-filter-group label{font-size:var(--fs-xs);font-weight:600;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
-.tmdb-select{width:100%;padding:7px 10px;border-radius:var(--radius-xs);border:1px solid var(--border);
-  background:var(--card-2);color:var(--text);font-size:var(--fs-base);font-weight:500;transition:border-color var(--transition-fast);cursor:pointer;min-width:0}
+.tmdb-filter-group{display:flex;flex-direction:column;gap:5px;flex:1 1 130px;min-width:0;max-width:220px}
+.tmdb-filter-group label{display:flex;align-items:center;gap:5px;
+  font-size:var(--fs-xs);font-weight:600;color:var(--text2);letter-spacing:.3px;padding-left:2px}
+.tmdb-ficon{flex-shrink:0;color:var(--accent);opacity:.9}
+.tmdb-filter-group:has(.tmdb-select:disabled) label{color:var(--text3)}
+.tmdb-filter-group:has(.tmdb-select:disabled) .tmdb-ficon{color:var(--text3);opacity:.55}
+.tmdb-select{
+  width:100%;padding:9px 12px;border-radius:10px;
+  border:1px solid var(--border2);
+  /* 控件底面（issue #15 第 5 轮「太素」的根治点）：
+     面板底色 rgba(22,23,28,.55) 与卡片底色 rgba(17,18,23,.74) 合成后只差 ~2 个
+     RGB 通道 —— 肉眼几乎看不出边界，这正是「控件融进面板」的观感来源。
+     这里改用**实色**控件底 + 顶部渐变高光：实色保证与面板有 15+ 通道的色阶，
+     渐变高光提供「被抬起」的立体感（面板上有 backdrop-filter，
+     重投影阴影会被糊成一团，所以层次只能靠色阶与内高光做）。 */
+  background-image:linear-gradient(180deg,var(--field-hi),transparent 60%);
+  background-color:var(--field-bg);
+  color:var(--text);font-size:var(--fs-base);font-weight:600;
+  box-shadow:inset 0 1px 0 var(--glass-hi),0 2px 6px rgba(0,0,0,.28);
+  transition:border-color var(--transition-fast),box-shadow var(--transition-fast),color var(--transition-fast);
+  cursor:pointer;min-width:0;text-overflow:ellipsis}
 .tmdb-filter-group input[type="number"]{width:100%;max-width:110px;min-width:0}
-[data-theme="light"] .tmdb-select{background:rgba(0,0,0,.02)}
-.tmdb-select:hover{border-color:var(--accent-wash-strong);color:var(--accent)}
-.tmdb-select:focus{outline:none;border-color:var(--accent);box-shadow:var(--focus-ring)}
+[data-theme="light"] .tmdb-select{background-color:#ffffff;
+  box-shadow:inset 0 1px 0 #ffffff,0 1px 3px rgba(0,0,0,.10)}
+[data-theme="light"] .tmdb-adv{background:rgba(255,255,255,.55);
+  box-shadow:inset 0 1px 0 #ffffff,0 1px 2px rgba(0,0,0,.05)}
+.tmdb-select:hover{border-color:var(--accent-border-soft);color:var(--accent);
+  box-shadow:inset 0 1px 0 var(--glass-hi),0 0 0 3px var(--accent-wash)}
+.tmdb-select:focus,.tmdb-select:focus-visible{outline:none;border-color:var(--accent);
+  box-shadow:var(--focus-ring),0 0 0 3px var(--accent-wash)}
+/* 「筛选/操作」按钮组：重置按钮与最后一列字段底边对齐 */
+.tmdb-filter-actions{display:flex;align-items:flex-end;flex:0 0 auto}
+.tmdb-reset-btn{display:inline-flex;align-items:center;gap:6px;white-space:nowrap}
 /* 流媒体平台多选控件（支持 Shift 范围选择） */
 .tmdb-multiselect{position:relative;width:100%}
 .tmdb-ms-trigger{display:flex;align-items:center;justify-content:space-between;text-align:left;font-family:var(--font)}
@@ -702,14 +734,19 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 .tmdb-ms-trigger.has-sel{color:var(--accent);border-color:var(--accent)}
 .tmdb-ms-caret{flex-shrink:0;transition:transform var(--transition-fast)}
 .tmdb-ms-trigger[aria-expanded="true"] .tmdb-ms-caret{transform:rotate(180deg)}
-.tmdb-ms-panel{position:absolute;top:calc(100% + 4px);left:0;right:0;z-index:var(--z-popover);
-  background:var(--card);border:1px solid var(--border);border-radius:var(--radius-sm);
-  box-shadow:0 8px 24px rgba(0,0,0,.18);max-height:260px;overflow-y:auto;padding:6px}
+.tmdb-ms-panel{position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:var(--z-popover);
+  background:var(--surface-solid);border:1px solid var(--border2);border-radius:12px;
+  box-shadow:0 16px 40px rgba(0,0,0,.42),inset 0 1px 0 var(--glass-hi);
+  max-height:280px;overflow-y:auto;padding:8px}
+/* 面板顶部 1px 强调色高光：浮层与背景拉开层次（issue #15 第 5 轮） */
+.tmdb-ms-panel::before{content:'';position:absolute;top:0;left:10px;right:10px;height:1px;
+  background:linear-gradient(90deg,transparent,var(--accent-border-soft),transparent)}
 .tmdb-ms-option{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:var(--radius-xs);
   font-size:var(--fs-base);color:var(--text);cursor:pointer;user-select:none;transition:background var(--transition-fast)}
 .tmdb-ms-option:hover{background:var(--card-2)}
 .tmdb-ms-option.range{background:rgba(10,132,255,.12)}
 .tmdb-ms-option.range{background:color-mix(in srgb,var(--accent) 12%,transparent)}
+[data-theme="light"] .tmdb-ms-panel{background:#ffffff;box-shadow:0 16px 40px rgba(0,0,0,.16),inset 0 1px 0 rgba(255,255,255,.9)}
 .tmdb-ms-option .ms-check{width:16px;height:16px;border-radius:4px;border:1.5px solid var(--border2);
   flex-shrink:0;display:flex;align-items:center;justify-content:center;color:#fff;transition:all var(--transition-fast)}
 .tmdb-ms-option .ms-check svg{display:none}
@@ -720,7 +757,17 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
   border-top:1px solid var(--border);cursor:pointer}
 .tmdb-ms-clear:hover{color:var(--accent)}
 .tmdb-ms-hint{font-size:var(--fs-xs);color:var(--text3);padding:4px 9px 6px;line-height:1.4}
-.tmdb-genre-chips{display:flex;flex-wrap:wrap;gap:6px;max-height:200px;overflow-y:auto;padding:4px 0}
+.tmdb-genre-chips{display:flex;flex-wrap:wrap;gap:7px;max-height:200px;overflow-y:auto;padding:4px 0}
+/* 类型 chips（issue #15 第 5 轮）：胶囊化 + 选中态用强调色发光。
+   与全局 .chip 的区别只在观感层（圆角/底色/选中色），交互与结构不变。 */
+.tmdb-genre-chips .chip{
+  padding:6px 14px;border-radius:999px;background:var(--card-2);border:1px solid var(--border2);
+  color:var(--text2);font-size:var(--fs-sm);font-weight:600;
+  box-shadow:inset 0 1px 0 var(--glass-hi)}
+.tmdb-genre-chips .chip:hover{background:var(--accent-wash);border-color:var(--accent-border-soft);color:var(--accent)}
+.tmdb-genre-chips .chip.on{
+  background:var(--accent-wash-strong);border-color:var(--accent-border-soft);color:var(--accent);
+  font-weight:700;box-shadow:inset 0 1px 0 var(--glass-hi),0 0 0 3px var(--accent-wash)}
 .tmdb-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px}
 @media(max-width:1200px){.tmdb-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:900px){.tmdb-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
@@ -1358,17 +1405,32 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .ov-panel-discovery .ov-panel-head{gap:8px;flex-wrap:wrap}
 .ov-panel-discovery .ov-panel-title{flex-shrink:0}
 .ov-panel-discovery .ov-panel-sub{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis}
-/* 首层筛选与高级筛选的分隔与标注 */
+/* 首层筛选与高级筛选的分隔与标注（issue #15 第 5 轮：改成图标化标题栏，
+   高级筛选整体给一张内层底卡，和「快捷筛选」在视觉上分得开） */
+.tmdb-fcap{display:flex;align-items:center;gap:7px;margin:0 0 12px}
+.tmdb-fcap-icon{flex-shrink:0;color:var(--accent)}
+.tmdb-fcap-title{font-size:var(--fs-sm);font-weight:700;color:var(--text);letter-spacing:.4px}
+.tmdb-fcap-note{font-size:var(--fs-xs);font-weight:500;color:var(--text3);
+  padding:2px 8px;border-radius:999px;background:var(--hover-wash);border:1px solid var(--border)}
 .tmdb-adv{
-  border:none;margin:0 0 14px;padding:0;
+  border:none;margin:0 0 14px;padding:14px 14px 4px;
+  border-radius:var(--radius-lg);
+  /* 内层底卡：比控件底色再深一档，让「高级筛选」整块像一个独立托盘，
+     与外面的「快捷筛选」在视线上分得开（层次感来源之二） */
+  background:var(--field-bg-deep);
+  border:1px solid var(--border);
+  box-shadow:inset 0 1px 0 var(--glass-hi);
 }
 .tmdb-adv[disabled]{opacity:.62}
 .tmdb-adv-legend{
-  display:flex;align-items:center;gap:6px;padding:0 0 8px;
-  font-size:var(--fs-xs);font-weight:600;color:var(--text2);
-  text-transform:uppercase;letter-spacing:.5px;
+  display:flex;align-items:center;gap:7px;padding:0 0 10px;
+  font-size:var(--fs-xs);font-weight:700;color:var(--text2);letter-spacing:.4px;
 }
-.tmdb-adv-hint{font-weight:500;color:var(--text3);text-transform:none;letter-spacing:0}
+.tmdb-adv-hint{font-weight:500;color:var(--text3);letter-spacing:0;
+  padding:2px 8px;border-radius:999px;background:var(--hover-wash);border:1px solid var(--border)}
+.tmdb-genre-group{margin-bottom:10px}
+.tmdb-genre-label{display:flex;align-items:center;gap:5px;
+  font-size:var(--fs-xs);font-weight:600;color:var(--text2);letter-spacing:.3px}
 /* 折叠后的筛选栏也要有「被收起」的视觉落点（否则只剩标题行，像内容丢了） */
 .tmdb-filters.collapsed{padding-bottom:0}
 .tmdb-filters.collapsed::after{

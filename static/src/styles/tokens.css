@@ -121,6 +121,15 @@
   --focus-ring: 0 0 0 3px rgba(10, 132, 255, 0.18);
   --accent-wash: rgba(10, 132, 255, 0.08);
   --accent-wash-strong: rgba(10, 132, 255, 0.14);
+  /* 表单控件自带底面（issue #15 第 5 轮）：筛选/输入控件在「带模糊的面板」上
+     需要一层自己的色阶才能显形，否则同色叠同色 → 观感「素」 */
+  --accent-border-soft: rgba(10, 132, 255, 0.45);
+  --field-hi: rgba(255, 255, 255, 0.06);
+  /* 表单控件实色底面：面板是半透明的，控件若也用半透明会与面板合成到几乎同色
+     （实测只差 ~2 个 RGB 通道），观感上「控件不存在」= 素。
+     深色主题下比面板实底再亮一档，浅色主题下必须是纯白。 */
+  --field-bg: #22242c;
+  --field-bg-deep: #1b1c22;
   --hover-wash: rgba(255, 255, 255, 0.06);
   --track: rgba(255, 255, 255, 0.12);
 
@@ -220,6 +229,10 @@
   --focus-ring: 0 0 0 3px rgba(0, 122, 255, 0.20);
   --accent-wash: rgba(0, 122, 255, 0.08);
   --accent-wash-strong: rgba(0, 122, 255, 0.14);
+  --accent-border-soft: rgba(0, 122, 255, 0.42);
+  --field-hi: rgba(255, 255, 255, 0.90);
+  --field-bg: #ffffff;
+  --field-bg-deep: rgba(255, 255, 255, 0.55);
   --hover-wash: rgba(0, 0, 0, 0.05);
   --track: rgba(0, 0, 0, 0.14);
 

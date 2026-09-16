@@ -1117,3 +1117,132 @@ def test_overview_dom_audit_measures_hero_blank():
     assert int(m.group(1)) <= 40, (
         "MAX_HERO_BLANK 被放宽到 {}px：无法拦住 271/291px 那类回归".format(m.group(1))
     )
+
+
+# ------------------------------------------------ TMDB 筛选栏视觉升级（issue #15 第 5 轮）
+def test_tmdb_filters_are_named_and_visually_layered(dist):
+    """回归（issue #15 第 5 轮）：筛选栏必须叫「TMDB 发现」，且必须有视觉层次。
+
+    原表现：一行十来个个同款深色方块平铺在面板底上，没有分组、没有图标、
+    圆角 4px 与面板的 10px 不协调 —— 用户的原话是「筛选框 UI 太素」。
+
+    这里做静态防复发（真实度量由 scripts/check_tmdb_filters_dom.py 负责，9 组视口）：
+      1. 模块标题必须是「TMDB 发现」（用户明确要求重命名）；
+      2. 字段标签必须带图标（每个 .tmdb-filter-group 一个 .tmdb-ficon）；
+      3. 控件圆角必须 ≥8px；
+      4. 控件底色必须是**实色令牌**（--field-bg），不得退回半透明卡片底 ——
+         半透明控件与半透明面板合成后只差约 2 个 RGB 通道，肉眼几乎无边界，
+         这正是「控件融进面板」的观感来源；
+      5. 必须有「快捷筛选」分组标题栏与「重置筛选」按钮。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    css, _ = _extract(dist)
+    tokens = _read(os.path.join(_SRC, "styles", "tokens.css"))
+
+    # 1. 命名
+    assert "TMDB 发现" in body, "发现区标题未重命名为「TMDB 发现」"
+    assert 'id="tmdbPanelTitle"' in body, "发现区标题节点缺失"
+
+    # 2. 字段图标：8 个字段（4 快捷 + 4 高级）都要有
+    assert body.count("tmdb-ficon") >= 8, (
+        "筛选字段图标少于 8 个（当前 {} 个）：字段标签没有图标是「太素」的一半".format(
+            body.count("tmdb-ficon")))
+    assert ".tmdb-ficon" in css, "缺少 .tmdb-ficon 图标样式"
+
+    # 3. 圆角
+    i = css.index(".tmdb-select{")
+    rule = css[i:css.index("}", i)]
+    m = re.search(r"border-radius:(\d+)px", rule)
+    assert m, ".tmdb-select 未设像素圆角（改回 var(--radius-xs)=4px 会让控件像表格格子）"
+    assert int(m.group(1)) >= 8, (
+        ".tmdb-select 圆角被改回 {}px（下限 8px）".format(m.group(1)))
+
+    # 4. 控件底色必须是实色：半透明底色会与半透明面板合成到几乎同色
+    assert "background-color:var(--field-bg)" in rule.replace(" ", ""), (
+        ".tmdb-select 的底色必须是实色令牌 --field-bg："
+        "退回 --card-2（rgba(17,18,23,.74)）会与面板 rgba(22,23,28,.55) "
+        "合成成几乎同色，控件重新「融进」面板（issue #15 第 5 轮）"
+    )
+    assert "--field-bg:" in tokens, "缺少 --field-bg 令牌"
+    # 深色主题下必须是实色（不得是 rgba(...)）
+    fbg = tokens[tokens.index("--field-bg:"):]
+    fbg = fbg[:fbg.index(";")]
+    assert "rgba" not in fbg, "--field-bg 又变回了半透明值：{}".format(fbg)
+
+    # 5. 分层：分组标题栏 + 重置按钮
+    assert "tmdb-fcap-title" in body, "缺少分组标题栏（快捷筛选 / 高级筛选）"
+    assert "快捷筛选" in body, "缺少「快捷筛选」分组标题"
+    assert 'id="tmdbResetBtn"' in body, "缺少「重置筛选」按钮"
+
+
+def test_tmdb_reset_filters_semantics(dist):
+    """回归：`resetTmdbFilters()` 必须一次还原全部 9 项条件，且不能触发榜单反推。
+
+    ⚠️ 这里锁的是一条**实测踩到的真 bug**（不是假想）：
+    `clearProviderSelection() → renderProviderSelection()` 在
+    `list_type === 'discover'` 时会顺手调用 `loadTmdbList()`，而
+    `loadTmdbList()` 会用当时的 `genre_id / #tmdbMinRating / #tmdbYear`
+    重新推导榜单类型。如果在「重置」的中途先动平台多选、后清 genre，
+    榜单类型会被重新推导回 discover ——
+    实测表现就是「点了重置筛选，榜单类型没变」（1440×900 可复现）。
+
+    因此本用例断言：
+      1. 重置路径不得调用 `clearProviderSelection()` / `renderProviderSelection()`
+         （它们会旁路触发列表加载）；
+      2. 必须用只刷 UI 的 `syncProviderSelectionUi()`；
+      3. `dscState.genre_id = 0` 必须出现在 `syncProviderSelectionUi()` **之前**；
+      4. 走查脚本必须保留「重置语义」断言，且不得缺少前置条件校验
+         （否则「重置成功」可以建立在「其实压根没改」之上）。
+    """
+    js = _read(os.path.join(_JS_DIR, "tmdb.js"))
+    fn = js[js.index("function resetTmdbFilters"):]
+    fn = fn[:fn.index("\nfunction ", 10)]
+    # 只对「代码」断言，去掉注释：本函数上方的注释里**故意**提到了
+    # renderProviderSelection 作为反例说明，不应被当成调用。
+    code = re.sub(r"/\*.*?\*/", "", fn, flags=re.S)
+    code = re.sub(r"//[^\n]*", "", code)
+
+    assert "function syncProviderSelectionUi" in js, "缺少只刷 UI 的平台多选同步函数"
+    assert "syncProviderSelectionUi()" in code, "重置未使用 syncProviderSelectionUi"
+    for banned in ("clearProviderSelection", "renderProviderSelection"):
+        assert banned not in code, (
+            "重置路径调用了 {}：它会旁路触发 loadTmdbList，"
+            "把榜单类型重新推导回 discover（issue #15 第 5 轮实测 bug）".format(banned)
+        )
+    # 顺序：先把 genre_id 清零，再动平台多选
+    assert code.index("dscState.genre_id = 0") < code.index("syncProviderSelectionUi()"), (
+        "`dscState.genre_id = 0` 必须在 syncProviderSelectionUi() 之前："
+        "否则 loadTmdbList 仍会按旧 genre 反推出 discover"
+    )
+    # 重置必须覆盖全部 9 项条件
+    for token in ("tmdbMediaType", "tmdbListType", "tmdbRegion", "tmdbLanguage",
+                  "tmdbSort", "tmdbMinRating", "tmdbYear", "providers", "genre_id"):
+        assert token in code, "重置函数没有覆盖 {}".format(token)
+
+
+def test_tmdb_filters_dom_audit_is_committed():
+    """走查脚本必须落库（AGENTS.md 门禁 2），且阈值不得被放宽。"""
+    src = _read(os.path.join(_ROOT, "scripts", "check_tmdb_filters_dom.py"))
+    for token in ("MIN_SELECT_RADIUS", "MIN_BG_DIFF", "MIN_ADV_BG_DIFF",
+                  "MIN_CHIP_RADIUS", "MAX_PANEL_ALPHA", "RESET_EXPECT"):
+        assert token in src, "筛选栏走查脚本缺少断言常量 {}".format(token)
+    for name, limit, cmp_ in (("MIN_SELECT_RADIUS", 8, ">="),
+                              ("MIN_BG_DIFF", 4, ">="),
+                              ("MIN_ADV_BG_DIFF", 3, ">="),
+                              ("MIN_CHIP_RADIUS", 100, ">=")):
+        m = re.search(r"{}\s*=\s*(\d+)".format(name), src)
+        assert m, "{} 未定义数值".format(name)
+        val = int(m.group(1))
+        assert val >= limit, "{} 被放宽到 {}（下限 {}）：拦不住旧版形态的回归".format(
+            name, val, limit)
+    # 面板磨砂不能被实底遮罩替代
+    m = re.search(r"MAX_PANEL_ALPHA\s*=\s*([\d.]+)", src)
+    assert m and float(m.group(1)) <= 0.6, (
+        "MAX_PANEL_ALPHA 被放宽到 {}：视觉升级不得靠不透明底遮掉磨砂观感".format(
+            m.group(1) if m else "?"))
+    assert "清空选择" not in src or "RESET_READ" in src, "缺少重置语义读数探针"
+    # 前置条件校验：不能「因为压根没改」而让断言永远通过
+    assert "前置条件不成立" in src, (
+        "缺少「改乱筛选条件是否真的生效」的前置校验："
+        "否则重置断言会在「其实没改」的情况下恒为通过"
+    )

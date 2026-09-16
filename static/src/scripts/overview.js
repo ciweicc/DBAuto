@@ -364,7 +364,7 @@ function renderOvTodos(dash, hist){
 
   // 今日无转存
   if((stats.today_count||0) === 0){
-    todos.push({icon:'send', text:'今日还没有转存记录', action:'switchTab(\'tmdb\')', actionText:'去发现'});
+    todos.push({icon:'send', text:'今日还没有转存记录', action:'switchTab(\'tmdb\')', actionText:'去 TMDB 发现'});
   }
 
   if(!todos.length){
@@ -384,7 +384,7 @@ function renderOvTodos(dash, hist){
   });
 }
 
-/** 首屏快捷横滑条 / 「去发现」按钮的统一入口：滚到发现区并确保它已初始化 */
+/** 首屏 / 指标行「去 TMDB 发现」按钮的统一入口：滚到发现区并确保它已初始化 */
 function jumpToDiscovery(){
   if(typeof openDiscovery === 'function'){ openDiscovery(); return; }
   var host = document.getElementById('tmdbPanel');

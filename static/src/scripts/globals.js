@@ -73,8 +73,8 @@ function updateDensityBtn(){
 // 全局快捷操作入口：切 tab、触发转存、切换主题/密度等。
 var CMD_LIST = [
   {title:'前往 概览', icon:'icon-dashboard', hint:'首页', run:function(){ switchTab('overview'); }},
-  // issue #14：TMDB 不再是独立页面，命令面板的「前往发现」= 滚到概览页的发现区
-  {title:'前往 发现（TMDB）', icon:'icon-tmdb', hint:'概览页内浏览 / 转存影视', run:function(){ jumpToDiscovery(); }},
+  // issue #14：TMDB 不再是独立页面，命令面板的「前往 TMDB 发现」= 滚到概览页的发现区
+  {title:'前往 TMDB 发现', icon:'icon-tmdb', hint:'概览页内浏览 / 转存影视', run:function(){ jumpToDiscovery(); }},
   {title:'前往 转存', icon:'icon-send', hint:'手动转存', run:function(){ switchTab('manual'); }},
   {title:'前往 定时', icon:'icon-clock', hint:'定时任务', run:function(){ switchTab('schedule'); }},
   {title:'前往 历史', icon:'icon-check-circle', hint:'执行历史', run:function(){ switchTab('history'); }},

@@ -85,7 +85,7 @@
       </div>
       <div class="topbar-actions">
         <button class="icon-btn search-toggle-btn" onclick="toggleMobileSearch()" title="搜索" aria-label="搜索"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-search"/></svg></button>
-        <button class="icon-btn" id="discoveryJumpBtn" onclick="jumpToDiscovery()" title="前往发现（TMDB）" aria-label="前往发现（TMDB）"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-tmdb"/></svg></button>
+        <button class="icon-btn" id="discoveryJumpBtn" onclick="jumpToDiscovery()" title="前往 TMDB 发现" aria-label="前往 TMDB 发现"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-tmdb"/></svg></button>
         <button class="icon-btn" onclick="toggleTheme()" id="themeBtn" title="切换主题" aria-label="切换主题"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-moon"/></svg></button>
         <button class="icon-btn" onclick="toggleDensity()" id="densityBtn" title="切换密度" aria-label="切换密度"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="18" x2="14" y2="18"/></svg></button>
       </div>
@@ -116,7 +116,7 @@
                     <span class="ov-stat-sub" id="ovTodaySub"></span>
                   </div>
                   <div class="ov-stat-action">
-                    <button class="ov-kpi-btn" onclick="jumpToDiscovery()">去发现</button>
+                    <button class="ov-kpi-btn" onclick="jumpToDiscovery()">去 TMDB 发现</button>
                   </div>
                 </div>
 
@@ -204,7 +204,7 @@
           <div class="ov-panel-head tmdb-head">
             <div class="ov-panel-title" id="tmdbPanelTitle">
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-tmdb"/></svg>
-              发现
+              TMDB 发现
             </div>
             <span class="ov-panel-sub" id="tmdbHeadSub"></span>
             <button class="btn btn-outline btn-sm" id="tmdbFilterToggle" onclick="toggleTmdbFilters()" aria-expanded="true" aria-controls="tmdbFilters" title="收起/展开筛选条件">收起筛选</button>
@@ -218,24 +218,29 @@
 
           <!-- 首层筛选：常用条件（分类 / 榜单 / 地区 / 语言）直接铺开，保持「原版筛选栏」的一眼可改 -->
           <div class="tmdb-filters" id="tmdbFilters">
+            <div class="tmdb-fcap">
+              <svg class="tmdb-fcap-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+              <span class="tmdb-fcap-title">快捷筛选</span>
+              <span class="tmdb-fcap-note">全榜单通用</span>
+            </div>
             <div class="tmdb-filter-bar">
               <div class="tmdb-filter-group">
-                <label for="tmdbMediaType">分类</label>
+                <label for="tmdbMediaType"><svg class="tmdb-ficon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="2" width="20" height="20" rx="2.18"/><line x1="7" y1="2" x2="7" y2="22"/><line x1="17" y1="2" x2="17" y2="22"/><line x1="2" y1="12" x2="22" y2="12"/><line x1="2" y1="7" x2="7" y2="7"/><line x1="2" y1="17" x2="7" y2="17"/><line x1="17" y1="17" x2="22" y2="17"/><line x1="17" y1="7" x2="22" y2="7"/></svg><span>分类</span></label>
                 <select class="tmdb-select" id="tmdbMediaType" onchange="onTmdbFilterChange()">
                   <option value="movie">电影</option>
                   <option value="tv">电视剧</option>
                 </select>
               </div>
               <div class="tmdb-filter-group">
-                <label for="tmdbListType">榜单类型</label>
+                <label for="tmdbListType"><svg class="tmdb-ficon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg><span>榜单类型</span></label>
                 <select class="tmdb-select" id="tmdbListType" onchange="onTmdbFilterChange()"></select>
               </div>
               <div class="tmdb-filter-group">
-                <label for="tmdbRegion">地区</label>
+                <label for="tmdbRegion"><svg class="tmdb-ficon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span>地区</span></label>
                 <select class="tmdb-select" id="tmdbRegion" onchange="onTmdbFilterChange()"></select>
               </div>
               <div class="tmdb-filter-group">
-                <label for="tmdbLanguage">语言</label>
+                <label for="tmdbLanguage"><svg class="tmdb-ficon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg><span>语言</span></label>
                 <select class="tmdb-select" id="tmdbLanguage" onchange="onTmdbFilterChange()"></select>
               </div>
             </div>
@@ -244,10 +249,14 @@
                  与本模块同名的 #tmdbAdv 是这些控件的表单语义开关：
                  折叠时置 disabled，避免 Tab 键走进不可见控件。 -->
             <fieldset class="tmdb-adv" id="tmdbAdv">
-              <legend class="tmdb-adv-legend">高级筛选<span class="tmdb-adv-hint">仅「发现」榜单有效</span></legend>
+              <legend class="tmdb-adv-legend">
+                <svg class="tmdb-fcap-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
+                <span class="tmdb-fcap-title">高级筛选</span>
+                <span class="tmdb-adv-hint">仅「发现」榜单有效</span>
+              </legend>
               <div class="tmdb-filter-bar">
                 <div class="tmdb-filter-group">
-                  <label for="tmdbSort">排序</label>
+                  <label for="tmdbSort"><svg class="tmdb-ficon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11 5h10"/><path d="M11 9h7"/><path d="M11 13h4"/><path d="M3 17l3 3 3-3"/><path d="M6 18V4"/></svg><span>排序</span></label>
                   <select class="tmdb-select" id="tmdbSort" onchange="onTmdbFilterChange()">
                     <option value="popularity.desc">按热度</option>
                     <option value="vote_average.desc">按评分</option>
@@ -256,15 +265,15 @@
                   </select>
                 </div>
                 <div class="tmdb-filter-group">
-                  <label for="tmdbMinRating">最低评分</label>
+                  <label for="tmdbMinRating"><svg class="tmdb-ficon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg><span>最低评分</span></label>
                   <input type="number" id="tmdbMinRating" min="0" max="10" step="0.5" value="0" onchange="onTmdbFilterChange()">
                 </div>
                 <div class="tmdb-filter-group">
-                  <label for="tmdbYear">年份</label>
+                  <label for="tmdbYear"><svg class="tmdb-ficon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg><span>年份</span></label>
                   <input type="number" id="tmdbYear" min="1900" max="2030" placeholder="全部" onchange="onTmdbFilterChange()">
                 </div>
                 <div class="tmdb-filter-group">
-                  <label for="tmdbProviderBtn">流媒体平台</label>
+                  <label for="tmdbProviderBtn"><svg class="tmdb-ficon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"/><polyline points="17 2 12 7 7 2"/></svg><span>流媒体平台</span></label>
                   <div class="tmdb-multiselect" id="tmdbProviderWrap">
                     <button type="button" class="tmdb-select tmdb-ms-trigger" id="tmdbProviderBtn" disabled
                             onclick="toggleProviderDropdown(event)" aria-haspopup="true" aria-expanded="false">
@@ -274,10 +283,22 @@
                     <div class="tmdb-ms-panel" id="tmdbProviderPanel" style="display:none"></div>
                   </div>
                 </div>
+                <!-- 重置：把「分类/榜单/地区/语言/排序/评分/年份/平台/类型」一次还原，
+                     并同步回样式（.has-sel / chips 选中态 / #tmdbResetRow 的显示） -->
+                <div class="tmdb-filter-actions">
+                  <button type="button" class="btn btn-outline btn-sm tmdb-reset-btn" id="tmdbResetBtn"
+                          onclick="resetTmdbFilters()" title="把全部筛选条件还原为默认">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 2v6h6"/><path d="M3.51 15a9 9 0 1 0 2.13-9.36L3 8"/></svg>
+                    <span>重置筛选</span>
+                  </button>
+                </div>
               </div>
 
-              <div class="form-group" style="margin-bottom:12px">
-                <label>类型筛选</label>
+              <div class="form-group tmdb-genre-group" style="margin-bottom:12px">
+                <label class="tmdb-genre-label">
+                  <svg class="tmdb-ficon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+                  <span>类型筛选</span>
+                </label>
                 <div class="tmdb-genre-chips" id="tmdbGenreChips"></div>
               </div>
             </fieldset>
