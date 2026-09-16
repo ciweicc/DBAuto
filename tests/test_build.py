@@ -1250,6 +1250,56 @@ def test_tmdb_reset_filters_semantics(dist):
         assert token in code, "重置函数没有覆盖 {}".format(token)
 
 
+def test_overview_todo_discovery_jump_is_reachable():
+    """回归（issue #24）：待办里的「去 TMDB 发现」必须真的能跳到发现区。
+
+    现场：概览页「待办事项」里的「去 TMDB 发现」按钮点了没反应。
+    根因有两条，缺一条就复现：
+
+      1. 按钮 action 写的是 `switchTab('tmdb')` —— #14 把 TMDB 并入概览页后，
+         `tmdb` 已从 PAGES / PAGE_IDS（tabs.js）里删掉；
+         `switchTab('tmdb')` 只是把 5 个页面全部 `active=false`
+         （概览页被切没了），不滚动、不预加载，发现区仍停在折叠线以下；
+      2. `jumpToDiscovery()` 只调 `openDiscovery()`，而后者在发现区**已初始化**时
+         只做一次原地滚动 —— `behavior:'smooth'` 在「位置本来就对」时不产生位移，
+         观感同样是「跳转无效」。
+
+    因此本用例锁两条：
+      - 待办不得再产出指向已删除 Tab 的跳转；
+      - jumpToDiscovery 必须「先确保在概览页，再滚到发现区」。
+
+    真实位移由 scripts/check_overview_dom.py 的 discoveryReachable 断言负责
+    （9 组视口，点按钮后要求发现区顶边真正进入视口）。
+    """
+    ov = _overview_js()
+    assert "switchTab('tmdb')" not in ov, (
+        "待办仍在跳转已删除的 tmdb Tab：switchTab 会找不到页面容器，"
+        "把概览页一并切掉（issue #24 现场）"
+    )
+    assert "action:'jumpToDiscovery()'" in ov, "「今日还没有转存记录」未接线到 jumpToDiscovery()"
+    # 说明「为什么旧写法是坏的」：tmdb 确实已不是页面
+    tabs = _read(os.path.join(_JS_DIR, "tabs.js"))
+    assert "'tmdb'" not in tabs.split("var PAGES")[1].split(";")[0], (
+        "tmdb 又回到了 PAGES：本用例的前提（tmdb 非页面）已变，需同步复核按钮接线"
+    )
+
+    fn = ov[ov.index("function jumpToDiscovery"):]
+    fn = fn[:fn.index("\n}")]
+    assert "scrollTmdbPanelIntoView" in fn, (
+        "jumpToDiscovery 未调用 scrollTmdbPanelIntoView："
+        "发现区已初始化时 openDiscovery 不会产生任何滚动"
+    )
+    assert "switchTab('overview')" in fn, (
+        "jumpToDiscovery 未确保停在概览页：从转存/设置页点命令面板的"
+        "「前往 TMDB 发现」时，发现区所在的概览页必须可见"
+    )
+    # 说明：函数上方的注释里会提到 openDiscovery 作为反例，先剥注释再比顺序
+    code = re.sub(r"//[^\n]*", "", fn)
+    assert code.index("switchTab('overview')") < code.index("openDiscovery"), (
+        "jumpToDiscovery 必须先切回概览页再定位发现区，否则在隐藏页面上算出的滚动位置无意义"
+    )
+
+
 def test_tmdb_filters_dom_audit_is_committed():
     """走查脚本必须落库（AGENTS.md 门禁 2），且阈值不得被放宽。"""
     src = _read(os.path.join(_ROOT, "scripts", "check_tmdb_filters_dom.py"))

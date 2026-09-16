@@ -16,7 +16,8 @@
   5. 跳过状态必须与成功状态有区分（不得全部渲染为「已转存」）；
   6. 空日期条目必须排在列表末尾，且日期格式为 MM/DD HH:MM；
   7. 移动端表格卡片化后，分类前缀不得被压成竖排单字；
-  8. 横向溢出（文档 + 内容区）必须为 0。
+  8. 横向溢出（文档 + 内容区）必须为 0；
+  9. 待办里的「去 TMDB 发现」必须真的把发现区带到眼前（issue #24）。
 
 依赖：playwright + chromium（仓库 E2E 测试同依赖），
   pip install playwright && python -m playwright install chromium
@@ -190,6 +191,12 @@ MEASURE = r"""
     quickPanel: !!q('#pageOverview .ov-panel-rec, #ovRecScroll'),
     discoveryInOverview: !!(q('#pageOverview #tmdbPanel')),
     discoveryFilters: !!q('#pageOverview #tmdbFilters .tmdb-filter-group'),
+    // issue #24：待办里的「去 TMDB 发现」点完必须真的把发现区带到眼前。
+    // 这里只读「有没有那条待办 + 按钮接线」，位移判定在下面的 discoverJump 里做。
+    todoDiscoveryBtn: (() => {
+      const b = q('#ovTodoList .ov-todo-btn');
+      return b ? (b.getAttribute('onclick') || '') : null;
+    })(),
     legacyTmdbPage: !!q('#pageTmdb'),
   };
 }
@@ -224,6 +231,50 @@ def _start_server():
     httpd.daemon_threads = True
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd
+
+
+_JUMP_PROBE = r"""
+() => {
+  const sc = document.querySelector('.content');
+  const host = document.querySelector('#tmdbPanel');
+  if (!sc || !host) return null;
+  const btn = document.querySelector('#ovTodoList .ov-todo-btn');
+  if (!btn) return null;
+  const before = Math.round(sc.scrollTop);
+  btn.click();
+  return { before, beforeTop: Math.round(host.getBoundingClientRect().top) };
+}
+"""
+
+
+def _probe_discovery_jump(page):
+    """点一次待办里的「去 TMDB 发现」，读前后滚动位置与发现区顶边是否进入视口。
+
+    发现区滚到位后是 `top ≈ 内容区顶 + 12px`（scrollTmdbPanelIntoView 的留白），
+    因此判定「顶边进入视口」用「比内容区顶边低、且不超过内容区高度的一半」，
+    对 9 组视口都成立（移动端内容区本身就矮）。
+    """
+    out = {"before": 0, "after": 0, "beforeTop": 0, "afterTop": 0, "reachable": False}
+    got = page.evaluate(_JUMP_PROBE)
+    if not got:
+        return out
+    out.update(got)
+    page.wait_for_timeout(700)          # 平滑滚动 (behavior:'smooth')
+    after = page.evaluate(
+        """() => {
+            const sc = document.querySelector('.content');
+            const host = document.querySelector('#tmdbPanel');
+            const sr = sc.getBoundingClientRect();
+            const hr = host.getBoundingClientRect();
+            return {top: Math.round(sc.scrollTop),
+                    rel: Math.round(hr.top - sr.top),
+                    scH: Math.round(sr.height)};
+        }"""
+    )
+    out["after"] = after["top"]
+    out["afterTop"] = after["rel"]
+    out["reachable"] = after["scH"] <= 0 or (0 < after["rel"] < after["scH"] / 2)
+    return out
 
 
 def main():
@@ -311,6 +362,20 @@ def main():
                     fail("空日期条目未排在列表末尾")
                 if width <= 640 and m["catW"] is not None and m["catW"] < 24:
                     fail("移动端分类前缀被压成竖排单字（宽 {}px）".format(m["catW"]))
+                # issue #24：待办「去 TMDB 发现」必须真的能跳到发现区。
+                # 桩数据里 today_count=3（有今日转存），因此「今日还没有转存记录」
+                # 这条待办不会出现 —— 不是每个视口都能断言到按钮，先记进报告。
+                if m["todoDiscoveryBtn"] is not None:
+                    jump = _probe_discovery_jump(page)
+                    m["discoveryJump"] = jump
+                    if jump["after"] <= jump["before"] + 8:
+                        fail("点「去 TMDB 发现」后没有位移：scrollTop {} → {}，"
+                             "发现区顶边相对视口 {} → {}"
+                             .format(jump["before"], jump["after"],
+                                     jump["beforeTop"], jump["afterTop"]))
+                    if not jump["reachable"]:
+                        fail("点「去 TMDB 发现」后发现区顶边未进入视口（相对内容区顶 {}px）"
+                             .format(jump["afterTop"]))
                 # issue #14：TMDB 的发现区必须住在概览页里（不再有第二个页面），
                 # 且筛选栏存在 —— 「原版筛选栏移植到概览页」正是这次的诉求本身。
                 if not m["discoveryInOverview"]:
