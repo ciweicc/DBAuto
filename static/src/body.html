@@ -181,7 +181,7 @@
                     <th>标题</th>
                     <th>时间</th>
                     <th>状态</th>
-                    <th class="ov-col-lib">库内</th>
+                    <th class="ov-col-lib" title="「库内」表示该资源已在转存历史中；豆瓣榜单为幂等转存，重复执行会跳过而不产生新链接">库内</th>
                     <th class="ov-col-link">链接</th>
                   </tr>
                 </thead>
@@ -190,10 +190,9 @@
                 </tbody>
               </table>
             </div>
-            <div class="ov-recent-foot">
-              <span class="ov-recent-note">「库内」表示该资源已在转存历史中；豆瓣榜单为幂等转存，重复执行会跳过而不产生新链接</span>
-              <button class="ov-link-btn" onclick="switchTab('history')">打开历史 →</button>
-            </div>
+            <!-- 面板底部不再放第二个底部入口：
+                 面板头已有「查看全部 →」，同一面板两个去向相同的入口属于重复导航。
+                 「库内」列的语义说明移交 colgroup 之外的表头 title（见 th.ov-col-lib）。 -->
           </div>
         </div>
 

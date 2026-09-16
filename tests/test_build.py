@@ -560,6 +560,36 @@ def test_overview_recent_list_has_no_triple_cap(dist):
         "最近转存面板仍被限制在 320px 内滚动"
 
 
+def test_overview_recent_has_single_history_entry():
+    """回归：概览「最近转存」面板只能有一个指向历史页的入口。
+
+    面板头「查看全部 →」+ 面板底「打开历史 →」曾是两个去向相同的链接，
+    同屏重复导航（用户反馈：「这 4 个箭头指向的跳转同时指向历史页，我只需要保留一个」）。
+    保留面板头的「查看全部 →」作为唯一出口。
+    """
+    html = _read(os.path.join(_SRC, "body.html"))
+    # 源文件：最近转存面板（ov-panel-recent）内 switchTab('history') 只允许出现 1 次
+    start = html.index("ov-panel-recent")
+    end = html.index("ov-panel-discovery")
+    panel = html[start:end]
+    assert panel.count("switchTab('history')") == 1, (
+        "最近转存面板内出现了多个历史入口（应只保留面板头的「查看全部」）"
+    )
+    assert "查看全部" in panel, "唯一出口「查看全部」被误删"
+    # 底部重复入口及其样式不得回归
+    for dead in ("打开历史", "ov-recent-foot", "ov-recent-note"):
+        assert dead not in html, "重复的历史入口残留：{}".format(dead)
+    css = _read(MAIN_CSS)
+    for dead in (".ov-recent-foot", ".ov-recent-note"):
+        assert dead not in css, "重复入口的死样式残留：{}".format(dead)
+
+
+def test_product_dist_has_no_duplicate_history_link(dist):
+    """产物层面复核：整份产物中指向历史页的链接不超过 1 个（概览面板头）。"""
+    assert dist.count(">查看全部 →</button>") == 1, "产物里「查看全部」入口数量不为 1"
+    assert "打开历史" not in dist, "产物里仍残留「打开历史」入口"
+
+
 def test_overview_date_sorting_and_format():
     """回归：空日期不得插到列表最前，日期格式统一为 MM/DD HH:MM。"""
     js = _overview_js()

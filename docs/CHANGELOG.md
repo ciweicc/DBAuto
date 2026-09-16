@@ -2,6 +2,39 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
+## [当前] 概览「最近转存」去掉重复的历史入口 — 同一面板只留一个出口
+
+> 用户反馈：「这 4 个箭头指向的跳转都同时指向了历史页面，我不需要这么多的入口，
+> 我只需要保留一个跳转就可以」。
+
+**先数入口，再删。** 「最近转存」面板在 4 行表格的上下各挂了一个链接：
+表头下的「查看全部 →」和表尾的「打开历史 →」，`onclick` 都是 `switchTab('history')`。
+再叠加左侧导航的「历史」与概览右列的「查看转存记录 →」，同一次操作有 4 个去向相同的入口，
+其中 2 个就在同一块面板里隔了 4 行。
+
+**改动**
+
+- 删除面板底部的 `.ov-recent-foot` 整行（含 `.ov-recent-note` 说明文案与「打开历史 →」按钮），
+  **保留面板头的「查看全部 →」**——它在面板标题旁，是用户扫视该面板时最先看到的位置；
+- 「库内」列的语义说明没有丢，改为该列表头的 `title` 属性（hover 可见），
+  不再为一句注释长期占据一行高度；
+- 清掉对应的死样式：`.ov-recent-foot` / `.ov-recent-foot .ov-link-btn` / `.ov-recent-note`，
+  以及移动端断点里 `display:none` 的 `.ov-recent-note` 选择器。
+
+**验证证据（可复核）**
+
+- `tests/test_build.py` 新增 2 项静态防复发断言：
+  `test_overview_recent_has_single_history_entry`（源文件层面：面板内 `switchTab('history')`
+  只能出现 1 次、`查看全部` 必须在、底部入口文案与死样式不得回归）、
+  `test_product_dist_has_no_duplicate_history_link`（产物层面复核）。
+  把底部入口加回去，第一项如期失败（`assert 2 == 1`）；
+- 浏览器实测（1440×900）：面板内链接列表 = `['查看全部 →']`，`.ov-recent-foot` 不存在，
+  表头 `title` 文案完整保留；
+- `pytest tests/ -q` → **207 passed**（205 → 207）；
+- 概览页 9 组 / 设置页 9 组 / 发现区 9 组 / 日志栏 10 组 DOM 走查均 0 处问题；
+- 对比度 18 组 0 未达标；`ruff check .` 通过；
+- 产物已用 `bash static/src/build.sh` 重建并提交，二次重建逐字节幂等。
+
 ## [当前] TMDB 发现区筛选栏视觉升级 + 重命名为「TMDB 发现」
 
 > 对应 [issue #15](https://cnb.cool/ciweicc/DBAuto/-/issues/15)

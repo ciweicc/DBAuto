@@ -1328,12 +1328,6 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .ov-table-empty{text-align:center;color:var(--text3);padding:24px !important}
 .ov-table-nolink{color:var(--text3)}
 .ov-lib-ok{color:var(--green)}
-.ov-recent-foot{
-  display:flex;align-items:center;gap:10px;
-  padding:8px 16px;border-top:1px solid var(--border);background:var(--card-2);
-}
-.ov-recent-note{font-size:var(--fs-xs);color:var(--text3);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.ov-recent-foot .ov-link-btn{margin-left:auto}
 
 /* ---- 状态徽标 ---- */
 .ov-badge{
@@ -1474,7 +1468,7 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   .ov-stat-value{font-size:var(--fs-base);line-height:16px}
   .ov-stat-sub,.ov-stat-sched{line-height:16px}
   .ov-kpi-btn{padding:5px 12px;line-height:16px}
-  .ov-overview-sub,.ov-recent-note{display:none}
+  .ov-overview-sub{display:none}
   .ov-side{padding:0}
 
   /* 2.3 移动端表格卡片化：数据表逐行转为卡片（每行一个字段） */
