@@ -97,6 +97,11 @@ STUBS = {
                           "tv_list_types": [{"id": "popular", "name": "热门"}]},
 }
 
+# 首屏两列允许的纯空白上限（issue #15 第 4 轮）：
+# 卡片/块的底部内边距约 12~14px，留到 24px 作为余量。
+# 修复前实测：左列 279px、待办块内 291px。
+MAX_HERO_BLANK = 24
+
 MEASURE = r"""
 () => {
   const q = s => document.querySelector(s);
@@ -155,6 +160,30 @@ MEASURE = r"""
     lastDateText: (() => { const all = [...document.querySelectorAll('#ovRecentBody tr')];
       return all.length ? all[all.length - 1].textContent : null; })(),
     catW: cat ? Math.round(cat.getBoundingClientRect().width) : null,
+    // issue #15 第 4 轮：首屏两列的「纯空白」度量。
+    // 背景：「最近转存」固定 10 行（≈480px）会把整行拉到同高，而左列
+    // 「转存概览」内容只有约 210px，差额全部变成左侧死白（实测 279px）。
+    // leftBlank：左列底部（指标行末行底边 → 面板底边）；
+    // todoBlank：右列「待办事项」块内，列表底边 → 块底边。
+    leftBlank: Math.round((() => {
+      // 只在「指标 | 状态」并排时度量：此时面板高度由右列（待办）决定，
+      // 若面板比指标列高，差额就是死白。
+      // 堆叠态（.app[data-ov-narrow="1"]）下面板下方本来就是状态/待办块，
+      // 「指标列底边 → 面板底边」自然很大，但那不是空白，故跳过。
+      if (document.querySelector('.app[data-ov-narrow="1"]')) return 0;
+      const panel = q('.ov-overview');
+      const rowsAll = document.querySelectorAll('.ov-stat-row');
+      if (!panel || !rowsAll.length) return 0;
+      const last = rowsAll[rowsAll.length - 1].getBoundingClientRect().bottom;
+      return Math.max(0, panel.getBoundingClientRect().bottom - last);
+    })()),
+    todoBlank: Math.round((() => {
+      if (document.querySelector('.app[data-ov-narrow="1"]')) return 0;  // 同上：堆叠态不适用
+      const block = q('.ov-side-todo');
+      const list = q('#ovTodoList');
+      if (!block || !list) return 0;
+      return Math.max(0, block.getBoundingClientRect().bottom - list.getBoundingClientRect().bottom);
+    })()),
     catH: cat ? Math.round(cat.getBoundingClientRect().height) : null,
     // issue #15：首屏上方的「发现快捷」横滑条与下方发现区内容重复，已整栏移除。
     // 这里断言「同一批热门数据只有一份渲染」，防复发（比静态扫描更接近真实 DOM）。
@@ -266,6 +295,14 @@ def main():
                     fail("首屏工作区超出视口：底边 {} > {}".format(m["screenBottom"], height))
                 if "ov-table-wrap" in m["scrollers"]:
                     fail("最近转存仍在面板内滚动（高度与左侧概览脱钩）")
+                # issue #15 第 4 轮：首屏两列不得出现整块死白。
+                # 阈值 24px：指标行/待办块自身的内边距约 12~14px，
+                # 留一倍余量即可拦住「被邻居按同高撑开」这类回归
+                # （修复前左列空 279px、待办块内空 291px）。
+                if m["leftBlank"] > MAX_HERO_BLANK:
+                    fail("左列底部纯空白 {}px（上限 {}px）".format(m["leftBlank"], MAX_HERO_BLANK))
+                if m["todoBlank"] > MAX_HERO_BLANK:
+                    fail("「待办事项」块内纯空白 {}px（上限 {}px）".format(m["todoBlank"], MAX_HERO_BLANK))
                 if not {"已转存", "已存在跳过"} <= set(m["statuses"]):
                     fail("跳过与成功未区分：{}".format(m["statuses"]))
                 if m["firstDate"] and m["firstDate"].count("/") != 1:

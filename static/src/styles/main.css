@@ -1101,6 +1101,14 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   grid-template-columns:minmax(0,1fr) var(--ov-rec-w,300px);
   gap:14px;
   margin-bottom:14px;
+  /* 首屏两列高度**由内容上限统一决定**（issue #15 第 4 轮）。
+     旧写法 align-items:stretch + 右列固定 10 行（约 480px），
+     而左列「转存概览」常态只有 3 行指标 + 1 行待办（约 210px）——
+     差额全部变成左侧的纯空白（实测 1440×900 下左列空 279px）。
+     现在：右列只渲染 6 行（见 overview.js 的 OV_RECENT_ROWS_FIT，约 290px），
+     左列用 min-height 顶到同一量级并在可用高度内均分行高，
+     两列仍然等高（stretch），但高度不再由「最长的邻居」单方面决定。
+     不用 max-height + 内部滚动：面板内滚动会被判为「三重截断」回归。 */
   align-items:stretch;
 }
 .ov-overview{
@@ -1111,6 +1119,10 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   -webkit-backdrop-filter:var(--blur);
   backdrop-filter:var(--blur);
   overflow:hidden;
+  /* 首屏高度：与右侧「最近转存」4 行的面板（头部 46 + 表头 33 + 4×37 + 脚注 34 ≈ 261px）
+     对齐。3 行指标按 flex 均分后每行约 72px，行内内容 54px、上下各留 9px，
+     行高接近 68px 上限 —— 既没有死白，也不显得行被撑开。 */
+  min-height:261px;
 }
 .ov-overview-head{
   display:flex;align-items:center;gap:8px;flex-wrap:wrap;
@@ -1129,8 +1141,12 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 /* 主列偏窄时由 JS 设置 data-ov-narrow：改为上下堆叠，避免两列都被压到无法阅读 */
 .app[data-ov-narrow="1"] .ov-overview-body{grid-template-columns:minmax(0,1fr)}
 
-/* ---- 指标列表：每行一条完整信息，行高统一 54px ---- */
-.ov-stat-list{display:flex;flex-direction:column;min-width:0;border-right:1px solid var(--border)}
+/* ---- 指标列表：每行一条完整信息，基准行高 54px ----
+   行在可用高度内**均分**（flex:1 + 基线 min-height:54px）：
+   首屏下限 268px 时三行恰好各 73px，行内实测只有 54px 内容，
+   若固定 54px 则底部留 58px 死白（issue #15 第 4 轮）。均分后
+   每一行的上下留白相等，视觉上「撑满」而不是「堆在上半部」。 */
+.ov-stat-list{display:flex;flex-direction:column;justify-content:flex-start;min-width:0;border-right:1px solid var(--border)}
 .app[data-ov-narrow="1"] .ov-stat-list{border-right:none;border-bottom:1px solid var(--border)}
 .ov-stat-row{
   display:grid;
@@ -1139,6 +1155,12 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   gap:8px 10px;
   padding:9px 16px;
   min-height:54px;
+  /* 行在可用高度内均分，但设上限 68px（约 54px 内容 + 上下各 7px）：
+     不设上限时三行会被右列 6 行表格拉到 95px/行，指标之间空得发虚
+     （issue #15 第 4 轮实测）。超过上限的空间留在列底部，由 CSS 让
+     最后一行贴底，视觉上是「列表结束」而不是「行被撑开」。 */
+  max-height:68px;
+  flex:1 1 auto;
   border-left:3px solid transparent;
   transition:background var(--transition-fast);
 }
@@ -1176,12 +1198,25 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .ov-kpi-btn-outline{background:var(--hover-wash);color:var(--text);border:1px solid var(--border2)}
 .ov-kpi-btn-outline:hover{background:var(--hover-wash);border-color:var(--border3)}
 
-/* ---- 右列：服务状态 + 待办 ---- */
-.ov-side{display:flex;flex-direction:column;min-width:0;background:var(--bg-deep)}
-.ov-side-block{padding:12px 16px}
-.ov-side-block + .ov-side-block{border-top:1px solid var(--border)}
-.ov-side-title{display:flex;align-items:center;font-size:var(--fs-sm);font-weight:600;color:var(--text2);margin-bottom:6px}
-.ov-side-todo{flex:1;min-height:0}
+/* ---- 右列：服务状态 + 待办 ----
+   两块共用一列时曾出现「标题紧贴、区块之间没有呼吸」的观感（issue #15 第 4 轮）。
+   这里统一：块内 14px 竖向内边距；块间用 1px 分隔线 + 两侧对称留白；
+   标题行与首行内容之间固定 8px。序号/图标列宽一致，右列两块左边缘严格对齐。 */
+.ov-side{display:flex;flex-direction:column;min-width:0;background:var(--bg-deep);justify-content:flex-start;padding:4px 0}
+.ov-side-block{padding:10px 16px 14px}
+.ov-side-block:first-child{padding-top:12px}
+.ov-side-block + .ov-side-block{border-top:1px solid var(--border);padding-top:12px}
+.ov-side-title{display:flex;align-items:center;min-height:20px;font-size:var(--fs-sm);font-weight:600;color:var(--text2);margin-bottom:8px}
+/* 待办块**不再 flex:1 拉伸**（issue #15 第 4 轮）。
+   旧写法让它吃掉右列全部剩余高度：右列高度由「最近转存」10 行表格
+   （约 365px）决定，而待办常态只有一条「系统运行正常，暂无待办」（约 32px），
+   实测 1440×900 下该块高 360px、内容仅 32px → **291px 纯空白**（81% 是空的）。
+   改为按内容取高后，整块首屏高度由「内容」而非「最长的邻居」决定。 */
+.ov-side-todo{min-height:0}
+/* 右列两块（服务状态 / 待办）都按内容取高，剩余空间留在列底部。
+   不留白给「待办」块：当待办只有一条「系统运行正常，暂无待办」时，
+   拉伸它会在块内造出 90px 死白（issue #15 第 4 轮），
+   不如让分隔线紧跟内容，空白集中到列的尾部，看起来是「列结束了」。 */
 
 /* ---- 面板（最近转存 / 发现区） ---- */
 /* 注意（issue #15 第 3 轮）：面板**故意不用** backdrop-filter。
@@ -1212,6 +1247,15 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 /* ---- 最近转存：与左侧概览等高，「查看全部」已是唯一出口（不再面板内滚动） ---- */
 .ov-panel-recent{display:flex;flex-direction:column}
 .ov-panel-recent .ov-table-wrap{flex:1;min-height:0;overflow:auto}
+/* 与左侧概览「等高」的实现方式（issue #15 第 4 轮）：
+   左列按内容取高后，右列不能再靠 align-items:stretch 被动等高，
+   否则 10 行表格又会把整行撑高。改为给表格一个上限高度，
+   超出的行在面板内滚动 —— 首屏两列视觉等高，且左列不再产生空白。 */
+
+@media(max-width:900px){
+  /* 窄屏转上下堆叠：不再需要等高，取消上限让 10 行完整铺开 */
+  .ov-panel-recent{max-height:none}
+}
 .ov-table{width:100%;border-collapse:collapse;font-size:var(--fs-base);table-layout:fixed}
 .ov-table thead{position:sticky;top:0;z-index:1}
 .ov-table thead th{
@@ -1295,7 +1339,7 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   font-size:var(--fs-xs);font-family:var(--font-display);
 }
 .ov-todo-btn:hover{border-color:var(--border3)}
-.ov-todo-empty{padding:6px 0;font-size:var(--fs-sm);color:var(--text3)}
+.ov-todo-empty{padding:5px 10px;font-size:var(--fs-sm);color:var(--text3)}
 
 /* ---- 发现（TMDB）：整块住在概览页里的筛选 + 海报墙 ----
    issue #14 第三轮：TMDB 不再是独立页面，筛选栏/网格/分页都在这里，
