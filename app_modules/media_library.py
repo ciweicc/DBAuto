@@ -26,10 +26,24 @@ DEFAULT_LIBRARY_ROOT = "/"
 # 单次删除的条目上限，防止误操作/脚本化批量删库
 MAX_DELETE_BATCH = 50
 
+# 读取类接口（任务列表 / 目录浏览）的超时预算。
+#
+# 为什么单独给读接口收窄超时（issue #27「网盘文件模块访问有点慢」）：
+#   QASClient 默认 timeout=15，而 utils.http_get 对网络层错误会重试 3 次，
+#   单次目录请求的最坏等待因此达到 15+1+5+5+5+1 ≈ 32s，前端一直停在「加载中」。
+#   目录浏览是「点一下就该出结果」的交互，宁可快速失败并提示重试，
+#   也不要让用户对着转圈等待半分钟。
+# 删除是破坏性且需要确认结果的操作，保持原有 15s 预算不变。
+LIBRARY_READ_TIMEOUT = 6
 
-def _client():
+
+def _client(timeout=15):
     cfg = ConfigManager.get_instance()
-    return QASClient(cfg.qas, cfg.qas_token, timeout=15)
+    return QASClient(cfg.qas, cfg.qas_token, timeout=timeout)
+
+
+def _read_client():
+    return _client(LIBRARY_READ_TIMEOUT)
 
 
 def _resp_ok(res):
@@ -44,7 +58,7 @@ def list_tasks():
     额外补一个 `exists_in_history` 标记，便于前端区分「QAS 有任务但本地无记录」。
     """
     try:
-        res = _client().get_data()
+        res = _read_client().get_data()
     except Exception as e:
         log("读取 QAS 任务失败: {}".format(e))
         return {"success": False, "tasks": [], "message": "读取 QAS 任务失败: {}".format(e)}
@@ -63,7 +77,7 @@ def list_library(path=None, fid=None):
     entries 由 QAS 原样返回，含 fid / file_name / dir / size / updated_at。
     """
     try:
-        res = _client().get_savepath_detail(path=path, fid=fid)
+        res = _read_client().get_savepath_detail(path=path, fid=fid)
     except Exception as e:
         log("读取网盘目录失败: {}".format(e))
         return {"success": False, "path": path or DEFAULT_LIBRARY_ROOT,

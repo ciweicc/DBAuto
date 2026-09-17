@@ -22,6 +22,7 @@ python scripts/check_contrast.py             # 对比度门禁（改 tokens.css 
 python scripts/check_overview_dom.py --serve # 概览页 DOM 度量走查（改概览页后必跑）
 python scripts/check_log_panel_dom.py --serve # 日志栏 DOM 度量走查（改日志栏后必跑）
 python scripts/check_settings_dom.py --serve  # 设置页空白度量走查（改设置页后必跑）
+python scripts/check_library_dom.py --serve  # 媒体库顺序/加载反馈/缓存度量走查（改媒体库后必跑）
 ```
 
 > `scripts/check_overview_dom.py` 需要 playwright + chromium；缺少时会以退出码 0
@@ -30,6 +31,9 @@ python scripts/check_settings_dom.py --serve  # 设置页空白度量走查（�
 > 移动端分类前缀宽度）。`scripts/check_settings_dom.py` 同理，重点断言「卡片底部
 > 纯空白 ≤40px / 超宽视口页高 ≤1500px / 无横向溢出」，对应 issue #15 的
 > 「卡片占位过多、大片空白」。
+> `scripts/check_library_dom.py` 覆盖媒体库页：网盘文件必须排在 QAS 任务之前且
+> 首屏可见、请求发出即有带时长的加载反馈、目录接口卡死时按时快速失败并可重试、
+> 返回父目录命中缓存（不再打网络）。
 
 > 不要调用 `static/src/build.py`：它是历史遗留实现，输出与 `build.sh`
 > 存在细微差异（换行/指纹派生方式），用它重建会把产物改成漂移版本。

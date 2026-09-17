@@ -458,22 +458,13 @@
           <p style="color:var(--text2);font-size:13px;margin-top:4px">浏览夸克网盘真实文件与 QAS 转存任务；在此删除会同步清理本地转存历史，避免「网盘已删、本地仍判为已转存」。</p>
         </div>
 
-        <!-- QAS 任务列表 -->
-        <div class="card">
-          <div class="card-title" style="justify-content:space-between">
-            <span>QAS 转存任务 <span id="qasTaskCount" style="color:var(--text3);font-weight:400"></span></span>
-            <button class="btn btn-sm btn-outline" onclick="loadQasTasks()">刷新</button>
-          </div>
-          <div id="qasTaskList"><div class="empty-state" style="padding:24px 20px"><div class="empty-title">加载中...</div></div></div>
-        </div>
-
-        <!-- 网盘文件浏览 -->
+        <!-- 网盘文件浏览（issue #27 优化：置顶，用户最常用；先于 QAS 任务加载） -->
         <div class="card">
           <div class="card-title" style="justify-content:space-between">
             <span>网盘文件 <span id="libCount" style="color:var(--text3);font-weight:400"></span></span>
             <span>
               <button class="btn btn-sm btn-outline" id="libUpBtn" onclick="libGoUp()" disabled>上一级</button>
-              <button class="btn btn-sm btn-outline" onclick="loadLibrary(libPath)">刷新</button>
+              <button class="btn btn-sm btn-outline" onclick="refreshLibrary()">刷新</button>
             </span>
           </div>
           <!-- 面包屑 -->
@@ -487,6 +478,15 @@
             <span id="libSelCount" style="color:var(--text2);font-size:13px"></span>
             <button class="btn btn-sm btn-danger" id="libDelBtn" onclick="deleteSelected()" disabled>删除所选</button>
           </div>
+        </div>
+
+        <!-- QAS 转存任务（只读参考，排在网盘文件之后） -->
+        <div class="card">
+          <div class="card-title" style="justify-content:space-between">
+            <span>QAS 转存任务 <span id="qasTaskCount" style="color:var(--text3);font-weight:400"></span></span>
+            <button class="btn btn-sm btn-outline" onclick="loadQasTasks()">刷新</button>
+          </div>
+          <div id="qasTaskList"><div class="empty-state" style="padding:24px 20px"><div class="empty-title">加载中...</div></div></div>
         </div>
       </section>
 
@@ -694,13 +694,13 @@
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
       <span>定时</span>
     </button>
-    <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('history')">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-      <span>历史</span>
-    </button>
     <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('library')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg>
       <span>媒体库</span>
+    </button>
+    <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('history')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+      <span>历史</span>
     </button>
     <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('settings')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>

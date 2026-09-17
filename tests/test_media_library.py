@@ -239,3 +239,56 @@ def test_route_delete_ok():
          patch.object(media_library, "delete_history_item", return_value=True):
         assert h._handle_library_post("/api/qas/delete", {"entries": [{"fid": "1", "name": "A"}]}) is True
     assert h.sent["success"] is True and h.status == 200
+
+
+# ---------- 读取超时预算（issue #27「网盘文件模块访问有点慢」） ----------
+
+def test_read_paths_use_short_timeout():
+    """读接口（任务/目录）必须走收窄后的超时预算，删除保持原预算。
+
+    根因：QASClient 默认 timeout=15，叠加 http_get 的 3 次重试后，
+    单次目录请求最坏等待 ≈ 32s，前端只能一直「加载中」。
+    这里锁死「读接口不用默认超时」，防止回归把等待时间再拉长。
+    """
+    seen = []
+
+    def fake_client(timeout=15):
+        seen.append(timeout)
+        return _FakeClient()
+
+    with patch.object(media_library, "_client", side_effect=fake_client), \
+         patch.object(media_library, "delete_history_item", return_value=False):
+        list_tasks()
+        assert seen[-1] == media_library.LIBRARY_READ_TIMEOUT
+        list_library(path="/")
+        assert seen[-1] == media_library.LIBRARY_READ_TIMEOUT
+        delete_entries([{"fid": "1", "name": "A"}])
+        assert seen[-1] == 15, "删除是破坏性操作，不应被收窄超时"
+
+
+def test_read_timeout_is_smaller_than_default():
+    assert 0 < media_library.LIBRARY_READ_TIMEOUT < 15
+
+
+def test_read_client_forwards_timeout_to_qasclient():
+    """_read_client 必须把收窄后的超时真正透传给底层 HTTP 客户端。"""
+    from api_client import QASClient
+    cfg = type("Cfg", (), {"qas": "http://127.0.0.1:1", "qas_token": "t"})()
+    with patch.object(media_library.ConfigManager, "get_instance",
+                      staticmethod(lambda: cfg)):
+        c = media_library._read_client()
+    assert isinstance(c, QASClient)
+    assert c.timeout == media_library.LIBRARY_READ_TIMEOUT
+
+
+def test_route_get_returns_502_when_qas_down():
+    """QAS 不可达时路由必须给出明确 502，而不是让请求悬停。"""
+    class Boom:
+        def get_savepath_detail(self, path=None, fid=None):
+            raise TimeoutError("connect timed out")
+
+    h = _make_handler(params={"path": "/"})
+    with patch.object(media_library, "_client", return_value=Boom()):
+        assert h._handle_library_get("/api/qas/library") is True
+    assert h.status == 502
+    assert h.sent["success"] is False

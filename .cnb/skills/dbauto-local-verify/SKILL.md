@@ -74,6 +74,23 @@ python -m pytest tests/test_<相关模块>.py -q
 接口变更要同时给出「请求 → 响应」的确定性证据（可用 `pytest` + Flask test client），
 不要只凭代码阅读下结论。
 
+## 3.5 新踩的坑（下次别再花上下文踩一遍）
+
+- **Playwright 的 `route` 回调里不能 `time.sleep` 后再 fulfill**：回调会阻塞
+  驱动进程，超时直接把 runtime 写挂（`write EPIPE` + `Node.js v24` 崩溃）。
+  要模拟「接口永不响应」，正确做法是**收到请求但不 fulfill**（直接 `return`），
+  让前端的软超时先到期。
+- **断言脚本里解析桩路由的 path 时别按 `?` 切分后丢参数**：
+  `/api/qas/library?path=%2F` 会被切成 `/api/qas/library?path=`，
+  于是落到兜底桩、返回空 JSON，用例静默变绿。只按 host 切分、只取 path 段。
+- **前端的「软超时」要按整次调用计时**：把 `setTimeout(abort, N)` 写在重试
+  循环里，是「每次尝试各 N 秒」，总等待会 8s + 退避 + 8s ≈ 16.4s，
+  快速失败形同虚设。定时器要在循环外建一次。
+- **后端 15s 超时 × 3 次重试 ≈ 32s 全压给用户**：读类接口（目录浏览）应给
+  收窄超时；删除等破坏性操作才需要更完整的等待预算。
+- **处理器抛异常时，线程化 HTTP server 会让请求悬停**（前端观感 = 加载很慢）。
+  路由入口应有 try/except + 500 兜底 + 堆栈日志。
+
 ## 4. 收尾
 
 - 停掉后台服务：`kill "$(cat /tmp/dbauto.pid)"`。

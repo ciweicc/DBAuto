@@ -11,7 +11,10 @@
 # 新增路由时，在对应模块的 Mixin 类中添加 _handle_xxx_get/_handle_xxx_post 方法，
 # 然后在下面的 H 类的 do_GET / do_POST 中调用即可。
 
+import traceback
+
 from routes_base import BaseRouteHandler, _check_rate_limit
+from utils import log
 from routes_static import StaticRouteMixin
 from routes_auth import AuthRouteMixin
 from routes_transfer import TransferRouteMixin
@@ -32,8 +35,19 @@ class H(BaseRouteHandler,
     """主 HTTP 请求处理器，通过 Mixin 多继承整合所有路由模块"""
 
     def do_GET(self):
-        route = self._route_path()
+        try:
+            self._do_GET(route=self._route_path())
+        except Exception:
+            # 兜底：任何未捕获异常都不得让客户端收到「空响应」。
+            # 线程化 HTTP server 下空响应表现为请求悬停直到连接超时，
+            # 前端只会看到「加载慢」；这里至少把它变成明确的 500（issue #27）。
+            log("请求处理异常 {}:\n{}".format(self.path, traceback.format_exc()))
+            try:
+                self._send_json({"error": "internal server error"}, 500)
+            except Exception:
+                pass
 
+    def _do_GET(self, route):
         # 1. 静态文件 & 健康检查（不需要认证）
         if StaticRouteMixin._handle_static_get(self, route):
             return
@@ -81,7 +95,16 @@ class H(BaseRouteHandler,
         self._send_json({"error": "not found"}, 404)
 
     def do_POST(self):
-        route = self._route_path()
+        try:
+            self._do_POST(route=self._route_path())
+        except Exception:
+            log("请求处理异常 {}:\n{}".format(self.path, traceback.format_exc()))
+            try:
+                self._send_json({"error": "internal server error"}, 500)
+            except Exception:
+                pass
+
+    def _do_POST(self, route):
         body = self._read_body()
         if body is None:
             return  # _read_body 已发送错误响应（413/400）
