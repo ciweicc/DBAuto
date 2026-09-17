@@ -1689,12 +1689,23 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .lib-card-meta{font-size:var(--fs-xs);color:var(--text2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lib-card-info{padding:9px 10px 10px;display:flex;flex-direction:column;gap:5px;flex:1}
 .lib-card-ops{display:flex;justify-content:flex-end}
-/* 文件夹卡：不放海报，用图标 + 名称的紧凑块（避免给目录也去匹配 TMDB） */
-.lib-card-body{display:flex;flex-direction:column;align-items:center;gap:8px;padding:22px 10px 12px;
-  text-decoration:none;color:inherit;flex:1;text-align:center}
+/* 文件夹卡（issue #27 跟进：文件夹也走 TMDB 匹配）
+   海报块与文件卡同为 2:3，未匹配到时是 16:9 的文件夹图标块（见上方 :has 规则）；
+   海报与文件夹角标都挂在链接内部，点任意位置仍然是「进入该目录」。 */
+.lib-card-body{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:0 0 12px;
+  text-decoration:none;color:inherit;flex:1}
+.lib-card-body .lib-card-title{padding:0 10px;text-align:center}
+.lib-card-body .lib-card-meta{text-align:center;padding:0 10px}
+.lib-card-poster-dir{display:flex;align-items:center;justify-content:center}
+.lib-card-poster-dir .lib-card-ph{width:100%;height:100%}
 .lib-card-dir .lib-card-title{color:var(--accent)}
 .lib-card-body:hover .lib-card-title{text-decoration:underline}
-.lib-card-dir .lib-card-ops{padding:0 10px 10px}
+.lib-card-dir .lib-card-ops{padding:0 10px}
+/* 「文件夹」角标：海报只说明「这是哪部作品」，不能让人误判点击行为 */
+.lib-dir-badge{position:absolute;left:8px;bottom:8px;z-index:2;
+  padding:2px 7px;border-radius:999px;background:rgba(0,0,0,.62);color:#fff;
+  font-size:var(--fs-xs);line-height:1.5;backdrop-filter:blur(4px)}
+.lib-card-poster-dir .tmdb-rating-badge{top:auto;left:auto;right:8px;bottom:8px}
 
 @media (max-width:760px){
   .lib-row{padding:8px 6px;gap:8px}

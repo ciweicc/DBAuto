@@ -58,9 +58,12 @@ _QAS_TASKS = {"success": True, "tasks": [
 
 def _entries(path):
     if path in ("", "/"):
+        # issue #27 跟进：文件夹也要吃 TMDB 海报。
+        # 这里刻意放「能匹配到的文件夹」与「匹配不到的文件夹」各一个 ——
+        # 前者必须出海报 + 文件夹角标，后者必须保留文件夹图标占位且仍可点进目录。
         return [
-            {"fid": "d1", "name": "电影", "dir": True, "size": 0, "updated_at": 1758000000},
-            {"fid": "d2", "name": "电视剧", "dir": True, "size": 0, "updated_at": 1758000001},
+            {"fid": "d1", "name": "示例作品标题-01", "dir": True, "size": 0, "updated_at": 1758000000},
+            {"fid": "d2", "name": "无法匹配的文件夹", "dir": True, "size": 0, "updated_at": 1758000001},
             {"fid": "f1", "name": "示例作品标题-01.2024.2160p.mkv", "dir": False,
              "size": 8 * 1024 ** 3, "updated_at": 1758000100},
             {"fid": "f2", "name": "示例作品标题-02.mkv", "dir": False,
@@ -75,6 +78,11 @@ def _entries(path):
 # TMDB 匹配桩（issue #27 图文卡片）：按文件名返回海报/评分。
 # 约定「匹配不上」时返回 None —— 卡片必须退化为占位卡，而不是破图或空白。
 _TMDB_MATCH = {
+    "示例作品标题-01": {          # 文件夹名（与文件不同名，验证目录也能匹配）
+        "id": 100, "title": "示例作品标题-01", "year": 2024, "rating": 8.6, "votes": 1200,
+        "poster": "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+        "media_type": "movie", "score": 0.99, "matched_by": "示例作品标题-01",
+    },
     "示例作品标题-01.2024.2160p.mkv": {
         "id": 101, "title": "示例作品标题-01", "year": 2024, "rating": 8.6, "votes": 1200,
         "poster": "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
@@ -117,10 +125,17 @@ MEASURE = r"""
     hasBody: lib ? (lib.querySelectorAll('.lib-card').length || lib.querySelectorAll('.lib-row').length || 0) : 0,
     cards: lib ? lib.querySelectorAll('.lib-card').length : 0,
     posterImgs: lib ? lib.querySelectorAll('.lib-card-poster img.tmdb-poster').length : 0,
+    filePosterImgs: lib ? lib.querySelectorAll('.lib-card-file .lib-card-poster img.tmdb-poster').length : 0,
     ratingBadges: lib ? lib.querySelectorAll('.lib-card-poster .tmdb-rating-badge').length : 0,
     placeholders: lib ? lib.querySelectorAll('.lib-card-ph').length : 0,
     fileCards: lib ? lib.querySelectorAll('.lib-card-file').length : 0,
     dirCards: lib ? lib.querySelectorAll('.lib-card-dir').length : 0,
+    // 文件夹海报（issue #27 跟进）：目录卡也要吃到 TMDB 海报与文件夹角标
+    dirPosterImgs: lib ? lib.querySelectorAll('.lib-card-poster-dir img.tmdb-poster').length : 0,
+    dirBadges: lib ? lib.querySelectorAll('.lib-card-poster-dir .lib-dir-badge').length : 0,
+    dirPh: lib ? lib.querySelectorAll('.lib-card-poster-dir .lib-card-ph-dir').length : 0,
+    dirEnterLinks: lib ? lib.querySelectorAll('.lib-card-dir .lib-card-body').length : 0,
+    filePh: lib ? lib.querySelectorAll('.lib-card-ph:not(.lib-card-ph-dir)').length : 0,
     cardCardCheckbox: lib ? lib.querySelectorAll('.lib-card-cb input').length : 0,
     cardDelBtn: lib ? lib.querySelectorAll('.lib-card-ops button').length : 0,
     viewBtn: q('#libViewBtn') ? q('#libViewBtn').textContent : '',
@@ -283,9 +298,21 @@ def main():
                         m["cardCardCheckbox"], m["cardDelBtn"], m["cards"]))
                 if m["posterImgs"] < 1:
                     fail("没有一张卡片吃到 TMDB 海报（桩数据里至少 2 个文件名可匹配）")
-                if m["posterImgs"] > m["fileCards"]:
-                    fail("海报图多于文件卡，卡片结构错乱（海报 {} / 文件卡 {}）".format(
-                        m["posterImgs"], m["fileCards"]))
+                # issue #27 跟进：文件夹也必须吃 TMDB 海报
+                # （根目录下全是文件夹，只给文件匹配 = 整页灰色文件夹图标）
+                if m["dirPosterImgs"] < 1:
+                    fail("没有任何文件夹卡吃到 TMDB 海报（桩数据里「示例作品标题-01」是可匹配的目录名）")
+                if m["dirBadges"] != m["dirPosterImgs"]:
+                    fail("文件夹海报缺少「文件夹」角标（角标 {} / 海报 {}）".format(
+                        m["dirBadges"], m["dirPosterImgs"]))
+                if m["dirPh"] < 1:
+                    fail("匹配不上的文件夹没有保留文件夹占位（占位 {}）".format(m["dirPh"]))
+                if m["dirEnterLinks"] != m["dirCards"]:
+                    fail("有文件夹卡丢了「进入目录」的点击区（链接 {} / 目录卡 {}）".format(
+                        m["dirEnterLinks"], m["dirCards"]))
+                if m["filePosterImgs"] > m["fileCards"]:
+                    fail("文件卡海报数多于文件卡，卡片结构错乱（海报 {} / 文件卡 {}）".format(
+                        m["filePosterImgs"], m["fileCards"]))
                 if width >= 760 and m["ratingBadges"] < 1:
                     fail("海报卡缺少评分角标")
                 if width < 760 and m["rowH"] != 0 and m["rowH"] < 32:

@@ -125,9 +125,27 @@ def test_hints_empty_name():
 # ---------------------------------------------------------------- 相似度 / 打分
 def test_similarity_exact_and_containment():
     assert _similarity("abc", "abc") == 1.0
-    assert _similarity("abc", "abcd") == 0.9
-    assert _similarity("abc", "ab") == 0.9
     assert _similarity("", "abc") == 0.0
+    # 包含关系不再是固定 0.9，而是按覆盖比例取值（issue #27 跟进）
+    assert 0.7 < _similarity("abc", "abcd") < 0.9
+    assert 0.7 < _similarity("abc", "ab") < 0.9
+
+
+def test_similarity_prefers_candidate_extending_the_query():
+    """续集不能被前作顶掉：查询 `复仇者联盟4` 时，
+    「多加副标题的候选」必须比「被截短的候选」得分高。
+    这是「文件夹也参与 TMDB 匹配」后暴露的真实挂错海报场景。
+    """
+    assert _similarity("复仇者联盟4", "复仇者联盟4终局之战") > _similarity("复仇者联盟4", "复仇者联盟")
+
+
+def test_score_sequel_beats_prequel():
+    hints = filename_hints("复仇者联盟4")
+    sequel = {"title": "复仇者联盟4：终局之战", "original_title": "Avengers: Endgame",
+              "year": 2019, "media_type": "movie"}
+    prequel = {"title": "复仇者联盟", "original_title": "The Avengers",
+               "year": 2012, "media_type": "movie"}
+    assert _score_candidate(hints, sequel, "") > _score_candidate(hints, prequel, "")
 
 
 def test_score_rejects_unrelated_title():
