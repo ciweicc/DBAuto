@@ -886,7 +886,11 @@ def test_tmdb_merged_into_overview_single_page(dist):
     assert "tmdb:" not in tabs.split("var PAGES")[0], "PAGE_IDS 仍然映射 tmdb 页面"
     m = re.search(r"var BOTTOM_NAV = \[(.*?)\]", tabs)
     navs = [x.strip().strip("'\"") for x in m.group(1).split(",") if x.strip()]
-    assert "tmdb" not in navs and len(navs) == 5, "底部导航应回到 5 项且不含 tmdb"
+    # 断言的是「导航集合」而不是写死的项数：tmdb 必须不在其中，
+    # 且导航内容与预期完全一致（issue #27 新增「媒体库」后为 6 项）。
+    assert "tmdb" not in navs, "底部导航不应包含 tmdb"
+    assert navs == ["overview", "manual", "schedule", "history", "library", "settings"], \
+        "底部导航项与预期不一致: {}".format(navs)
 
 
 def test_tmdb_filters_are_the_original_set(dist):
@@ -1384,3 +1388,48 @@ def test_discovery_dom_script_asserts_adv_legend_overflow():
     assert "hintOverflow\"] > MAX_LEGEND_OVERFLOW" in src, "胶囊溢出断言丢失"
     assert "contentTop" in src and "borderTopWidth" in src and "paddingTop" in src, \
         "内容盒顶边的计算口径丢失（必须含边框 + 内边距）"
+
+def test_library_tab_wired(dist):
+    """回归（issue #27）：媒体库页必须完整接线。
+
+    校验「页面容器 / 两侧导航 / 路由分发 / 源文件进入构建清单」四件套，
+    防止只加 DOM 不加导航、或只加导航不注册分发的半成品状态。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert 'id="tabLibrary"' in body, "缺少媒体库页面容器 #tabLibrary"
+    assert 'data-tab="library"' in body, "侧栏缺少媒体库导航项"
+
+    tabs = _read(os.path.join(_JS_DIR, "tabs.js"))
+    assert "library: 'tabLibrary'" in tabs, "PAGE_IDS 未映射 library"
+    assert "'library'" in tabs.split("var PAGES")[1], "PAGES 未包含 library"
+
+    build = _read(_BUILD_SH)
+    assert " library " in build, "library.js 未进入 build.sh 构建清单"
+
+    # 源文件存在 + 产物已包含其模块标记（防「改了源码忘了重建」）
+    assert os.path.isfile(os.path.join(_JS_DIR, "library.js")), "缺少 library.js"
+    # esbuild minify 会剥掉 `// module:` 注释，故用函数名作为「已进入产物」的判据
+    assert "loadLibraryPage" in dist, "产物未包含媒体库逻辑（需重跑 build.sh）"
+
+    # 后端路由已注册
+    routes = _read(os.path.join(_ROOT, "app_modules", "routes.py"))
+    assert "LibraryRouteMixin" in routes, "LibraryRouteMixin 未注册进路由分发"
+    assert "/api/qas/delete" in _read(os.path.join(_ROOT, "app_modules", "routes_library.py"))
+
+def test_library_inline_handlers_use_safe_js_arg():
+    """回归（issue #27）：媒体库内联事件处理器的参数必须用单引号字面量。
+
+    踩坑：原先用 JSON.stringify 生成参数，产出 `"f2"`（双引号）与
+    `onchange="..."` 的双引号冲突，HTML 解析后属性被截断为
+    `onchange="toggleLibSelect(" f2",="" this.checked)"`，导致勾选框失效。
+    本用例锁死「library.js 不得再用 JSON.stringify 拼内联参数」。
+    """
+    src = _read(os.path.join(_JS_DIR, "library.js"))
+    assert "function jsArg(" in src, "缺少 jsArg 安全参数包装函数"
+    assert "JSON.stringify(it._key)" not in src, "内联参数不得用 JSON.stringify"
+    assert "JSON.stringify(it.name)" not in src, "内联参数不得用 JSON.stringify"
+    assert "JSON.stringify(acc)" not in src, "内联参数不得用 JSON.stringify"
+    # 内联处理器必须走 jsArg
+    for call in ("toggleLibSelect(", "enterDir(", "deleteOne(", "loadLibrary("):
+        idx = src.find(call)
+        assert idx != -1, "缺少内联处理器 {}".format(call)

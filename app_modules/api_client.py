@@ -118,3 +118,38 @@ class QASClient(APIClient):
 
     def update(self, data):
         return self.post(self._add_token_to_url("/update"), data)
+
+    # ---------- 网盘文件管理（媒体库浏览 / 删除，用于双向同步） ----------
+
+    def get_savepath_detail(self, path=None, fid=None):
+        """列出某个网盘目录下的文件。
+
+        对应 QAS `/get_savepath_detail`：接受 `path`（如 `/媒体库/电影`）
+        或 `fid`，返回 {"success": bool, "data": {"fid", "list", "paths"}}。
+        `list` 中每项包含 fid / file_name / dir / size / updated_at 等。
+        """
+        # 注意：token 必须先于其它 query 参数拼入；这里手工拼接 query，
+        # 因为底层 http_get 不接受 params 参数（见 utils.http_get）。
+        path_part = ""
+        if fid is not None:
+            path_part = "/get_savepath_detail?fid={}".format(urllib.parse.quote(str(fid)))
+        elif path:
+            path_part = "/get_savepath_detail?path={}".format(urllib.parse.quote(str(path)))
+        else:
+            path_part = "/get_savepath_detail?path=%2F"
+        return self.get(self._add_token_to_url(path_part))
+
+    def delete_file(self, path=None, fid=None):
+        """删除网盘中的单个文件/目录（移入回收站）。
+
+        对应 QAS `/delete_file`：fid 优先，缺失时由 QAS 依据 path 反查 fid。
+        返回 {"success": bool, ...}。
+        """
+        payload = {}
+        if fid is not None:
+            payload["fid"] = fid
+        elif path:
+            payload["path"] = path
+        else:
+            return {"success": False, "message": "缺少 fid 或 path"}
+        return self.post(self._add_token_to_url("/delete_file"), payload)

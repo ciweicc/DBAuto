@@ -62,6 +62,7 @@
       <button class="side-nav-item" role="tab" aria-selected="false" data-tab="manual" onclick="switchTab('manual')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>转存</button>
       <button class="side-nav-item" role="tab" aria-selected="false" data-tab="schedule" onclick="switchTab('schedule')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg>定时</button>
       <button class="side-nav-item" role="tab" aria-selected="false" data-tab="history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg>历史</button>
+      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="library" onclick="switchTab('library')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg>媒体库</button>
       <button class="side-nav-item" role="tab" aria-selected="false" data-tab="settings" onclick="switchTab('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-settings"/></svg>设置</button>
     </nav>
     <div class="side-foot" id="sideFoot"></div>
@@ -450,6 +451,45 @@
         </div>
       </section>
 
+      <!-- ===== 媒体库（双向管理） ===== -->
+      <section class="page" id="tabLibrary">
+        <div class="page-head">
+          <h1>媒体库</h1>
+          <p style="color:var(--text2);font-size:13px;margin-top:4px">浏览夸克网盘真实文件与 QAS 转存任务；在此删除会同步清理本地转存历史，避免「网盘已删、本地仍判为已转存」。</p>
+        </div>
+
+        <!-- QAS 任务列表 -->
+        <div class="card">
+          <div class="card-title" style="justify-content:space-between">
+            <span>QAS 转存任务 <span id="qasTaskCount" style="color:var(--text3);font-weight:400"></span></span>
+            <button class="btn btn-sm btn-outline" onclick="loadQasTasks()">刷新</button>
+          </div>
+          <div id="qasTaskList"><div class="empty-state" style="padding:24px 20px"><div class="empty-title">加载中...</div></div></div>
+        </div>
+
+        <!-- 网盘文件浏览 -->
+        <div class="card">
+          <div class="card-title" style="justify-content:space-between">
+            <span>网盘文件 <span id="libCount" style="color:var(--text3);font-weight:400"></span></span>
+            <span>
+              <button class="btn btn-sm btn-outline" id="libUpBtn" onclick="libGoUp()" disabled>上一级</button>
+              <button class="btn btn-sm btn-outline" onclick="loadLibrary(libPath)">刷新</button>
+            </span>
+          </div>
+          <!-- 面包屑 -->
+          <div id="libBreadcrumb" class="lib-crumb"></div>
+          <div id="libList"><div class="empty-state" style="padding:24px 20px"><div class="empty-title">加载中...</div></div></div>
+          <!-- 批量删除操作条 -->
+          <div id="libActionBar" class="lib-actionbar" style="display:none">
+            <label class="toggle" title="删除网盘文件的同时，清理 DBAuto 中对应的转存历史"><input type="checkbox" id="syncHistoryChk" checked><span class="slider"></span></label>
+            <span style="color:var(--text2);font-size:13px">同步清理转存历史</span>
+            <span style="flex:1"></span>
+            <span id="libSelCount" style="color:var(--text2);font-size:13px"></span>
+            <button class="btn btn-sm btn-danger" id="libDelBtn" onclick="deleteSelected()" disabled>删除所选</button>
+          </div>
+        </div>
+      </section>
+
       <!-- ===== 设置 ===== -->
       <section class="page" id="tabSettings">
         <div class="page-head">
@@ -657,6 +697,10 @@
     <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('history')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
       <span>历史</span>
+    </button>
+    <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('library')">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg>
+      <span>媒体库</span>
     </button>
     <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('settings')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>

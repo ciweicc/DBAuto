@@ -201,6 +201,24 @@ def upsert_history_item(title, info):
             _history_cache[title] = {"date": date, "status": status, "category": category, "tmdb_id": tmdb_id}
 
 
+def delete_history_item(title):
+    """删除单条转存历史（用于「网盘侧删除 → DBAuto 历史同步清理」）。
+
+    返回 True 表示确实删除了 1 条；False 表示该 title 不在历史中。
+    同步失效内存缓存，避免删除后再次转存时被旧缓存判为「已存在」而跳过。
+    """
+    global _history_cache
+    with _history_lock:
+        with _db_lock:
+            conn = _get_db()
+            cur = conn.execute("DELETE FROM transfer_history WHERE title = ?", (title,))
+            conn.commit()
+            removed = cur.rowcount > 0
+        if _history_cache is not None:
+            _history_cache.pop(title, None)
+    return removed
+
+
 def load_exec_history():
     global _exec_cache
     with _exec_lock:

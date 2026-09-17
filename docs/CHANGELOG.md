@@ -2,6 +2,54 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
+## [当前] 媒体库双向管理：网盘删除自动同步转存历史
+
+> 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27)：
+> 「在夸克网盘删除了某些影视电影的时候，夸克自动转存并不会自动删除任务」，
+> 希望「在当前项目内显示夸克自动转存内的任务并展示完整的媒体库，
+> 可以在媒体库上进行删除管理，双向同步」。
+
+**问题**：DBAuto 此前只有「正向」链路（豆瓣/TMDB → PanSou → QAS 转存）。
+用户到夸克网盘手工删掉影片后，①QAS 的 tasklist 仍留着失效任务；
+②DBAuto 的转存历史仍标记「已转存」，导致重新转存被判定为重复而跳过。
+网盘侧与本地侧完全脱钩。
+
+**方案**：复用 QAS 上游已有的文件级接口，补齐反向链路，不引入新依赖。
+
+- 新增 `app_modules/media_library.py`：
+  - `list_tasks()` —— 只读 QAS `/data` 的 tasklist；
+  - `list_library()` —— 调 `/get_savepath_detail` 列出网盘真实文件（归一化字段）；
+  - `delete_entries()` —— 调 `/delete_file` 删除网盘文件，并按需联动清理本地历史。
+- `app_modules/api_client.py`：`QASClient` 增加 `get_savepath_detail()` / `delete_file()`。
+- `app_modules/storage.py`：增加 `delete_history_item()`（单条删除 + 失效缓存）。
+- 新增 `app_modules/routes_library.py` + 路由注册：
+  - `GET  /api/qas/tasks` —— QAS 任务列表；
+  - `GET  /api/qas/library?path=/` —— 网盘目录浏览（拦截 `..` 越界）；
+  - `POST /api/qas/delete` —— 删除 + 历史同步（`sync_history` 开关）。
+- 前端新增「媒体库」页（`static/src/scripts/library.js` + body/CSS）：
+  展示「QAS 转存任务」与「网盘文件」两张表，支持面包屑进目录、
+  勾选/单条删除，并提供「同步清理转存历史」开关。
+
+**删除语义（防误判）**：只有「全部条目删除成功」才返回 `success=true`；
+部分成功返回 `success=false` 并逐条给出结果，避免调用方以为全量成功。
+历史同步用「显式 title 优先、其次文件名去扩展名」的**精确匹配**，
+匹配不到就如实回报「历史无匹配」，宁可不删也不误删。
+
+**验证证据**
+
+- `tests/test_media_library.py`：19 条用例覆盖归一化、异常兜底、
+  同步/不同步、部分失败语义、批量上限、路径穿越、路由参数校验。
+- `tests/test_build.py`：新增 `test_library_tab_wired`（页面/导航/构建清单/路由四件套）
+  与 `test_library_inline_handlers_use_safe_js_arg`（内联参数必须用单引号字面量）。
+- 浏览器实测（1440×900，对接桩 QAS）：媒体库页加载 2 条文件 + 2 条任务，
+  勾选 → 确认弹窗提示含历史同步说明 → 确认后网盘删除成功，
+  本地历史由 `['电影A']` 变为 `[]`，无页面报错。
+
+**踩坑记录（已加 CI 守卫）**：内联事件处理器参数最初用 `JSON.stringify` 生成，
+产出 `"f2"`（双引号）与 `onchange="..."` 的双引号冲突，HTML 属性被截断为
+`onchange="toggleLibSelect(" f2",="" this.checked)"`，勾选框毫无反应。
+改为 `jsArg()` 生成单引号字面量（转义 `\ ' < & "`），并用单测锁死该形态。
+
 ## [当前] 高级筛选标题被内层底卡上边框横切（「字体重叠」）
 
 > 对应 [issue #24](https://cnb.cool/ciweicc/DBAuto/-/issues/24)：
