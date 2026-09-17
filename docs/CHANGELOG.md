@@ -2,6 +2,95 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
+## [当前] 登录页：与主页统一视觉体系，并修掉浅色主题「白字白底」（issue #27）
+
+> 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户诉求：
+> 「优化当前登录页显示效果。与主页的视觉效果一致」，附截图。
+
+**先说最要命的那个 bug：浅色主题下登录页几乎看不见字**
+
+登录页内联 CSS 里写死了一份深色令牌（`--text:#ffffff`、`--text2:rgba(255,255,255,.72)`、
+`--border:rgba(255,255,255,.08)`、`--card-2:#1c1c22`…）。它的选择器也是 `:root`，
+**同优先级、后出现**，于是一把盖掉了 tokens.css 里浅色主题的 `--text:#1c1c1e`：
+
+- 主标题「登录」：白字压在半透明白卡片上 → 实测 **1.07:1**；
+- 输入框占位符：白字压在近白输入框上 → 实测 **1.11:1**；
+- 页脚 / 提示文案：白字压在浅色底上 → 实测 **1.14:1**。
+
+`scripts/check_contrast.py` 只审计 tokens.css，看不见这层覆盖，所以这问题一直没被门禁拦住。
+
+**第二件：登录页和主页确实不是一套东西**
+
+- 页面底色是写死的 `#0a0a0d` + 两张自绘渐变图，而主页是 tokens 的 `--bg-deep` 加
+  一套 40px 网格 + 三颗 `--glow-*` 光球；
+- 登录卡片 `background:rgba(22,22,26,.5)` 直接盖在主色上，磨砂被 `[data-theme=light]`
+  分支换成不透明的 `rgba(255,255,255,.5)` 后就彻底失效，卡片底部一大片死白；
+- 主标题吃的是自拼的 `linear-gradient(白, 青, 紫)`，和主页的品牌渐变（`--accent → --accent2`）不是一套；
+- 字号大面积手写 22 / 25 / 34px，而主页正文是 `--fs-base`（13px）。
+
+**顺带把截图里那条「浅色渐变横带」定位掉了**
+
+品牌列的原底图里有两个 `background-attachment:fixed` 的 40px 网格层。fixed 是按
+**视口**铺开的，1336px 宽屏下网格正好落在登录按钮上方，看上去就是「按钮底下压了一条
+浅色渐变带」。现在网格与光球统一由 `body` 承担（与主页同一份），品牌列退化为
+`--card` 玻璃面，四个角实测底色差 **0**。
+
+**改动**
+
+- `static/login_new.html`：
+  - 删掉整套本地令牌覆盖，改为「**设计 token 单一出处：tokens.css**」，
+    登录页自己只补 `--login-card-w` / `--login-panel-w` 两个尺寸令牌；
+  - body 底色 / 网格 / 光球改用 `--bg-deep` + `--grid-line` + `--glow-*`，
+    浅色主题那一组渐变参数与 `main.css` 的 `[data-theme=light] body` **逐字对齐**；
+  - 卡片换成 `var(--card)` + `var(--glass-border)` + `var(--blur-xl)` + 一层玻璃高光，
+    与主页 `.card` 同形态；加 `@supports not (backdrop-filter)` 实底降级（与 main.css 同策略）；
+  - 主按钮去自拼渐变，改用 `var(--gradient-btn)`（= 主页 `.btn btn-primary`）；
+  - 输入框对齐主页 `input[type=text]`：`--field-bg` 实底 + `--focus-ring` 焦点环 + 11px 内边距；
+  - 字号全面改用 `--fs-*`；`已锁定 N 分 0N 秒` 那段倒计时也统一到 `--fs-sm`；
+  - 主标题只让第二行吃 `--gradient-brand`，第一行保留 `--text`
+    （曾经想「整段渐变里塞 `var(--text)`」，但浅色主题的 `--text` 近黑，
+     压在深底上对比度只有 ~1.2:1，整行会糊 —— 实测踩到过，已回退）；
+  - `.liquid-bg` 从 `.form-panel` 内挪到 `.login-page` 之外：光球上的 blur 会把
+    fixed 背景的包含块改到它自己身上，留在面板里等于每个视口都铺满、观感不一致；
+  - 修 `100vh` 移动端地址栏跳动：`min-height:100dvh` + 面板改 `justify-content:flex-start`；
+  - 错误提示去掉 4 下抖动（违反 tokens 里「no bounce, no entrance」的动效口径），
+    只保留一次淡入。
+- `scripts/check_login_dom.py`（**新增**）：登录页的 DOM 度量走查。静态扫描只能看出
+  「有没有用 token」，看不出「渲染出来到底看不看得见」，所以把只有渲染后才能量化的
+  几条固化下来：
+  - 两套主题 × 5 组视口，逐元素算**真实合成对比度**（把半透明前景/背景逐级合成后
+    再算，而不是读 `color` 了事），要求全部 ≥ 4.5:1；
+  - 按钮白字压在渐变上的对比度单独算（渐变底不能用纯色算法，否则会算出 1.1:1 的
+    假失败 —— 已单列 `btnRatio`，按大号粗体 3:1）；
+  - 登录卡片背后不得出现横向色带（四角 + 左右中点的实际底色最大差 ≤ 24）；
+  - 磨砂真的生效、卡片有玻璃高光、输入框底色不透明（半透明叠磨砂会「透底」）；
+  - 焦点环必须在**关掉过渡后**仍有 ≥1px（过渡期间读到的是中间值，曾误报 0.16px）；
+  - 密码可见性按钮 / 主按钮命中尺寸 ≥ 30px；双主题无横向溢出。
+- `tests/test_build.py`：新增 3 条回归门禁
+  - `test_login_page_does_not_redefine_shared_tokens`：登录页不得重定义 tokens.css 的
+    任何令牌（就是这条直接锁死「白字白底」的根因）；
+  - `test_login_page_uses_shared_shell_visuals`：必须用同一组背景参数 / 玻璃面 / 渐变 /
+    字号令牌，且 `#0a0a0d`、`rgba(22,22,26,.5)` 这类写死的深色值不得回归；
+  - `test_login_page_dom_audit_is_committed`：度量脚本必须落库且覆盖两套主题与对比度。
+
+**验证证据**
+
+- `python3 -m pytest tests/ -q` → **297 passed**；`ruff check .` 通过。
+- `python3 scripts/check_login_dom.py --serve` → **0 处问题**（10 组主题×视口）：
+  - 最低对比度：深色 **6.22:1**、浅色 **5:1**；卡片底色差 **0**；磨砂「有」；
+  - 反例守卫（实测有效）：把原来的 `:root{--text:#ffffff}` 加回去 →
+    脚本立刻报 `.login-card h1 对比度 1.10:1 < 4.5:1`、`#user 1.00:1`；
+    把原版 `HEAD:static/login_new.html` 整份还原 → 报 15 处（含「缺少玻璃高光」
+    「输入框底色半透明 alpha=0.02」）。
+- `python3 -m pytest tests/test_build.py::test_login_page_does_not_redefine_shared_tokens` →
+  注入 `--text:#ffffff` 后**必定失败**，还原后通过（防复发已实测）。
+- 真实服务端到端：`python3 main.py` → `GET /login.html` **200**（27135 bytes）、
+  `GET /static/src/styles/tokens.css` **200**；`/version` 正常。
+- 回归走查全绿：概览页 / 设置页 / 媒体库页 / 日志栏 / 发现区多选条 / TMDB 筛选栏
+  六套脚本各 0 处问题；`scripts/check_contrast.py` 18 组受检 0 组未达标。
+- 视觉复核（1440 / 1336 / 390 三档 × 两主题）：浅色主题由「白字白底」变为可读，
+  按钮无横带，移动端单栏正常。
+
 ## [当前] 媒体库：网盘文件改为 TMDB 风格图文卡片（issue #27）
 
 > 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户诉求：

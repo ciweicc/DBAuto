@@ -11,128 +11,122 @@
 </script>
 <link rel="stylesheet" href="/static/src/styles/tokens.css">
 <style>
-/* 基础设计 token（含 WCAG AA 对比度）统一引用 tokens.css，避免重复维护；
-   以下仅保留登录页的局部微调，确保外观与改版前一致 */
-:root {
-  --text:#ffffff;
-  --text2:rgba(255,255,255,.72);
-  --border:rgba(255,255,255,.08);
-  --border2:rgba(255,255,255,.12);
-  --card-2:#1c1c22;
-  --radius-lg:12px;
-  --radius-xl:14px;
-  --shadow-card:0 24px 60px -20px rgba(0,0,0,.7), 0 2px 8px rgba(0,0,0,.4);
-  --transition-fast:.15s cubic-bezier(.4,0,.2,1);
-  --transition-normal:.25s cubic-bezier(.4,0,.2,1);
+/* =========================================================
+   登录页样式
+   设计 token 单一出处：tokens.css（与主页同一份）。
+   本文件**只允许**使用 token 变量，禁止再定义 --text / --border 等
+   已在 tokens.css 里存在的令牌 —— 历史上正是这里的深色硬编码
+   （--text:#ffffff）在浅色主题下覆盖了 tokens.css 的 --text:#1c1c1e，
+   导致整个登录页「白字白底」，主标题几乎不可见（issue #27）。
+   ========================================================= */
+
+/* 只有登录页才会用到的尺寸补两个局部令牌（其余一律取自 tokens.css） */
+:root{
+  --login-card-w:440px;
+  --login-panel-w:640px;
 }
-[data-theme="light"] {
-  --text2:rgba(0,0,0,.60);
-  --border:rgba(0,0,0,.08);
-  --border2:rgba(0,0,0,.12);
-  --card-2:#f4f4f8;
-  --radius-lg:12px;
-  --radius-xl:14px;
-  --shadow-card:0 24px 60px -24px rgba(20,20,40,.22), 0 2px 8px rgba(0,0,0,.06);
-  --transition-fast:.15s cubic-bezier(.4,0,.2,1);
-  --transition-normal:.25s cubic-bezier(.4,0,.2,1);
-}
+
 *{margin:0;padding:0;box-sizing:border-box}
-html{scroll-behavior:smooth}
+html{-webkit-text-size-adjust:100%}
 body{
-  font-family:var(--font);color:var(--text);
+  font-family:var(--font);color:var(--text);font-size:var(--fs-base);
   min-height:100vh;min-height:100dvh;
   -webkit-font-smoothing:antialiased;line-height:1.5;overflow:hidden;
-  background:var(--bg);
+  background-color:var(--bg-deep);
+  background-image:
+    radial-gradient(54% 46% at 12% 8%, rgba(10,132,255,.20), transparent 70%),
+    radial-gradient(46% 46% at 88% 14%, rgba(94,92,230,.18), transparent 70%),
+    radial-gradient(60% 55% at 72% 96%, rgba(100,210,255,.14), transparent 70%),
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size:100% 100%,100% 100%,100% 100%,var(--grid-size) var(--grid-size),var(--grid-size) var(--grid-size);
+  background-position:center;
+  background-attachment:fixed,fixed,fixed,fixed,fixed;
+}
+/* 浅色主题：与主页 body 用同一组渐变参数（否则「浅色」下背景色相/浓度对不上） */
+[data-theme="light"] body{
+  background-image:
+    radial-gradient(54% 46% at 12% 8%, rgba(0,122,255,.14), transparent 70%),
+    radial-gradient(46% 46% at 88% 14%, rgba(88,86,214,.12), transparent 70%),
+    radial-gradient(60% 55% at 72% 96%, rgba(0,163,255,.10), transparent 70%),
+    linear-gradient(var(--grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--grid-line) 1px, transparent 1px);
+  background-size:100% 100%,100% 100%,100% 100%,var(--grid-size) var(--grid-size),var(--grid-size) var(--grid-size);
 }
 
-/* ===== 全局焦点环（修复审计报告 #2） ===== */
+/* ===== 全局焦点环（与主页一致） ===== */
 :focus{outline:none}
-:focus-visible{
-  outline:2px solid var(--accent);
-  outline-offset:2px;
-  border-radius:var(--radius-sm);
-}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--radius-sm)}
 
-/* ===== 双栏布局 ===== */
-.login-page{display:flex;min-height:100vh;min-height:100dvh}
+/* ===== 液态玻璃背景光球（与主页 .liquid-bg 同一套动画与配色） ===== */
+.liquid-bg{position:fixed;inset:0;z-index:0;overflow:hidden;pointer-events:none}
+.liquid-bg span{position:absolute;border-radius:50%;filter:blur(70px);opacity:.6;mix-blend-mode:screen;will-change:transform}
+.liquid-bg span:nth-child(1){width:46vw;height:46vw;left:-6vw;top:-8vw;background:radial-gradient(circle,var(--glow-1) 0%,transparent 70%);animation:liquid1 22s ease-in-out infinite alternate}
+.liquid-bg span:nth-child(2){width:40vw;height:40vw;right:-8vw;top:14vh;background:radial-gradient(circle,var(--glow-2) 0%,transparent 70%);animation:liquid2 27s ease-in-out infinite alternate}
+.liquid-bg span:nth-child(3){width:52vw;height:52vw;left:26vw;bottom:-16vh;background:radial-gradient(circle,var(--glow-3) 0%,transparent 70%);animation:liquid3 24s ease-in-out infinite alternate}
+[data-theme="light"] .liquid-bg span{mix-blend-mode:multiply;opacity:.42}
+@keyframes liquid1{0%{transform:translate(0,0) scale(1)}100%{transform:translate(7vw,5vh) scale(1.12)}}
+@keyframes liquid2{0%{transform:translate(0,0) scale(1)}100%{transform:translate(-6vw,4vh) scale(1.08)}}
+@keyframes liquid3{0%{transform:translate(0,0) scale(1)}100%{transform:translate(4vw,-7vh) scale(1.15)}}
 
-/* 左：品牌区 */
+/* ===== 双栏布局：品牌说明 + 登录表单 ===== */
+.login-page{position:relative;z-index:1;display:flex;min-height:100vh;min-height:100dvh}
+
+/* 左：品牌区（玻璃面，与主页 .card 同一形态：--card + --glass-border + --blur） */
 .brand-panel{
-  position:relative;flex:0 0 46%;max-width:640px;overflow:hidden;
+  position:relative;flex:0 0 46%;max-width:var(--login-panel-w);overflow:hidden;
   padding:var(--space-3xl);
-  display:flex;flex-direction:column;justify-content:space-between;
-  background-color:#0a0a0d;
-  background-image:
-    linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px),
-    radial-gradient(1100px 620px at 18% 8%, rgba(10,132,255,.28), transparent 60%),
-    radial-gradient(900px 520px at 88% 92%, rgba(94,92,230,.24), transparent 55%),
-    linear-gradient(135deg, #0d0d10, #08080b);
-  background-size:40px 40px,40px 40px,100% 100%,100% 100%,100% 100%;
-  background-attachment:fixed,fixed,scroll,scroll,scroll;
-  color:#fff;
+  display:flex;flex-direction:column;justify-content:space-between;gap:var(--space-2xl);
+  background:var(--card);border-right:1px solid var(--glass-border);
+  box-shadow:var(--shadow), inset 0 1px 0 var(--glass-hi);
+  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  color:var(--text);
 }
-[data-theme="light"] .brand-panel{
-  background-color:#eef0f6;
-  background-image:
-    linear-gradient(rgba(0,0,0,.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,0,0,.05) 1px, transparent 1px),
-    radial-gradient(1100px 620px at 18% 8%, rgba(10,122,255,.16), transparent 60%),
-    radial-gradient(900px 520px at 88% 92%, rgba(88,86,214,.14), transparent 55%),
-    linear-gradient(135deg, #ffffff, #eef0f6);
-  background-size:40px 40px,40px 40px,100% 100%,100% 100%,100% 100%;
-  background-attachment:fixed,fixed,scroll,scroll,scroll;
-  color:#1c1c1e;
-}
-/* 装饰光斑 */
-.brand-glow{position:absolute;width:380px;height:380px;border-radius:50%;
-  background:radial-gradient(circle, rgba(10,132,255,.35), transparent 70%);
-  filter:blur(10px);top:-120px;right:-120px;pointer-events:none}
-.brand-panel .brand-inner{position:relative;z-index:1;display:flex;flex-direction:column;gap:var(--space-2xl)}
-.brand-head{display:flex;align-items:center;gap:14px}
+.brand-inner{position:relative;z-index:1;display:flex;flex-direction:column;gap:var(--space-xl)}
+.brand-head{display:flex;align-items:center;gap:10px}
+/* 与主页侧栏 .brand .brand-logo 同一形态，仅按登录页尺寸放大一档 */
 .brand-logo{
-  width:64px;height:64px;border-radius:var(--radius-lg);flex-shrink:0;
-  background:linear-gradient(135deg,var(--accent),var(--accent2));
-  display:flex;align-items:center;justify-content:center;
-  box-shadow:0 10px 30px -8px rgba(10,132,255,.6);
-}
-.brand-logo svg{width:34px;height:34px;color:#fff}
-.brand-name{font-family:var(--font-display);font-size:22px;font-weight:700;letter-spacing:-.3px}
-.brand-ver{font-size:12px;font-weight:600;color:rgba(255,255,255,.6);background:rgba(255,255,255,.1);
-  padding:2px 8px;border-radius:20px;margin-left:4px}
-[data-theme="light"] .brand-ver{color:rgba(0,0,0,.5);background:rgba(0,0,0,.06)}
-
-.brand-hero{margin-top:var(--space-xl)}
-.brand-hero h1{
-  font-family:var(--font-display);font-size:34px;line-height:1.25;font-weight:700;letter-spacing:-.6px;
-  background:linear-gradient(135deg,rgba(255,255,255,.98) 0%,rgba(100,210,255,.95) 55%,rgba(200,150,255,.92) 100%);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-}
-[data-theme="light"] .brand-hero h1{
-  background:linear-gradient(135deg,rgba(28,28,30,.95) 0%,rgba(0,122,255,.9) 55%,rgba(175,82,222,.88) 100%);
-  -webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text;
-}
-.brand-hero p{margin-top:12px;font-size:15px;color:rgba(255,255,255,.62);max-width:30ch}
-[data-theme="light"] .brand-hero p{color:rgba(0,0,0,.55)}
-
-.brand-feats{display:flex;flex-direction:column;gap:14px;margin-top:var(--space-lg)}
-.feat{display:flex;align-items:center;gap:14px}
-.feat-ic{
   width:40px;height:40px;border-radius:var(--radius);flex-shrink:0;
+  background:var(--gradient-brand);color:#fff;
   display:flex;align-items:center;justify-content:center;
-  background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.1);color:var(--cyan);
+  box-shadow:var(--shadow-glow);
 }
-[data-theme="light"] .feat-ic{background:rgba(0,0,0,.04);border-color:rgba(0,0,0,.06);color:var(--accent)}
-.feat-ic svg{width:20px;height:20px}
-.feat-tx b{display:block;font-size:14px;font-weight:600;color:rgba(255,255,255,.92)}
-[data-theme="light"] .feat-tx b{color:rgba(0,0,0,.85)}
-.feat-tx span{font-size:12.5px;color:rgba(255,255,255,.55)}
-[data-theme="light"] .feat-tx span{color:rgba(0,0,0,.5)}
+.brand-logo svg{width:24px;height:24px}
+.brand-name{font-family:var(--font-display);font-size:var(--fs-xl);font-weight:700;letter-spacing:-.3px;color:var(--text)}
+.brand-ver{
+  font-size:var(--fs-xs);font-weight:600;color:var(--text3);margin-left:auto;
+  padding:2px 8px;border-radius:999px;background:var(--card-2);border:1px solid var(--border);
+}
 
-.brand-foot{position:relative;z-index:1;font-size:12px;color:rgba(255,255,255,.4)}
-[data-theme="light"] .brand-foot{color:rgba(0,0,0,.4)}
+/* 主标题：主页 HUD 同一套「品牌渐变」口径（accent → accent2），
+   只让**第二行**吃渐变，避免整段文字在两套主题下观感不一致。
+   注意：这里**不能**把 var(--text) 放进渐变里 —— 浅色主题下 --text 是近黑色，
+   落在 --bg-deep 深底上对比度只有 ~1.2:1，整行字会「糊掉」（本轮实测踩到过）。 */
+.brand-hero h1{
+  font-family:var(--font-display);font-size:var(--fs-2xl);line-height:1.3;font-weight:700;
+  letter-spacing:-.6px;color:var(--text);
+}
+.brand-hero h1 .grad{
+  background-image:var(--gradient-brand);
+  -webkit-background-clip:text;background-clip:text;
+  -webkit-text-fill-color:transparent;color:transparent;
+}
+.brand-hero p{margin-top:10px;font-size:var(--fs-base);color:var(--text2);max-width:32ch}
 
-/* 图标承载元素（修复：原 login_new.html 有 .icon 体系，重写时漏搬导致按钮内图标尺寸错乱） */
+.brand-feats{display:flex;flex-direction:column;gap:var(--space-md);margin-top:var(--space-md)}
+.feat{display:flex;align-items:center;gap:12px}
+.feat-ic{
+  width:34px;height:34px;border-radius:var(--radius-sm);flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--accent-wash);border:1px solid var(--border);color:var(--accent);
+}
+.feat-ic svg{width:18px;height:18px}
+.feat-tx b{display:block;font-size:var(--fs-base);font-weight:600;color:var(--text)}
+.feat-tx span{font-size:var(--fs-sm);color:var(--text3)}
+
+.brand-foot{position:relative;z-index:1;font-size:var(--fs-xs);color:var(--text3)}
+
+/* 图标承载元素 */
 .icon{display:inline-flex;align-items:center;justify-content:center;vertical-align:middle;flex-shrink:0}
 .icon svg{width:100%;height:100%;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
 .icon-16{width:16px;height:16px}
@@ -140,177 +134,150 @@ body{
 .icon-20{width:20px;height:20px}
 .icon-24{width:24px;height:24px}
 
-/* 右：表单区 —— 独立表面底色，避免透出纯黑 body 导致“黑窟窿/无内容”观感 */
+/* 右：表单区 */
 .form-panel{
   position:relative;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;
-  gap:var(--space-2xl);padding:var(--space-2xl);width:100%;
-  background-color:#0a0a0d;
-  background-image:
-    radial-gradient(42% 48% at 12% 16%, rgba(10,132,255,.22), transparent 60%),
-    radial-gradient(52% 56% at 88% 82%, rgba(94,92,230,.24), transparent 60%),
-    radial-gradient(40% 44% at 74% 10%, rgba(100,210,255,.12), transparent 60%),
-    linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,.045) 1px, transparent 1px),
-    linear-gradient(180deg,#101014 0%,#0a0a0d 100%);
-  background-size:100% 100%,100% 100%,100% 100%,40px 40px,40px 40px,100% 100%;
-  background-attachment:scroll,scroll,scroll,fixed,fixed,scroll;
-  overflow-y:auto;
-}
-[data-theme="light"] .form-panel{
-  background-color:#eef0f6;
-  background-image:
-    radial-gradient(42% 48% at 12% 16%, rgba(10,122,255,.12), transparent 60%),
-    radial-gradient(52% 56% at 88% 82%, rgba(88,86,214,.14), transparent 60%),
-    radial-gradient(40% 44% at 74% 10%, rgba(0,163,255,.10), transparent 60%),
-    linear-gradient(rgba(0,0,0,.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(0,0,0,.05) 1px, transparent 1px),
-    linear-gradient(180deg,#ffffff 0%,#f2f2f7 100%);
-  background-size:100% 100%,100% 100%,100% 100%,40px 40px,40px 40px,100% 100%;
-  background-attachment:scroll,scroll,scroll,fixed,fixed,scroll;
+  gap:var(--space-lg);padding:var(--space-2xl);width:100%;overflow-y:auto;
 }
 .theme-btn{
   position:absolute;top:var(--space-md);right:var(--space-md);
-  width:38px;height:38px;border-radius:var(--radius-sm);border:1px solid var(--border);
-  background:var(--card-2);color:var(--text2);cursor:pointer;
+  width:36px;height:36px;border-radius:var(--radius-sm);border:1px solid var(--border);
+  background:var(--card);color:var(--text2);cursor:pointer;
   display:flex;align-items:center;justify-content:center;
-  transition:all var(--transition-normal);z-index:2;
+  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
+  transition:background var(--transition-fast),border-color var(--transition-fast),color var(--transition-fast);
+  z-index:2;
 }
-.theme-btn:hover{background:rgba(10,132,255,.1);border-color:var(--accent);color:var(--accent);
-  transform:translateY(-2px);box-shadow:0 6px 16px rgba(10,132,255,.2)}
-.theme-btn:active{transform:translateY(0) scale(.95)}
+.theme-btn:hover{background:var(--card-2);border-color:var(--border2);color:var(--text)}
+.theme-btn:active{transform:scale(.95)}
 
+/* 登录卡片：与主页 .card 同形态；这里额外疊一层渐变高光，保留原本的「被抬起」观感 */
 .login-card{
   position:relative;z-index:1;
-  background:rgba(22,22,26,.5);
-  border:1px solid rgba(255,255,255,.14);border-radius:var(--radius-xl);
-  padding:var(--space-3xl) var(--space-2xl);width:440px;max-width:100%;
-  box-shadow:0 24px 60px -20px rgba(0,0,0,.7), 0 8px 24px rgba(0,0,0,.35),
-    inset 0 1px 0 rgba(255,255,255,.18), inset 0 0 0 1px rgba(255,255,255,.04);
-  -webkit-backdrop-filter:blur(26px) saturate(160%);
-  backdrop-filter:blur(26px) saturate(160%);
+  width:var(--login-card-w);max-width:100%;
+  padding:var(--space-3xl) var(--space-2xl);
+  border-radius:var(--radius-lg);
+  border:1px solid var(--glass-border);
+  background-image:linear-gradient(160deg, rgba(255,255,255,.10), rgba(255,255,255,0));
+  background-color:var(--card);
+  box-shadow:var(--shadow), inset 0 1px 0 var(--glass-hi);
+  -webkit-backdrop-filter:var(--blur-xl);backdrop-filter:var(--blur-xl);
   transition:border-color var(--transition-normal), box-shadow var(--transition-normal);
 }
-.login-card:hover{border-color:rgba(255,255,255,.28);box-shadow:0 28px 70px -20px rgba(0,0,0,.75), 0 8px 24px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.22), inset 0 0 0 1px rgba(255,255,255,.06)}
+.login-card:hover{border-color:var(--glass-border-strong)}
 [data-theme="light"] .login-card{
-  background:rgba(255,255,255,.5);
-  border-color:rgba(255,255,255,.7);
-  box-shadow:0 24px 60px -24px rgba(20,20,40,.22), 0 8px 24px rgba(20,20,40,.08),
-    inset 0 1px 0 rgba(255,255,255,.9);
+  background-image:linear-gradient(160deg, rgba(255,255,255,.85), rgba(255,255,255,0));
 }
 .login-card h1{
-  font-size:25px;font-weight:700;letter-spacing:-.4px;margin-bottom:6px;
-  font-family:var(--font-display);
+  font-family:var(--font-display);font-size:var(--fs-xl);font-weight:700;letter-spacing:-.4px;
+  color:var(--text);margin-bottom:4px;
 }
-.login-subtitle{font-size:13px;color:var(--text3);margin-bottom:var(--space-2xl)}
+.login-subtitle{font-size:var(--fs-sm);color:var(--text3);margin-bottom:var(--space-xl)}
 
 .form-group{margin-bottom:var(--space-lg);position:relative}
 .form-group label{
-  display:block;font-size:12px;color:var(--text2);margin-bottom:var(--space-xs);
+  display:block;font-size:var(--fs-xs);color:var(--text2);margin-bottom:var(--space-xs);
   font-weight:600;font-family:var(--font-display);letter-spacing:.3px;
-  transition:all var(--transition-fast);
+  transition:color var(--transition-fast);
 }
 .form-group:focus-within label{color:var(--accent)}
 .form-group .input-wrap{position:relative}
+/* 输入框与主页 input[type=text] 对齐：11px 内边距 + tokens 的字段底色 */
 .form-group input{
-  width:100%;padding:13px 16px 13px 44px;border-radius:var(--radius-sm);
-  border:1px solid var(--border);background:var(--card-2);
-  color:var(--text);font-size:15px;font-family:var(--font);
-  transition:all var(--transition-normal);
+  width:100%;padding:11px 14px 11px 40px;
+  border-radius:var(--radius-sm);border:1px solid var(--border);
+  background:var(--field-bg);color:var(--text);
+  font-size:var(--fs-base);font-family:var(--font);
+  transition:border-color var(--transition-fast),box-shadow var(--transition-fast);
 }
-[data-theme="light"] .form-group input{background:rgba(0,0,0,.02)}
-.form-group input::placeholder{color:var(--text4)}
+.form-group input::placeholder{color:var(--text3);opacity:.85}
 .form-group input:hover{border-color:var(--border2)}
 .form-group input:focus{
-  outline:none;border-color:var(--accent);
-  box-shadow:0 0 0 4px rgba(10,132,255,.15),0 0 24px rgba(10,132,255,.1);
-  background:rgba(255,255,255,.05);
+  outline:none;border-color:var(--accent);box-shadow:var(--focus-ring);
 }
 .form-group .input-icon{
-  position:absolute;left:14px;top:50%;transform:translateY(-50%);
-  color:var(--text3);transition:color var(--transition-fast);
+  position:absolute;left:12px;top:50%;transform:translateY(-50%);
+  color:var(--text3);transition:color var(--transition-fast);pointer-events:none;
 }
 .form-group:focus-within .input-icon{color:var(--accent)}
 .form-group .toggle-pass{
-  position:absolute;right:10px;top:50%;transform:translateY(-50%);
-  width:32px;height:32px;border-radius:8px;border:none;background:transparent;
+  position:absolute;right:6px;top:50%;transform:translateY(-50%);
+  width:30px;height:30px;border-radius:var(--radius-sm);border:none;background:transparent;
   color:var(--text3);cursor:pointer;display:flex;align-items:center;justify-content:center;
-  transition:all var(--transition-fast);
+  transition:background var(--transition-fast),color var(--transition-fast);
 }
-.form-group .toggle-pass:hover{color:var(--accent);background:rgba(10,132,255,.08)}
+.form-group .toggle-pass:hover{color:var(--accent);background:var(--accent-wash)}
 
+/* 主按钮：与主页 .btn-primary 同一渐变出处（--gradient-btn） */
 .btn{
-  width:100%;padding:13px;border-radius:var(--radius-sm);border:none;
-  background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-size:15px;font-weight:600;
-  cursor:pointer;margin-top:var(--space-sm);font-family:var(--font-display);
-  transition:filter var(--transition-normal);
-  position:relative;overflow:hidden;display:flex;align-items:center;justify-content:center;gap:var(--space-sm);
-  letter-spacing:.3px;
+  width:100%;padding:12px;border-radius:var(--radius-sm);border:none;
+  background:var(--gradient-btn);color:#fff;font-size:var(--fs-base);font-weight:600;
+  cursor:pointer;margin-top:var(--space-xs);font-family:var(--font-display);letter-spacing:.3px;
+  display:flex;align-items:center;justify-content:center;gap:var(--space-sm);
+  transition:filter var(--transition-fast),transform var(--transition-fast);
 }
 .btn:hover{filter:brightness(1.08)}
-.btn:active{transform:translateY(0) scale(.98)}
-.btn:disabled{opacity:.6;cursor:not-allowed;filter:none;transform:none}
+.btn:active{transform:scale(.99)}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:grayscale(.3);transform:none}
 .btn .spinner{width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite}
-
-.error{color:var(--red);font-size:13px;text-align:center;margin-top:var(--space-md);
-  display:none;padding:12px;border-radius:var(--radius-xs);
-  background:rgba(255,69,58,.08);border:1px solid rgba(255,69,58,.2);
-  font-weight:500;}
-.error.show{display:block;animation:errorShake .4s ease, errorFadeIn .3s ease}
-@keyframes errorShake{
-  0%,100%{transform:translateX(0)}20%{transform:translateX(-6px)}40%{transform:translateX(6px)}
-  60%{transform:translateX(-4px)}80%{transform:translateX(4px)}
-}
-@keyframes errorFadeIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
 @keyframes spin{to{transform:rotate(360deg)}}
 
+/* 错误提示：仅对「出现」做一次强调动画，不再抖 4 下 */
+.error{
+  color:var(--red);font-size:var(--fs-sm);text-align:center;margin-top:var(--space-md);
+  display:none;padding:10px 12px;border-radius:var(--radius-xs);
+  background:var(--red-wash);border:1px solid var(--red-border);font-weight:500;
+}
+.error.show{display:block;animation:errorIn var(--transition-normal) both}
+@keyframes errorIn{from{opacity:0;transform:translateY(-6px)}to{opacity:1;transform:translateY(0)}}
+
 .login-last{
-  margin-top:var(--space-lg);text-align:center;font-size:12px;color:var(--text3);
+  margin-top:var(--space-md);text-align:center;font-size:var(--fs-xs);color:var(--text3);
   display:none;align-items:center;justify-content:center;gap:6px;
 }
 .login-last.show{display:flex}
 .login-last svg{width:14px;height:14px;color:var(--text3);flex-shrink:0}
-/* 登录辅助信息（填实右侧、给首次部署者引导） */
+
+/* 辅助信息：玻璃面，窄于卡片 */
 .login-note{
   position:relative;z-index:1;
-  width:440px;max-width:100%;display:flex;align-items:center;gap:12px;
-  padding:12px 14px;border-radius:var(--radius);border:1px solid rgba(255,255,255,.12);
-  background:rgba(28,28,34,.45);color:var(--text3);font-size:12.5px;line-height:1.5;
-  -webkit-backdrop-filter:blur(16px) saturate(150%);backdrop-filter:blur(16px) saturate(150%);
+  width:var(--login-card-w);max-width:100%;display:flex;align-items:flex-start;gap:10px;
+  padding:12px 14px;border-radius:var(--radius);
+  border:1px solid var(--glass-border);background:var(--card);
+  color:var(--text3);font-size:var(--fs-sm);line-height:1.55;
+  -webkit-backdrop-filter:var(--blur);backdrop-filter:var(--blur);
 }
-[data-theme="light"] .login-note{background:rgba(255,255,255,.55);border-color:rgba(255,255,255,.7)}
-.login-note svg{width:18px;height:18px;flex-shrink:0;color:var(--accent)}
+.login-note svg{width:18px;height:18px;flex-shrink:0;color:var(--accent);margin-top:1px}
 .login-note b{color:var(--text2);font-weight:600}
-.login-footer{margin-top:0;text-align:center;font-size:12px;color:var(--text4);position:relative;z-index:1}
+.login-footer{margin-top:0;text-align:center;font-size:var(--fs-xs);color:var(--text3);position:relative;z-index:1}
 
-/* 液态玻璃：登录卡片背后缓慢漂移的模糊光球 */
-.liquid-bg{position:absolute;inset:0;overflow:hidden;pointer-events:none;z-index:0}
-.liquid-bg span{position:absolute;border-radius:50%;filter:blur(64px);opacity:.6;mix-blend-mode:screen}
-.liquid-bg span:nth-child(1){width:52%;height:52%;left:-6%;top:-4%;background:radial-gradient(circle,#0a84ff 0%,transparent 70%);animation:liquid1 18s ease-in-out infinite alternate}
-.liquid-bg span:nth-child(2){width:58%;height:58%;right:-10%;bottom:-8%;background:radial-gradient(circle,#5e5ce6 0%,transparent 70%);animation:liquid2 23s ease-in-out infinite alternate}
-.liquid-bg span:nth-child(3){width:44%;height:44%;right:26%;top:-12%;background:radial-gradient(circle,#64d2ff 0%,transparent 70%);animation:liquid3 20s ease-in-out infinite alternate}
-[data-theme="light"] .liquid-bg span{mix-blend-mode:multiply;opacity:.42}
-@keyframes liquid1{from{transform:translate(0,0) scale(1)}to{transform:translate(22%,14%) scale(1.18)}}
-@keyframes liquid2{from{transform:translate(0,0) scale(1)}to{transform:translate(-16%,-12%) scale(1.22)}}
-@keyframes liquid3{from{transform:translate(0,0) scale(1)}to{transform:translate(-12%,20%) scale(1.12)}}
+/* 5.3 性能降级：不支持 backdrop-filter 时退化为不透明实底（与 main.css 同策略） */
+@supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px))){
+  .brand-panel,.login-card,.login-note,.theme-btn{
+    -webkit-backdrop-filter:none;backdrop-filter:none;
+    background-color:var(--surface-solid);
+  }
+}
 
-/* ===== 响应式：移动端单栏 ===== */
+/* ===== 响应式 ===== */
 @media(max-width:860px){
-  .login-page{flex-direction:column}
-  .brand-panel{flex:none;max-width:none;padding:var(--space-2xl) var(--space-xl);
-    flex-direction:row;align-items:center;gap:14px}
-  .brand-glow{display:none}
-  .brand-inner{flex-direction:row;align-items:center;gap:14px;width:100%}
-  .brand-head{gap:12px}
-  .brand-logo{width:48px;height:48px;border-radius:var(--radius)}
-  .brand-logo svg{width:26px;height:26px}
-  .brand-name{font-size:18px}
-  .brand-ver{font-size:11px}
+  .login-page{flex-direction:column;min-height:100dvh}
+  .brand-panel{
+    flex:none;max-width:none;padding:var(--space-lg) var(--space-xl);
+    flex-direction:row;align-items:center;gap:12px;border-right:none;border-bottom:1px solid var(--glass-border);
+  }
+  .brand-inner{flex-direction:row;align-items:center;gap:12px;width:100%}
+  .brand-head{gap:9px}
+  .brand-logo{width:34px;height:34px}
+  .brand-logo svg{width:20px;height:20px}
+  .brand-name{font-size:var(--fs-lg)}
+  .brand-ver{margin-left:0}
   .brand-hero,.brand-feats,.brand-foot{display:none}
-  .form-panel{padding:var(--space-2xl) var(--space-md)}
+  .form-panel{padding:var(--space-xl) var(--space-md);justify-content:flex-start}
 }
 @media(max-width:480px){
-  .login-card{width:94%;padding:var(--space-2xl) var(--space-xl)}
-  .login-card h1{font-size:22px}
+  .login-card{width:100%;padding:var(--space-xl) var(--space-lg)}
+  .login-card h1{font-size:var(--fs-xl)}
 }
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}
@@ -354,17 +321,18 @@ body{
   </symbol>
 </svg>
 
+<div class="liquid-bg" aria-hidden="true"><span></span><span></span><span></span></div>
+
 <div class="login-page">
   <!-- 左：品牌区 -->
   <aside class="brand-panel">
-    <div class="brand-glow"></div>
     <div class="brand-inner">
       <div class="brand-head">
         <div class="brand-logo"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-cloud-download"/></svg></div>
         <div class="brand-name">豆瓣自动转存<span class="brand-ver">v1.1.0</span></div>
       </div>
       <div class="brand-hero">
-        <h1>把豆瓣榜单，<br>自动搬进你的网盘</h1>
+        <h1>把豆瓣榜单，<br><span class="grad">自动搬进你的网盘</span></h1>
         <p>本地 / NAS 部署的影视自动转存后台，省去逐个手动检索。</p>
       </div>
       <div class="brand-feats">
@@ -387,7 +355,6 @@ body{
 
   <!-- 右：表单区 -->
   <main class="form-panel">
-    <div class="liquid-bg"><span></span><span></span><span></span></div>
     <button class="theme-btn" id="themeBtn" onclick="toggleTheme()" title="切换主题" aria-label="切换主题"><span class="icon icon-20"><svg><use href="#icon-moon"/></svg></span></button>
     <div class="login-card">
       <h1>登录</h1>

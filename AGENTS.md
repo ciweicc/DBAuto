@@ -23,6 +23,7 @@ python scripts/check_overview_dom.py --serve # 概览页 DOM 度量走查（改�
 python scripts/check_log_panel_dom.py --serve # 日志栏 DOM 度量走查（改日志栏后必跑）
 python scripts/check_settings_dom.py --serve  # 设置页空白度量走查（改设置页后必跑）
 python scripts/check_library_dom.py --serve  # 媒体库顺序/加载反馈/缓存度量走查（改媒体库后必跑）
+python scripts/check_login_dom.py --serve    # 登录页真实合成对比度/磨砂/色带走查（改登录页后必跑）
 ```
 
 > `scripts/check_overview_dom.py` 需要 playwright + chromium；缺少时会以退出码 0
