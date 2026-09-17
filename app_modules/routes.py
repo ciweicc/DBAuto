@@ -18,6 +18,7 @@ from routes_transfer import TransferRouteMixin
 from routes_history import HistoryRouteMixin
 from routes_config import ConfigRouteMixin
 from routes_tmdb import TmdbRouteMixin
+from routes_library import LibraryRouteMixin
 
 
 class H(BaseRouteHandler,
@@ -26,7 +27,8 @@ class H(BaseRouteHandler,
         TransferRouteMixin,
         HistoryRouteMixin,
         ConfigRouteMixin,
-        TmdbRouteMixin):
+        TmdbRouteMixin,
+        LibraryRouteMixin):
     """主 HTTP 请求处理器，通过 Mixin 多继承整合所有路由模块"""
 
     def do_GET(self):
@@ -71,6 +73,10 @@ class H(BaseRouteHandler,
         if TmdbRouteMixin._handle_tmdb_get(self, route):
             return
 
+        # 8. QAS 任务 & 网盘媒体库（双向管理）
+        if LibraryRouteMixin._handle_library_get(self, route):
+            return
+
         # 404
         self._send_json({"error": "not found"}, 404)
 
@@ -108,6 +114,10 @@ class H(BaseRouteHandler,
 
         # 6. TMDB
         if TmdbRouteMixin._handle_tmdb_post(self, route, body):
+            return
+
+        # 7. QAS 任务 & 网盘媒体库（双向管理）
+        if LibraryRouteMixin._handle_library_post(self, route, body):
             return
 
         # 404

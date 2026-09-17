@@ -5,14 +5,15 @@ var PAGE_IDS = {
   manual: 'tabManual',
   schedule: 'tabSchedule',
   history: 'tabHistory',
+  library: 'tabLibrary',
   settings: 'tabSettings'
 };
 // issue #14：TMDB 不再是一个「页面」，而是概览页里的「发现」分区。
 // 因此它从 PAGE_IDS / PAGES / BOTTOM_NAV 三处一起消失 ——
 // 少一个页面、少一份导航项，TMDB 也只有一套 DOM（筛选栏只有一份）。
-var PAGES = ['overview', 'manual', 'schedule', 'history', 'settings'];
+var PAGES = ['overview', 'manual', 'schedule', 'history', 'library', 'settings'];
 // 底部导航与 BOTTOM_NAV 顺序保持一致：概览 / 转存 / 定时 / 历史 / 设置
-var BOTTOM_NAV = ['overview', 'manual', 'schedule', 'history', 'settings'];
+var BOTTOM_NAV = ['overview', 'manual', 'schedule', 'history', 'library', 'settings'];
 
 function switchTab(tab){
   currentTab = tab;
@@ -42,6 +43,7 @@ function switchTab(tab){
   if(tab === 'overview') loadOverviewPage();
   if(tab === 'schedule') loadSchedule();
   if(tab === 'history') loadExecHistory();
+  if(tab === 'library') loadLibraryPage();
   if(tab === 'settings') loadConfig();
   // 发现区的「回到顶部」按钮挂在概览页尾部：切到概览时按滚动位置刷新可见性，
   // 切到其它 Tab 时压掉（否则悬浮按钮会漂在转存/设置等页面上）
