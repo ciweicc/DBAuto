@@ -1712,6 +1712,8 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .lib-name a:hover{text-decoration:underline}
 .lib-sub{color:var(--text2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
 .lib-sub a{color:var(--accent);text-decoration:none}
+/* 修改时间列：等宽数字，行与行之间对齐（issue #27 跟进：要能一眼看出修改时间） */
+.lib-sub-time{font-variant-numeric:tabular-nums;color:var(--text3)}
 .lib-cb{display:flex;align-items:center;justify-content:center;width:24px;height:24px}
 /* 控件尺寸由全局规则统一（18px），这里只保证点击热区够大、不与行高打架 */
 .lib-cb input{cursor:pointer}
@@ -1756,6 +1758,15 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .lib-card-dirlink:hover{text-decoration:underline}
 .lib-card-meta{display:block;font-size:var(--fs-xs);color:var(--text2);min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 修改时间（issue #27 跟进：用户要求「添加显示修改时间」）
+   单独占一行 + 时钟图标 + 「修改」前缀：大小和时间都是数字，挤在一行扫视时分不清；
+   时间行用 text3（比大小更淡）做层级，避免卡片内出现两段同样抢眼的次要信息。
+   仍是单行省略，所以拆行不影响卡片高度（走查断言同一行等高）。 */
+.lib-card-time{display:flex;align-items:center;gap:4px;font-size:var(--fs-xs);
+  color:var(--text3);min-width:0;line-height:1.35}
+.lib-card-time svg{flex:0 0 auto;opacity:.75}
+.lib-time-text{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;font-variant-numeric:tabular-nums}
 /* 删除按钮：收成图标按钮，常态低调、悬停/键盘聚焦才显形（不抢标题的宽度） */
 .lib-icon-btn{display:flex;align-items:center;justify-content:center;width:24px;height:24px;
   flex:0 0 auto;padding:0;border:1px solid transparent;border-radius:var(--radius-xs);

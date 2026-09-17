@@ -495,6 +495,7 @@ function _renderLibrary(path, entries, fromCache, ms){
 // ---------- 列表视图（保留原有紧凑表格，随时可切回） ----------
 function _libTableHtml(){
   var html = '<div class="lib-table">';
+  // 列表视图的表头与卡片视图保持同一套语义：名称 / 大小 / 修改时间（issue #27 跟进）。
   html += '<div class="lib-row lib-head"><span class="lib-cb"></span><span>名称</span><span>大小</span><span>修改时间</span><span></span></div>';
   libEntries.forEach(function(it){
     html += '<div class="lib-row">' +
@@ -505,7 +506,8 @@ function _libTableHtml(){
           : esc(it.name)) +
       '</span>' +
       '<span class="lib-sub">' + (it.dir ? '—' : fmtSize(it.size)) + '</span>' +
-      '<span class="lib-sub">' + fmtTs(it.updated_at) + '</span>' +
+      // 修改时间：单独一格 + title，便于扫视/复制（与卡片视图同一格式）
+      '<span class="lib-sub lib-sub-time" title="修改时间 ' + esc(fmtTs(it.updated_at)) + '">' + fmtTs(it.updated_at) + '</span>' +
       '<span class="lib-ops"><button class="btn btn-sm btn-outline" onclick="deleteOne(' + jsArg(it._key) + ')">删除</button></span>' +
       '</div>';
   });
@@ -554,7 +556,7 @@ function _libCardShell(it, kind, icon){
     '</span>' +
     '<span class="lib-card-name-col">' +
       nameHtml +
-      '<span class="lib-card-meta">' + _libMetaText(it) + '</span>' +
+      _libMetaHtml(it) +
     '</span>' +
     '<button class="lib-icon-btn" title="删除" aria-label="删除 ' + esc(it.name) + '" onclick="deleteOne(' + jsArg(it._key) + ')">' +
       '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><use href="#icon-trash"/></svg>' +
@@ -562,8 +564,23 @@ function _libCardShell(it, kind, icon){
   '</div>';
 }
 
-// 元信息一行：文件夹标「文件夹」，文件标「大小 · 修改时间」。
-// 修改时间原来只放在 title 里（为了给海报腾位置），现在没有海报了，直接显示。
+// 元信息（issue #27 跟进：用户要求「添加显示修改时间」）。
+//
+// 有图的那版里「大小 · 修改时间」被挤在同一行；去掉图以后卡片虽变宽，
+// 但两段都是数字、扫视时区分不出哪一段是时间。现在拆成**两行**：
+//   - 第一行：文件大小（文件夹则显示「文件夹」）；
+//   - 第二行：修改时间，带时钟图标 + 「修改」前缀，完整时间另放 title。
+// 两行都是 CSS 单行省略，所以拆行不会改变卡片高度（走查仍断言同一行等高）。
+function _libMetaHtml(it){
+  if(it.dir) return '<span class="lib-card-meta">文件夹</span>';
+  return '<span class="lib-card-meta">' + esc(fmtSize(it.size)) + '</span>' +
+    '<span class="lib-card-time" title="修改时间 ' + esc(fmtTs(it.updated_at)) + '">' +
+      '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-clock"/></svg>' +
+      '<span class="lib-time-text">修改 ' + esc(fmtTs(it.updated_at)) + '</span>' +
+    '</span>';
+}
+
+// 单行拼接口径（「大小 · 修改时间」）：列表视图与提示文案复用，保证全站时间格式一致。
 function _libMetaText(it){
   if(it.dir) return '文件夹';
   var bits = [fmtSize(it.size)];

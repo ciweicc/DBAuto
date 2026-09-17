@@ -26,6 +26,7 @@
 """
 import argparse
 import functools
+import re
 import http.server
 import json
 import os
@@ -123,6 +124,7 @@ MEASURE = r"""
   const cards = [...document.querySelectorAll('#libGrid .lib-card')];
   const titles = [...document.querySelectorAll('#libGrid .lib-card-title')];
   const mets = [...document.querySelectorAll('#libGrid .lib-card-meta')];
+  const times = [...document.querySelectorAll('#libGrid .lib-card-time')];
   const ics = [...document.querySelectorAll('#libGrid .lib-card-icon')];
   const cbs = [...document.querySelectorAll('#libGrid .lib-card-cb')];
   const stat = el => {
@@ -169,8 +171,35 @@ MEASURE = r"""
     fileCards: lib ? lib.querySelectorAll('.lib-card-file').length : 0,
     dirCards: lib ? lib.querySelectorAll('.lib-card-dir').length : 0,
     dirEnterLinks: lib ? lib.querySelectorAll('.lib-card-dir a.lib-card-dirlink').length : 0,
-    // 元信息必须不是空的（文件夹 = 文件夹；文件 = 大小 · 时间）
+    // 元信息必须不是空的（文件夹 = 文件夹；文件 = 大小）
     emptyMeta: mets.filter(e => !e.textContent.trim()).length,
+    // ---- 修改时间（issue #27 跟进：用户要求「添加显示修改时间」）----
+    // 文件卡必须各有且仅有一条修改时间；文件夹卡不显示时间（目录没有实测时间语义）。
+    fileTimeRows: times.length,
+    fileCardsWithTime: [...document.querySelectorAll('#libGrid .lib-card-file')]
+      .filter(c => c.querySelector('.lib-card-time')).length,
+    dirCardsWithTime: [...document.querySelectorAll('#libGrid .lib-card-dir')]
+      .filter(c => c.querySelector('.lib-card-time')).length,
+    timeTexts: times.map(e => e.textContent.trim()),
+    // 时间必须看起来是时间（YYYY-MM-DD HH:MM），而不是「—」或空
+    timeBadFormat: times.filter(e => !/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(e.textContent)).length,
+    // 时间行必须单行省略（不与卡片标题抢高度）
+    timeWrapped: times.filter(e => e.scrollHeight > r(e).height + 3).length,
+    // 时间行必须比名称更淡（层级：不能两段同样抢眼）
+    // 层级对比：时间行 vs 文件卡标题（只取文件卡 —— 文件夹标题是链接，颜色本就是 accent，
+    // 拿它比较会永远不相等，断言等于没写；本轮实测踩到过）。
+    timeColor: times.length ? getComputedStyle(times[0]).color : '',
+    titleColor: (function(){
+      const f = q('#libGrid .lib-card-file .lib-card-title');
+      return f ? getComputedStyle(f).color : '';
+    })(),
+    // 时间行必须带时钟图标（扫视时把「时间」和「大小」区分开）
+    timeIcons: times.filter(e => e.querySelector('svg')).length,
+    // 列表视图的时间列
+    rowsWithTime: rows.filter(row => {
+      const cells = row.querySelectorAll('.lib-sub');
+      return [...cells].some(c => /\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(c.textContent));
+    }).length,
     // 全选不再独占一行：必须与面包屑同处一条控制条
     selAllSameRow: (function(){
       const crumb = q('#libBreadcrumb'), all = q('#libSelAllWrap');
@@ -350,6 +379,26 @@ def main():
                     fail("有文件夹卡丢了「进入目录」的点击区（链接 {} / 目录卡 {}）".format(
                         m["dirEnterLinks"], m["dirCards"]))
 
+                # issue #27 跟进：「添加显示修改时间」
+                # 文件卡必须每张都显示修改时间（含时钟图标、可读格式、单行省略）
+                if m["fileTimeRows"] != m["fileCards"]:
+                    fail("修改时间行数 {} != 文件卡数 {}，有文件卡没显示修改时间".format(
+                        m["fileTimeRows"], m["fileCards"]))
+                if m["fileCardsWithTime"] != m["fileCards"]:
+                    fail("有文件卡缺少修改时间（带时间的卡 {} / 文件卡 {}）".format(
+                        m["fileCardsWithTime"], m["fileCards"]))
+                if m["timeBadFormat"] > 0:
+                    fail("有 {} 条修改时间不是 YYYY-MM-DD HH:MM 格式（{}）".format(
+                        m["timeBadFormat"], m["timeTexts"][:3]))
+                if m["timeWrapped"] > 0:
+                    fail("有 {} 条修改时间折行（应单行省略）".format(m["timeWrapped"]))
+                if m["timeIcons"] != m["fileTimeRows"]:
+                    fail("有修改时间行缺少时钟图标（图标 {} / 时间行 {}）".format(
+                        m["timeIcons"], m["fileTimeRows"]))
+                # 层级：时间行必须比标题淡（否则卡片里两段同样抢眼）
+                if m["timeColor"] and m["timeColor"] == m["titleColor"]:
+                    fail("修改时间与标题同色（{}），层级没有拉开".format(m["timeColor"]))
+
                 # ---- 排版整齐度（issue #27 反馈：「这个媒体库的排版太丑了，实在是很乱」）----
                 # 1. 同一行内卡片高度必须一致。旧版高度由图片比例决定（有图 2:3、
                 #    无图 16:9、文件夹又一种），一行高差能到上百像素。
@@ -399,6 +448,15 @@ def main():
                 problems.append("[列表视图] 表格行高 {}px 过小，内容被压扁".format(lv_h))
             if "卡片视图" not in lv.get("viewBtn", ""):
                 problems.append("[列表视图] 切换按钮文案未反映当前视图（{!r}）".format(lv.get("viewBtn")))
+            # 修改时间在列表视图里也要显示（两种视图语义必须一致，issue #27 跟进）
+            if lv.get("rowsWithTime", 0) < 3:
+                problems.append("[列表视图] 修改时间列缺失（只有 {} 行带时间）".format(
+                    lv.get("rowsWithTime", 0)))
+            lv_cells = page.evaluate(
+                "()=>{var r=document.querySelectorAll('#libList .lib-row:not(.lib-head)');"
+                "return r.length?r[0].textContent:''}")
+            if not re.search(r"\d{4}-\d{2}-\d{2} \d{2}:\d{2}", lv_cells):
+                problems.append("[列表视图] 行内没有可读的修改时间（{!r}）".format(lv_cells[:60]))
             page.close()
 
             # --- 3. 慢接口：必须按时快速失败 + 重试入口 ---
@@ -496,6 +554,10 @@ def main():
                 "()=>document.querySelectorAll('#libGrid .lib-icon-btn').length>0")
             if not del_ok:
                 problems.append("[无图卡片] 删除入口丢失，主功能受影响")
+            # 修改时间同理：必须来自目录接口数据，不能依赖任何外部服务
+            if m35.get("fileTimeRows", 0) != m35.get("fileCards", -1):
+                problems.append("[无图卡片] 修改时间未随文件卡渲染（时间行 {} / 文件卡 {}）".format(
+                    m35.get("fileTimeRows"), m35.get("fileCards")))
             # 卡片视图不应向 TMDB 发请求：既不依赖它，也不会因它卡住而变慢
             if tmdb_hits:
                 problems.append("[无图卡片] 卡片视图仍在请求 /api/tmdb/match（{} 次），"
