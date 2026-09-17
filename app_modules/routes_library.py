@@ -1,10 +1,11 @@
 # routes_library.py — 双向管理路由 Mixin（QAS 任务 / 网盘媒体库 / 删除同步）
 #
 # 对外接口（均需登录认证，走统一速率限制）：
-#   GET  /api/qas/tasks            —— QAS tasklist 只读列表
+#   GET  /api/qas/tasks            —— QAS tasklist 列表
 #   GET  /api/qas/library?path=/   —— 夸克网盘目录浏览（媒体库）
 #   POST /api/qas/delete           —— 删除网盘条目 + 可选同步清理 DBAuto 历史
-from media_library import list_tasks, list_library, delete_entries
+#   POST /api/qas/delete_tasks     —— 删除 QAS 条目任务配置（整表写回）
+from media_library import list_tasks, list_library, delete_entries, delete_tasks
 from validator import validate_string, validate_list
 
 
@@ -35,6 +36,9 @@ class LibraryRouteMixin:
         return False
 
     def _handle_library_post(self, route, body):
+        if route == "/api/qas/delete_tasks":
+            return self._handle_task_delete(body)
+
         if route != "/api/qas/delete":
             return False
 
@@ -57,5 +61,24 @@ class LibraryRouteMixin:
 
         sync_history = body.get("sync_history", True)
         res = delete_entries(cleaned, sync_history=bool(sync_history))
+        self._send_json(res, 200 if res.get("success") else 502)
+        return True
+
+    def _handle_task_delete(self, body):
+        """删除 QAS 任务条目。body: {"tasks": [{"taskname","savepath"} | {"index": n}]}"""
+        tasks = body.get("tasks")
+        ok, msg = validate_list(tasks, min_len=1)
+        if not ok:
+            self._send_json({"error": "tasks: {}".format(msg)}, 400)
+            return True
+        for it in tasks:
+            if not isinstance(it, dict):
+                self._send_json({"error": "tasks 每项必须是对象"}, 400)
+                return True
+            has_index = it.get("index") is not None
+            if not has_index and not it.get("taskname"):
+                self._send_json({"error": "tasks 每项必须包含 taskname 或 index"}, 400)
+                return True
+        res = delete_tasks(tasks)
         self._send_json(res, 200 if res.get("success") else 502)
         return True

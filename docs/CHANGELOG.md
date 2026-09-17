@@ -2,6 +2,59 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
+## [当前] 媒体库：可删除夸克自动转存的任务条目（issue #27 跟进）
+
+> 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户确认：
+> 「夸克自动转存的条目删除任务配置可以做，夸克自动转存是自部署的，
+> 所以不存在改别人的任务配置」。
+
+此前刻意没做这一步，理由是「直接改别人的任务配置风险高」。用户确认 QAS 为
+**自部署服务**后，改 `tasklist` 只影响自己的任务表，风险点因此从「能不能改」
+转移到「怎么改不会把别的任务一起抹掉」。本次按后者的标准实现。
+
+**为什么必须整表写回**：QAS 的 `/update` 是**整表替换**语义
+（其 WebUI 的 `removeTask` 也是 splice 后提交整个 tasklist）。
+只把「被删的那一条」发过去，等于删掉其余全部任务 —— 这是不可逆事故。
+
+**改动**
+
+- `app_modules/api_client.py`：`QASClient.update_tasklist(tasklist)` —— 走 `/update`
+  写回整份列表，**不改动列表内任何字段**。任务上的 `addition`
+  （任务级插件配置，如 `auto_unarchive` 的解压开关）、`shareurl_ban`（失效标记）
+  若被重写或丢弃，解压/订阅行为会静默改变。
+- `app_modules/media_library.py`：`delete_tasks(items)`
+  - 定位键为 `taskname + savepath`（QAS 不保证 taskname 唯一），也支持传 `index`；
+  - **不做模糊匹配**：删任务不可逆，宁可不删也不误删；
+  - 写回前做条目数一致性校验（`写回条目数 == 原条目数 - 删除数`），不成立即中止；
+  - **任一目标定位失败 → 整批不写回**。一次写回影响整张 tasklist，
+    「删掉一半、漏掉一半」比直接报错更危险；
+  - 成功后同步 `transfer._qas_cache`，避免「删了任务、本地仍判为已转存而跳过」；
+  - 单次上限 `MAX_TASK_DELETE_BATCH = 20`（任务配置不可再生，比文件删除更保守）。
+- `app_modules/routes_library.py`：新增 `POST /api/qas/delete_tasks`
+  （`{tasks:[{taskname,savepath} | {index}]}`，参数校验 + 502 语义与既有接口一致）。
+- 前端 `static/src/scripts/library.js` + `body.html` + `main.css`：
+  QAS 任务表支持单条删除、勾选批量删除、全选；行内参数沿用 `jsArg()` 单引号字面量，
+  且只传 `qasKey` 定位、不把任务名拼进 HTML 属性；确认弹窗写明
+  「只删除任务配置，网盘里已转存的文件不受影响」；删除成功后直接用后端返回的
+  写回结果重渲染，省一次往返。`scripts/check_library_dom.py` 同步补了校准逻辑。
+
+**验证证据**
+
+- `tests/test_media_library.py`：新增 11 条 —— 只删目标且保留其余任务与字段、
+  同名任务按 savepath 区分、index 定位、定位失败整批中止（断言未向 QAS 写回）、
+  写回失败不谎报成功、QAS 读取异常兜底、空/超量/非法参数、缓存同步、路由 200/400/502。
+- `tests/test_build.py`：新增 2 条 —— 删除链路接线 + 「必须整表写回且有一致性校验」
+  的源码断言、内联参数只传 key 不拼字段。
+- `scripts/check_library_dom.py`（扩展）：真实浏览器断言任务表 8 行、行内有删除入口、
+  单条删除弹确认且文案含「网盘文件不受影响」→ 行数 8→7；全选计数与批量操作条可见
+  → 批量删除后 0 行并给空态。
+- 对接桩 QAS 端到端实测：3 条任务删中间 1 条，QAS 侧最终为 `['电影A','电影C']`
+  且写回体中其余任务的 `pattern` / `addition` 原样保留；重复删同一条返回
+  「未做任何改动」且 QAS 无变化；接口返回失败时前端不移除行、如实透出失败原因。
+- 移动端 390/320 与桌面 1440 均无横向溢出、删除入口未被挤出视口。
+- 全量 `252 passed`，`ruff check .` 通过；概览/设置/日志栏/对比度四套走查 0 问题；
+  前端产物已重建。
+
 ## [当前] 媒体库：网盘文件置顶 + 目录浏览提速（issue #27 跟进）
 
 > 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 反馈：

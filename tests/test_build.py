@@ -1492,3 +1492,64 @@ def test_library_fetch_has_short_budget():
         not in loop, "超时定时器被放进了重试循环：总等待会随重试次数成倍放大"
     assert loop.count("LIB_REQ_TIMEOUT") == 1 or "signal.aborted" in loop, \
         "重试循环内未检查中止状态，可能在中止后继续发起新请求"
+
+
+def test_qas_task_delete_wired(dist):
+    """回归（issue #27 跟进）：QAS 任务条目必须能在媒体库页删除。
+
+    用户确认 QAS 为自部署服务，因此「改任务配置」没有改到别人任务的风险，
+    本次把此前刻意排除的「删除 QAS 任务」补上。用例锁死三件事：
+      1. 前端确实接线（任务表有删除入口 + 后端接口），且产物已重建；
+      2. 删除是「整表写回」而不是「只发被删项」——QAS `/update` 为整表替换，
+         少发一条会把其余任务全部抹掉；
+      3. 删除前必须确认（不可逆操作），确认文案要说清「只删配置、不动文件」。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert 'id="qasActionBar"' in body, "缺少 QAS 任务批量操作条"
+    assert "deleteSelectedQasTasks()" in body, "缺少批量删除 QAS 任务的入口"
+
+    src = _read(os.path.join(_JS_DIR, "library.js"))
+    assert "function doDeleteQasTasks(" in src, "缺少 QAS 任务删除逻辑"
+    assert "function deleteQasTask(" in src, "缺少单条删除 QAS 任务的入口"
+    assert "/api/qas/delete_tasks" in src, "前端未调用 QAS 任务删除接口"
+    assert "showConfirm(" in src[src.index("async function doDeleteQasTasks("):], \
+        "删除 QAS 任务是不可逆操作，必须先确认"
+    assert "网盘里已转存的文件不受影响" in src, \
+        "确认文案必须说清只删任务配置、不影响网盘文件"
+
+    routes = _read(os.path.join(_ROOT, "app_modules", "routes_library.py"))
+    assert "/api/qas/delete_tasks" in routes, "后端未注册 QAS 任务删除路由"
+
+    # 整表写回：必须调 QASClient.update_tasklist（而不是逐个删）
+    api = _read(os.path.join(_ROOT, "app_modules", "api_client.py"))
+    assert "def update_tasklist(" in api, "QASClient 缺少 update_tasklist（整表写回）"
+    lib = _read(os.path.join(_ROOT, "app_modules", "media_library.py"))
+    assert "update_tasklist(" in lib, "media_library 未走整表写回"
+    assert "写回列表条目数校验失败" in lib, \
+        "整表写回前必须做条目数一致性校验，防止误删其它任务"
+
+    # 产物已包含新逻辑（防「改了源码忘了重建」）
+    assert "deleteSelectedQasTasks" in dist, "产物未包含 QAS 任务删除逻辑（需重跑 build.sh）"
+
+
+def test_qas_task_delete_inline_handlers_use_safe_js_arg():
+    """内联处理器只传定位 key，不把任务名/路径拼进参数（沿用 jsArg 约定）。
+
+    踩坑（issue #27）：`JSON.stringify` 产出双引号会把 HTML 属性截断，
+    导致勾选框点了没反应。QAS 任务名/路径由用户自由填写，同样含引号风险，
+    因此这里要求「行内只传 qasKey()，再在函数里查表」的形态。
+    """
+    src = _read(os.path.join(_JS_DIR, "library.js"))
+    for call in ("toggleQasSelect(", "deleteQasTask("):
+        assert call in src, "缺少内联处理器 {}".format(call)
+    # 不得把 taskname 直接拼进内联参数位
+    assert "deleteQasTask(" + "' + esc(" not in src
+    i = src.index("function _renderQasTasks(")
+    block = src[i:src.index("function findQasTask(")]
+    assert "jsArg(key)" in block, "内联处理器参数必须用 jsArg 生成单引号字面量"
+    # 行内不得直接引用任务字段（只允许 esc() 渲染文本 + qasKey 定位）
+    for fn in ("toggleQasSelect(", "deleteQasTask("):
+        seg = block[block.index(fn):]
+        seg = seg[:seg.index(")") + 1] if ")" in seg else seg
+        assert "t.taskname" not in seg and "t.savepath" not in seg, \
+            "内联参数位不得直接拼任务字段，应传 qasKey 后在函数内查表"

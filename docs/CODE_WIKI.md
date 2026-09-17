@@ -424,7 +424,10 @@ APIClient (基类)
     ├── add_task(...)            # 添加转存任务
     ├── run_script_now(tasks)    # 立即执行脚本
     ├── run_script_now_stream()  # 流式执行 (SSE)
-    └── update(data)             # 更新任务数据
+    ├── update(data)             # 更新任务数据
+    ├── update_tasklist(list)    # 整表写回 tasklist（删除任务用）
+    ├── get_savepath_detail()    # 列出网盘目录文件
+    └── delete_file(path|fid)    # 删除网盘文件
 ```
 
 ---
@@ -561,6 +564,24 @@ PanSou 搜索服务客户端。
 - `run_script_now(tasklist)` - 立即执行脚本
 - `run_script_now_stream(tasklist)` - 流式执行脚本
 - `update(data)` - 更新任务数据
+- `update_tasklist(tasklist)` - 整表写回 tasklist（QAS `/update` 为整表替换语义，
+  删除任务必须提交删减后的完整列表）
+- `get_savepath_detail(path|fid)` - 列出网盘目录文件
+- `delete_file(path|fid)` - 删除网盘文件
+
+---
+
+#### `media_library` 模块（双向管理，issue #27）
+
+**位置**：[media_library.py](file:///workspace/app_modules/media_library.py)
+
+- `list_tasks()` - 读取 QAS tasklist；
+- `list_library(path|fid)` - 列出夸克网盘真实文件；
+- `delete_entries(entries, sync_history)` - 删网盘文件 + 可选同步清理本地历史；
+- `delete_tasks(items)` - 删除 QAS 任务配置（整表写回；任一定位失败则整批不写回）。
+
+对外路由：`GET /api/qas/tasks`、`GET /api/qas/library`、
+`POST /api/qas/delete`、`POST /api/qas/delete_tasks`。
 
 ---
 

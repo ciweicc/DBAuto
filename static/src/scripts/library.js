@@ -6,6 +6,8 @@
 //   GET  /api/qas/tasks          QAS tasklist
 //   GET  /api/qas/library?path=  网盘目录
 //   POST /api/qas/delete         {entries:[{fid,name,title?}], sync_history:true}
+//   POST /api/qas/delete_tasks   {tasks:[{taskname,savepath}]} 删除 QAS 任务配置
+//                                （QAS 为自部署服务，改动只影响自己的任务表）
 //
 // ---- 加载慢的根因与优化（issue #27 反馈「网盘文件模块访问有点慢」） ----
 // 1. 根因一：单次目录请求的失败预算被拉到 33s。
@@ -25,6 +27,7 @@ var libPath = '/';
 var libEntries = [];
 var libSelected = {};
 var qasTasks = [];
+var qasSelected = {};      // QAS 任务的勾选状态：key -> task
 
 // 目录响应缓存：短时间内重复进入同一目录直接复用，避免无谓往返。
 // 只缓存「成功」结果；失败不缓存，用户重试才会真的重试。
@@ -134,37 +137,164 @@ async function libFetch(url){
 async function loadQasTasks(){
   var box = document.getElementById('qasTaskList');
   if(!box) return;
+  qasSelected = {};
   box.innerHTML = '<div class="empty-state" style="padding:24px 20px"><div class="empty-title">加载中...</div></div>';
   var r = await libFetch('/api/qas/tasks');
   if(!r.ok){
-    box.innerHTML = '<div class="empty-state" style="padding:24px 20px"><div class="empty-title">读取失败</div><div class="empty-desc">' + esc(r.message) + '</div><div class="empty-desc"><button class="btn btn-sm btn-outline" onclick="loadQasTasks()">重试</button></div></div>';
-    var c0 = document.getElementById('qasTaskCount');
-    if(c0) c0.textContent = '';
+    _renderQasTasksError(r.message);
     return;
   }
   var res = r.data || {};
   if(!res.success){
-    box.innerHTML = '<div class="empty-state" style="padding:24px 20px"><div class="empty-title">读取失败</div><div class="empty-desc">' + esc(res.message || '请检查 QAS 配置') + '</div><div class="empty-desc"><button class="btn btn-sm btn-outline" onclick="loadQasTasks()">重试</button></div></div>';
-    document.getElementById('qasTaskCount').textContent = '';
+    _renderQasTasksError(res.message || '请检查 QAS 配置');
     return;
   }
   qasTasks = res.tasks || [];
-  document.getElementById('qasTaskCount').textContent = qasTasks.length ? '共 ' + qasTasks.length + ' 条' : '';
+  _renderQasTasks();
+}
+
+// QAS 任务的定位键：QAS 不保证 taskname 唯一，故用 taskname + savepath。
+// 刷新后若任务被改名/移动，键会自然失配（勾选清空），不会误删别的任务。
+function qasKey(t){
+  return String(t.taskname == null ? '' : t.taskname) + '\u0000' + String(t.savepath == null ? '' : t.savepath);
+}
+
+function _renderQasTasksError(message){
+  var box = document.getElementById('qasTaskList');
+  if(!box) return;
+  var cnt = document.getElementById('qasTaskCount');
+  if(cnt) cnt.textContent = '';
+  box.innerHTML = '<div class="empty-state" style="padding:24px 20px">' +
+    '<div class="empty-title">读取失败</div>' +
+    '<div class="empty-desc">' + esc(message || '请检查 QAS 配置') + '</div>' +
+    '<div class="empty-desc"><button class="btn btn-sm btn-outline" onclick="loadQasTasks()">重试</button></div>' +
+    '</div>';
+  updateQasActionBar();
+}
+
+function _renderQasTasks(){
+  var box = document.getElementById('qasTaskList');
+  if(!box) return;
+  var cnt = document.getElementById('qasTaskCount');
+  if(cnt) cnt.textContent = qasTasks.length ? '共 ' + qasTasks.length + ' 条' : '';
   if(!qasTasks.length){
     box.innerHTML = '<div class="empty-state" style="padding:24px 20px"><div class="empty-title">暂无任务</div></div>';
+    updateQasActionBar();
     return;
   }
-  var html = '<div class="lib-table">';
-  html += '<div class="lib-row lib-head"><span>任务名</span><span>转存路径</span><span>分享链接</span></div>';
+  var html = '<div class="lib-table lib-table-tasks">';
+  html += '<div class="lib-row lib-head"><span class="lib-cb"></span><span>任务名</span><span>转存路径</span><span>分享链接</span><span></span></div>';
   qasTasks.forEach(function(t){
+    var key = qasKey(t);
+    // 行内只带 key（不把任务名拼进 onclick 字符串），避免引号/特殊字符破坏属性
     html += '<div class="lib-row">' +
+      '<span class="lib-cb"><input type="checkbox" aria-label="选择 ' + esc(t.taskname) + '" onchange="toggleQasSelect(' + jsArg(key) + ', this.checked)"></span>' +
       '<span class="lib-name" title="' + esc(t.taskname) + '">' + esc(t.taskname || '—') + '</span>' +
       '<span class="lib-sub" title="' + esc(t.savepath) + '">' + esc(t.savepath || '—') + '</span>' +
       '<span class="lib-sub">' + (t.shareurl ? '<a href="' + esc(t.shareurl) + '" target="_blank" rel="noopener noreferrer">链接</a>' : '—') + '</span>' +
+      '<span class="lib-ops"><button class="btn btn-sm btn-outline" onclick="deleteQasTask(' + jsArg(key) + ')">删除</button></span>' +
       '</div>';
   });
   html += '</div>';
   box.innerHTML = html;
+  updateQasActionBar();
+}
+
+function findQasTask(key){
+  for(var i = 0; i < qasTasks.length; i++){
+    if(qasKey(qasTasks[i]) === key) return qasTasks[i];
+  }
+  return null;
+}
+
+function toggleQasSelect(key, on){
+  var t = findQasTask(key);
+  if(!t) return;
+  if(on) qasSelected[key] = t; else delete qasSelected[key];
+  updateQasActionBar();
+}
+
+function updateQasActionBar(){
+  var bar = document.getElementById('qasActionBar');
+  var n = Object.keys(qasSelected).length;
+  if(bar) bar.style.display = qasTasks.length ? 'flex' : 'none';
+  var cnt = document.getElementById('qasSelCount');
+  if(cnt) cnt.textContent = n ? '已选 ' + n + ' 条' : '';
+  var btn = document.getElementById('qasDelBtn');
+  if(btn) btn.disabled = n === 0;
+  var all = document.getElementById('qasSelAll');
+  if(all){
+    all.checked = n > 0 && n === qasTasks.length;
+    all.indeterminate = n > 0 && n < qasTasks.length;
+  }
+}
+
+function toggleQasSelectAll(on){
+  qasSelected = {};
+  if(on){
+    qasTasks.forEach(function(t){ qasSelected[qasKey(t)] = t; });
+  }
+  // 重渲染以同步表头的全选态与各行的勾选框
+  _renderQasTasks();
+}
+
+// ---------- 删除 QAS 任务（issue #27 跟进） ----------
+
+// 删除 QAS 的条目任务配置。用户确认 QAS 是自部署服务，因此这里的改动只影响
+// 自己的任务表，不存在「改别人的任务配置」的风险。
+//
+// 两个刻意的设计：
+//  1. 删除前必须确认，且文案里写清「任务配置会被移除、网盘里已转存的文件不受影响」，
+//     避免用户以为连文件一起删了；
+//  2. 后端是**整表写回**（QAS /update 为整表替换语义），失败时后端不做任何改动。
+async function doDeleteQasTasks(items, label){
+  if(!items || !items.length) return;
+  try{
+    await showConfirm('删除 QAS 任务', '将从夸克自动转存中移除 ' + label + '。\n' +
+      '只删除任务配置（分享链接/保存路径/匹配规则），网盘里已转存的文件不受影响。',
+      '删除', '取消');
+  }catch(e){ return; }
+
+  var btn = document.getElementById('qasDelBtn');
+  if(btn) btn.classList.add('loading');
+  try{
+    var res = await apiPost('/api/qas/delete_tasks', { tasks: items });
+    if(res.success){
+      showToast('已删除 ' + res.deleted + ' 条 QAS 任务', true);
+      // 后端返回写回后的完整列表，直接复用可省掉一次往返
+      if(res.tasks){
+        qasTasks = res.tasks;
+        qasSelected = {};
+        _renderQasTasks();
+        return;
+      }
+    }else{
+      showToast(res.message || '删除失败，QAS 未做改动', false);
+      return;
+    }
+  }catch(e){
+    showToast('删除失败: ' + e.message, false);
+    return;
+  }finally{
+    if(btn) btn.classList.remove('loading');
+  }
+  loadQasTasks();
+}
+
+function deleteQasTask(key){
+  var t = findQasTask(key);
+  if(!t) return;
+  doDeleteQasTasks([{ taskname: t.taskname, savepath: t.savepath }], '任务「' + t.taskname + '」');
+}
+
+function deleteSelectedQasTasks(){
+  var keys = Object.keys(qasSelected);
+  if(!keys.length) return;
+  var items = keys.map(function(k){
+    var t = qasSelected[k];
+    return { taskname: t.taskname, savepath: t.savepath };
+  });
+  doDeleteQasTasks(items, '所选的 ' + items.length + ' 条任务');
 }
 
 // ---------- 网盘文件 ----------
@@ -355,10 +485,35 @@ function updateLibActionBar(){
   var bar = document.getElementById('libActionBar');
   var n = Object.keys(libSelected).length;
   if(bar) bar.style.display = libEntries.length ? 'flex' : 'none';
+  var allBar = document.getElementById('libSelectAllBar');
+  if(allBar) allBar.style.display = libEntries.length ? 'flex' : 'none';
   var cnt = document.getElementById('libSelCount');
   if(cnt) cnt.textContent = n ? '已选 ' + n + ' 项' : '';
   var btn = document.getElementById('libDelBtn');
   if(btn) btn.disabled = n === 0;
+  var all = document.getElementById('libSelAll');
+  if(all){
+    all.checked = n > 0 && n === libEntries.length;
+    all.indeterminate = n > 0 && n < libEntries.length;
+  }
+}
+
+function toggleLibSelectAll(on){
+  libSelected = {};
+  if(on){
+    libEntries.forEach(function(it){ libSelected[it._key] = it; });
+  }
+  // 就地同步每行的勾选框，避免整表重渲染把当前选择清空
+  libEntries.forEach(function(it){
+    var cb = document.querySelector('input[aria-label="选择 ' + _cssQuote(it.name) + '"]');
+    if(cb) cb.checked = !!libSelected[it._key];
+  });
+  updateLibActionBar();
+}
+
+// 供 querySelector 拼接属性选择器用：转义引号与反斜杠
+function _cssQuote(v){
+  return String(v == null ? '' : v).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
 }
 
 // ---------- 删除（含历史同步） ----------
