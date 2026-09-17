@@ -719,13 +719,30 @@ def _norm_name(s):
 
 
 def _similarity(a, b):
-    """核心名相似度（0~1）：完全相等 1.0，包含关系 0.9，其余按字符重合度。"""
+    """核心名相似度（0~1）：完全相等 1.0，包含关系 0.7~0.9，其余按字符重合度。
+
+    包含关系不直接给固定 0.9（issue #27 跟进：文件夹也参与匹配后暴露的坑）：
+    目录名往往就是作品本名，`复仇者联盟4` 与候选 `复仇者联盟4：终局之战`、`复仇者联盟`
+    都是包含关系，若同为 0.9 就只能靠候选顺序决胜，很容易挂成前作的海报。
+    这里按「短名占长名的比例」拉开差距 —— 覆盖得越完整越接近 0.9。
+    """
     if not a or not b:
         return 0.0
     if a == b:
         return 1.0
     if a in b or b in a:
-        return 0.9
+        short, long_ = (a, b) if len(a) <= len(b) else (b, a)
+        if not long_:
+            return 0.0
+        ratio = len(short) / float(len(long_))
+        score = 0.7 + 0.2 * ratio
+        # 「查询是候选的前缀」比「候选是查询的前缀」更可信：
+        # 前者是副标题/季次补充（`复仇者联盟4` → `复仇者联盟4：终局之战`），
+        # 后者是信息缺失（`复仇者联盟4` ⊃ `复仇者联盟`，把续集认成前作）。
+        # 因此对「候选被查询完整包含」的情形再降一档，确保续集不会被前作顶掉。
+        if a.startswith(b) and not b.startswith(a):
+            score -= 0.08
+        return max(0.0, score)
     sa, sb = set(a), set(b)
     return len(sa & sb) / float(len(sa | sb))
 

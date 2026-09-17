@@ -528,18 +528,37 @@ function _libCardHtml(){
   return html;
 }
 
+// 文件夹卡（issue #27 跟进：文件夹也要吃 TMDB 海报）
+//
+// 网盘里的「文件夹」几乎就是作品本身（/影视/复仇者联盟4、/影视/繁花），
+// 之前只给文件匹配海报，根目录下全是文件夹 → 整页都是灰色文件夹图标，
+// 用户看到的正是「这个页面不能通过 TMDB 匹配图片文字吗」。
+//
+// 结构上文件夹卡必须保留「点哪都能进目录」：
+// 因此海报只作为链接内的可视块（libPoster-<key>），链接本身不被替换，
+// 补丁仅替换该块的内容 —— 无论匹配成功与否，进入目录都不受影响。
 function _libDirCardHtml(it){
   return '<div class="lib-card lib-card-dir" data-key="' + esc(it._key) + '" data-name="' + esc(it.name) + '">' +
     '<label class="lib-card-cb" title="选择该文件夹">' +
       '<input type="checkbox" aria-label="选择 ' + esc(it.name) + '" onchange="toggleLibSelect(' + jsArg(it._key) + ', this.checked)">' +
     '</label>' +
     '<a class="lib-card-body" href="javascript:void(0)" onclick="enterDir(' + jsArg(it.name) + ')" title="' + esc(it.name) + '">' +
-      '<span class="lib-card-icon"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg></span>' +
+      '<span class="lib-card-poster lib-card-poster-dir" id="libPoster-' + esc(it._key) + '" data-key="' + esc(it._key) + '" data-name="' + esc(it.name) + '">' +
+        _libDirPhHtml(it) +
+      '</span>' +
       '<span class="lib-card-title">' + esc(it.name) + '</span>' +
-      '<span class="lib-card-meta">文件夹</span>' +
+      '<span class="lib-card-meta" id="libMeta-' + esc(it._key) + '">文件夹</span>' +
     '</a>' +
     '<span class="lib-card-ops"><button class="btn btn-sm btn-outline" onclick="deleteOne(' + jsArg(it._key) + ')">删除</button></span>' +
   '</div>';
+}
+
+// 文件夹占位块：保留原来的图标观感，作为「没匹配到海报」的降级形态
+function _libDirPhHtml(it){
+  return '<span class="lib-card-ph lib-card-ph-dir">' +
+    '<span class="lib-card-icon"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg></span>' +
+    '<span class="tmdb-no-poster-title">' + esc(it.name) + '</span>' +
+  '</span>';
 }
 
 function _libPlaceholderHtml(it){
@@ -573,7 +592,6 @@ function _libFileCardHtml(it){
 function _libFileNames(){
   var names = [];
   libEntries.forEach(function(it){
-    if(it.dir) return;
     if(libMatch[it.name] !== undefined) return;   // 已匹配过（含「确认无结果」）
     names.push(it.name);
   });
@@ -585,7 +603,7 @@ function _libPatchPosters(){
   if(names.length) _libMatchChunked(names);
   // 命中会话缓存的：直接补丁，不发请求（翻回父目录/刷新后秒出海报）
   libEntries.forEach(function(it){
-    if(!it.dir && libMatch[it.name]) _libApplyPoster(it, libMatch[it.name]);
+    if(libMatch[it.name]) _libApplyPoster(it, libMatch[it.name]);
   });
 }
 
@@ -632,28 +650,32 @@ function _findLibEntryByName(name){
 function _libApplyPoster(it, tmdb){
   // 补丁点必须仍然是「当前目录的同一条目」——用户可能已经切目录了，
   // 这时 #libPoster-<key> 已经指向别的条目，必须靠 data-key/data-name 复核。
-  if(!it || it.dir) return;
+  if(!it) return;
   var card = document.querySelector('#libGrid .lib-card[data-key="' + _cssQuote(it._key) + '"]');
   if(!card || card.getAttribute('data-name') !== it.name) return;
   var holder = document.getElementById('libPoster-' + it._key);
   if(!holder) return;
   if(holder.getAttribute('data-matched') === '1') return;
-  holder.setAttribute('data-matched', '1');
   var poster = tmdb.poster || '';
-  var html = poster
-    ? '<img class="tmdb-poster" src="' + esc(poster) + '" loading="lazy" decoding="async" alt="' + esc(tmdb.title || it.name) + '" draggable="false" ondragstart="return false" onerror="libPosterBroken(this)">'
-    : _libPlaceholderHtml(it);
+  if(!poster) return;          // 只贴真海报；没海报就连补丁都不打，保持原占位形态
+  holder.setAttribute('data-matched', '1');
+  var alt = it.dir ? ('文件夹 ' + it.name) : it.name;
+  var img = '<img class="tmdb-poster" src="' + esc(poster) + '" loading="lazy" decoding="async" alt="' + esc(tmdb.title || alt) + '" draggable="false" ondragstart="return false" onerror="libPosterBroken(this)">';
+  // 文件夹卡：海报之上再叠一枚「文件夹」角标。海报只表达「这是哪部作品」，
+  // 不能让人误以为点它会打开文件详情 —— 点击行为仍然是进入目录。
+  var badge = it.dir ? '<span class="lib-dir-badge">文件夹</span>' : '';
   var rating = (tmdb.rating > 0)
     ? '<span class="tmdb-rating-badge">★ ' + Number(tmdb.rating).toFixed(1) + '</span>'
     : '';
-  holder.innerHTML = html + rating;
+  holder.innerHTML = img + badge + rating;
   holder.title = (tmdb.title || '') + (tmdb.year ? ' (' + tmdb.year + ')' : '');
   var meta = document.getElementById('libMeta-' + it._key);
   if(meta){
     var bits = [];
     if(tmdb.title) bits.push(tmdb.title);
     if(tmdb.year) bits.push(tmdb.year);
-    bits.push(fmtSize(it.size));
+    // 文件夹没有 size 语义：钉住「文件夹」，避免出现「文件夹 · —」
+    bits.push(it.dir ? '文件夹' : fmtSize(it.size));
     meta.textContent = bits.join(' · ');
   }
 }
@@ -664,10 +686,14 @@ function libPosterBroken(img){
     var wrap = img.parentNode;
     var card = img.closest ? img.closest('.lib-card-poster') : null;
     if(wrap){
+      var name = card ? (card.getAttribute('data-name') || '') : '';
+      // 文件夹卡回退成文件夹图标（不是电影图标），否则会把目录看成一个文件
+      var isDir = !!(card && card.classList.contains('lib-card-poster-dir'));
+      var icon = isDir ? 'icon-folder' : 'icon-movie';
       var ph = document.createElement('div');
-      ph.className = 'tmdb-no-poster lib-card-ph';
-      ph.innerHTML = '<span class="lib-card-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><use href="#icon-movie"/></svg></span>' +
-        '<span class="tmdb-no-poster-title">' + esc(card ? (card.getAttribute('data-name') || '') : '') + '</span>';
+      ph.className = 'tmdb-no-poster lib-card-ph' + (isDir ? ' lib-card-ph-dir' : '');
+      ph.innerHTML = '<span class="lib-card-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><use href="#' + icon + '"/></svg></span>' +
+        '<span class="tmdb-no-poster-title">' + esc(name) + '</span>';
       wrap.innerHTML = '';
       wrap.appendChild(ph);
     }
