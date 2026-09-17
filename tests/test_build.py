@@ -1675,3 +1675,78 @@ def test_library_poster_cards_keep_fast_budget():
         "匹配失败必须静默降级为占位卡"
     # 限流：单目录匹配数量与并发都要有上限，避免一个页面把 TMDB 打满
     assert "LIB_MATCH_LIMIT" in src and "LIB_MATCH_CONCURRENCY" in src, "匹配缺少限流常量"
+
+
+# ============================================================
+# 复选 / 单选控件统一（issue #27 反馈：复选框有点丑）
+# ============================================================
+_CSS_MAIN = os.path.join(_SRC, "styles", "main.css")
+
+
+def test_shared_checkbox_control_is_defined_once():
+    """回归（issue #27）：勾选框必须由**全局一份**规则定义，禁止各处再画一套。
+
+    用户反馈「复选框有点丑」。排查下来丑的原因是「三种长相」：
+
+      - 媒体库卡片角标：15px 系统蓝方块，压在自绘的深色圆底上；
+      - 媒体库表格行：16px 原生框 + `accent-color`，跟随浏览器/系统配色；
+      - 全选 / 其它页面：裸 `input`，尺寸还被行内 font-size 带着跑。
+
+    所以这里断言「全局控件规则存在且被重置外观」，并把「各处再写一套尺寸」
+    的部分一起锁住。
+    """
+    css = _read(_CSS_MAIN)
+    assert 'input[type="checkbox"],\ninput[type="radio"]{' in css or \
+           'input[type="checkbox"], input[type="radio"]{' in css, \
+        "缺少全局复选/单选控件规则（勾选框会退回浏览器原生外观）"
+    assert "appearance:none" in css, "未重置 appearance，控件外观仍由浏览器决定"
+    assert 'input[type="checkbox"]:checked' in css, "缺少已勾选态样式"
+    assert "::after" in css and "rotate(43deg)" in css, "勾形应由 ::after 绘制（跨浏览器一致）"
+    assert ":indeterminate" in css, "缺少半选（indeterminate）态样式"
+    assert 'input[type="checkbox"]:focus-visible' in css, "缺少键盘焦点环"
+
+    # 尺寸不受 font-size 影响：必须钉像素（历史：13px/15px/16px 三种）
+    block_start = css.index('/* ============ 复选 / 单选控件（全局统一')
+    block_end = css.index("/* Sched row */", block_start)
+    block = css[block_start:block_end]
+    assert re.search(r"width:18px;height:18px", block), \
+        "控件尺寸必须固定（不能跟随 font-size，否则每处显示都不同）"
+
+    # 各处不得再自定义勾选框尺寸：只允许保留「热区/光标」这类不改变外观的属性
+    for path, snippet in (
+        (os.path.join(_SRC, "styles", "main.css"), ".lib-cb input{"),
+        (os.path.join(_SRC, "styles", "main.css"), ".lib-card-cb input{"),
+    ):
+        css_all = _read(path)
+        assert snippet in css_all, "缺少 {}".format(snippet)
+        body = css_all[css_all.index(snippet) + len(snippet):]
+        body = body[:body.index("}")]
+        assert "width:" not in body and "height:" not in body, (
+            "{} 又自定了勾选框尺寸，会让同一页出现不同大小的勾选框（三种长相复发）".format(
+                snippet))
+
+
+def test_checkbox_dom_audit_is_committed():
+    """回归（issue #27）：勾选框的「渲染后」缺陷必须由落库的走查脚本守住。
+
+    静态扫描只能看出「写了什么规则」，看不出：
+
+      1. 浏览器是否真的按自绘样式渲染（appearance 是否被重置、尺寸是否被字号缩放）；
+      2. 同一页所有勾选框是否真的**一处一样**（卡片角标 / 表格行 / 全选）；
+      3. 已勾选 / 半选态是否真的有可见勾形与横杠；
+      4. 深浅两套主题下控件是否仍能从背景里「显形」出来。
+
+    本轮实测该脚本能把「删掉全局控件规则」（报出 12 个原生控件、13x13 尺寸、
+    无勾形）与「卡片角标改回 15px」（报出尺寸不一致）两种回退抓出来。
+    """
+    script = os.path.join(_ROOT, "scripts", "check_checkbox_dom.py")
+    assert os.path.isfile(script), "缺少 scripts/check_checkbox_dom.py（勾选框 DOM 度量走查）"
+    src = _read(script)
+    assert "index_new.html" in src, "走查脚本没加载构建产物"
+    assert ".lib-card-cb input" in src and "#libSelAll" in src, \
+        "走查脚本必须同时采样卡片角标、表格行与全选三处（三种长相的来源）"
+    assert "appearance" in src, "走查脚本没断言 appearance 被重置"
+    assert "indeterminate" in src, "走查脚本没断言半选态"
+    assert "sizeUnderZoom" in src, "走查脚本没断言尺寸不受 font-size 影响"
+    assert "THEMES" in src, "走查脚本没覆盖两套主题"
+    assert "MIN_NON_TEXT" in src, "走查脚本缺少非文本对比度阈值"
