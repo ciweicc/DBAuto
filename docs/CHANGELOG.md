@@ -976,3 +976,57 @@ UA 样式会把 `legend` 提到 fieldset 的**边框上**排版，而不是放�
 ---
 
 > 更早期历史请参见 git 提交记录（`git log`）。
+
+## [当前] 修复「删除确认点取消也会删」+ 媒体库根目录可配置（issue #27 严重问题）
+
+> 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户反馈：
+> 「按下删除键弹出的确认窗口，无论点取消还是确认，都会删除掉，这是一个非常严重的问题」
+> 「我需要界定资源根目录的设置选项，指定其中一个路径当作媒体库的根目录」。
+
+**1. 确认框「取消也执行」——根因与修复**
+
+`showConfirm()` 返回 `Promise<bool>`：确认 resolve(true)，取消/遮罩/ESC resolve(false)，
+**从不 reject**。而两个删除入口写成了：
+
+```js
+try{ await showConfirm(...); }catch(e){ return; }   // 把「resolve」误当成「同意」
+// 紧接着无条件执行删除 → 点取消/按 ESC 也一样删
+```
+
+`catch` 分支永远走不到，取消的 `false` 被直接丢弃，破坏性操作没有任何护栏。
+
+修复：
+- `static/src/scripts/confirm.js`：新增语义化入口 `confirmThen()`，
+  内部把返回值收敛为 `ok === true`，把「取返回值」这件事固化下来，
+  破坏性操作只调用它，就不会再漏判；同时修掉重复打开确认框时旧 Promise 悬挂的问题。
+- `static/src/scripts/library.js`：`doDelete()`（网盘删除）与
+  `doDeleteQasTasks()`（QAS 任务删除）改用 `confirmThen()`，并在其后**显式早退**
+  `if(!confirmed) return;`。
+- `static/src/scripts/history.js`：清空历史同样改走 `confirmThen()`。
+
+**2. 媒体库根目录可配置**
+
+- `app_modules/config.py`：`savepaths.library_root`（默认 `/`），作为媒体库浏览下界。
+- `app_modules/media_library.py`：`get_library_root()` 读取并规范化该值，
+  非法值（为空 / 非绝对路径 / 含 `..`）一律回落到 `/`，保证入口永远可用。
+- `app_modules/routes_library.py`：`/api/qas/library` 未显式传 `path` 时使用配置的根目录。
+- `app_modules/routes_config.py`：`savepaths` 校验列表加入 `library_root`。
+- 前端：设置页「转存路径」新增「媒体库根目录」输入；媒体库页以此为起点，
+  **不能返回其上一级**（面包屑根节点、`libGoUp`、上一级按钮三处同时约束）。
+
+**3. 媒体库卡片观感**
+
+- 文件夹卡不再被同行海报卡拉伸（`align-self:start`），消除大片空白；
+- 无海报的文件卡占位块由 2:3 改为紧凑的 16:9，不再拉高整行。
+
+**验证**
+
+- `tests/test_confirm_guard.py`：新增 8 例。源码层锁定「破坏性操作必须用
+  `confirmThen` + 早退」，并用 node 实跑 `confirmThen` 语义（取消/undefined/0/''/null 均返回 false）。
+  已验证：把 `doDelete` 还原成裸 `showConfirm` 会让用例失败。
+- `tests/test_media_library.py`：新增 5 例覆盖 `get_library_root` 规范化/回落，
+  以及路由「无 path 用配置根目录 / 显式 path 优先」。
+- `tests/test_build.py`：更新 QAS 删除用例，断言强化为 `confirmThen` + 早退。
+- `scripts/check_settings_dom.py`：桩数据补充 `library_root`。
+- 全量 `pytest` 294 通过；`check_contrast.py`、`check_settings_dom.py`、
+  `check_library_dom.py`、`ruff check .` 均通过。

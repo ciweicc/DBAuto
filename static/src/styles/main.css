@@ -1659,11 +1659,11 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 /* ---------- 图文视图（TMDB 风格卡片，issue #27） ----------
    与 .tmdb-grid 同一套观感（海报 2:3、评分角标、无海报占位），
    但每张卡片带复选框与删除按钮，因此单独一套类名，避免影响发现区。 */
-.lib-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;margin-top:10px}
+.lib-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;margin-top:10px;align-items:start}
 @media(max-width:1200px){.lib-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
 @media(max-width:900px){.lib-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:600px){.lib-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}
-.lib-card{position:relative;display:flex;flex-direction:column;min-width:0;
+.lib-card{position:relative;display:flex;flex-direction:column;min-width:0;align-self:start;
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
   overflow:hidden;transition:border-color var(--transition-fast),transform var(--transition-fast)}
 .lib-card:hover{transform:translateY(-2px);border-color:rgba(10,132,255,.4)}
@@ -1672,6 +1672,14 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.55);cursor:pointer}
 .lib-card-cb input{width:15px;height:15px;cursor:pointer;accent-color:var(--accent)}
 .lib-card-poster{position:relative;width:100%;aspect-ratio:2/3;overflow:hidden;background:rgba(255,255,255,.03)}
+/* 无海报时的占位块：海报 2:3 在桌面 5 列下高达 ~360px，对「没有海报」的文件
+   来说是一大片空白（issue #27 观感反馈：卡片太高、空得难受）。
+   占位态改为 16:9 的紧凑块，真海报仍是 2:3，占位不再拉高整行。 */
+.lib-card-poster:has(> .lib-card-ph){aspect-ratio:16/9}
+.lib-card-ph{align-items:center;justify-content:center;gap:6px}
+.lib-card-ph .lib-card-icon{opacity:.45}
+.lib-card-ph .tmdb-no-poster-title{font-size:var(--fs-xs);color:var(--text2);
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lib-card-poster .tmdb-poster{width:100%;height:100%;aspect-ratio:auto}
 .lib-card-poster .tmdb-no-poster{width:100%;height:100%;gap:8px;padding:10px}
 .lib-card-ph .lib-card-icon{opacity:.5}

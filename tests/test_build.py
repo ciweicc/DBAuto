@@ -1512,8 +1512,13 @@ def test_qas_task_delete_wired(dist):
     assert "function doDeleteQasTasks(" in src, "缺少 QAS 任务删除逻辑"
     assert "function deleteQasTask(" in src, "缺少单条删除 QAS 任务的入口"
     assert "/api/qas/delete_tasks" in src, "前端未调用 QAS 任务删除接口"
-    assert "showConfirm(" in src[src.index("async function doDeleteQasTasks("):], \
-        "删除 QAS 任务是不可逆操作，必须先确认"
+    # issue #27 严重问题修复后：必须用 confirmThen（内部收敛 ok===true）+ 早退，
+    # 而不是裸 showConfirm —— 裸调用时「只看 await 不看返回值」会点取消也照删。
+    qas_fn = src[src.index("async function doDeleteQasTasks("):]
+    qas_fn = qas_fn[:qas_fn.index("\nfunction ")] if "\nfunction " in qas_fn else qas_fn
+    assert "confirmThen(" in qas_fn, "删除 QAS 任务是不可逆操作，必须先确认取返回值"
+    assert re.search(r"if\s*\(\s*!\s*confirmed\s*\)\s*return", qas_fn), \
+        "确认被取消时必须提前 return，否则点取消也会删除"
     assert "网盘里已转存的文件不受影响" in src, \
         "确认文案必须说清只删任务配置、不影响网盘文件"
 
