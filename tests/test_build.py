@@ -1553,3 +1553,59 @@ def test_qas_task_delete_inline_handlers_use_safe_js_arg():
         seg = seg[:seg.index(")") + 1] if ")" in seg else seg
         assert "t.taskname" not in seg and "t.savepath" not in seg, \
             "内联参数位不得直接拼任务字段，应传 qasKey 后在函数内查表"
+
+
+def test_library_poster_cards_wired(dist):
+    """回归（issue #27）：媒体库网盘文件必须能切成「TMDB 风格图文卡片」。
+
+    用户诉求原文是「媒体库文件夹样式的选中，改成图文并茂，像 TMDB 那样，
+    使用 TMDB 的数据就可以」。这里锁死三件事：
+      1. 前端确实有卡片渲染与「图文 / 列表」切换，且产物已重建；
+      2. 海报来源是后端 /api/tmdb/match（按文件名匹配），不是前端直连 TMDB；
+      3. 匹配不到 / TMDB 不可用时降级为占位卡，不得让媒体库整体不可用。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    section = body[body.index('id="tabLibrary"'):body.index("<!-- ===== 设置 ===== -->")]
+    assert 'id="libViewBtn"' in section, "缺少「图文 / 列表」视图切换入口"
+    assert "toggleLibView()" in section, "视图切换按钮未接线"
+
+    src = _read(os.path.join(_JS_DIR, "library.js"))
+    for fn in ("function _libCardHtml(", "function _libFileCardHtml(", "function _libDirCardHtml(",
+               "function _libApplyPoster(", "function _libMatchChunked(", "function toggleLibView("):
+        assert fn in src, "缺少 {}".format(fn)
+    assert "/api/tmdb/match" in src, "前端未调用 TMDB 匹配接口"
+    # 默认图文，可切回列表（localStorage 记住偏好）
+    assert "lib_view" in src, "视图偏好未持久化"
+    # 无海报时用 tmdb-no-poster 占位（复用发现区同一套观感），不留破图
+    assert "tmdb-no-poster" in src, "缺少无海报占位"
+    assert "libPosterBroken" in src, "海报加载失败未兜底"
+
+    # 后端接口已注册
+    routes = _read(os.path.join(_ROOT, "app_modules", "routes_tmdb.py"))
+    assert "/api/tmdb/match" in routes, "后端未注册 TMDB 匹配路由"
+    tmdb_src = _read(os.path.join(_ROOT, "app_modules", "tmdb.py"))
+    assert "def match_tmdb_by_name(" in tmdb_src, "tmdb.py 缺少按文件名匹配的实现"
+
+    # 产物已包含新逻辑（防「改了源码忘了重建」）
+    assert "toggleLibView" in dist, "产物未包含视图切换（需重跑 build.sh）"
+    assert "lib-card-poster" in dist, "产物未包含卡片海报样式（需重跑 build.sh）"
+
+
+def test_library_poster_cards_keep_fast_budget():
+    """图文卡片的 TMDB 匹配不得把「快速失败」这条底线打回去。
+
+    踩坑背景（issue #27）：目录请求曾因后端 15s×3 重试 + 前端 2 次重试，
+    最坏等待 32s。海报匹配是**额外**的一层网络调用，如果绕过 libFetch
+    用默认 retries 的 apiGet，等于把这个坑原样搬回来。
+    因此要求：匹配请求也走 libFetch 短预算通道。
+    """
+    src = _read(os.path.join(_JS_DIR, "library.js"))
+    assert "await apiGet(" not in src, "图文卡片的匹配请求也必须走 libFetch"
+    worker = src[src.index("async function _libMatchWorker("):]
+    worker = worker[:worker.index("\nfunction ")] if "\nfunction " in worker else worker
+    assert "libFetch(" in worker, "匹配请求未走 libFetch 短预算通道"
+    # 匹配是「锦上添花」：失败必须静默降级，不能把卡片渲染打断
+    assert "catch(e){ return; }" in worker or "catch(e){return;}" in worker, \
+        "匹配失败必须静默降级为占位卡"
+    # 限流：单目录匹配数量与并发都要有上限，避免一个页面把 TMDB 打满
+    assert "LIB_MATCH_LIMIT" in src and "LIB_MATCH_CONCURRENCY" in src, "匹配缺少限流常量"

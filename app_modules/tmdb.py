@@ -1,4 +1,5 @@
 # tmdb.py — TMDB (The Movie Database) 官方 API 客户端
+import re
 import time
 import requests
 from requests.adapters import HTTPAdapter
@@ -416,6 +417,461 @@ def search_tmdb_id(query, media_type="movie", year=0):
         _tmdb_cache[cache_key] = (now, picked)
         _prune_cache()
     return picked
+
+
+# ============ 文件名 → TMDB 作品匹配（媒体库图文卡片，issue #27） ============
+#
+# 用户诉求：媒体库（网盘文件）不要只是「文件夹样式的表格」，要像 TMDB 那样图文并茂。
+# 网盘里只有文件名，要出海报就得先判断「这个文件是哪部作品」。
+#
+# 设计要点：
+#  1. 解析是**纯函数**：文件名 → 标题/核心名/年份，便于单元测试与复用；
+#  2. 匹配用「核心标题相关性」做闸门，再用年份微调，宁可不出海报也不挂错海报；
+#  3. 结果进 _tmdb_cache（与其它 TMDB 调用同一份缓存），重复浏览同一目录不再打网络；
+#  4. 未配置 key / 网络失败 → 返回 None，前端降级为占位卡，媒体库不因 TMDB 不可用而变砖。
+#
+# 注意：下面的 _clean_title / _core_title 与 transfer.py 的同名函数**口径必须一致**。
+# 这里不 import transfer：tmdb 会被 transfer/搜索链路间接引用，反向 import 会成环；
+# 两份实现一旦漂移，「媒体库认为已匹配」与「转存去重认为不存在」就会互相矛盾。
+
+# 发布组/编码/来源等噪声 token（小写比较）
+_NOISE_TOKENS = (
+    "bluray", "blu-ray", "bdrip", "brrip", "dvdrip", "hdtv", "webrip", "web-dl",
+    "webdl", "hdrip", "remux", "hdr", "hdr10", "dolby", "dv", "sdr", "uhd",
+    "x264", "x265", "h264", "h265", "hevc", "avc", "10bit", "8bit", "60fps",
+    "aac", "ac3", "dts", "ddp", "dd5", "truehd", "atmos", "flac", "mp3",
+    "chs", "cht", "gb", "big5", "简", "繁", "中字", "双语", "国语", "粤语",
+    "内嵌", "外挂", "字幕", "repack", "proper", "extended", "imax", "remastered",
+    "complete", "season", "collection", "合集", "全季", "全集", "更新至",
+)
+
+# 常见视频扩展名（文件名结尾）
+_VIDEO_EXT_PAT = re.compile(r"\.(mkv|mp4|avi|rmvb|ts|m2ts|mov|flv|wmv|iso|mpg|mpeg)$", re.I)
+# 年份：1900-2099，且不被其它数字包夹
+_YEAR_PAT = re.compile(r"(?<![0-9])((?:19|20)\d{2})(?![0-9])")
+# 季集：S01E02 / S01 / E02 / 第二季 / 第 3 集
+_SEASON_PAT = re.compile(r"(?i)(?:^|[^a-z0-9])(s\d{1,2}(?:e\d{1,3})?|e\d{1,3})(?:[^a-z0-9]|$)")
+_CJK_SEASON_PAT = re.compile(r"第\s*[0-9一二三四五六七八九十百]+\s*(?:季|部|集|话|回)")
+# 分辨率
+_RES_PAT = re.compile(r"(?i)(?:^|[^a-z0-9])((?:480|576|720|1080|1440|2160|4320)[pi]|4k|8k)(?:[^a-z0-9]|$)")
+# 标题归一化时剔除的字符（与 transfer.py._clean_title 同口径）
+_NON_TITLE_PAT = re.compile(r"[^0-9a-z\u4e00-\u9fff]+")
+
+
+def _clean_title(title):
+    """去除所有非中英文数字字符并转小写（与 transfer.py 同口径）。"""
+    if not title:
+        return ""
+    return _NON_TITLE_PAT.sub("", str(title).lower())
+
+
+def _core_title(title):
+    """从「干净标题」里剥掉年份/季/分辨率，得到作品核心名（与 transfer.py 同口径）。
+
+    入参必须是 _clean_title 之后的结果，调用顺序不能颠倒。
+    """
+    if not title:
+        return ""
+    t = _YEAR_PAT.sub("", title)
+    t = _SEASON_PAT.sub("", t)
+    t = _CJK_SEASON_PAT.sub("", t)
+    t = _RES_PAT.sub("", t)
+    return t.strip()
+
+
+def _has_release_group(tok):
+    """token 是否为发布组/编码/来源等噪声（用于界定标题结束位置）。
+
+    只认显式噪声词与「x264-GROUP」这类含明确编码标识的复合 token，
+    不把年份/季集/分辨率算进来（它们由调用方单独判断）。
+    """
+    if not tok:
+        return False
+    low = tok.lower()
+    for part in re.split(r"[-+@]", low):
+        if part and part in _NOISE_TOKENS:
+            return True
+    if len(low) == 8 and re.fullmatch(r"[0-9a-f]{8}", low):
+        return True          # 8 位十六进制：常见发布组后缀
+    if low.startswith("www.") or ".com" in low or ".cn" in low or ".net" in low:
+        return True          # 站点水印
+    return False
+
+
+def _is_noise_token(tok):
+    """token 是否表示「标题已结束」（年份/季集/分辨率/集数/纯数字/噪声词）。"""
+    low = (tok or "").strip(" .-_[]()（）【】{}")
+    if not low:
+        return True
+    if _has_release_group(low):
+        return True
+    if _YEAR_PAT.fullmatch(low) or _RES_PAT.fullmatch(low):
+        return True
+    if _SEASON_PAT.match(low) or _CJK_SEASON_PAT.search(low):
+        return True
+    if re.fullmatch(r"\d+", low):       # 纯数字：集数/序号（注意：不影响「1917」这类纯数字片名）
+        return True
+    return False
+
+
+def _strip_extension(name):
+    """剥离视频扩展名。
+
+    先按白名单（.mkv/.mp4/...）剥；白名单不命中时按「最后一个点 + 2~5 位字母数字」
+    兜底剥掉（`Show.S02E05` 这类从上游 API 拿到的、被截断的奇怪文件名），
+    否则尾部扩展名会被当成标题的一部分。
+    """
+    raw = str(name or "")
+    if not raw:
+        return ""
+    stripped = _VIDEO_EXT_PAT.sub("", raw)
+    if stripped != raw:
+        return stripped
+    if "." in raw:
+        head, _, tail = raw.rpartition(".")
+        if head and re.fullmatch(r"[A-Za-z0-9]{2,5}", tail):
+            return head
+    return raw
+
+
+def _split_fields(stem):
+    """把文件名主体切成 token。
+
+    `.` 在发布名里既是分隔符（Movie.Title.2019）又可能是标题的一部分（S.W.A.T.），
+    因此在「有点号、同时又有空格/连字符/中文/数字夹点」时才拆点号。
+    """
+    s = stem.replace("_", " ").replace("·", " ")
+    has_sep = bool(re.search(r"[\s\-]", s)) or bool(re.search(r"[\u4e00-\u9fff]", s))
+    if "." in s and (has_sep or re.search(r"\d\.\w", s)):
+        s = s.replace(".", " ")
+    return [t for t in re.split(r"\s+", s) if t]
+
+
+def _looks_like_episode_token(tok):
+    """token 是否为「剧集标记的一部分」：S02E05 / s02e05 / E05 / 02x05。"""
+    low = (tok or "").strip(" .-_[]()（）【】{}").lower()
+    if not low:
+        return False
+    if re.fullmatch(r"s\d{1,2}(e\d{1,3})?", low):
+        return True
+    if re.fullmatch(r"e\d{1,3}", low):
+        return True
+    if re.fullmatch(r"\d{1,2}x\d{1,3}", low):
+        return True
+    return False
+
+
+def _episode_cut(tokens):
+    """找「季集标记」在 token 序列里的起始下标。
+
+    要点：季集标记可能被 `.` 粘连成**一个** token（`Show.S02E05.mkv` 会被
+    扩展名剥离后只剩整串 `Show.S02E05`，点号因缺分隔线索未被拆开），
+    因此这里用正则从 token 里**切出前缀**，而不是只做整 token 比较。
+    """
+    pat = re.compile(r"(?i)(?<![a-z0-9])(s\d{1,2}(?:e\d{1,3})?|e\d{1,3}|\d{1,2}x\d{1,3})(?![a-z0-9])")
+    for i, t in enumerate(tokens):
+        m = pat.search(t)
+        if not m:
+            continue
+        # 前缀本身就是标题的一部分（如 `Show`）：截断到前缀之前
+        if m.start() > 0:
+            return i, m.start()
+        return i, None
+    return None, None
+
+
+def _looks_like_bare_episode(tokens, cut):
+    """`Show 11` / `Show 05` 这种「标题 + 裸集数」形态判定。
+
+    只在「去掉尾部数字后仍有 ≥2 个 token」时成立，避免把
+    `流浪地球2`、`1917.2019.1080p` 这类**纯数字片名**当成集数截断。
+    """
+    if cut <= 0 or cut >= len(tokens):
+        return False
+    digit = tokens[cut]
+    if not re.fullmatch(r"\d{1,3}", digit):
+        return False
+    head = cut - 1
+    if head - 1 < 0:
+        return False
+    return len(re.sub(r"[^A-Za-z0-9]", "", tokens[head])) >= 2
+
+
+def _cut_bare_episode(tokens):
+    """`Show 11` 形态：标题 + 「裸集数」。
+
+    与上一版「先截断再前看」不同，这里**只在能构造出合法标题时**才截：
+    从尾部往前找「与前面一部分明显不相连」的 1~2 位数字 token，
+    要求去掉它之后剩下的**首个 token**（标题主语）长度 ≥ 2。
+    这样 `流浪地球2 2023 1080p` 不会被截成 `流浪地球`，
+    而 `Show 11` / `Show.US 11` 能正确截成 `Show` / `Show.US`。
+    """
+    for i in range(len(tokens) - 1, 0, -1):
+        if not re.fullmatch(r"\d{1,3}", tokens[i]):
+            continue
+        if len(tokens[i]) > 2:
+            continue
+        head = re.sub(r"[^A-Za-z0-9]", "", tokens[i - 1])
+        if len(head) >= 2 and len(re.sub(r"[^A-Za-z0-9]", "", tokens[0])) >= 2:
+            return i
+    return None
+
+
+def _split_filename_noise(name):
+    """文件名 → (标题, 原始文件名)。
+
+    算法（issue #27）：
+      1. 先做「季集标记」定位（`S02E05` / `E05` / 裸集数 / `第二季`），它比年份更可靠；
+      2. 再找「第一个噪声 token」（年份/分辨率/发布编码/站点水印）作为标题结束位；
+      3. 向后扩展那些「明显仍是标题一部分」的短 token —— 否则
+         `Some.Show.US.S02E05` 会在 `US` 处被截断。
+    扩展条件刻意保守：不含发布组标识、且长度 ≤ 2（`US`、`II`、`S`）。
+    """
+    raw = str(name or "").strip()
+    if not raw:
+        return "", ""
+    stem = _strip_extension(raw)
+    tokens = _split_fields(stem)
+    if not tokens:
+        return _clean_title(stem), raw
+
+    cut = len(tokens)
+    ep_start, ep_prefix_len = _episode_cut(tokens)
+    if ep_start is not None and (ep_start > 0 or ep_prefix_len is not None):
+        if ep_prefix_len is not None:
+            # 季集标记粘在标题同一个 token 里（`Show.S02E05`）：保留前缀作为标题
+            tokens = tokens[:ep_start] + [tokens[ep_start][:ep_prefix_len]]
+            cut = len(tokens)
+        else:
+            cut = ep_start
+    else:
+        for i, t in enumerate(tokens):
+            if _is_noise_token(t):
+                cut = i
+                break
+        bare = _cut_bare_episode(tokens)
+        if bare is not None:
+            cut = bare      # `Show 11` 的 11 是集数，不属于标题
+
+    def _extendable(tok):
+        low = tok.lower().strip(" .-_[]()（）【】{}")
+        if not low or len(low) > 2:
+            return False
+        return not _has_release_group(low)
+
+    while cut < len(tokens) and _extendable(tokens[cut]):
+        cut += 1
+
+    title = " ".join(tokens[:cut]).strip(" .-_[]()（）【】{}")
+    if not title:
+        # 全是噪声（如 `2019.1080p`）或整段被季集规则吃掉（如 `第一季.mkv`）：
+        # 退回**剥离扩展名后的原始串**（不能带 .mkv，否则核心名会变成 mkv），
+        # 交给相似度匹配兜底。
+        title = _clean_title(stem)
+    return title, raw
+
+
+def _fallback_core(stem):
+    """fallback 场景（整段被季集规则吃掉）的核心名：直接清洗、不再剥季。
+
+    `第一季.mkv` 这类只有季标记的文件名，_core_title 会把 `第1季` 整段清空，
+    导致核心名为空 → 永远匹配不上。这里退一步：用清洗后的整串当核心名，
+    至少能和 TMDB 里的中文标题做相似度比较。
+    """
+    return _clean_title(stem)
+
+
+def filename_hints(name):
+    """从文件名提取匹配线索：标题 / 核心名 / 年份 / 季号 / 原始串。"""
+    title, raw = _split_filename_noise(name)
+    stem = _strip_extension(raw)
+    clean = _clean_title(title) or _clean_title(stem)
+    core = _core_title(clean) or _fallback_core(stem)
+    m = _YEAR_PAT.search(raw)
+    year = int(m.group(1)) if m else 0
+    if not year:
+        m2 = _YEAR_PAT.search(title)
+        year = int(m2.group(1)) if m2 else 0
+    season = 0
+    ms = _SEASON_PAT.search(raw)
+    if ms:
+        mm = re.search(r"\d+", ms.group(1))
+        season = int(mm.group(0)) if mm else 0
+    if not season:
+        mc = _CJK_SEASON_PAT.search(raw)
+        if mc:
+            digits = re.sub(r"[^0-9]", "", mc.group(0))
+            season = int(digits) if digits else 0
+    return {"title": title, "core": core, "year": year, "season": season,
+            "raw": raw, "clean": clean}
+
+
+# ---------- 候选打分 ----------
+# 保守阈值：宁可「匹配不上、显示占位卡」，也不要给某部片子挂上别的海报。
+MATCH_MIN_SCORE = 0.55
+# 搜索轮次与回退页数（search/multi 命中差时再单独搜 movie / tv）
+MATCH_MAX_ROUNDS = 2
+MATCH_FALLBACK_PAGES = 2
+
+
+def _norm_name(s):
+    return _NON_TITLE_PAT.sub("", str(s or "").lower())
+
+
+def _similarity(a, b):
+    """核心名相似度（0~1）：完全相等 1.0，包含关系 0.9，其余按字符重合度。"""
+    if not a or not b:
+        return 0.0
+    if a == b:
+        return 1.0
+    if a in b or b in a:
+        return 0.9
+    sa, sb = set(a), set(b)
+    return len(sa & sb) / float(len(sa | sb))
+
+
+def _score_candidate(hints, item, media_type):
+    """给一个 TMDB 候选打分；低于阈值的直接判为「不是同一部」。
+
+    闸门是核心标题相关性：核心名完全对不上时，即使年份一致也不给分，
+    否则「同名年份」会把不相干的作品凑成一对。
+    """
+    core = hints.get("core") or _norm_name(hints.get("title"))
+    if not core:
+        return 0.0
+    cand_titles = [item.get("title") or "", item.get("original_title") or ""]
+    best = 0.0
+    for ct in cand_titles:
+        nc = _norm_name(ct)
+        if not nc:
+            continue
+        best = max(best, _similarity(core, nc))
+    if best < 0.5:
+        return 0.0
+    score = best
+    if best == 1.0:
+        score = 0.9
+    year = hints.get("year") or 0
+    cy = item.get("year") or 0
+    if year and cy:
+        if year == cy:
+            score += 0.15
+        else:
+            score -= 0.35          # 年份冲突：很可能是同名不同作
+    if media_type in ("movie", "tv") and item.get("_media_type") and item["_media_type"] != media_type:
+        score -= 0.1
+    return max(0.0, min(score, 1.0))
+
+
+def _extract_candidates(data, default_media_type=None):
+    """把 TMDB 搜索响应转成候选列表（补上 media_type / year）。
+
+    `/search/movie`、`/search/tv` 的返回条目**不带** `media_type` 字段，
+    必须由调用方按 endpoint 补（`default_media_type`），否则会被当成人物结果丢掉。
+    """
+    out = []
+    for item in (data or {}).get("results", []) or []:
+        mt = item.get("media_type") or default_media_type
+        if mt not in ("movie", "tv"):
+            continue
+        parsed = _parse_item(item, mt)
+        parsed["_media_type"] = mt
+        if not parsed.get("year"):
+            rd = item.get("release_date") or item.get("first_air_date") or ""
+            try:
+                parsed["year"] = int(rd[:4])
+            except (ValueError, TypeError):
+                parsed["year"] = 0
+        out.append(parsed)
+    return out
+
+
+def _search_tmdb_raw(endpoint, params):
+    """发起一次 TMDB 搜索；网络/配置异常返回 None（区别于「搜到了但没结果」）。"""
+    api_key = _get_api_key()
+    if not api_key:
+        return None
+    q = dict(params)
+    q["api_key"] = api_key
+    q["language"] = _LANG
+    q["include_adult"] = "false"
+    try:
+        return _tmdb_request_with_failover(endpoint, q)
+    except Exception as e:
+        log("TMDB 匹配搜索失败 {}: {}".format(endpoint, e))
+        return None
+
+
+def match_tmdb_by_name(name, media_type=""):
+    """文件名 → 最佳 TMDB 作品（媒体库图文卡片用）；无法匹配时返回 None。
+
+    返回字段与 _parse_item 一致（title/poster/rating/year/votes/media_type...），
+    额外带 score / matched_by 便于排查「为什么挂了这张海报」。
+    """
+    hints = filename_hints(name)
+    query = hints["title"] or hints["raw"]
+    if not query:
+        return None
+    cache_key = "match:{}:{}:{}".format(_norm_name(hints["raw"]), hints["year"], media_type)
+    now = time.time()
+    with _tmdb_lock:
+        if cache_key in _tmdb_cache:
+            ct, cd = _tmdb_cache[cache_key]
+            if now - ct < _TMDB_TTL:
+                return cd
+
+    import urllib.parse
+    quoted = urllib.parse.quote(query)
+    candidates = []
+    unreachable = False
+
+    # 第 1 轮：multi（含年份时先带年份，再看不带年份的结果）
+    rounds = [{"query": quoted, "page": "1"}, {"query": quoted, "page": "2"}][:MATCH_MAX_ROUNDS]
+    if hints["year"]:
+        rounds.insert(0, {"query": quoted, "year": str(hints["year"]), "page": "1"})
+    for params in rounds:
+        data = _search_tmdb_raw("/search/multi", params)
+        if data is None:
+            unreachable = True
+            break
+        candidates.extend(_extract_candidates(data))
+
+    # 第 2 轮：multi 未命中时，按具体类型再搜（部分作品只在 movie/tv 命名空间可检索）
+    if not candidates and not unreachable:
+        for mt in (("movie", "tv") if not media_type else (media_type,)):
+            for page in range(1, MATCH_FALLBACK_PAGES + 1):
+                data = _search_tmdb_raw("/search/{}".format(mt),
+                                        {"query": quoted, "page": str(page)})
+                if data is None:
+                    unreachable = True
+                    break
+                candidates.extend(_extract_candidates(data, default_media_type=mt))
+            if unreachable or candidates:
+                break
+
+    if unreachable and not candidates:
+        return None      # 不写缓存：网络恢复后重试应能拿到结果
+
+    best, best_score = None, 0.0
+    for c in candidates:
+        s = _score_candidate(hints, c, media_type)
+        if s > best_score:
+            best, best_score = c, s
+    if best is not None and best_score < MATCH_MIN_SCORE:
+        best = None
+
+    result = None
+    if best is not None:
+        result = dict(best)
+        result["score"] = round(best_score, 3)
+        result["matched_by"] = hints["title"]
+        result["query"] = query
+        result.pop("_media_type", None)
+
+    with _tmdb_lock:
+        _tmdb_cache[cache_key] = (now, result)
+        _prune_cache()
+    return result
 
 
 # 原始语言选项（对应 TMDB with_original_language，ISO 639-1）

@@ -463,6 +463,7 @@
           <div class="card-title" style="justify-content:space-between">
             <span>网盘文件 <span id="libCount" style="color:var(--text3);font-weight:400"></span></span>
             <span>
+              <button class="btn btn-sm btn-outline" id="libViewBtn" onclick="toggleLibView()" aria-label="切换为列表视图">列表视图</button>
               <button class="btn btn-sm btn-outline" id="libUpBtn" onclick="libGoUp()" disabled>上一级</button>
               <button class="btn btn-sm btn-outline" onclick="refreshLibrary()">刷新</button>
             </span>
@@ -470,6 +471,7 @@
           <!-- 面包屑 -->
           <div id="libBreadcrumb" class="lib-crumb"></div>
           <div id="libList"><div class="empty-state" style="padding:24px 20px"><div class="empty-title">加载中...</div></div></div>
+          <div style="color:var(--text3);font-size:12px;margin-top:6px">文件名会自动匹配 TMDB 作品并展示海报与评分；匹配不到的文件显示占位卡，不影响浏览与删除。</div>
           <!-- 批量删除操作条 -->
           <div id="libActionBar" class="lib-actionbar" style="display:none">
             <label class="toggle" title="删除网盘文件的同时，清理 DBAuto 中对应的转存历史"><input type="checkbox" id="syncHistoryChk" checked><span class="slider"></span></label>

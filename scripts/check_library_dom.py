@@ -39,6 +39,12 @@ PORT = 8126
 URL = "http://127.0.0.1:{}/index_new.html".format(PORT)
 
 # ---------------------------------------------------------------- 桩数据
+# 覆盖范围（issue #27 图文卡片改造）：
+#   - 图文视图：TMDB 风格海报卡，文件夹卡 / 占位卡 / 匹配到的海报卡都要能渲染；
+#   - 列表视图：保留原表格，桌面列数 / 行高断言不能因为改造被丢掉；
+#   - 两阶段渲染：目录数据一到就出卡片（首屏不依赖 TMDB 响应），
+#     TMDB 接口卡住/不可用时媒体库仍可用（只显示占位卡）。
+#
 # 与 app_modules/routes_library.py 契约一致：
 #   GET /api/qas/tasks          -> {success, tasks:[{taskname,savepath,shareurl}]}
 #   GET /api/qas/library?path=  -> {success, path, entries:[{fid,name,dir,size,updated_at}]}
@@ -65,6 +71,21 @@ def _entries(path):
          "size": 2 * 1024 ** 3, "updated_at": 1758000300},
     ]
 
+
+# TMDB 匹配桩（issue #27 图文卡片）：按文件名返回海报/评分。
+# 约定「匹配不上」时返回 None —— 卡片必须退化为占位卡，而不是破图或空白。
+_TMDB_MATCH = {
+    "示例作品标题-01.2024.2160p.mkv": {
+        "id": 101, "title": "示例作品标题-01", "year": 2024, "rating": 8.6, "votes": 1200,
+        "poster": "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+        "media_type": "movie", "score": 0.99, "matched_by": "示例作品标题-01",
+    },
+    "示例作品标题-03.mkv": {
+        "id": 103, "title": "示例作品标题-03", "year": 2021, "rating": 7.1, "votes": 88,
+        "poster": "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
+        "media_type": "movie", "score": 0.9, "matched_by": "示例作品标题-03",
+    },
+}
 
 STUBS = {
     "/api/categories": {"movie": [], "tv": [], "variety": []},
@@ -93,7 +114,20 @@ MEASURE = r"""
     libCountText: q('#libCount') ? q('#libCount').textContent : '',
     qasCountText: q('#qasTaskCount') ? q('#qasTaskCount').textContent : '',
     libHtmlHead: lib ? lib.innerHTML.slice(0, 400) : '',
-    hasBody: lib && lib.querySelector('.lib-table') ? lib.querySelectorAll('.lib-row').length : 0,
+    hasBody: lib ? (lib.querySelectorAll('.lib-card').length || lib.querySelectorAll('.lib-row').length || 0) : 0,
+    cards: lib ? lib.querySelectorAll('.lib-card').length : 0,
+    posterImgs: lib ? lib.querySelectorAll('.lib-card-poster img.tmdb-poster').length : 0,
+    ratingBadges: lib ? lib.querySelectorAll('.lib-card-poster .tmdb-rating-badge').length : 0,
+    placeholders: lib ? lib.querySelectorAll('.lib-card-ph').length : 0,
+    fileCards: lib ? lib.querySelectorAll('.lib-card-file').length : 0,
+    dirCards: lib ? lib.querySelectorAll('.lib-card-dir').length : 0,
+    cardCardCheckbox: lib ? lib.querySelectorAll('.lib-card-cb input').length : 0,
+    cardDelBtn: lib ? lib.querySelectorAll('.lib-card-ops button').length : 0,
+    viewBtn: q('#libViewBtn') ? q('#libViewBtn').textContent : '',
+    matchRequests: (function(){
+      // 由断言脚本侧统计，这里只回报卡片是否已补齐（占位卡数量下降）
+      return lib ? lib.querySelectorAll('.lib-card-poster[data-matched="1"]').length : 0;
+    })(),
     loadingHint: q('#libList #libLoadingHint') ? q('#libList #libLoadingHint').textContent : '',
     retryBtn: q('#libList button') ? q('#libList button').textContent : '',
     docOverflowX: document.documentElement.scrollWidth - window.innerWidth,
@@ -162,6 +196,13 @@ def _route(route, requests_log, slow_seconds=None):
     elif path == "/api/qas/tasks":
         requests_log.append(time.time())
         body = dict(_QAS_TASKS)
+    elif path == "/api/tmdb/match":
+        import urllib.parse
+        names = urllib.parse.parse_qs(url.split("?", 1)[1], keep_blank_values=True).get("names", [])
+        requests_log.append(time.time())
+        body = {"success": True,
+                "matches": {n: _TMDB_MATCH.get(n) for n in names},
+                "truncated": 0}
     else:
         body = STUBS.get(path, {})
     return route.fulfill(status=200, content_type="application/json",
@@ -232,11 +273,52 @@ def main():
                     fail("文档横向溢出 {}px".format(m["docOverflowX"]))
                 if m["pageOverflowX"] > 0:
                     fail("媒体库页横向溢出 {}px".format(m["pageOverflowX"]))
-                if width >= 760 and m["rowCols"].count("px") < 4:
-                    fail("桌面表格列数异常（grid-template-columns={}）".format(m["rowCols"]))
-                if width >= 760 and m["rowH"] < 32:
-                    fail("表格行高 {}px 过小，内容被压扁".format(m["rowH"]))
+                # 默认是图文视图：必须渲染出卡片、每张卡有勾选框与删除入口
+                if m["cards"] < 3:
+                    fail("图文视图未渲染出卡片（{} 张）".format(m["cards"]))
+                if m["dirCards"] < 1:
+                    fail("目录卡缺失（文件夹未被渲染为可点击卡片）")
+                if m["cardCardCheckbox"] < m["cards"] or m["cardDelBtn"] < m["cards"]:
+                    fail("卡片缺少勾选框或删除入口（cb {} / del {} / 卡片 {}）".format(
+                        m["cardCardCheckbox"], m["cardDelBtn"], m["cards"]))
+                if m["posterImgs"] < 1:
+                    fail("没有一张卡片吃到 TMDB 海报（桩数据里至少 2 个文件名可匹配）")
+                if m["posterImgs"] > m["fileCards"]:
+                    fail("海报图多于文件卡，卡片结构错乱（海报 {} / 文件卡 {}）".format(
+                        m["posterImgs"], m["fileCards"]))
+                if width >= 760 and m["ratingBadges"] < 1:
+                    fail("海报卡缺少评分角标")
+                if width < 760 and m["rowH"] != 0 and m["rowH"] < 32:
+                    fail("列表行高 {}px 过小，内容被压扁".format(m["rowH"]))
                 page.close()
+
+            # --- 2.5 列表视图：切换后仍是原表格栅格，桌面列数/行高断言必须成立 ---
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")
+            page.route("**/*", lambda r: _route(r, []))
+            page.goto(URL, wait_until="load", timeout=20000)
+            page.evaluate("()=>switchTab('library')")
+            page.wait_for_timeout(1200)
+            page.evaluate("()=>toggleLibView()")
+            page.wait_for_timeout(400)
+            lv = page.evaluate(MEASURE)
+            report.append({"label": "列表视图(1440x900)", "libTop": lv["libTop"], "qasTop": lv["qasTop"],
+                           "hasBody": lv["hasBody"], "libCountText": lv["libCountText"]})
+            lv_rows = page.evaluate("()=>document.querySelectorAll('#libList .lib-row:not(.lib-head)').length")
+            if lv_rows < 3:
+                fail_rows = "列表视图未渲染表格行（{} 行）".format(lv_rows)
+                problems.append("[列表视图] " + fail_rows)
+            lv_cols = page.evaluate(
+                "()=>{var r=document.querySelectorAll('#libList .lib-row');return r.length?getComputedStyle(r[r.length-1]).gridTemplateColumns:''}")
+            if lv_cols.count("px") < 4:
+                problems.append("[列表视图] 桌面表格列数异常（grid-template-columns={}）".format(lv_cols))
+            lv_h = page.evaluate(
+                "()=>{var r=document.querySelectorAll('#libList .lib-row');return r.length?Math.round(r[r.length-1].getBoundingClientRect().height):0}")
+            if lv_h < 32:
+                problems.append("[列表视图] 表格行高 {}px 过小，内容被压扁".format(lv_h))
+            if "图文视图" not in lv.get("viewBtn", ""):
+                problems.append("[列表视图] 切换按钮文案未反映当前视图（{!r}）".format(lv.get("viewBtn")))
+            page.close()
 
             # --- 3. 慢接口：必须按时快速失败 + 重试入口 ---
             log2 = []
@@ -290,6 +372,49 @@ def main():
             if not failed_ok:
                 problems.append("[慢接口] 目录接口 60s 不返回时，12s 内仍未快速失败"
                                 "（用户会一直盯着「加载中」）")
+            page.close()
+
+            # --- 3.5 TMDB 匹配不可用：卡片必须退化为占位卡，媒体库仍可用 ---
+            # 场景：TMDB 未配置 key / 接口挂掉（返回 500 或超时）。
+            # 需求来自 issue #27 的「图片来自 TMDB」——若 TMDB 不可用就把媒体库整体变废，
+            # 那用户连删文件都做不到了。因此这里断言「照常出卡片 + 无破图 + 有占位」。
+            log35 = []
+
+            def no_tmdb(route):
+                url = route.request.url
+                if "/api/" not in url:
+                    return route.fallback()
+                path = url.split(str(PORT), 1)[-1].split("?", 1)[0]
+                if path == "/api/tmdb/match":
+                    log35.append(time.time())
+                    return route.fulfill(status=500, content_type="application/json",
+                                         body=b'{"error":"tmdb down"}')
+                return _route(route, log35)
+
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")
+            page.route("**/*", no_tmdb)
+            page.goto(URL, wait_until="load", timeout=20000)
+            page.evaluate("()=>switchTab('library')")
+            page.wait_for_timeout(1800)
+            m35 = page.evaluate(MEASURE)
+            report.append({"label": "TMDB 不可用(1440x900)", "libTop": m35["libTop"],
+                           "qasTop": m35["qasTop"], "hasBody": m35["hasBody"],
+                           "libCountText": m35["libCountText"]})
+            if m35["cards"] < 3:
+                problems.append("[TMDB 不可用] 卡片视图整体消失（{} 张），媒体库变成不可用".format(
+                    m35["cards"]))
+            # 占位卡只针对「文件卡」：目录卡本来就用图标块，不参与 TMDB 匹配
+            if m35["placeholders"] < m35["fileCards"]:
+                problems.append("[TMDB 不可用] 有文件卡未退化为占位卡（占位 {} / 文件卡 {}）".format(
+                    m35["placeholders"], m35["fileCards"]))
+            if m35["posterImgs"] > 0:
+                problems.append("[TMDB 不可用] 仍出现了海报图（{} 张），可能是假成功".format(
+                    m35["posterImgs"]))
+            del_ok = page.evaluate(
+                "()=>document.querySelectorAll('#libList .lib-card-ops button').length>0")
+            if not del_ok:
+                problems.append("[TMDB 不可用] 删除入口丢失，主功能受影响")
             page.close()
 
             # --- 4/5. 缓存复用：进子目录再返回父目录，第二次必须 0 新请求且立即渲染 ---
