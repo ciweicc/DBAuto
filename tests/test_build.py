@@ -14,7 +14,6 @@ import os
 import re
 import shutil
 import subprocess
-import sys
 
 import pytest
 
@@ -1561,144 +1560,98 @@ def test_qas_task_delete_inline_handlers_use_safe_js_arg():
             "内联参数位不得直接拼任务字段，应传 qasKey 后在函数内查表"
 
 
-def test_library_poster_cards_wired(dist):
-    """回归（issue #27）：媒体库网盘文件必须能切成「TMDB 风格图文卡片」。
+def test_library_cards_have_no_images(dist):
+    """回归（issue #27 第三轮反馈）：媒体库卡片不再显示任何封面图。
 
-    用户诉求原文是「媒体库文件夹样式的选中，改成图文并茂，像 TMDB 那样，
-    使用 TMDB 的数据就可以」。这里锁死三件事：
-      1. 前端确实有卡片渲染与「图文 / 列表」切换，且产物已重建；
-      2. 海报来源是后端 /api/tmdb/match（按文件名匹配），不是前端直连 TMDB；
-      3. 匹配不到 / TMDB 不可用时降级为占位卡，不得让媒体库整体不可用。
+    用户反馈原文：「有一些有图，有一些没图，太丑了，干脆直接不要图了」。
+    根因是 TMDB 匹配率天然不可能 100%：命中的卡贴海报、未命中的卡是一大块灰色
+    占位块，同一行两种形态混排。本轮把缩略图整块去掉。
+
+    本用例从**四个方向**钉死「不再有图」，避免任何一处回潮：
+      1. 前端代码里不再有 `<img>` / 海报挂载点 / 匹配请求；
+      2. 样式里不再有缩略块、占位块、评分角标；
+      3. 视图切换文案不再是「图文视图」（已经没有图了）；
+      4. 产物已重建。
     """
+    src = _read(os.path.join(_JS_DIR, "library.js"))
+
+    # 1. 前端：卡片不再有图片与海报补丁链路
+    for gone in ("function _libApplyPoster(", "function libPosterBroken(",
+                 "function _libPlaceholderHtml(", "function _libMatchWorker(",
+                 "function _libPatchPosters(", "function _libFileNames("):
+        assert gone not in src, "残留海报逻辑 {}（媒体库已不显示图）".format(gone)
+    # 「不再调用」按可执行代码判定（注释里说明历史是允许的）
+    code = "\n".join(l for l in src.splitlines() if not l.lstrip().startswith("//"))
+    assert "/api/tmdb/match" not in code, "前端不应再调用 TMDB 匹配接口"
+    assert "libPoster-" not in src, "卡片仍存在海报挂载点"
+    # 卡片里不得出现任何 <img>
+    card_fn = src[src.index("function _libCardShell("):]
+    card_fn = card_fn[:card_fn.index("function _libMetaText(")]
+    assert "<img" not in card_fn, "卡片结构里仍有 <img>"
+    # 保留类型图标（文件夹 / 影片），否则「这是文件还是目录」要靠字形猜
+    assert "lib-card-icon" in card_fn, "卡片结构里没有类型图标位"
+    dir_fn = src[src.index("function _libDirCardHtml("):src.index("function _libFileCardHtml(")]
+    assert "icon-folder" in dir_fn, "文件夹卡未使用文件夹图标"
+    file_fn = src[src.index("function _libFileCardHtml("):src.index("function invalidateLibCache(")]
+    assert "icon-movie" in file_fn, "文件卡未使用影片图标"
+
+    # 2. 样式：缩略块 / 占位块 / 评分角标全部移除
+    css = _read(_CSS_MAIN)
+    for gone in (".lib-card-thumb", ".lib-card-ph", ".lib-dir-badge",
+                 ".lib-card-thumb .tmdb-rating-badge"):
+        assert gone not in css, "残留卡片图片样式 {}（媒体库已不显示图）".format(gone)
+
+    # 3. 视图切换文案：不再叫「图文视图」（注释里说明历史是允许的）
+    assert "图文视图" not in code, "视图切换文案仍写「图文视图」（已经没有图了）"
+    assert "卡片视图" in code, "缺少「卡片视图」文案"
+    btn_fn = src[src.index("function _updateLibViewBtn("):src.index("// 单请求预算")]
+    assert "'列表视图'" in btn_fn and "'卡片视图'" in btn_fn, "视图切换按钮文案未更新"
     body = _read(os.path.join(_SRC, "body.html"))
     section = body[body.index('id="tabLibrary"'):body.index("<!-- ===== 设置 ===== -->")]
-    assert 'id="libViewBtn"' in section, "缺少「图文 / 列表」视图切换入口"
-    assert "toggleLibView()" in section, "视图切换按钮未接线"
+    assert 'id="libViewBtn"' in section and "toggleLibView()" in section, \
+        "「卡片 / 列表」视图切换入口丢失"
+    assert "图文" not in section, "媒体库页仍有「图文」字样"
+    # 说明文案不得再承诺「自动匹配海报」
+    assert "TMDB" not in section[section.index('id="libTip"'):section.index("libActionBar")], \
+        "页面说明仍在承诺 TMDB 海报"
 
-    src = _read(os.path.join(_JS_DIR, "library.js"))
-    for fn in ("function _libCardHtml(", "function _libFileCardHtml(", "function _libDirCardHtml(",
-               "function _libApplyPoster(", "function _libMatchChunked(", "function toggleLibView("):
-        assert fn in src, "缺少 {}".format(fn)
-    assert "/api/tmdb/match" in src, "前端未调用 TMDB 匹配接口"
-    # 默认图文，可切回列表（localStorage 记住偏好）
-    assert "lib_view" in src, "视图偏好未持久化"
-    # 无海报时用 tmdb-no-poster 占位（复用发现区同一套观感），不留破图
-    assert "tmdb-no-poster" in src, "缺少无海报占位"
-    assert "libPosterBroken" in src, "海报加载失败未兜底"
+    # 4. 产物已重建（防「改了源码忘了重建」）
+    assert "function _libCardShell(" in dist, "产物未包含新的卡片结构（需重跑 build.sh）"
+    assert "libPosterBroken" not in dist, "产物仍含旧的海报兜底逻辑（需重跑 build.sh）"
 
-    # 后端接口已注册
+
+def test_library_backend_match_api_kept():
+    """后端文件名 → TMDB 匹配能力保留（前端已不用，但不要顺手删）。
+
+    这一轮只是**界面不再显示图**。匹配实现（`match_tmdb_by_name` / `/api/tmdb/match`）
+    是独立可测的能力，留着以后要用可以直接接回来；本用例防止后人误删。
+    """
     routes = _read(os.path.join(_ROOT, "app_modules", "routes_tmdb.py"))
-    assert "/api/tmdb/match" in routes, "后端未注册 TMDB 匹配路由"
+    assert "/api/tmdb/match" in routes, "后端 TMDB 匹配路由被误删"
     tmdb_src = _read(os.path.join(_ROOT, "app_modules", "tmdb.py"))
-    assert "def match_tmdb_by_name(" in tmdb_src, "tmdb.py 缺少按文件名匹配的实现"
-
-    # 产物已包含新逻辑（防「改了源码忘了重建」）
-    assert "toggleLibView" in dist, "产物未包含视图切换（需重跑 build.sh）"
-    assert "lib-card-poster" in dist, "产物未包含卡片海报样式（需重跑 build.sh）"
-
-
-def test_library_folder_cards_get_tmdb_posters(dist):
-    """回归（issue #27 跟进）：文件夹卡也必须吃 TMDB 海报。
-
-    用户反馈原文：「这个页面不能通过 TMDB 匹配图片文字吗」，附图是媒体库根目录 ——
-    「/影视」下清一色是文件夹，而上一版只给**文件**匹配海报，于是整页都是灰色文件夹图标。
-    网盘目录名（复仇者联盟4 / 繁花 / 三体）本身就是作品名，必须一起参与匹配。
-
-    这里锁死三件事：
-      1. 匹配名单不再把 dir 条目排除；
-      2. 文件夹卡有独立的海报挂载点 `libPoster-<key>`，且「进入目录」的链接不被替换
-         （海报只是链接内的可视块，点哪里都还是进目录）；
-      3. 文件夹命中海报时有「文件夹」角标，避免被误认为可打开的文件卡。
-    """
-    src = _read(os.path.join(_JS_DIR, "library.js"))
-
-    # 1. 匹配名单不得再按 dir 过滤
-    names_fn = src[src.index("function _libFileNames("):]
-    names_fn = names_fn[:names_fn.index("\n}")]
-    assert "it.dir" not in names_fn, "匹配名单仍在排除文件夹（根目录下全是文件夹 → 整页无海报）"
-
-    # 2. 文件夹卡有海报挂载点，且进入目录的链接独立存在
-    dir_fn = src[src.index("function _libDirCardHtml("):]
-    dir_fn = dir_fn[:dir_fn.index("\nfunction ", 10)]
-    assert "libPoster-" in dir_fn, "文件夹卡缺少海报挂载点"
-    assert "lib-card-poster-dir" in dir_fn, "文件夹海报块缺少独立类名"
-    assert "onclick=\"enterDir(" in dir_fn, "文件夹卡丢失「进入目录」的点击入口"
-
-    # 3. 补丁函数不再拒绝文件夹，且角标存在
-    apply_fn = src[src.index("function _libApplyPoster("):]
-    apply_fn = apply_fn[:apply_fn.index("\nfunction ", 10)]
-    assert "if(!it || it.dir) return;" not in apply_fn, "补丁函数仍在拒绝文件夹"
-    assert "lib-dir-badge" in apply_fn, "文件夹海报缺少「文件夹」角标"
-
-    # 4. 海报加载失败时，文件夹回退成文件夹图标（而不是电影图标）
-    broken_fn = src[src.index("function libPosterBroken("):]
-    broken_fn = broken_fn[:broken_fn.index("\nfunction ", 10)]
-    assert "icon-folder" in broken_fn and "icon-movie" in broken_fn, \
-        "海报兜底未按卡片类型区分图标"
-
-    # 5. 产物已重建
-    assert "lib-card-poster-dir" in dist, "产物未包含文件夹海报样式（需重跑 build.sh）"
-    assert "lib-dir-badge" in dist, "产物未包含文件夹角标（需重跑 build.sh）"
-
-
-def test_tmdb_similarity_grades_containment():
-    """回归（issue #27 跟进）：包含关系不能是「一律 0.9」。
-
-    文件夹参与匹配后，目录名常常是作品本名：`复仇者联盟4` 与候选
-    「复仇者联盟4：终局之战」「复仇者联盟」都是包含关系。若同为 0.9，
-    就只能靠返回顺序决胜，很容易把续集挂成前作的海报。
-    """
-    sys.path.insert(0, os.path.join(_ROOT, "app_modules"))
-    from tmdb import _similarity  # noqa: E402
-
-    assert _similarity("abc", "abc") == 1.0
-    assert 0.7 < _similarity("abc", "abcd") < 0.9
-    # 查询是候选的前缀（补了副标题）优于候选是查询的前缀（信息缺失）
-    assert _similarity("复仇者联盟4", "复仇者联盟4终局之战") > _similarity("复仇者联盟4", "复仇者联盟")
-
-
-def test_library_poster_cards_keep_fast_budget():
-    """图文卡片的 TMDB 匹配不得把「快速失败」这条底线打回去。
-
-    踩坑背景（issue #27）：目录请求曾因后端 15s×3 重试 + 前端 2 次重试，
-    最坏等待 32s。海报匹配是**额外**的一层网络调用，如果绕过 libFetch
-    用默认 retries 的 apiGet，等于把这个坑原样搬回来。
-    因此要求：匹配请求也走 libFetch 短预算通道。
-    """
-    src = _read(os.path.join(_JS_DIR, "library.js"))
-    assert "await apiGet(" not in src, "图文卡片的匹配请求也必须走 libFetch"
-    worker = src[src.index("async function _libMatchWorker("):]
-    worker = worker[:worker.index("\nfunction ")] if "\nfunction " in worker else worker
-    assert "libFetch(" in worker, "匹配请求未走 libFetch 短预算通道"
-    # 匹配是「锦上添花」：失败必须静默降级，不能把卡片渲染打断
-    assert "catch(e){ return; }" in worker or "catch(e){return;}" in worker, \
-        "匹配失败必须静默降级为占位卡"
-    # 限流：单目录匹配数量与并发都要有上限，避免一个页面把 TMDB 打满
-    assert "LIB_MATCH_LIMIT" in src and "LIB_MATCH_CONCURRENCY" in src, "匹配缺少限流常量"
+    assert "def match_tmdb_by_name(" in tmdb_src, "tmdb.py 的按文件名匹配实现被误删"
 
 
 def test_library_grid_layout_is_aligned(dist):
-    """回归（issue #27 反馈）：媒体库图文视图的排版必须是「整齐的紧凑网格」。
+    """回归（issue #27 反馈）：媒体库卡片视图必须是「整齐的等高紧凑卡」。
 
-    用户反馈原文：「现在这个媒体库的排版太丑了，实在是很乱」。
-    排查后「乱」有三个可量化来源，本用例把它们钉死：
+    用户两轮反馈：「排版太丑了，实在是很乱」→「有一些有图，有一些没图，干脆不要图了」。
+    可量化的成因与对策，本用例把它们钉死：
 
-      1. 每张卡的缩略块按海报自身比例撑高（有海报 2:3、无海报 16:9、文件夹又一种）
-         → 同一行卡片高矮参差，且无海报时是一大块纯色空框；
-      2. 标题 / 元信息允许折行 → 一个长中文名折三行，继续把卡片撑高；
-      3. 「全选」独占一行 → 卡片底部又多一条空条。
-
-    因此断言：缩略块比例固定、标题/元信息单行省略、全选与面包屑同一行、
-    以及配套的 DOM 走查脚本（scripts/check_library_dom.py）里的整齐度度量。
+      1. 第一版缩略块按海报比例撑高 → 行内高矮参差（已通过整块去掉根治）；
+      2. 卡片是单行 flex（图标 + 名称 + 删除），所有卡天然等高；
+      3. 标题 / 元信息单行省略 → 长中文名不折行、不撑高卡片；
+      4. 「全选」不独占一行 → 卡片底部不留空条。
     """
     css = _read(_CSS_MAIN)
     js = _read(os.path.join(_JS_DIR, "library.js"))
 
-    # 1. 缩略块比例固定（等高），且不再按海报比例撑高
-    thumb = css[css.index(".lib-card-thumb{"):]
-    thumb = thumb[:thumb.index("}")]
-    assert "aspect-ratio" in thumb, "缩略块未钉死比例：卡片高度会随海报比例变化（参差不齐的根源）"
-    assert "border-bottom" in thumb or "border-bottom" in thumb, "缩略块与信息行之间缺少分隔"
+    # 1. 卡片是单行 flex：图标 / 勾选 / 名称 / 删除在同一行，天然等高
+    card = css[css.index(".lib-card{"):]
+    card = card[:card.index("}")]
+    assert "display:flex" in card and "align-items:center" in card, \
+        "卡片不是「单行居中」布局，会出现内部高低不齐"
+    assert "flex-direction:column" not in card, "卡片又变回多行堆叠（旧版参差的根源）"
 
     # 2. 标题 / 元信息单行省略（长中文名不得折行撑高卡片）
     for sel in (".lib-card-title{", ".lib-card-meta{"):
@@ -1707,11 +1660,10 @@ def test_library_grid_layout_is_aligned(dist):
         assert "white-space:nowrap" in block, "{} 未单行省略，长文件名会把卡片撑高".format(sel)
         assert "text-overflow:ellipsis" in block, "{} 缺少省略号".format(sel)
 
-    # 3. 勾选框 / 删除按钮进底部信息行（不再各占一块、把卡片内部掏空）
-    assert ".lib-card-foot{" in css, "缺少卡片底部信息行"
-    assert ".lib-icon-btn{" in css, "删除按钮未收成图标按钮（标题宽度被按钮吃掉）"
-    assert "lib-card-foot" in js, "卡片结构未使用底部信息行"
+    # 3. 删除入口收成图标按钮（标题宽度不被按钮吃掉）
+    assert ".lib-icon-btn{" in css, "删除按钮未收成图标按钮"
     assert "lib-icon-btn" in js, "删除入口未使用图标按钮"
+    assert ".lib-card-icon{" in css, "缺少卡片类型图标样式"
 
     # 4. 全选与面包屑同一行（不再独占一条空条）
     body = _read(os.path.join(_SRC, "body.html"))
@@ -1721,29 +1673,26 @@ def test_library_grid_layout_is_aligned(dist):
     assert ".lib-crumbbar{" in css, "缺少目录控制条样式"
 
     # 5. 产物已重建
-    assert "lib-card-thumb" in dist, "产物未包含新的缩略块样式（需重跑 build.sh）"
     assert "lib-crumbbar" in dist, "产物未包含目录控制条（需重跑 build.sh）"
+    assert "lib-card-icon" in dist, "产物未包含卡片类型图标样式（需重跑 build.sh）"
 
 
 def test_library_grid_layout_audit_is_committed():
-    """回归（issue #27）：「排版乱」必须由落库的走查脚本用渲染后数值守住。
+    """回归（issue #27）：「排版乱 / 有没有图」必须由落库的走查脚本用渲染后数值守住。
 
-    静态扫描只能看出「写了 aspect-ratio」，看不出渲染后同一行卡片到底高矮差多少。
-    本轮实测该脚本能把两种回退抓出来：
-      - 去掉缩略块固定比例 → 缩略块高度不一致（图片比例重新决定卡片高度）；
-      - 标题允许多行 + 比例改成 4:3 → 同一行卡片高度差 49~65px。
+    静态扫描只能看出「写了 flex」，看不出渲染后同一行卡片到底高矮差多少、
+    也看不出页面上是否真的没有再出现图片。本轮实测该脚本能把两种回退抓出来：
+      - 给卡片加回缩略块并让图片决定高度 → 同一行卡片高度差 > 8px；
+      - 标题允许多行 → 同一行卡片高度差同样超标。
     """
     script = os.path.join(_ROOT, "scripts", "check_library_dom.py")
     src = _read(script)
-    assert "thumbSpread" in src, "走查脚本没断言「缩略块等高」"
     assert "rowSpread" in src, "走查脚本没断言「同一行卡片高度一致」"
     assert "titleWrapped" in src and "tMetaWrapped" in src, "走查脚本没断言标题/元信息单行省略"
     assert "selAllSameRow" in src, "走查脚本没断言「全选与面包屑同一行」"
     assert "gridCols" in src and "cardW" in src, "走查脚本没断言网格列数与卡片宽度区间"
-    # 海报桩必须是**不同比例**的真实图片，否则「等高」断言毫无意义
-    assert "_POSTER_PORTRAIT" in src and "_POSTER_LANDSCAPE" in src, \
-        "走查脚本的海报桩必须覆盖竖版/横版两种比例（否则验不出卡片是否被图片比例撑高）"
-    assert "_POSTER_BROKEN" in src, "走查脚本缺少「海报加载失败」的桩"
+    # 关键：必须断言页面上**没有任何图片**（否则「有图/没图混排」还会复发）
+    assert "imgsInList" in src, "走查脚本没断言媒体库列表里不存在图片"
 
 
 # ============================================================
