@@ -31,11 +31,13 @@ class _FakeClient:
         self.update_resp = update_resp or {"success": True, "message": "配置更新成功"}
         self.delete_calls = []
         self.update_calls = []
+        self.detail_path = None
 
     def get_data(self):
         return self.data_resp
 
     def get_savepath_detail(self, path=None, fid=None):
+        self.detail_path = path
         return self.savepath_resp
 
     def delete_file(self, path=None, fid=None):
@@ -448,3 +450,49 @@ def test_route_delete_tasks_returns_502_when_qas_down():
     with patch.object(media_library, "_client", return_value=Boom()):
         assert h._handle_library_post("/api/qas/delete_tasks", {"tasks": [{"taskname": "A"}]}) is True
     assert h.status == 502 and h.sent["success"] is False
+
+
+# ---------- 媒体库根目录（issue #27） ----------
+#
+# 需求：设置里能指定「资源根目录」，媒体库直接以它作为浏览起点，
+# 而不是永远从网盘根 `/` 开始翻找。
+
+def _settings_with_root(root):
+    from config import ConfigManager
+    cfg = ConfigManager.get_instance()
+    return patch.object(cfg, "get_settings", return_value={"savepaths": {"library_root": root}})
+
+
+def test_get_library_root_defaults_when_unset():
+    assert media_library.get_library_root() == "/"
+
+
+def test_get_library_root_reads_setting_and_normalizes():
+    for raw, expect in [("/媒体库/", "/媒体库"), ("/影视", "/影视"), ("/", "/")]:
+        with _settings_with_root(raw):
+            assert media_library.get_library_root() == expect, raw
+
+
+def test_get_library_root_falls_back_on_invalid():
+    for bad in ["", "media", "  ", "/a/../b", None, 123]:
+        with _settings_with_root(bad):
+            assert media_library.get_library_root() == "/", bad
+
+
+def test_route_library_uses_configured_root_when_path_absent():
+    fake = _FakeClient(data_resp={"success": True, "data": {"list": []}})
+    h = _make_handler()  # 无 path 参数
+    with patch.object(media_library, "_client", return_value=fake), \
+         _settings_with_root("/媒体库"):
+        assert h._handle_library_get("/api/qas/library") is True
+    assert h.status == 200
+    assert fake.detail_path == "/媒体库", "未传 path 时应落到配置的媒体库根目录"
+
+
+def test_route_library_explicit_path_wins_over_root():
+    fake = _FakeClient(data_resp={"success": True, "data": {"list": []}})
+    h = _make_handler(params={"path": "/其它"})
+    with patch.object(media_library, "_client", return_value=fake), \
+         _settings_with_root("/媒体库"):
+        assert h._handle_library_get("/api/qas/library") is True
+    assert fake.detail_path == "/其它", "显式 path 必须优先于配置根目录"

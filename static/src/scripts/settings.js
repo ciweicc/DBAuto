@@ -17,6 +17,8 @@ if(s.savepaths){
   document.getElementById('cfg_path_category_base').value=s.savepaths.category_base||'/影视';
   document.getElementById('cfg_path_search').value=s.savepaths.search||'/批量转存/手动搜索存';
   document.getElementById('cfg_path_tmdb').value=s.savepaths.tmdb||'/批量转存/TMDB';
+  var lrEl=document.getElementById('cfg_path_library_root');
+  if(lrEl) lrEl.value=s.savepaths.library_root||'/';
 }
 
   }catch(e){showToast('加载配置失败',false)}
@@ -32,7 +34,7 @@ finally{if(btn)btn.classList.remove('loading')}
 async function saveConfig(silent=false){
 SETTINGS_ALL = null;  // 失效缓存，保存后 SSE 触发的 loadConfig 将拉取最新数据
 // 3.6 前置校验：转存路径必须以 / 开头，输入时即时提示，不通过则阻断保存并聚焦首个错误项
-var pathIds=['cfg_path_category_base','cfg_path_search','cfg_path_tmdb'];
+var pathIds=['cfg_path_category_base','cfg_path_search','cfg_path_tmdb','cfg_path_library_root'];
 var firstBad=null;
 pathIds.forEach(function(id){
   var el=document.getElementById(id);
@@ -58,19 +60,22 @@ var d=await apiPost('/api/config',cfg);
 if(d.success){if(!silent)showToast('设置已保存',true);clearSettingsDirty()}
 else showToast(d.message||'保存失败',false);
 // 保存转存路径设置（豆瓣想看同步已移除，仅保留 savepaths）
+var _lrEl=document.getElementById('cfg_path_library_root');
 var savepaths={category_base:document.getElementById('cfg_path_category_base').value.trim()||'/影视',
              search:document.getElementById('cfg_path_search').value.trim()||'/批量转存/手动搜索存',
-             tmdb:document.getElementById('cfg_path_tmdb').value.trim()||'/批量转存/TMDB'};
+             tmdb:document.getElementById('cfg_path_tmdb').value.trim()||'/批量转存/TMDB',
+             library_root:_lrEl&&_lrEl.value.trim()?(_lrEl.value.trim().replace(/\/+$/,'')||'/'):'/'};
 await apiPost('/api/schedule',{action:'save',savepaths:savepaths});
 APP_PATHS.category_base=savepaths.category_base;
 APP_PATHS.search=savepaths.search;
 APP_PATHS.tmdb=savepaths.tmdb;
+APP_PATHS.library_root=savepaths.library_root;
 }catch(e){showToast('保存失败',false)}
 finally{if(saveBtn)saveBtn.classList.remove('loading')}
 }
 
 // 3.6 前置校验辅助：重新输入时即时清除错误态（本文件在 body 尾部拼接，DOM 已就绪）
-['cfg_path_category_base','cfg_path_search','cfg_path_tmdb'].forEach(function(id){
+['cfg_path_category_base','cfg_path_search','cfg_path_tmdb','cfg_path_library_root'].forEach(function(id){
   var el=document.getElementById(id);
   if(el)el.addEventListener('input',function(){el.classList.remove('input-error');el.title=''});
 });

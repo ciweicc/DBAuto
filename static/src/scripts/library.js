@@ -25,7 +25,19 @@
 //    → 显式 loading 状态 + 时间轴提示（「已用 3.2s，正在等 QAS 响应…」）。
 // 4. 渲染保持增量不变：加载中/错误/空态用静态 HTML 一次性赋值，不走多次重排。
 
-var libPath = '/';
+// 媒体库根目录（issue #27）：把「资源根目录」设置项当作浏览下界。
+// 默认 '/'（网盘根）；用户可在设置里指定 /影视、/媒体库 等，媒体库页即以此为起点。
+function libRoot(){
+  var r = (typeof APP_PATHS !== 'undefined' && APP_PATHS && APP_PATHS.library_root) || '/';
+  r = String(r).trim();
+  if(!r || r.charAt(0) !== '/') return '/';
+  return r.replace(/\/+$/,'') || '/';
+}
+function libAtRoot(path){
+  var p = String(path == null ? '' : path).replace(/\/+$/,'') || '/';
+  return p === libRoot();
+}
+var libPath = libRoot();
 var libEntries = [];
 var libSelected = {};
 var qasTasks = [];
@@ -125,8 +137,33 @@ function loadLibraryPage(){
   // 目录与任务互不依赖：并行发起，先到先渲染（原先串行 await 白等一倍时间）
   libView = libViewMode();
   _updateLibViewBtn();
+  // 首次进入且尚未导航过时，落到设置里的「媒体库根目录」。
+  // （libPath 在脚本加载期就已初始化为当时的 libRoot，此处覆盖为最新配置）
   loadLibrary(libPath);
   loadQasTasks();
+  _syncLibRootFromSettings();
+}
+
+// 配置是异步拉取的：首次进入库页时把起点对齐到最新配置的根目录。
+// 仅当「当前仍在初始起点（尚未导航）」时重定位，避免打断用户已翻进去的目录。
+var _libRootSynced = false;
+async function _syncLibRootFromSettings(){
+  if(_libRootSynced) return;
+  _libRootSynced = true;
+  var initial = libPath;
+  try{
+    // 复用 library.js 的短预算通道（本文件禁用 apiGet，避免叠加长重试等待）
+    var r = await libFetch('/api/settings/all');
+    var all = (r && r.ok && r.data) ? r.data : null;
+    if(all) SETTINGS_ALL = all;
+    var sp = (all && all.schedule && all.schedule.savepaths) || {};
+    if(!sp.library_root) return;
+    APP_PATHS.library_root = sp.library_root;
+    var root = libRoot();
+    if(root !== initial && libPath === initial){
+      loadLibrary(root, {force:true});   // 用户没动过，直接对齐到配置根目录
+    }
+  }catch(e){}
 }
 
 // ---------- 短预算请求（见文件头「加载慢的根因」） ----------
@@ -288,11 +325,11 @@ function toggleQasSelectAll(on){
 //  2. 后端是**整表写回**（QAS /update 为整表替换语义），失败时后端不做任何改动。
 async function doDeleteQasTasks(items, label){
   if(!items || !items.length) return;
-  try{
-    await showConfirm('删除 QAS 任务', '将从夸克自动转存中移除 ' + label + '。\n' +
-      '只删除任务配置（分享链接/保存路径/匹配规则），网盘里已转存的文件不受影响。',
-      '删除', '取消');
-  }catch(e){ return; }
+  // 同 doDelete：确认框返回 false 时绝不能继续（issue #27）
+  var confirmed = await confirmThen('删除 QAS 任务', '将从夸克自动转存中移除 ' + label + '。\n' +
+    '只删除任务配置（分享链接/保存路径/匹配规则），网盘里已转存的文件不受影响。',
+    '删除', '取消');
+  if(!confirmed) return;
 
   var btn = document.getElementById('qasDelBtn');
   if(btn) btn.classList.add('loading');
@@ -433,7 +470,7 @@ function _renderLibrary(path, entries, fromCache, ms){
   });
   renderBreadcrumb(libPath);
   var upBtn = document.getElementById('libUpBtn');
-  if(upBtn) upBtn.disabled = (libPath === '/' || libPath === '');
+  if(upBtn) upBtn.disabled = libAtRoot(libPath);
   var cnt = document.getElementById('libCount');
   if(cnt){
     var parts = [];
@@ -650,12 +687,24 @@ function refreshLibrary(){
 function renderBreadcrumb(path){
   var el = document.getElementById('libBreadcrumb');
   if(!el) return;
-  var parts = String(path || '/').split('/').filter(Boolean);
-  var html = '<a href="javascript:void(0)" onclick="loadLibrary(\'/\')">根目录</a>';
-  var acc = '';
-  parts.forEach(function(p){
-    acc += '/' + p;
-    html += ' <span class="lib-sep">/</span> <a href="javascript:void(0)" onclick="loadLibrary(' + jsArg(acc) + ')">' + esc(p) + '</a>';
+  var root = libRoot();
+  var p = String(path || '/');
+  // 相对根目录的片段：根目录自身不显示前缀段
+  var rel = p;
+  if(root !== '/' && (p === root || p.indexOf(root + '/') === 0)){
+    rel = p.slice(root.length);
+  }else if(root === '/'){
+    rel = p;
+  }else{
+    rel = p;   // 越界路径（理论上被 libGoUp/libEnterDir 拦下）仍按原文显示
+  }
+  var parts = rel.split('/').filter(Boolean);
+  var rootLabel = root === '/' ? '根目录' : esc(root);
+  var html = '<a href="javascript:void(0)" onclick="loadLibrary(' + jsArg(root) + ')">' + rootLabel + '</a>';
+  var acc = root === '/' ? '' : root;
+  parts.forEach(function(seg){
+    acc += '/' + seg;
+    html += ' <span class="lib-sep">/</span> <a href="javascript:void(0)" onclick="loadLibrary(' + jsArg(acc) + ')">' + esc(seg) + '</a>';
   });
   el.innerHTML = html;
 }
@@ -666,10 +715,15 @@ function enterDir(name){
 }
 
 function libGoUp(){
-  if(libPath === '/' || !libPath) return;
+  if(libAtRoot(libPath)) return;   // 媒体库根目录即下界，不允许再往上（issue #27）
   var parts = libPath.split('/').filter(Boolean);
   parts.pop();
-  loadLibrary('/' + parts.join('/'));
+  var next = '/' + parts.join('/');
+  if(next === '') next = '/';
+  // 若上级已越过配置根目录，则停在根目录
+  var root = libRoot();
+  if(root !== '/' && next !== root && next.indexOf(root + '/') !== 0) next = root;
+  loadLibrary(next);
 }
 
 function findEntry(key){
@@ -735,9 +789,9 @@ async function doDelete(entries, label){
   var sync = document.getElementById('syncHistoryChk');
   var syncHistory = !sync || sync.checked;
   var extra = syncHistory ? '\n同时会清理 DBAuto 中对应的转存历史（匹配不到则跳过）。' : '';
-  try{
-    await showConfirm('确认删除', '将从夸克网盘删除 ' + label + '。' + extra, '删除', '取消');
-  }catch(e){ return; }
+  // 必须检查返回值：取消/遮罩/ESC 都是 false，此时不能删除（issue #27 严重问题）
+  var confirmed = await confirmThen('确认删除', '将从夸克网盘删除 ' + label + '。' + extra, '删除', '取消');
+  if(!confirmed) return;
 
   var btn = document.getElementById('libDelBtn');
   if(btn) btn.classList.add('loading');

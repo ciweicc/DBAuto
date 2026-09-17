@@ -22,8 +22,29 @@ from config import ConfigManager
 from storage import delete_history_item
 from utils import log
 
-# 网盘目录浏览默认路径（与设置里的 savepath 无关，仅作入口）
+# 网盘目录浏览默认路径（设置里未配置「媒体库根目录」时的兜底入口）
 DEFAULT_LIBRARY_ROOT = "/"
+
+
+def get_library_root():
+    """读取设置里的「媒体库根目录」（savepaths.library_root）。
+
+    返回规范化后的绝对路径：以 `/` 开头、去掉结尾多余的 `/`（根目录除外）。
+    任何读取异常/非法值都回落到 DEFAULT_LIBRARY_ROOT，保证浏览入口永远可用。
+    """
+    try:
+        settings = ConfigManager.get_instance().get_settings()
+    except Exception:
+        return DEFAULT_LIBRARY_ROOT
+    raw = (settings or {}).get("savepaths", {}).get("library_root", DEFAULT_LIBRARY_ROOT)
+    if not isinstance(raw, str):
+        return DEFAULT_LIBRARY_ROOT
+    root = raw.strip()
+    if not root or not root.startswith("/") or ".." in root:
+        return DEFAULT_LIBRARY_ROOT
+    if len(root) > 1:
+        root = root.rstrip("/") or DEFAULT_LIBRARY_ROOT
+    return root
 
 # 单次删除的条目上限，防止误操作/脚本化批量删库
 MAX_DELETE_BATCH = 50

@@ -7,6 +7,7 @@ async function loadSchedule(){
       APP_PATHS.category_base = d.savepaths.category_base||'/影视';
       APP_PATHS.search = d.savepaths.search||'/批量转存/手动搜索存';
       APP_PATHS.tmdb = d.savepaths.tmdb||'/批量转存/TMDB';
+      APP_PATHS.library_root = d.savepaths.library_root||'/';
     }
     if(d.transfer){
       document.getElementById('schedTOn').checked = !!d.transfer.enabled;

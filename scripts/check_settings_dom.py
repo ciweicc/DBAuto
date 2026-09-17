@@ -56,6 +56,7 @@ STUBS = {
                 "category_base": "/影视",
                 "search": "/批量转存/手动搜索存",
                 "tmdb": "/批量转存/TMDB",
+                "library_root": "/影视",
             },
         },
     },

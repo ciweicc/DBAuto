@@ -195,7 +195,7 @@ class ConfigRouteMixin:
 
                         # 转存路径配置
                         if section == "savepaths":
-                            for pk in ("category_base", "search", "tmdb"):
+                            for pk in ("category_base", "search", "tmdb", "library_root"):
                                 if pk in section_data:
                                     ok, msg = validate_string(section_data[pk], min_len=1, max_len=500)
                                     if not ok:

@@ -235,7 +235,7 @@ async function exportHistory(){
 }
 async function clearExecHistory(){
   // 3.3 撤销交互：确认后清空，toast 提供「撤销」（5s 内有效，走后端快照恢复）
-  var ok=await showConfirm('清空执行历史','确定要清空所有执行历史吗？清空后 5 秒内可撤销。','清空','取消');
+  var ok=await confirmThen('清空执行历史','确定要清空所有执行历史吗？清空后 5 秒内可撤销。','清空','取消');
   if(!ok)return;
   try{
     var d=await apiPost('/api/exec_history/manage',{action:'clear'});

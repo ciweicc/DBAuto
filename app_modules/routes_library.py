@@ -5,7 +5,7 @@
 #   GET  /api/qas/library?path=/   —— 夸克网盘目录浏览（媒体库）
 #   POST /api/qas/delete           —— 删除网盘条目 + 可选同步清理 DBAuto 历史
 #   POST /api/qas/delete_tasks     —— 删除 QAS 条目任务配置（整表写回）
-from media_library import list_tasks, list_library, delete_entries, delete_tasks
+from media_library import list_tasks, list_library, delete_entries, delete_tasks, get_library_root
 from validator import validate_string, validate_list
 
 
@@ -20,7 +20,12 @@ class LibraryRouteMixin:
 
         if route == "/api/qas/library":
             params = self._get_query_params()
-            path = params.get("path", "/").strip() or "/"
+            # 未显式指定 path 时，落到设置里的「媒体库根目录」，
+            # 这样媒体库页打开就在用户指定的路径，而非网盘根（issue #27）。
+            raw_path = params.get("path")
+            if raw_path is None or not str(raw_path).strip():
+                raw_path = get_library_root()
+            path = str(raw_path).strip() or "/"
             ok, msg = validate_string(path, min_len=1, max_len=500, allow_empty=False)
             if not ok:
                 self._send_json({"error": "path: {}".format(msg)}, 400)

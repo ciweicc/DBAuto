@@ -75,7 +75,11 @@ DEFAULT_SETTINGS = {
                       "directories": [], "auto_fix": False},
     "savepaths": {"category_base": "/影视",
                   "search": "/批量转存/手动搜索存",
-                  "tmdb": "/批量转存/TMDB"},
+                  "tmdb": "/批量转存/TMDB",
+                  # 媒体库根目录（issue #27）：网盘里当作「媒体库」的那个目录。
+                  # 默认 `/`（网盘根），可指定为 /影视、/媒体库 等任意绝对路径，
+                  # 让媒体库页直接落在真实媒体目录，而不是在网盘根里翻找。
+                  "library_root": "/"},
 }
 
 CATEGORIES = {
