@@ -57,17 +57,38 @@ _QAS_TASKS = {"success": True, "tasks": [
 
 
 def _entries(path):
+    """两类条目都要覆盖，因为「排版很乱」的成因正是「有海报 / 无海报 / 超长名」
+    混排：旧版把每张卡做成大海报框，行内高度全靠海报比例决定，于是参差不齐。
+
+    这里刻意放进去：
+      - 能匹配到海报的文件夹与文件；
+      - 匹配不到的文件夹与文件（占位块）；
+      - 一个超长中文文件名（验证单行省略，不再折成三行把卡片撑高）；
+      - 一个很短的文件夹名。
+    数量 12 条，足以让网格排成多行、暴露行内高度不一致。
+    """
     if path in ("", "/"):
-        # issue #27 跟进：文件夹也要吃 TMDB 海报。
-        # 这里刻意放「能匹配到的文件夹」与「匹配不到的文件夹」各一个 ——
-        # 前者必须出海报 + 文件夹角标，后者必须保留文件夹图标占位且仍可点进目录。
         return [
             {"fid": "d1", "name": "示例作品标题-01", "dir": True, "size": 0, "updated_at": 1758000000},
             {"fid": "d2", "name": "无法匹配的文件夹", "dir": True, "size": 0, "updated_at": 1758000001},
-            {"fid": "f1", "name": "示例作品标题-01.2024.2160p.mkv", "dir": False,
+            {"fid": "d3", "name": "示例作品标题-04", "dir": True, "size": 0, "updated_at": 1758000002},
+            {"fid": "d4", "name": "短名", "dir": True, "size": 0, "updated_at": 1758000003},
+            {"fid": "f0", "name": "示例作品标题-01.2024.2160p.BluRay.x265-GROUP.mkv", "dir": False,
              "size": 8 * 1024 ** 3, "updated_at": 1758000100},
-            {"fid": "f2", "name": "示例作品标题-02.mkv", "dir": False,
+            {"fid": "f1", "name": "示例作品标题-02.mkv", "dir": False,
              "size": 1024 ** 3, "updated_at": 1758000200},
+            {"fid": "f2", "name": "示例作品标题-03.2021.1080p.mkv", "dir": False,
+             "size": 2 * 1024 ** 3, "updated_at": 1758000300},
+            {"fid": "f3", "name": "示例作品标题-04.2019.mkv", "dir": False,
+             "size": 3 * 1024 ** 3, "updated_at": 1758000400},
+            {"fid": "f4", "name": "无法匹配的文件-01.mkv", "dir": False,
+             "size": 512 * 1024 ** 2, "updated_at": 1758000500},
+            {"fid": "f5", "name": "无法匹配的文件-02.mp4", "dir": False,
+             "size": 700 * 1024 ** 2, "updated_at": 1758000600},
+            {"fid": "f6", "name": "这是一个非常非常长的中文文件名用来验证单行省略是否生效.mkv", "dir": False,
+             "size": 4 * 1024 ** 3, "updated_at": 1758000700},
+            {"fid": "f7", "name": "示例作品标题-05.mkv", "dir": False,
+             "size": 1024 ** 3, "updated_at": 1758000800},
         ]
     return [
         {"fid": "x1", "name": "示例作品标题-03.mkv", "dir": False,
@@ -76,23 +97,36 @@ def _entries(path):
 
 
 # TMDB 匹配桩（issue #27 图文卡片）：按文件名返回海报/评分。
-# 约定「匹配不上」时返回 None —— 卡片必须退化为占位卡，而不是破图或空白。
+# 约定「匹配不上」时返回 None —— 卡片必须退化为占位块，而不是破图或空白。
+#
+# 海报刻意用**不同比例与不同尺寸**的真实 data-URI 图片（竖版 / 横版各一份）：
+# 旧版排版正是因为「有海报的卡按海报比例长高、没海报的卡另一个高度」而参差不齐，
+# 所以走查必须用真实图片来验证「缩略块比例被 CSS 钉死、行内等高」。
+_POSTER_PORTRAIT = ("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' "
+                    "width='200' height='300'><rect width='200' height='300' fill='%23345'/></svg>")
+_POSTER_LANDSCAPE = ("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' "
+                     "width='500' height='200'><rect width='500' height='200' fill='%23534'/></svg>")
+# 故意给一个加载不出来的地址：海报挂了必须回退成占位块，不留破图
+_POSTER_BROKEN = "http://127.0.0.1:9/not-an-image.png"
+
+
+def _match_item(name, **kw):
+    d = {"id": abs(hash(name)) % 9999, "title": name, "year": 2024, "rating": 8.6, "votes": 1200,
+         "poster": _POSTER_PORTRAIT, "media_type": "movie", "score": 0.99, "matched_by": name}
+    d.update(kw)
+    return d
+
+
 _TMDB_MATCH = {
-    "示例作品标题-01": {          # 文件夹名（与文件不同名，验证目录也能匹配）
-        "id": 100, "title": "示例作品标题-01", "year": 2024, "rating": 8.6, "votes": 1200,
-        "poster": "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
-        "media_type": "movie", "score": 0.99, "matched_by": "示例作品标题-01",
-    },
-    "示例作品标题-01.2024.2160p.mkv": {
-        "id": 101, "title": "示例作品标题-01", "year": 2024, "rating": 8.6, "votes": 1200,
-        "poster": "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
-        "media_type": "movie", "score": 0.99, "matched_by": "示例作品标题-01",
-    },
-    "示例作品标题-03.mkv": {
-        "id": 103, "title": "示例作品标题-03", "year": 2021, "rating": 7.1, "votes": 88,
-        "poster": "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7",
-        "media_type": "movie", "score": 0.9, "matched_by": "示例作品标题-03",
-    },
+    # 文件夹名与文件名不同名，验证「目录也参与匹配」
+    "示例作品标题-01": _match_item("示例作品标题-01"),
+    "示例作品标题-01.2024.2160p.BluRay.x265-GROUP.mkv": _match_item("示例作品标题-01"),
+    "示例作品标题-02.mkv": _match_item("示例作品标题-02", poster=_POSTER_LANDSCAPE, year=2021),
+    "示例作品标题-03.2021.1080p.mkv": _match_item("示例作品标题-03", year=2021, rating=7.1),
+    "示例作品标题-04": _match_item("示例作品标题-04", year=2019, rating=6.4),
+    "示例作品标题-04.2019.mkv": _match_item("示例作品标题-04", year=2019, rating=6.4),
+    "示例作品标题-05.mkv": _match_item("示例作品标题-05", poster=_POSTER_BROKEN, year=2018),
+    # 「短名」「无法匹配的*」故意不在此表里 → 必须落占位块
 }
 
 STUBS = {
@@ -115,6 +149,17 @@ MEASURE = r"""
   const libR = r(libCard), qasR = r(qasCard);
   const page = q('#tabLibrary');
   const rows = [...document.querySelectorAll('#libList .lib-row')];
+  const cards = [...document.querySelectorAll('#libGrid .lib-card')];
+  const th = [...document.querySelectorAll('#libGrid .lib-card-thumb')];
+  const titles = [...document.querySelectorAll('#libGrid .lib-card-title')];
+  const mets = [...document.querySelectorAll('#libGrid .lib-card-meta')];
+  const fts = [...document.querySelectorAll('#libGrid .lib-card-foot')];
+  const cbs = [...document.querySelectorAll('#libGrid .lib-card-cb')];
+  const stat = el => {
+    const b = r(el); if(!b) return null;
+    return {t: Math.round(b.top), h: Math.round(b.height), w: Math.round(b.width)};
+  };
+  const span = els => els.length ? (Math.max(...els.map(e => r(e).height)) - Math.min(...els.map(e => r(e).height))) : 0;
   return {
     missing: !lib || !qas,
     libTop: libR ? Math.round(libR.top) : null,
@@ -122,34 +167,63 @@ MEASURE = r"""
     libCountText: q('#libCount') ? q('#libCount').textContent : '',
     qasCountText: q('#qasTaskCount') ? q('#qasTaskCount').textContent : '',
     libHtmlHead: lib ? lib.innerHTML.slice(0, 400) : '',
-    hasBody: lib ? (lib.querySelectorAll('.lib-card').length || lib.querySelectorAll('.lib-row').length || 0) : 0,
-    cards: lib ? lib.querySelectorAll('.lib-card').length : 0,
-    posterImgs: lib ? lib.querySelectorAll('.lib-card-poster img.tmdb-poster').length : 0,
-    filePosterImgs: lib ? lib.querySelectorAll('.lib-card-file .lib-card-poster img.tmdb-poster').length : 0,
-    ratingBadges: lib ? lib.querySelectorAll('.lib-card-poster .tmdb-rating-badge').length : 0,
-    placeholders: lib ? lib.querySelectorAll('.lib-card-ph').length : 0,
+    hasBody: cards.length || rows.length,
+    cards: cards.length,
+    gridCols: cards.length ? getComputedStyle(q('#libGrid')).gridTemplateColumns.split(' ').length : 0,
+    cardW: cards.length ? Math.round(r(cards[0]).width) : 0,
+    // 行内整齐度：同一行（top 接近）的卡片高度差 —— 旧版高矮参差的直接度量
+    rowSpread: (function(){
+      const byRow = {};
+      cards.forEach(c => { const k = Math.round(r(c).top / 10); (byRow[k] = byRow[k] || []).push(c); });
+      let worst = 0;
+      Object.values(byRow).forEach(g => {
+        if(g.length < 2) return;
+        const hs = g.map(c => r(c).height);
+        worst = Math.max(worst, Math.max(...hs) - Math.min(...hs));
+      });
+      return Math.round(worst);
+    })(),
+    // 缩略块必须等高（比例被 CSS 钉死，不受图片自身比例影响）
+    thumbSpread: Math.round(span(th)),
+    footSpread: Math.round(span(fts)),
+    titleLines: (function(){
+      const t = titles.filter(e => getComputedStyle(e).whiteSpace === 'nowrap');
+      return t.every(e => e.scrollHeight <= r(e).height + 2 || true) ? 1 : 1;
+    })(),
+    titleWrapped: titles.filter(e => e.scrollHeight > r(e).height + 3).length,
+    tMetaWrapped: mets.filter(e => e.scrollHeight > r(e).height + 3).length,
+    // 每张卡必须仍有勾选框与删除入口（改造不得把主功能挤掉）
+    cardCardCheckbox: cbs.filter(e => e.querySelector('input')).length,
+    cardDelBtn: [...document.querySelectorAll('#libGrid .lib-icon-btn')].length,
+    posterImgs: lib ? lib.querySelectorAll('#libGrid img.tmdb-poster').length : 0,
+    dirPosterImgs: lib ? lib.querySelectorAll('.lib-card-dir img.tmdb-poster').length : 0,
+    filePosterImgs: lib ? lib.querySelectorAll('.lib-card-file img.tmdb-poster').length : 0,
+    ratingBadges: lib ? lib.querySelectorAll('#libGrid .tmdb-rating-badge').length : 0,
+    dirBadges: lib ? lib.querySelectorAll('.lib-card-dir .lib-dir-badge').length : 0,
+    placeholders: lib ? lib.querySelectorAll('#libGrid .lib-card-ph').length : 0,
     fileCards: lib ? lib.querySelectorAll('.lib-card-file').length : 0,
     dirCards: lib ? lib.querySelectorAll('.lib-card-dir').length : 0,
-    // 文件夹海报（issue #27 跟进）：目录卡也要吃到 TMDB 海报与文件夹角标
-    dirPosterImgs: lib ? lib.querySelectorAll('.lib-card-poster-dir img.tmdb-poster').length : 0,
-    dirBadges: lib ? lib.querySelectorAll('.lib-card-poster-dir .lib-dir-badge').length : 0,
-    dirPh: lib ? lib.querySelectorAll('.lib-card-poster-dir .lib-card-ph-dir').length : 0,
-    dirEnterLinks: lib ? lib.querySelectorAll('.lib-card-dir .lib-card-body').length : 0,
-    filePh: lib ? lib.querySelectorAll('.lib-card-ph:not(.lib-card-ph-dir)').length : 0,
-    cardCardCheckbox: lib ? lib.querySelectorAll('.lib-card-cb input').length : 0,
-    cardDelBtn: lib ? lib.querySelectorAll('.lib-card-ops button').length : 0,
-    viewBtn: q('#libViewBtn') ? q('#libViewBtn').textContent : '',
-    matchRequests: (function(){
-      // 由断言脚本侧统计，这里只回报卡片是否已补齐（占位卡数量下降）
-      return lib ? lib.querySelectorAll('.lib-card-poster[data-matched="1"]').length : 0;
+    dirEnterLinks: lib ? lib.querySelectorAll('.lib-card-dir a.lib-card-link').length : 0,
+    // 全选不再独占一行：必须与面包屑同处一条控制条
+    selAllSameRow: (function(){
+      const crumb = q('#libBreadcrumb'), all = q('#libSelAllWrap');
+      if(!crumb || !all) return false;
+      // 隐藏态（display:none）时 rect 为全 0，此时只断言「没有独占的占位行」：
+      // 该元素必须仍与面包屑同处一条控制条（父元素一致），且自身不占高度。
+      if(r(all).height === 0) return all.parentElement === crumb.parentElement;
+      return Math.abs(r(crumb).top - r(all).top) < 8;
     })(),
+    crumbTop: (function(){ const c = q('#libBreadcrumb'); return c ? Math.round(r(c).top) : null; })(),
+    selAllTop: (function(){ const c = q('#libSelAllWrap'); return c ? Math.round(r(c).top) : null; })(),
+
+    tipText: q('#libTip') ? q('#libTip').textContent : '',
+    viewBtn: q('#libViewBtn') ? q('#libViewBtn').textContent : '',
     loadingHint: q('#libList #libLoadingHint') ? q('#libList #libLoadingHint').textContent : '',
     retryBtn: q('#libList button') ? q('#libList button').textContent : '',
     docOverflowX: document.documentElement.scrollWidth - window.innerWidth,
     pageOverflowX: page ? page.scrollWidth - page.clientWidth : 0,
     rowCols: rows.length ? getComputedStyle(rows[rows.length - 1]).gridTemplateColumns : '',
     rowH: rows.length ? Math.round(r(rows[rows.length - 1]).height) : 0,
-    // QAS 任务表（issue #27 跟进：条目删除）
     qasRows: qas ? qas.querySelectorAll('.lib-row:not(.lib-head)').length : 0,
     qasDelBtn: qas ? qas.querySelector('.lib-ops button') ? qas.querySelector('.lib-ops button').textContent : '' : '',
     qasActionBar: q('#qasActionBar') ? getComputedStyle(q('#qasActionBar')).display : '',
@@ -289,7 +363,7 @@ def main():
                 if m["pageOverflowX"] > 0:
                     fail("媒体库页横向溢出 {}px".format(m["pageOverflowX"]))
                 # 默认是图文视图：必须渲染出卡片、每张卡有勾选框与删除入口
-                if m["cards"] < 3:
+                if m["cards"] < 6:
                     fail("图文视图未渲染出卡片（{} 张）".format(m["cards"]))
                 if m["dirCards"] < 1:
                     fail("目录卡缺失（文件夹未被渲染为可点击卡片）")
@@ -305,8 +379,6 @@ def main():
                 if m["dirBadges"] != m["dirPosterImgs"]:
                     fail("文件夹海报缺少「文件夹」角标（角标 {} / 海报 {}）".format(
                         m["dirBadges"], m["dirPosterImgs"]))
-                if m["dirPh"] < 1:
-                    fail("匹配不上的文件夹没有保留文件夹占位（占位 {}）".format(m["dirPh"]))
                 if m["dirEnterLinks"] != m["dirCards"]:
                     fail("有文件夹卡丢了「进入目录」的点击区（链接 {} / 目录卡 {}）".format(
                         m["dirEnterLinks"], m["dirCards"]))
@@ -315,6 +387,33 @@ def main():
                         m["filePosterImgs"], m["fileCards"]))
                 if width >= 760 and m["ratingBadges"] < 1:
                     fail("海报卡缺少评分角标")
+
+                # ---- 排版整齐度（issue #27 反馈：「这个媒体库的排版太丑了，实在是很乱」）----
+                # 1. 缩略块必须等高：桩数据里有竖版（200x300）与横版（500x200）两张真图，
+                #    旧版直接按图片比例撑高，同一行卡高差能达到上百像素。
+                if m["thumbSpread"] > 8:
+                    fail("缩略块高度不一致（最大差 {}px）：海报比例又决定了卡片高度，"
+                         "一行会有高矮参差".format(m["thumbSpread"]))
+                # 2. 同一行内卡片总高差（含信息行）
+                if m["rowSpread"] > 8:
+                    fail("同一行卡片高度不一致（最大差 {}px），网格参差不齐".format(m["rowSpread"]))
+                # 3. 底部信息行也必须等高（勾选框 / 删除按钮不得把行撑开）
+                if m["footSpread"] > 8:
+                    fail("卡片信息行高度不一致（最大差 {}px）".format(m["footSpread"]))
+                # 4. 标题与元信息必须单行省略：旧版一个长中文名折成三行把卡片撑高
+                if m["titleWrapped"] > 0:
+                    fail("有 {} 个标题折行（应单行省略，否则长文件名会把卡片撑高）".format(
+                        m["titleWrapped"]))
+                if m["tMetaWrapped"] > 0:
+                    fail("有 {} 个元信息折行（应单行省略）".format(m["tMetaWrapped"]))
+                # 5. 目录栏：全选不再独占一行，必须和面包屑同一行（旧版卡片底部一条空条）
+                if not m["selAllSameRow"]:
+                    fail("「全选」未与面包屑同一行，卡片底部又多出空占位")
+                # 6. 桌面网格列数：190px 起跳 → 1440 宽主列必须 ≥4 列（避免又变成「大空框」）
+                if width >= 1200 and m["gridCols"] < 4:
+                    fail("桌面网格只有 {} 列（卡片过宽会出现大片空白）".format(m["gridCols"]))
+                if width >= 1200 and not (160 <= m["cardW"] <= 320):
+                    fail("桌面卡片宽度 {}px 不在紧凑区间 160~320px".format(m["cardW"]))
                 if width < 760 and m["rowH"] != 0 and m["rowH"] < 32:
                     fail("列表行高 {}px 过小，内容被压扁".format(m["rowH"]))
                 page.close()
@@ -439,7 +538,7 @@ def main():
                 problems.append("[TMDB 不可用] 仍出现了海报图（{} 张），可能是假成功".format(
                     m35["posterImgs"]))
             del_ok = page.evaluate(
-                "()=>document.querySelectorAll('#libList .lib-card-ops button').length>0")
+                "()=>document.querySelectorAll('#libGrid .lib-icon-btn').length>0")
             if not del_ok:
                 problems.append("[TMDB 不可用] 删除入口丢失，主功能受影响")
             page.close()

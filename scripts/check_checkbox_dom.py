@@ -152,6 +152,9 @@ MEASURE = r"""
       borderRatio: borderOn ? ratio(borderOn, base) : 0,
     };
   };
+  // 采样点可能存在但**有意隐藏**（没有条目时不该显示勾选框），
+  // 这类样本只要求「不占版面」，不参与形状一致性比对。
+  const visible = el => { const b = el.getBoundingClientRect(); return b.width > 0 && b.height > 0; };
   const all = [...document.querySelectorAll('input[type=checkbox],input[type=radio]')];
   // 采样时**先全部取消勾选**：未勾选态的块面/描边才是「这个控件在页面里显不显形」的依据。
   // （已勾选态另外单独量一次，见脚本里 checked 那一步。）
@@ -159,11 +162,11 @@ MEASURE = r"""
   return {
     missing: !q('#libList'),
     samples: [
-      pick('.lib-card-cb input'),
-      pick('#qasTaskList .lib-cb input'),
-      pick('#libSelAll'),
-      pick('#qasSelAll'),
-    ],
+      Object.assign({}, pick('.lib-card-cb input'), {required: true}),
+      Object.assign({}, pick('#qasTaskList .lib-cb input'), {required: true}),
+      Object.assign({}, pick('#libSelAll'), {required: false}),
+      Object.assign({}, pick('#qasSelAll'), {required: true}),
+    ].map(x => x ? Object.assign(x, {visible: !!x.w && !!x.h}) : x),
     total: all.length,
     nativeCount: all.filter(e => {
       const a = getComputedStyle(e).appearance || getComputedStyle(e).webkitAppearance;
@@ -322,7 +325,12 @@ def main():
                             m["nativeCount"]))
 
                     # 2. 三处采样点必须存在，且尺寸/圆角/自绘态完全一致
-                    samples = [s for s in m["samples"] if s]
+                    samples = [s for s in m["samples"] if s and s["visible"]]
+                    required_missing = [s for s in m["samples"] if s and s.get("required")
+                                        and not s["visible"]]
+                    if required_missing:
+                        fail("勾选框采样点不可见：{}".format(
+                            [s["sel"] for s in required_missing]))
                     if len(samples) < 3:
                         fail("勾选框采样点不足（{} 个）".format(len(samples)))
                     else:

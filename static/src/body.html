@@ -468,10 +468,16 @@
               <button class="btn btn-sm btn-outline" onclick="refreshLibrary()">刷新</button>
             </span>
           </div>
-          <!-- 面包屑 -->
-          <div id="libBreadcrumb" class="lib-crumb"></div>
+          <!-- 面包屑 + 批量选择控制（issue #27：把全选放到目录栏里，
+               不再单独占一行 —— 原来是「一条操作条 + 一条全选行」，卡片底部一片空荡） -->
+          <div class="lib-crumbbar">
+            <div id="libBreadcrumb" class="lib-crumb"></div>
+            <label class="lib-selectall" id="libSelAllWrap" style="display:none" title="选择本目录全部条目">
+              <input type="checkbox" id="libSelAll" onchange="toggleLibSelectAll(this.checked)"><span>全选</span>
+            </label>
+          </div>
           <div id="libList"><div class="empty-state" style="padding:24px 20px"><div class="empty-title">加载中...</div></div></div>
-          <div style="color:var(--text3);font-size:12px;margin-top:6px">文件名会自动匹配 TMDB 作品并展示海报与评分；匹配不到的文件显示占位卡，不影响浏览与删除。</div>
+          <div id="libTip" class="lib-tip">同名文件与文件夹会自动去 TMDB 匹配海报；匹配不到的显示占位块，不影响浏览与删除。</div>
           <!-- 批量删除操作条 -->
           <div id="libActionBar" class="lib-actionbar" style="display:none">
             <label class="toggle" title="删除网盘文件的同时，清理 DBAuto 中对应的转存历史"><input type="checkbox" id="syncHistoryChk" checked><span class="slider"></span></label>
@@ -479,12 +485,6 @@
             <span style="flex:1"></span>
             <span id="libSelCount" style="color:var(--text2);font-size:13px"></span>
             <button class="btn btn-sm btn-danger" id="libDelBtn" onclick="deleteSelected()" disabled>删除所选</button>
-          </div>
-          <!-- 表头全选：任务条目普遍较多，逐条勾选成本高 -->
-          <div class="lib-actionbar" id="libSelectAllBar" style="display:none">
-            <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text2);cursor:pointer">
-              <input type="checkbox" id="libSelAll" onchange="toggleLibSelectAll(this.checked)">全选本目录
-            </label>
           </div>
         </div>
 

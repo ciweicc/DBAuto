@@ -1725,67 +1725,73 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .lib-actionbar{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;
   border-top:1px solid var(--border)}
 
-/* ---------- 图文视图（TMDB 风格卡片，issue #27） ----------
-   与 .tmdb-grid 同一套观感（海报 2:3、评分角标、无海报占位），
-   但每张卡片带复选框与删除按钮，因此单独一套类名，避免影响发现区。 */
-.lib-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:14px;margin-top:10px;align-items:start}
-@media(max-width:1200px){.lib-grid{grid-template-columns:repeat(4,minmax(0,1fr))}}
-@media(max-width:900px){.lib-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
-@media(max-width:600px){.lib-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}}
-.lib-card{position:relative;display:flex;flex-direction:column;min-width:0;align-self:start;
+/* ---------- 图文视图（紧凑网格卡片，issue #27 观感重做） ----------
+   用户反馈「这个媒体库的排版太丑了，实在是很乱」，成因是旧版把每张卡做成
+   2:3 / 16:9 的大海报框：行内高矮参差（有海报 2:3、无海报 16:9、文件夹又一种），
+   无海报时是一大块纯色空框；标题/元信息/删除/勾选框四样东西各占一处。
+   现在统一为「缩略图 + 名称 + 一行元信息」的紧凑网格：
+     - 缩略块比例固定且更小（有海报 16:9 顶裁、无海报同高），行内不再高矮参差；
+     - 勾选框与删除图标放在底部信息行里，卡片内部不再有多余留白；
+     - 超大目录给网格高度上限（卡片内滚动），底部操作条始终可见。 */
+.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;
+  margin-top:10px;align-items:start;max-height:560px;overflow:auto;padding:2px}
+@media(max-width:900px){.lib-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}}
+@media(max-width:600px){.lib-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;max-height:520px}}
+.lib-card{position:relative;display:flex;flex-direction:column;min-width:0;
   background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
   overflow:hidden;transition:border-color var(--transition-fast),transform var(--transition-fast)}
 .lib-card:hover{transform:translateY(-2px);border-color:rgba(10,132,255,.4)}
-/* 勾选框固定在左上角：卡片本身仍是可点区域（文件夹进入 / 文件看标题） */
-/* 勾选框固定在左上角：卡片本身仍是可点区域（文件夹进入 / 文件看标题）。
-   角标只负责「可点、可点得准」，外观交给全局控件规则 —— 之前这里自己画了一个
-   15px 的系统蓝方块压在深色圆底上，和列表视图、全选两处的勾选框三种长相。 */
-.lib-card-cb{position:absolute;top:10px;left:10px;z-index:3;display:flex;align-items:center;
-  justify-content:center;width:26px;height:26px;cursor:pointer;border-radius:var(--radius-xs);
-  transition:background var(--transition-fast)}
+/* 缩略块：所有卡片等高。有海报时 16:9 顶裁（网格里比 2:3 更利于整齐），
+   无海报或海报挂了就是同一块高度的图标占位 —— 行内不会再出现高矮不齐。 */
+.lib-card-thumb{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;
+  background:rgba(255,255,255,.03);border-bottom:1px solid var(--border)}
+.lib-card-thumb-inner{position:absolute;inset:0;display:block}
+.lib-card-link{display:block;position:absolute;inset:0}
+.lib-card-thumb .tmdb-poster{width:100%;height:100%;object-fit:cover;display:block}
+.lib-card-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:6px;padding:8px 10px;text-align:center;color:var(--text2)}
+.lib-card-ph svg{opacity:.5;flex:0 0 auto}
+.lib-card-ph .tmdb-no-poster-title{font-size:var(--fs-xs);color:var(--text2);max-width:100%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lib-card-ph-dir svg{opacity:.65}
+/* 底部信息行：勾选框 + 名称/元信息 + 删除图标，三者一行排布，卡片内无多余空白 */
+.lib-card-foot{display:flex;align-items:center;gap:8px;padding:8px 10px 9px;min-width:0}
+.lib-card-cb{display:flex;align-items:center;justify-content:center;width:24px;height:24px;
+  flex:0 0 auto;cursor:pointer;border-radius:var(--radius-xs)}
 .lib-card-cb:hover{background:var(--hover-wash)}
 .lib-card-cb input{cursor:pointer}
-.lib-card-poster{position:relative;width:100%;aspect-ratio:2/3;overflow:hidden;background:rgba(255,255,255,.03)}
-/* 无海报时的占位块：海报 2:3 在桌面 5 列下高达 ~360px，对「没有海报」的文件
-   来说是一大片空白（issue #27 观感反馈：卡片太高、空得难受）。
-   占位态改为 16:9 的紧凑块，真海报仍是 2:3，占位不再拉高整行。 */
-.lib-card-poster:has(> .lib-card-ph){aspect-ratio:16/9}
-.lib-card-ph{align-items:center;justify-content:center;gap:6px}
-.lib-card-ph .lib-card-icon{opacity:.45}
-.lib-card-ph .tmdb-no-poster-title{font-size:var(--fs-xs);color:var(--text2);
-  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lib-card-poster .tmdb-poster{width:100%;height:100%;aspect-ratio:auto}
-.lib-card-poster .tmdb-no-poster{width:100%;height:100%;gap:8px;padding:10px}
-.lib-card-ph .lib-card-icon{opacity:.5}
-.lib-card-icon{display:flex;align-items:center;justify-content:center;color:var(--text2)}
-.lib-card-title{font-size:var(--fs-sm);font-weight:600;color:var(--text);line-height:1.35;
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word}
-.lib-card-meta{font-size:var(--fs-xs);color:var(--text2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lib-card-info{padding:9px 10px 10px;display:flex;flex-direction:column;gap:5px;flex:1}
-.lib-card-ops{display:flex;justify-content:flex-end}
-/* 文件夹卡（issue #27 跟进：文件夹也走 TMDB 匹配）
-   海报块与文件卡同为 2:3，未匹配到时是 16:9 的文件夹图标块（见上方 :has 规则）；
-   海报与文件夹角标都挂在链接内部，点任意位置仍然是「进入该目录」。 */
-.lib-card-body{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:0 0 12px;
-  text-decoration:none;color:inherit;flex:1}
-.lib-card-body .lib-card-title{padding:0 10px;text-align:center}
-.lib-card-body .lib-card-meta{text-align:center;padding:0 10px}
-.lib-card-poster-dir{display:flex;align-items:center;justify-content:center}
-.lib-card-poster-dir .lib-card-ph{width:100%;height:100%}
+.lib-card-name-col{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
+.lib-card-title{display:block;font-size:var(--fs-sm);font-weight:600;color:var(--text);
+  line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lib-card-meta{display:block;font-size:var(--fs-xs);color:var(--text2);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 删除按钮：收成右上角图标按钮，常态低调、悬停/键盘聚焦才显形（不抢标题的宽度） */
+.lib-icon-btn{display:flex;align-items:center;justify-content:center;width:24px;height:24px;
+  flex:0 0 auto;padding:0;border:1px solid transparent;border-radius:var(--radius-xs);
+  background:transparent;color:var(--text3);cursor:pointer;
+  transition:background var(--transition-fast),color var(--transition-fast)}
+.lib-icon-btn:hover{background:var(--hover-wash);color:var(--danger)}
+.lib-icon-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
 .lib-card-dir .lib-card-title{color:var(--accent)}
-.lib-card-body:hover .lib-card-title{text-decoration:underline}
-.lib-card-dir .lib-card-ops{padding:0 10px}
-/* 「文件夹」角标：海报只说明「这是哪部作品」，不能让人误判点击行为 */
+.lib-card-link:hover ~ .lib-card-foot .lib-card-title{text-decoration:underline}
+/* 目录栏：面包屑与「全选」同一行（原来全选独占一行，卡片底部一片空荡） */
+.lib-crumbbar{display:flex;align-items:center;gap:10px;margin:6px 0 2px;min-height:22px}
+.lib-crumbbar .lib-crumb{margin:0;flex:1}
+.lib-selectall{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--text2);
+  cursor:pointer;flex:0 0 auto}
+.lib-selectall input{cursor:pointer}
+.lib-tip{color:var(--text3);font-size:12px;margin-top:8px;line-height:1.5}
+/* 文件夹角标：海报只说明「这是哪部作品」，不能让人误判点击行为 */
 .lib-dir-badge{position:absolute;left:8px;bottom:8px;z-index:2;
   padding:2px 7px;border-radius:999px;background:rgba(0,0,0,.62);color:#fff;
   font-size:var(--fs-xs);line-height:1.5;backdrop-filter:blur(4px)}
-.lib-card-poster-dir .tmdb-rating-badge{top:auto;left:auto;right:8px;bottom:8px}
-
+.lib-card-thumb .tmdb-rating-badge{top:6px;right:6px}
 @media (max-width:760px){
   .lib-row{padding:8px 6px;gap:8px}
   /* 触屏下勾选框再放大一档，避免 18px 目标点不准（视觉尺寸不变，只放热区） */
   .lib-cb{width:28px;height:28px}
-  .lib-card-cb{width:30px;height:30px}
+  .lib-card-cb{width:28px;height:28px}
+  .lib-card-foot{padding:7px 8px 8px;gap:6px}
   /* 窄屏收起「修改时间」，文件表只保留 选择/名称/大小/操作 */
   #libList .lib-row{grid-template-columns:30px minmax(0,1fr) 62px auto}
   #libList .lib-row > .lib-sub:nth-of-type(3){display:none}

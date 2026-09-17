@@ -1677,6 +1677,75 @@ def test_library_poster_cards_keep_fast_budget():
     assert "LIB_MATCH_LIMIT" in src and "LIB_MATCH_CONCURRENCY" in src, "匹配缺少限流常量"
 
 
+def test_library_grid_layout_is_aligned(dist):
+    """回归（issue #27 反馈）：媒体库图文视图的排版必须是「整齐的紧凑网格」。
+
+    用户反馈原文：「现在这个媒体库的排版太丑了，实在是很乱」。
+    排查后「乱」有三个可量化来源，本用例把它们钉死：
+
+      1. 每张卡的缩略块按海报自身比例撑高（有海报 2:3、无海报 16:9、文件夹又一种）
+         → 同一行卡片高矮参差，且无海报时是一大块纯色空框；
+      2. 标题 / 元信息允许折行 → 一个长中文名折三行，继续把卡片撑高；
+      3. 「全选」独占一行 → 卡片底部又多一条空条。
+
+    因此断言：缩略块比例固定、标题/元信息单行省略、全选与面包屑同一行、
+    以及配套的 DOM 走查脚本（scripts/check_library_dom.py）里的整齐度度量。
+    """
+    css = _read(_CSS_MAIN)
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+
+    # 1. 缩略块比例固定（等高），且不再按海报比例撑高
+    thumb = css[css.index(".lib-card-thumb{"):]
+    thumb = thumb[:thumb.index("}")]
+    assert "aspect-ratio" in thumb, "缩略块未钉死比例：卡片高度会随海报比例变化（参差不齐的根源）"
+    assert "border-bottom" in thumb or "border-bottom" in thumb, "缩略块与信息行之间缺少分隔"
+
+    # 2. 标题 / 元信息单行省略（长中文名不得折行撑高卡片）
+    for sel in (".lib-card-title{", ".lib-card-meta{"):
+        block = css[css.index(sel):]
+        block = block[:block.index("}")]
+        assert "white-space:nowrap" in block, "{} 未单行省略，长文件名会把卡片撑高".format(sel)
+        assert "text-overflow:ellipsis" in block, "{} 缺少省略号".format(sel)
+
+    # 3. 勾选框 / 删除按钮进底部信息行（不再各占一块、把卡片内部掏空）
+    assert ".lib-card-foot{" in css, "缺少卡片底部信息行"
+    assert ".lib-icon-btn{" in css, "删除按钮未收成图标按钮（标题宽度被按钮吃掉）"
+    assert "lib-card-foot" in js, "卡片结构未使用底部信息行"
+    assert "lib-icon-btn" in js, "删除入口未使用图标按钮"
+
+    # 4. 全选与面包屑同一行（不再独占一条空条）
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert 'id="libSelAllWrap"' in body, "缺少行内「全选」容器"
+    assert 'class="lib-crumbbar"' in body, "面包屑与全选未合并为同一条控制条"
+    assert 'id="libSelectAllBar"' not in body, "旧的全选独立占位行应已移除（否则底部又多一条空条）"
+    assert ".lib-crumbbar{" in css, "缺少目录控制条样式"
+
+    # 5. 产物已重建
+    assert "lib-card-thumb" in dist, "产物未包含新的缩略块样式（需重跑 build.sh）"
+    assert "lib-crumbbar" in dist, "产物未包含目录控制条（需重跑 build.sh）"
+
+
+def test_library_grid_layout_audit_is_committed():
+    """回归（issue #27）：「排版乱」必须由落库的走查脚本用渲染后数值守住。
+
+    静态扫描只能看出「写了 aspect-ratio」，看不出渲染后同一行卡片到底高矮差多少。
+    本轮实测该脚本能把两种回退抓出来：
+      - 去掉缩略块固定比例 → 缩略块高度不一致（图片比例重新决定卡片高度）；
+      - 标题允许多行 + 比例改成 4:3 → 同一行卡片高度差 49~65px。
+    """
+    script = os.path.join(_ROOT, "scripts", "check_library_dom.py")
+    src = _read(script)
+    assert "thumbSpread" in src, "走查脚本没断言「缩略块等高」"
+    assert "rowSpread" in src, "走查脚本没断言「同一行卡片高度一致」"
+    assert "titleWrapped" in src and "tMetaWrapped" in src, "走查脚本没断言标题/元信息单行省略"
+    assert "selAllSameRow" in src, "走查脚本没断言「全选与面包屑同一行」"
+    assert "gridCols" in src and "cardW" in src, "走查脚本没断言网格列数与卡片宽度区间"
+    # 海报桩必须是**不同比例**的真实图片，否则「等高」断言毫无意义
+    assert "_POSTER_PORTRAIT" in src and "_POSTER_LANDSCAPE" in src, \
+        "走查脚本的海报桩必须覆盖竖版/横版两种比例（否则验不出卡片是否被图片比例撑高）"
+    assert "_POSTER_BROKEN" in src, "走查脚本缺少「海报加载失败」的桩"
+
+
 # ============================================================
 # 登录页视觉一致性（issue #27：登录页显示效果与主页不一致）
 # ============================================================
@@ -1907,5 +1976,8 @@ def test_checkbox_dom_audit_is_committed():
     assert "appearance" in src, "走查脚本没断言 appearance 被重置"
     assert "indeterminate" in src, "走查脚本没断言半选态"
     assert "sizeUnderZoom" in src, "走查脚本没断言尺寸不受 font-size 影响"
+    # 「全选」在有数据时必须可见（issue #27：它从独占一行挪进了目录控制条，
+    # 采样点因此可能因为容器隐藏而量成 0x0；脚本必须区分「有意隐藏」与「真的消失」）
+    assert "required" in src, "走查脚本未区分「必需采样点」与「允许隐藏的采样点」"
     assert "THEMES" in src, "走查脚本没覆盖两套主题"
     assert "MIN_NON_TEXT" in src, "走查脚本缺少非文本对比度阈值"
