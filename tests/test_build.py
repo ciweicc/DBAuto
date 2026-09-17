@@ -1678,6 +1678,165 @@ def test_library_poster_cards_keep_fast_budget():
 
 
 # ============================================================
+# 登录页视觉一致性（issue #27：登录页显示效果与主页不一致）
+# ============================================================
+_LOGIN = os.path.join(_ROOT, "static", "login_new.html")
+_TOKENS = os.path.join(_SRC, "styles", "tokens.css")
+
+
+def _login_css():
+    """拆出 login_new.html 内联 <style> 的内容。"""
+    html = _read(_LOGIN)
+    return html, "\n".join(re.findall(r"<style>(.*?)</style>", html, re.S))
+
+
+def _theme_block_vars(css, selector):
+    """取 tokens.css 里某个主题块内定义的令牌名。
+
+    不能用 `([^{}]+){([^{}]*)}` 这种扁平正则：tokens.css 的主题块
+    前面挂着大段注释与标题（选择器里含 `/* ... */`），扁平正则会把选择器
+    整体吃掉，导致一个令牌都解析不到（本轮实测踩到过）。
+    这里按「找到选择器的 `{` → 配平花括号」来切块，与
+    scripts/check_contrast.py 的 block_vars 口径一致。
+    """
+    idx = css.find(selector)
+    if idx < 0:
+        return set()
+    start = css.index("{", idx)
+    depth, end = 0, start
+    for i in range(start, len(css)):
+        if css[i] == "{":
+            depth += 1
+        elif css[i] == "}":
+            depth -= 1
+            if depth == 0:
+                end = i
+                break
+    body = css[start + 1:end]
+    names = set()
+    for line in body.splitlines():
+        line = line.split("/*")[0].strip()
+        m = re.match(r"^(--[\w-]+)\s*:", line)
+        if m:
+            names.add(m.group(1))
+    return names
+
+
+_COMMENT_RE = re.compile(r"/\*.*?\*/", re.S)
+
+
+def _strip_comments(css):
+    """去掉 CSS 注释。
+
+    必须先去掉注释再解析：`:root{` 前面紧挨着一段块注释时，
+    扁平的选择器正则会连注释正文一起吃进「选择器」，于是 `:root`
+    匹配不上、一个令牌都扫描不到（本轮实测踩到过）。
+    """
+    return _COMMENT_RE.sub("", css)
+
+
+def _login_page_local_vars():
+    """产出登录页内联 CSS 里定义的自定义属性名（仅顶层 :root / [data-theme] 块）。"""
+    _, css = _login_css()
+    css = _strip_comments(css)
+    names = set()
+    for m in re.finditer(r"([^{}]+)\{([^{}]*)\}", css):
+        sel, body = m.group(1).strip(), m.group(2)
+        if sel not in (":root", '[data-theme="light"]', '[data-theme="dark"]'):
+            continue
+        names |= set(re.findall(r"(--[\w-]+)\s*:", body))
+    return names
+
+
+def test_login_page_does_not_redefine_shared_tokens():
+    """回归（issue #27）：登录页不得再重定义 tokens.css 里的设计令牌。
+
+    背景：登录页内联 CSS 里写死了一份深色令牌（`--text:#ffffff`、
+    `--border:rgba(255,255,255,.08)`…）。它是**同优先级、后出现**的规则，
+    于是把 tokens.css 浅色主题的 `--text:#1c1c1e` 覆盖成了白色 ——
+    整页白字白底，主标题在浅色主题下几乎不可见。
+
+    `scripts/check_contrast.py` 只审计 tokens.css，看不见这层覆盖，
+    所以这条必须单独锁死：登录页只能用 token，不能再造 token。
+    """
+    tokens_css = _read(_TOKENS)
+    shared = _theme_block_vars(tokens_css, ":root")
+    shared |= _theme_block_vars(tokens_css, '[data-theme="light"]')
+
+    assert shared, "未从 tokens.css 解析到任何设计令牌"
+    clash = sorted(shared & _login_page_local_vars())
+    assert not clash, (
+        "登录页重定义了 tokens.css 的令牌 {}：同优先级后出现，会把浅色主题的"
+        "取值覆盖掉（历史上正是这样「白字白底」的）".format(clash))
+
+
+def test_login_page_uses_shared_shell_visuals():
+    """回归（issue #27）：登录页与主页必须共用同一套形态/配色口径。
+
+    逐项对应「与主页的视觉效果一致」：
+      - 背景：与 main.css 的 body 同一组渐变 + 网格 + --bg-deep 底色；
+      - 磨砂面：用 tokens 的 --card / --glass-border / --blur（不是写死的 rgba）；
+      - 主色：用 --gradient-btn / --accent，不再自己拼一套蓝紫；
+      - 字体字号：用 --font / --font-display / --fs-*。
+    """
+    html, css = _login_css()
+    main_css = _read(os.path.join(_SRC, "styles", "main.css"))
+
+    # 1. tokens.css 仍然被引入（而且是引入 main.css 用的同一份）
+    assert '<link rel="stylesheet" href="/static/src/styles/tokens.css">' in html, \
+        "登录页未引入 tokens.css，token 单一出处不成立"
+
+    # 2. 背景与主页同一组参数
+    for token in ("var(--bg-deep)", "var(--grid-line)", "var(--grid-size)"):
+        assert token in css, "登录页背景未使用 {}".format(token)
+    for frag in ("radial-gradient(54% 46% at 12% 8%", "linear-gradient(90deg, var(--grid-line) 1px, transparent 1px)"):
+        assert frag in css, "登录页背景缺少与主页一致的渐变：{}".format(frag)
+        assert frag in main_css, "主页 body 背景里已经找不到 {}，两页已漂移".format(frag)
+
+    # 3. 玻璃面 / 主色 / 字体走 token
+    for token in ("var(--card)", "var(--glass-border)", "var(--blur)",
+                  "var(--gradient-btn)", "var(--accent)",
+                  "var(--font-display)", "var(--fs-"):
+        assert token in css, "登录页未使用设计令牌 {}".format(token)
+
+    # 4. 深色硬编码不得回归（这些是上一版「和主页不像」的来源）
+    for hard in ("background-color:#0a0a0d", "#0d0d10", "rgba(22,22,26,.5)",
+                 "rgba(255,255,255,.045)"):
+        assert hard not in css, "登录页仍在写死深色值 {}（应改用 token）".format(hard)
+
+    # 5. 浅色主题降级策略与 main.css 对齐（不具备 backdrop-filter 时给实底）
+    assert "@supports not ((backdrop-filter: blur(4px)) or (-webkit-backdrop-filter: blur(4px)))" in css, \
+        "登录页缺少 backdrop-filter 降级分支（会退化成半透明叠半透明、文字发灰）"
+
+    # 6. 键盘焦点环 + 减弱动效
+    assert ":focus-visible" in css, "登录页缺少键盘焦点环"
+    assert "prefers-reduced-motion" in css, "登录页未响应 prefers-reduced-motion"
+
+
+def test_login_page_dom_audit_is_committed():
+    """回归（issue #27）：登录页的「渲染后」缺陷必须由落库的走查脚本守住。
+
+    静态扫描只能看出「有没有用 token」，看不出「渲染出来到底看不看得见」。
+    本轮两个缺陷都只有渲染后才能量化：
+      1. 浅色主题下主标题实际对比度 1.0:1（白字白底）；
+      2. 品牌列深色底图被 background-attachment:fixed 按**视口**铺开，
+         在 1336px 宽屏上色带横穿登录按钮，按钮底下是一条浅色渐变横带。
+
+    因此把度量脚本固化进 scripts/，并要求它至少覆盖这两件事。
+    """
+    script = os.path.join(_ROOT, "scripts", "check_login_dom.py")
+    assert os.path.isfile(script), "缺少 scripts/check_login_dom.py（登录页 DOM 度量走查）"
+    src = _read(script)
+
+    assert "login_new.html" in src, "走查脚本没加载登录页产物"
+    assert "AA_NORMAL" in src and "4.5" in src, "走查脚本没做 WCAG 对比度断言"
+    assert "bgOf" in src, "走查脚本必须合成「元素背后的实际底色」才算得出真实对比度"
+    assert "backdrop-filter" in src, "走查脚本没断言磨砂是否真的生效"
+    assert "for theme in THEMES" in src or "THEMES" in src, "走查脚本没覆盖两套主题"
+    # 反例守卫：脚本必须能在「登录页重定义 token」时失败（本轮实测能抓到 1.0:1）
+    assert "背景" in src or "bg" in src, "走查脚本缺少背景解析说明"
+
+
 # 复选 / 单选控件统一（issue #27 反馈：复选框有点丑）
 # ============================================================
 _CSS_MAIN = os.path.join(_SRC, "styles", "main.css")

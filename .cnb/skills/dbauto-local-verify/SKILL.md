@@ -30,11 +30,22 @@ python scripts/check_contrast.py                 # 改了 tokens.css 的文本/�
 bash static/src/build.sh                         # 改了 static/src/**（必须重建并提交产物）
 ```
 
-概览页（issue #8 重构后）的 DOM 度量走查（9 组视口，自带静态服务）：
+各页的 DOM 度量走查（自带静态服务，失败非零退出；无 playwright 时跳过）：
 
 ```bash
-python3 scripts/check_overview_dom.py --serve    # 失败非零退出；无 playwright 时跳过
+python3 scripts/check_overview_dom.py --serve       # 概览页（9 组视口）
+python3 scripts/check_login_dom.py --serve          # 登录页（2 主题 × 5 视口，改登录页必跑）
+python3 scripts/check_settings_dom.py --serve       # 设置页空白
+python3 scripts/check_library_dom.py --serve        # 媒体库顺序/加载反馈/缓存
+python3 scripts/check_log_panel_dom.py --serve      # 日志栏
+python3 scripts/check_discovery_dom.py --serve      # 发现区多选操作条
+python3 scripts/check_tmdb_filters_dom.py --serve   # TMDB 筛选栏
 ```
+
+> 后两个脚本没带 `_launch_kwargs()`：本机只装了 `/opt/ms-playwright/chromium-*`
+> 时 `p.chromium.launch()` 会去找不存在的 `chromium_headless_shell` 而报错。
+> 临时跑法：把它们 `launch(args=["--no-sandbox"])` 换成
+> `launch(args=["--no-sandbox"], executable_path="<glob 到的 chrome 绝对路径>")`。
 
 产物是否漂移（等价于 CI 门禁）：
 
@@ -90,6 +101,28 @@ python -m pytest tests/test_<相关模块>.py -q
   收窄超时；删除等破坏性操作才需要更完整的等待预算。
 - **处理器抛异常时，线程化 HTTP server 会让请求悬停**（前端观感 = 加载很慢）。
   路由入口应有 try/except + 500 兜底 + 堆栈日志。
+
+- **登录页是独立单文件（`static/login_new.html`），不走 build.sh**：它内联自带的
+  `<style>` 里**曾经重复定义 tokens.css 的令牌**（`:root{--text:#ffffff}`）。
+  因为选择器同为 `:root`、又后出现，它在浅色主题下直接盖掉 `--text:#1c1c1e`
+  → 整页白字白底，主标题对比度 1.07:1。`scripts/check_contrast.py` 只读
+  tokens.css，**看不到这层覆盖**。改登录页样式后必须跑
+  `python3 scripts/check_login_dom.py --serve`（它算的是渲染后的真实合成对比度）。
+- **`getComputedStyle` 读到过渡中间值**：元素带 `transition` 时，`focus()` 之后
+  立刻读 `box-shadow` 拿到的是动画中间帧（实测 0.16px，误报「焦点环过小」）。
+  走查里要么先 `el.style.transition='none'`，要么等 ≥260ms 再读。
+- **渐变底不能用「纯色底」的对比度算法**：按钮 `background-image` 是渐变时
+  `background-color` 是透明的，按纯色算会得出 1.1:1 的**假失败**。
+  要么单独取渐变里的色标算最差一档，要么把它排除出通用探针。
+- **算「元素背后实际底色」要自底向上合成**：以 `html` 的不透明底色兜底，
+  再逐层把上层半透明面 `over()` 上去。按「先取最上层」的顺序正向累加，
+  遇到 `body{background:transparent}` 会算出 `NaN`。
+- **扁平正则 `([^{}]+)\{([^{}]*)\}` 解析 CSS 不可靠**：选择器前面挂着块注释时，
+  注释正文会被吃进「选择器」，导致 `:root` 匹配不上、一个令牌都扫不到。
+  先 `re.sub(r"/\*.*?\*/", "", css, flags=re.S)` 去注释，或按配平花括号切块。
+- **Playwright 默认 launch 找的是 `chromium_headless_shell`**：本机只装了
+  `chromium-1243` 时 `p.chromium.launch()` 直接报「Executable doesn't exist」。
+  新建走查脚本要照抄 `_launch_kwargs()`（glob `/opt/ms-playwright/chromium-*/chrome-linux64/chrome`）。
 
 ## 4. 收尾
 
