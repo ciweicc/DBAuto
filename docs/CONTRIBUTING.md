@@ -46,9 +46,10 @@
   python scripts/check_overview_dom.py --serve   # 首屏密度 / 表格溢出 / 状态语义
   python scripts/check_log_panel_dom.py --serve  # 日志栏可见性 / 定位最新 / 折行缩进
   python scripts/check_settings_dom.py --serve   # 设置页卡片底部空白 / 页高 / 横向溢出
+  python scripts/check_library_dom.py --serve    # 媒体库顺序 / 加载反馈 / 快速失败 / 缓存
   ```
 
-  > 这三个脚本替代大部分截图走查：用 `getBoundingClientRect` / 计算样式取数值证据，
+  > 这几个脚本替代大部分截图走查：用 `getBoundingClientRect` / 计算样式取数值证据，
   > 断言「打开页面日志栏可见」「日志定位到最新」「高度随视口增长」等可量化缺陷。
   > 历史教训：只截图肉眼判断，既耗上下文配额，又会漏掉「窄屏默认折叠」这类
   > 静默失效（截图里正常，窄屏下日志区高 0px）。

@@ -887,9 +887,10 @@ def test_tmdb_merged_into_overview_single_page(dist):
     m = re.search(r"var BOTTOM_NAV = \[(.*?)\]", tabs)
     navs = [x.strip().strip("'\"") for x in m.group(1).split(",") if x.strip()]
     # 断言的是「导航集合」而不是写死的项数：tmdb 必须不在其中，
-    # 且导航内容与预期完全一致（issue #27 新增「媒体库」后为 6 项）。
+    # 且导航内容与预期完全一致（issue #27：新增「媒体库」并置于「历史」之前，
+    # 与媒体库页内「网盘文件置顶」的优先级一致，共 6 项）。
     assert "tmdb" not in navs, "底部导航不应包含 tmdb"
-    assert navs == ["overview", "manual", "schedule", "history", "library", "settings"], \
+    assert navs == ["overview", "manual", "schedule", "library", "history", "settings"], \
         "底部导航项与预期不一致: {}".format(navs)
 
 
@@ -1433,3 +1434,61 @@ def test_library_inline_handlers_use_safe_js_arg():
     for call in ("toggleLibSelect(", "enterDir(", "deleteOne(", "loadLibrary("):
         idx = src.find(call)
         assert idx != -1, "缺少内联处理器 {}".format(call)
+
+
+def test_library_files_card_is_first(dist):
+    """回归（issue #27 反馈）：媒体库页里「网盘文件」必须排在「QAS 转存任务」之前。
+
+    用户诉求是「把网盘文件模块放到顶部，和夸克自动转存任务交换一下位置」。
+    本用例按源文件 DOM 顺序断言（产物是压缩结果，逐个标签抓取不稳），
+    并校验页面内确实只有一套模块容器，避免「复制一份挪到前面」式的假交换。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    lib_start = body.index('id="tabLibrary"')
+    lib_end = body.index("<!-- ===== 设置 ===== -->")
+    section = body[lib_start:lib_end]
+
+    assert section.count('id="libList"') == 1, "网盘文件容器应唯一"
+    assert section.count('id="qasTaskList"') == 1, "QAS 任务容器应唯一"
+    assert section.index('id="libList"') < section.index('id="qasTaskList"'), \
+        "「网盘文件」模块未排在「QAS 转存任务」之前"
+
+    # 加载入口按同一顺序发起：先目录、后任务
+    src = _read(os.path.join(_JS_DIR, "library.js"))
+    page = src[src.index("function loadLibraryPage()"):src.index("// ---------- 短预算请求")]
+    assert page.index("loadLibrary(") < page.index("loadQasTasks("), \
+        "loadLibraryPage 应先发起网盘目录请求"
+
+    # 产物已包含重写后的加载逻辑（防「改了源码忘了重建」）
+    assert "refreshLibrary" in dist, "产物未包含媒体库刷新逻辑（需重跑 build.sh）"
+
+
+def test_library_fetch_has_short_budget():
+    """回归（issue #27）：媒体库请求不得沿用后端级长重试，必须能快速失败。
+
+    用户反馈「网盘文件模块访问有点慢」的根因之一是等待预算过长
+    （后端 15s 超时 × 3 次重试 ≈ 32s）。前端改为「软超时 + 仅 1 次重试」，
+    本用例锁死该形态，防止回归成 3 次重试的长等待。
+    """
+    src = _read(os.path.join(_JS_DIR, "library.js"))
+    assert "function libFetch(" in src, "缺少短预算请求包装 libFetch"
+    assert "AbortController" in src, "缺少软超时（AbortController）"
+    assert re.search(r"LIB_REQ_TIMEOUT\s*=\s*(\d+)", src), "LIB_REQ_TIMEOUT 未定义"
+    ms = int(re.search(r"LIB_REQ_TIMEOUT\s*=\s*(\d+)", src).group(1))
+    assert ms <= 10000, "单请求软超时 {}ms 过长，快速失败形同虚设".format(ms)
+    r = re.search(r"LIB_RETRIES\s*=\s*(\d+)", src)
+    assert r and int(r.group(1)) <= 1, "重试次数必须 ≤1，否则等待时间会成倍放大"
+
+    # 媒体库不得再直接裸用 apiGet（默认 retries=2 会叠加长等待）
+    assert "await apiGet(" not in src, "媒体库请求应统一走 libFetch 短预算通道"
+
+    # 超时预算必须覆盖「整次调用」，而不是「每次尝试各一份」。
+    # 踩坑：写成循环内 setTimeout 时，2 次尝试实测等待 16.4s（8s + 退避 + 8s），
+    # 「快速失败」直接失效。判据：AbortController 的定时器必须建立在循环之外，
+    # 循环内不得再出现 setTimeout(... LIB_REQ_TIMEOUT)。
+    fetch = src[src.index("async function libFetch("):src.index("// ---------- QAS 任务")]
+    loop = fetch[fetch.index("for("):]
+    assert "setTimeout(function(){ try{ ctrl.abort(); }catch(e){} }, LIB_REQ_TIMEOUT)" \
+        not in loop, "超时定时器被放进了重试循环：总等待会随重试次数成倍放大"
+    assert loop.count("LIB_REQ_TIMEOUT") == 1 or "signal.aborted" in loop, \
+        "重试循环内未检查中止状态，可能在中止后继续发起新请求"

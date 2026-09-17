@@ -354,3 +354,45 @@ class TestLinkCheckHttpIntegration:
         r = requests.get(self.base + "api/check_link", params={"url": ""}, timeout=10)
         assert r.status_code == 400
         assert r.json()["state"] == "error"
+
+
+# ---------- 请求级异常兜底（issue #27「访问有点慢」） ----------
+
+def test_route_handler_wraps_get_and_post_in_try():
+    """任何未捕获异常都必须转成 500，而不是留下悬停请求。
+
+    线程化 HTTP server 下，处理器抛异常时连接不被响应，
+    客户端会一直等到连接超时——表现就是「加载慢」。这里锁死
+    do_GET/do_POST 外层存在兜底 try/except + 500。
+    """
+    import os
+    root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    with open(os.path.join(root, "app_modules", "routes.py"), encoding="utf-8") as f:
+        src = f.read()
+    assert "def do_GET(self):" in src and "def do_POST(self):" in src
+    assert "internal server error" in src, "缺少 500 兜底响应"
+    assert "traceback.format_exc()" in src, "异常未记录堆栈，线上问题无法定位"
+    # 两条入口都必须走包装后的实现
+    assert "self._do_GET(route=self._route_path())" in src
+    assert "self._do_POST(route=self._route_path())" in src
+
+
+def test_route_exception_returns_500():
+    """真实调用：子路由抛异常时，处理器必须发 500 且不向外抛。"""
+    import routes
+
+    class Boom(routes.H):
+        def _route_path(self):
+            return "/api/qas/library"
+
+    h = Boom.__new__(Boom)
+    sent = []
+    h.path = "/api/qas/library"
+    h._send_json = lambda data, status=200: sent.append((data, status))
+
+    import routes_library
+    from unittest.mock import patch as _patch
+    with _patch.object(routes_library.LibraryRouteMixin, "_handle_library_get",
+                       side_effect=RuntimeError("boom")):
+        h.do_GET()
+    assert sent and sent[-1][1] == 500

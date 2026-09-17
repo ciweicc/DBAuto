@@ -12,8 +12,9 @@ var PAGE_IDS = {
 // 因此它从 PAGE_IDS / PAGES / BOTTOM_NAV 三处一起消失 ——
 // 少一个页面、少一份导航项，TMDB 也只有一套 DOM（筛选栏只有一份）。
 var PAGES = ['overview', 'manual', 'schedule', 'history', 'library', 'settings'];
-// 底部导航与 BOTTOM_NAV 顺序保持一致：概览 / 转存 / 定时 / 历史 / 设置
-var BOTTOM_NAV = ['overview', 'manual', 'schedule', 'history', 'library', 'settings'];
+// 底部导航与 BOTTOM_NAV 顺序保持一致：概览 / 转存 / 定时 / 媒体库 / 历史 / 设置
+// 媒体库排在历史之前，与「媒体库」页内「网盘文件置顶」的优先级一致（issue #27）。
+var BOTTOM_NAV = ['overview', 'manual', 'schedule', 'library', 'history', 'settings'];
 
 function switchTab(tab){
   currentTab = tab;
