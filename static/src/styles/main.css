@@ -1734,7 +1734,7 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
      - 卡片 = 「勾选框 + 图标 + 名称/元信息 + 删除图标」单行紧凑卡，天然等高；
      - 没有海报、没有占位块、没有评分角标，不存在「有没有图」的差异；
      - 超大目录给网格高度上限（卡片内滚动），底部操作条始终可见。 */
-.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;
+.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;
   margin-top:10px;align-items:start;max-height:560px;overflow:auto;padding:2px}
 @media(max-width:900px){.lib-grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}}
 @media(max-width:600px){.lib-grid{grid-template-columns:1fr;gap:8px;max-height:520px}}
@@ -1761,12 +1761,31 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 /* 修改时间（issue #27 跟进：用户要求「添加显示修改时间」）
    单独占一行 + 时钟图标 + 「修改」前缀：大小和时间都是数字，挤在一行扫视时分不清；
    时间行用 text3（比大小更淡）做层级，避免卡片内出现两段同样抢眼的次要信息。
-   仍是单行省略，所以拆行不影响卡片高度（走查断言同一行等高）。 */
+   仍是单行省略，所以拆行不影响卡片高度（走查断言同一行等高）。
+
+   两种格式按**实际可用宽度**取舍（本轮实测：卡片只有 180~240px，
+   `修改 2026-09-17 20:04` 约需 112px，直接渲染必被省略号截成 `修改 2025-0…`）：
+     - 容器够宽（移动端单列 / 宽卡）→ 显示完整 yyyy-mm-dd hh:mm；
+     - 容器窄 → 只显示 mm-dd hh:mm，保证**不截断**；
+   不支持容器查询时用“宽到位”作为保守默认（完整格式 + 单行省略）。 */
 .lib-card-time{display:flex;align-items:center;gap:4px;font-size:var(--fs-xs);
   color:var(--text3);min-width:0;line-height:1.35}
 .lib-card-time svg{flex:0 0 auto;opacity:.75}
 .lib-time-text{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;
   white-space:nowrap;font-variant-numeric:tabular-nums}
+.lib-time-short{display:none}
+@supports (container-type:inline-size){
+  /* 卡片名：命名容器，时间行按卡片实际宽度决定用哪种格式 */
+  .lib-card-name-col{container-type:inline-size;container-name:libname}
+}
+@container libname (max-width:175px){
+  /* 紧凑卡：完整格式必被截断（实测可用宽度只有 75~95px），改用短格式并再收一档字号，
+     让「修改 09-16 13:23」在 1440 / 2560 这类窄卡下也**完整显示**（不截断）。 */
+  .lib-card-time{gap:2px;font-size:var(--fs-2xs,10px)}
+  .lib-card-time svg{width:9px;height:9px}
+  .lib-time-full{display:none}
+  .lib-time-short{display:block}
+}
 /* 删除按钮：收成图标按钮，常态低调、悬停/键盘聚焦才显形（不抢标题的宽度） */
 .lib-icon-btn{display:flex;align-items:center;justify-content:center;width:24px;height:24px;
   flex:0 0 auto;padding:0;border:1px solid transparent;border-radius:var(--radius-xs);

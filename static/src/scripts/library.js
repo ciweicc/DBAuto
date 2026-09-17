@@ -108,6 +108,15 @@ function fmtTs(ts){
   return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
 
+// 紧凑时间（月-日 时:分）：卡片很窄时用的降级格式，避免时间被省略号吃掉。
+// 完整时间（含年份）始终在 title 与移动端布局里可见，见 _libMetaHtml。
+function fmtTsShort(ts){
+  var full = fmtTs(ts);
+  if(full === '—') return full;
+  var m = /^\d{4}-(\d{2}-\d{2} \d{2}:\d{2})$/.exec(full);
+  return m ? m[1] : full;
+}
+
 function esc(s){
   return String(s == null ? '' : s).replace(/[&<>"']/g, function(c){
     return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];
@@ -569,14 +578,24 @@ function _libCardShell(it, kind, icon){
 // 有图的那版里「大小 · 修改时间」被挤在同一行；去掉图以后卡片虽变宽，
 // 但两段都是数字、扫视时区分不出哪一段是时间。现在拆成**两行**：
 //   - 第一行：文件大小（文件夹则显示「文件夹」）；
-//   - 第二行：修改时间，带时钟图标 + 「修改」前缀，完整时间另放 title。
-// 两行都是 CSS 单行省略，所以拆行不会改变卡片高度（走查仍断言同一行等高）。
+//   - 第二行：修改时间，带时钟图标 + 「修改」前缀。
+//
+// 踩坑（本轮实测）：卡片只有 180~240px 宽，`修改 2026-09-17 20:04`（约 112px）
+// 加上图标与留白后**装不下**，实测 1440 与 2560 视口下时间仍被省略号截成
+// `修改 2025-0…` —— 用户看到的还是「没有修改时间」。因此时间行做两层：
+//   - `.lib-time-full`（yyyy-mm-dd hh:mm，移动端 1 列时够宽，可完整显示）；
+//   - `.lib-time-short`（mm-dd hh:mm，紧凑卡下显示）。
+// 两者由 CSS 容器查询按**实际可用宽度**取舍（@container timefit，见 main.css），
+// 容器查询不支持时默认显示完整格式；完整值同时放在 title 里，任何情况下都能看到。
 function _libMetaHtml(it){
   if(it.dir) return '<span class="lib-card-meta">文件夹</span>';
+  var full = fmtTs(it.updated_at);
+  var short = fmtTsShort(it.updated_at);
   return '<span class="lib-card-meta">' + esc(fmtSize(it.size)) + '</span>' +
-    '<span class="lib-card-time" title="修改时间 ' + esc(fmtTs(it.updated_at)) + '">' +
+    '<span class="lib-card-time" title="修改时间 ' + esc(full) + '">' +
       '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-clock"/></svg>' +
-      '<span class="lib-time-text">修改 ' + esc(fmtTs(it.updated_at)) + '</span>' +
+      '<span class="lib-time-text lib-time-full">修改 ' + esc(full) + '</span>' +
+      '<span class="lib-time-text lib-time-short">修改 ' + esc(short) + '</span>' +
     '</span>';
 }
 

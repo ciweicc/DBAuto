@@ -180,9 +180,30 @@ MEASURE = r"""
       .filter(c => c.querySelector('.lib-card-time')).length,
     dirCardsWithTime: [...document.querySelectorAll('#libGrid .lib-card-dir')]
       .filter(c => c.querySelector('.lib-card-time')).length,
-    timeTexts: times.map(e => e.textContent.trim()),
-    // 时间必须看起来是时间（YYYY-MM-DD HH:MM），而不是「—」或空
-    timeBadFormat: times.filter(e => !/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(e.textContent)).length,
+    // 只统计当前**可见**的那一种格式（完整 yyyy-mm-dd hh:mm 或紧凑 mm-dd hh:mm）
+    timeTexts: times.map(e => {
+      const vis = [...e.querySelectorAll('.lib-time-text')]
+        .filter(x => getComputedStyle(x).display !== 'none');
+      return vis.length ? vis[0].textContent.trim() : '';
+    }),
+    // 时间必须看起来是时间（完整格式或紧凑格式），而不是空
+    timeBadFormat: times.filter(e => {
+      const vis = [...e.querySelectorAll('.lib-time-text')]
+        .filter(x => getComputedStyle(x).display !== 'none');
+      if(!vis.length) return true;
+      return !/\d{2}-\d{2} \d{2}:\d{2}/.test(vis[0].textContent) ||
+             /^—/.test(vis[0].textContent.trim());
+    }).length,
+    // 时间**不得被省略号截断**（本轮实测的坑：卡片只有 180~240px，
+    // 「修改 2026-09-17 20:04」约需 112px，直接渲染会被截成「修改 2025-0…」，
+    // 用户看到的仍然是「没有修改时间」）
+    timeTruncated: times.filter(e => {
+      const vis = [...e.querySelectorAll('.lib-time-text')]
+        .filter(x => getComputedStyle(x).display !== 'none');
+      return vis.some(x => x.scrollWidth > Math.ceil(x.getBoundingClientRect().width) + 1);
+    }).length,
+    // 完整时间（含年份）必须可从 title 取得，窄卡下降级后也不丢信息
+    timeTitleMissing: times.filter(e => !/\d{4}-\d{2}-\d{2} \d{2}:\d{2}/.test(e.getAttribute('title') || '')).length,
     // 时间行必须单行省略（不与卡片标题抢高度）
     timeWrapped: times.filter(e => e.scrollHeight > r(e).height + 3).length,
     // 时间行必须比名称更淡（层级：不能两段同样抢眼）
@@ -392,6 +413,13 @@ def main():
                         m["timeBadFormat"], m["timeTexts"][:3]))
                 if m["timeWrapped"] > 0:
                     fail("有 {} 条修改时间折行（应单行省略）".format(m["timeWrapped"]))
+                if m["timeTruncated"] > 0:
+                    fail("有 {} 条修改时间被省略号截断（窄卡必须降级为紧凑格式，"
+                         "否则用户看到的还是「没有修改时间」；示例：{}）".format(
+                             m["timeTruncated"], m["timeTexts"][:3]))
+                if m["timeTitleMissing"] > 0:
+                    fail("有 {} 条修改时间缺少完整的 title（降级后仍应能看到年月日）".format(
+                        m["timeTitleMissing"]))
                 if m["timeIcons"] != m["fileTimeRows"]:
                     fail("有修改时间行缺少时钟图标（图标 {} / 时间行 {}）".format(
                         m["timeIcons"], m["fileTimeRows"]))

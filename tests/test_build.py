@@ -1714,10 +1714,12 @@ def test_library_cards_show_modified_time(dist):
     # 1. 文件卡有独立的修改时间行（不是拼在「大小 · 时间」一行里）
     assert "function _libMetaHtml(" in js, "卡片元信息未拆成「大小 / 修改时间」两行"
     meta_fn = js[js.index("function _libMetaHtml("):js.index("function _libMetaText(")]
-    assert "lib-card-time" in meta_fn, "修改时间行缺少专用容器 Lib-card-time"
+    assert "lib-card-time" in meta_fn, "修改时间行缺少专用容器 lib-card-time"
     assert "icon-clock" in meta_fn, "修改时间行缺少时钟图标（无法与大小区分）"
     assert "修改 " in meta_fn, "修改时间行缺少「修改」前缀"
     assert "fmtTs(it.updated_at)" in meta_fn, "修改时间未走统一格式化函数 fmtTs"
+    assert "fmtTsShort(it.updated_at)" in meta_fn, \
+        "窄卡缺少紧凑时间格式（完整格式在 180~240px 卡上必被截断）"
     assert "title=\"修改时间 " in meta_fn, "修改时间未提供完整值（悬停/复制）"
     # 两行结构：大小行（lib-card-meta）+ 时间行（lib-card-time）
     assert "lib-card-meta" in meta_fn and "lib-card-time" in meta_fn, \
@@ -1734,6 +1736,14 @@ def test_library_cards_show_modified_time(dist):
     assert "white-space:nowrap" in text_block and "text-overflow:ellipsis" in text_block, \
         "时间文本未单行省略（长格式会把卡片撑高）"
     assert "tabular-nums" in text_block, "时间数字未等宽，行间无法对齐"
+    # 紧凑/完整两种格式必须有按容器宽度的取舍规则（本轮实测的坑：
+    # 单一完整格式会在 1440/2560 这类窄卡上被省略号截成「修改 2025-0…」）
+    assert ".lib-time-short{" in css and ".lib-time-full{" in css, \
+        "缺少「完整 / 紧凑」两种时间格式的样式开关"
+    assert "@container libname" in css, "两种时间格式未按卡片实际宽度取舍（应使用容器查询）"
+    assert "container-name:libname" in css, "缺少供时间行判断的命名容器"
+    for gone in (".lib-time-full{display:none}", ):
+        assert gone in css, "未在窄卡下隐藏完整格式" 
 
     # 3. 列表视图：表头与数据列都要有时间语义
     table_fn = js[js.index("function _libTableHtml("):js.index("// ---------- 卡片视图")]
@@ -1749,6 +1759,8 @@ def test_library_cards_show_modified_time(dist):
     # 5. 产物已重建
     assert "lib-card-time" in dist, "产物未包含修改时间行（需重跑 build.sh）"
     assert "lib-sub-time" in dist, "产物未包含列表视图时间列（需重跑 build.sh）"
+    assert "lib-time-short" in dist, "产物未包含紧凑时间格式（需重跑 build.sh）"
+    assert "fmtTsShort" in dist, "产物未包含紧凑时间格式化函数（需重跑 build.sh）"
 
 
 def test_library_modified_time_audit_is_committed():
@@ -1763,7 +1775,10 @@ def test_library_modified_time_audit_is_committed():
     """
     src = _read(os.path.join(_ROOT, "scripts", "check_library_dom.py"))
     for key in ("fileTimeRows", "fileCardsWithTime", "timeBadFormat", "timeWrapped",
-                "timeIcons", "timeColor", "rowsWithTime"):
+                "timeIcons", "timeColor", "rowsWithTime",
+                # 关键：必须断言「时间没有被省略号截断」——本轮实测回退（单一完整格式）
+                # 会被它抓出 8 条截断；只断言「有时间行」是抓不到的。
+                "timeTruncated", "timeTitleMissing"):
         assert key in src, "走查脚本缺少「修改时间」断言 {}".format(key)
 
 
