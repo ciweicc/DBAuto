@@ -14,6 +14,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 
 import pytest
 
@@ -1596,6 +1597,66 @@ def test_library_poster_cards_wired(dist):
     assert "lib-card-poster" in dist, "产物未包含卡片海报样式（需重跑 build.sh）"
 
 
+def test_library_folder_cards_get_tmdb_posters(dist):
+    """回归（issue #27 跟进）：文件夹卡也必须吃 TMDB 海报。
+
+    用户反馈原文：「这个页面不能通过 TMDB 匹配图片文字吗」，附图是媒体库根目录 ——
+    「/影视」下清一色是文件夹，而上一版只给**文件**匹配海报，于是整页都是灰色文件夹图标。
+    网盘目录名（复仇者联盟4 / 繁花 / 三体）本身就是作品名，必须一起参与匹配。
+
+    这里锁死三件事：
+      1. 匹配名单不再把 dir 条目排除；
+      2. 文件夹卡有独立的海报挂载点 `libPoster-<key>`，且「进入目录」的链接不被替换
+         （海报只是链接内的可视块，点哪里都还是进目录）；
+      3. 文件夹命中海报时有「文件夹」角标，避免被误认为可打开的文件卡。
+    """
+    src = _read(os.path.join(_JS_DIR, "library.js"))
+
+    # 1. 匹配名单不得再按 dir 过滤
+    names_fn = src[src.index("function _libFileNames("):]
+    names_fn = names_fn[:names_fn.index("\n}")]
+    assert "it.dir" not in names_fn, "匹配名单仍在排除文件夹（根目录下全是文件夹 → 整页无海报）"
+
+    # 2. 文件夹卡有海报挂载点，且进入目录的链接独立存在
+    dir_fn = src[src.index("function _libDirCardHtml("):]
+    dir_fn = dir_fn[:dir_fn.index("\nfunction ", 10)]
+    assert "libPoster-" in dir_fn, "文件夹卡缺少海报挂载点"
+    assert "lib-card-poster-dir" in dir_fn, "文件夹海报块缺少独立类名"
+    assert "onclick=\"enterDir(" in dir_fn, "文件夹卡丢失「进入目录」的点击入口"
+
+    # 3. 补丁函数不再拒绝文件夹，且角标存在
+    apply_fn = src[src.index("function _libApplyPoster("):]
+    apply_fn = apply_fn[:apply_fn.index("\nfunction ", 10)]
+    assert "if(!it || it.dir) return;" not in apply_fn, "补丁函数仍在拒绝文件夹"
+    assert "lib-dir-badge" in apply_fn, "文件夹海报缺少「文件夹」角标"
+
+    # 4. 海报加载失败时，文件夹回退成文件夹图标（而不是电影图标）
+    broken_fn = src[src.index("function libPosterBroken("):]
+    broken_fn = broken_fn[:broken_fn.index("\nfunction ", 10)]
+    assert "icon-folder" in broken_fn and "icon-movie" in broken_fn, \
+        "海报兜底未按卡片类型区分图标"
+
+    # 5. 产物已重建
+    assert "lib-card-poster-dir" in dist, "产物未包含文件夹海报样式（需重跑 build.sh）"
+    assert "lib-dir-badge" in dist, "产物未包含文件夹角标（需重跑 build.sh）"
+
+
+def test_tmdb_similarity_grades_containment():
+    """回归（issue #27 跟进）：包含关系不能是「一律 0.9」。
+
+    文件夹参与匹配后，目录名常常是作品本名：`复仇者联盟4` 与候选
+    「复仇者联盟4：终局之战」「复仇者联盟」都是包含关系。若同为 0.9，
+    就只能靠返回顺序决胜，很容易把续集挂成前作的海报。
+    """
+    sys.path.insert(0, os.path.join(_ROOT, "app_modules"))
+    from tmdb import _similarity  # noqa: E402
+
+    assert _similarity("abc", "abc") == 1.0
+    assert 0.7 < _similarity("abc", "abcd") < 0.9
+    # 查询是候选的前缀（补了副标题）优于候选是查询的前缀（信息缺失）
+    assert _similarity("复仇者联盟4", "复仇者联盟4终局之战") > _similarity("复仇者联盟4", "复仇者联盟")
+
+
 def test_library_poster_cards_keep_fast_budget():
     """图文卡片的 TMDB 匹配不得把「快速失败」这条底线打回去。
 
@@ -1774,3 +1835,77 @@ def test_login_page_dom_audit_is_committed():
     assert "for theme in THEMES" in src or "THEMES" in src, "走查脚本没覆盖两套主题"
     # 反例守卫：脚本必须能在「登录页重定义 token」时失败（本轮实测能抓到 1.0:1）
     assert "背景" in src or "bg" in src, "走查脚本缺少背景解析说明"
+
+
+# 复选 / 单选控件统一（issue #27 反馈：复选框有点丑）
+# ============================================================
+_CSS_MAIN = os.path.join(_SRC, "styles", "main.css")
+
+
+def test_shared_checkbox_control_is_defined_once():
+    """回归（issue #27）：勾选框必须由**全局一份**规则定义，禁止各处再画一套。
+
+    用户反馈「复选框有点丑」。排查下来丑的原因是「三种长相」：
+
+      - 媒体库卡片角标：15px 系统蓝方块，压在自绘的深色圆底上；
+      - 媒体库表格行：16px 原生框 + `accent-color`，跟随浏览器/系统配色；
+      - 全选 / 其它页面：裸 `input`，尺寸还被行内 font-size 带着跑。
+
+    所以这里断言「全局控件规则存在且被重置外观」，并把「各处再写一套尺寸」
+    的部分一起锁住。
+    """
+    css = _read(_CSS_MAIN)
+    assert 'input[type="checkbox"],\ninput[type="radio"]{' in css or \
+           'input[type="checkbox"], input[type="radio"]{' in css, \
+        "缺少全局复选/单选控件规则（勾选框会退回浏览器原生外观）"
+    assert "appearance:none" in css, "未重置 appearance，控件外观仍由浏览器决定"
+    assert 'input[type="checkbox"]:checked' in css, "缺少已勾选态样式"
+    assert "::after" in css and "rotate(43deg)" in css, "勾形应由 ::after 绘制（跨浏览器一致）"
+    assert ":indeterminate" in css, "缺少半选（indeterminate）态样式"
+    assert 'input[type="checkbox"]:focus-visible' in css, "缺少键盘焦点环"
+
+    # 尺寸不受 font-size 影响：必须钉像素（历史：13px/15px/16px 三种）
+    block_start = css.index('/* ============ 复选 / 单选控件（全局统一')
+    block_end = css.index("/* Sched row */", block_start)
+    block = css[block_start:block_end]
+    assert re.search(r"width:18px;height:18px", block), \
+        "控件尺寸必须固定（不能跟随 font-size，否则每处显示都不同）"
+
+    # 各处不得再自定义勾选框尺寸：只允许保留「热区/光标」这类不改变外观的属性
+    for path, snippet in (
+        (os.path.join(_SRC, "styles", "main.css"), ".lib-cb input{"),
+        (os.path.join(_SRC, "styles", "main.css"), ".lib-card-cb input{"),
+    ):
+        css_all = _read(path)
+        assert snippet in css_all, "缺少 {}".format(snippet)
+        body = css_all[css_all.index(snippet) + len(snippet):]
+        body = body[:body.index("}")]
+        assert "width:" not in body and "height:" not in body, (
+            "{} 又自定了勾选框尺寸，会让同一页出现不同大小的勾选框（三种长相复发）".format(
+                snippet))
+
+
+def test_checkbox_dom_audit_is_committed():
+    """回归（issue #27）：勾选框的「渲染后」缺陷必须由落库的走查脚本守住。
+
+    静态扫描只能看出「写了什么规则」，看不出：
+
+      1. 浏览器是否真的按自绘样式渲染（appearance 是否被重置、尺寸是否被字号缩放）；
+      2. 同一页所有勾选框是否真的**一处一样**（卡片角标 / 表格行 / 全选）；
+      3. 已勾选 / 半选态是否真的有可见勾形与横杠；
+      4. 深浅两套主题下控件是否仍能从背景里「显形」出来。
+
+    本轮实测该脚本能把「删掉全局控件规则」（报出 12 个原生控件、13x13 尺寸、
+    无勾形）与「卡片角标改回 15px」（报出尺寸不一致）两种回退抓出来。
+    """
+    script = os.path.join(_ROOT, "scripts", "check_checkbox_dom.py")
+    assert os.path.isfile(script), "缺少 scripts/check_checkbox_dom.py（勾选框 DOM 度量走查）"
+    src = _read(script)
+    assert "index_new.html" in src, "走查脚本没加载构建产物"
+    assert ".lib-card-cb input" in src and "#libSelAll" in src, \
+        "走查脚本必须同时采样卡片角标、表格行与全选三处（三种长相的来源）"
+    assert "appearance" in src, "走查脚本没断言 appearance 被重置"
+    assert "indeterminate" in src, "走查脚本没断言半选态"
+    assert "sizeUnderZoom" in src, "走查脚本没断言尺寸不受 font-size 影响"
+    assert "THEMES" in src, "走查脚本没覆盖两套主题"
+    assert "MIN_NON_TEXT" in src, "走查脚本缺少非文本对比度阈值"

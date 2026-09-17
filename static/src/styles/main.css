@@ -323,6 +323,74 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 /* 无障碍：开关本体是隐藏 checkbox，Tab 聚焦时在可见的滑轨上显示聚焦环 */
 .toggle input:focus-visible + .slider{box-shadow:0 0 0 3px var(--accent-wash-strong),0 0 0 2px var(--accent)}
 
+/* ============ 复选 / 单选控件（全局统一，issue #27 反馈：复选框有点丑） ============
+   原生 `input[type=checkbox]` 在每个浏览器里长得都不一样：Windows 上是系统方块、
+   macOS 上是圆角蓝块，尺寸还被 font-size 影响，压在深色玻璃面上会「糊」成一块。
+   这里统一自绘：26px 触摸热区 + 18px 系统风圆角方块 + 品牌渐变勾选态 + 键盘焦点环。
+
+   两个刻意的取舍：
+   1. **不隐藏 input**（不写 appearance:none 之外的隐藏技巧）：
+      部分浏览器对「display:none / 不可见的原生勾选框」不触发 onchange，
+      而本项目全部勾选逻辑都挂在内联 onchange 上（媒体库卡片/表格/全选）。
+      所以只重置外观，input 本身仍参与渲染与点击。
+   2. **尺寸不受 font-size 影响**：直接钉像素，避免行内 font-size 变化把控件缩放变形。
+   深浅两套主题的底色/描边/勾选态一律取自 tokens.css，不在这里写死色值。 */
+input[type="checkbox"],
+input[type="radio"]{
+  -webkit-appearance:none;appearance:none;
+  width:18px;height:18px;flex:0 0 18px;margin:0;
+  border:1.5px solid var(--border3);
+  border-radius:6px;
+  background-color:var(--field-bg);
+  background-image:linear-gradient(180deg, var(--field-hi), rgba(255,255,255,0));
+  box-shadow:inset 0 1px 2px rgba(0,0,0,.18);
+  cursor:pointer;position:relative;
+  transition:background-color var(--transition-fast),border-color var(--transition-fast),
+    box-shadow var(--transition-fast),transform var(--transition-fast);
+}
+input[type="radio"]{border-radius:50%}
+input[type="checkbox"]:hover:not(:disabled),
+input[type="radio"]:hover:not(:disabled){border-color:var(--accent-border-soft);background-color:var(--card-2)}
+input[type="checkbox"]:active:not(:disabled),
+input[type="radio"]:active:not(:disabled){transform:scale(.92)}
+/* 勾选态：与主页主按钮同一渐变出处（--gradient-btn），不再依赖各浏览器的系统蓝 */
+input[type="checkbox"]:checked,
+input[type="radio"]:checked{
+  border-color:transparent;background-color:var(--accent);
+  background-image:var(--gradient-btn);
+  box-shadow:0 2px 8px -2px var(--accent-border-soft);
+}
+/* 对勾：右下角开口的折线（勾尾被卡片边缘裁掉是常见丑态，所以内缩到 3px/4px） */
+input[type="checkbox"]:checked::after{
+  content:'';position:absolute;left:6px;top:3px;
+  width:4px;height:8px;border:solid #fff;border-width:0 2px 2px 0;
+  transform:rotate(43deg);
+}
+input[type="radio"]:checked::after{
+  content:'';position:absolute;left:50%;top:50%;width:7px;height:7px;border-radius:50%;
+  background:#fff;transform:translate(-50%,-50%);
+}
+input[type="checkbox"]:indeterminate{
+  border-color:transparent;background-color:var(--accent);background-image:var(--gradient-btn);
+}
+/* 半选（indeterminate）是 JS 设的属性，CSS 里没有 :indeterminate 之外的样式钩子 → 用 ::after 画一根横杠 */
+input[type="checkbox"]:indeterminate::after{
+  content:'';position:absolute;left:4px;top:50%;width:8px;height:2px;border-radius:1px;
+  background:#fff;transform:translateY(-50%);
+}
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled{opacity:.45;cursor:not-allowed}
+/* 键盘焦点环：与 .toggle 同一形态（聚焦时才出现，不干扰鼠标操作） */
+input[type="checkbox"]:focus-visible,
+input[type="radio"]:focus-visible{outline:2px solid var(--accent);outline-offset:2px;box-shadow:var(--focus-ring)}
+/* 触摸设备：热区补到 26px（视觉尺寸不变，用外边距撑开，避免行高被顶） */
+@media (hover:none){
+  input[type="checkbox"],
+  input[type="radio"]{position:relative}
+  input[type="checkbox"]::before,
+  input[type="radio"]::before{content:'';position:absolute;inset:-4px}
+}
+
 /* Sched row */
 .sched-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
 .sched-row:last-child{margin-bottom:0}
@@ -1644,8 +1712,9 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .lib-name a:hover{text-decoration:underline}
 .lib-sub{color:var(--text2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px}
 .lib-sub a{color:var(--accent);text-decoration:none}
-.lib-cb{display:flex;align-items:center}
-.lib-cb input{width:16px;height:16px;cursor:pointer;accent-color:var(--accent)}
+.lib-cb{display:flex;align-items:center;justify-content:center;width:24px;height:24px}
+/* 控件尺寸由全局规则统一（18px），这里只保证点击热区够大、不与行高打架 */
+.lib-cb input{cursor:pointer}
 .lib-ops{justify-self:end;white-space:nowrap}
 .lib-crumb{display:flex;align-items:center;flex-wrap:wrap;gap:2px;margin:6px 0 2px;
   font-size:12.5px;color:var(--text3);min-height:20px}
@@ -1668,9 +1737,14 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   overflow:hidden;transition:border-color var(--transition-fast),transform var(--transition-fast)}
 .lib-card:hover{transform:translateY(-2px);border-color:rgba(10,132,255,.4)}
 /* 勾选框固定在左上角：卡片本身仍是可点区域（文件夹进入 / 文件看标题） */
-.lib-card-cb{position:absolute;top:8px;left:8px;z-index:3;display:flex;align-items:center;justify-content:center;
-  width:24px;height:24px;border-radius:50%;background:rgba(0,0,0,.55);cursor:pointer}
-.lib-card-cb input{width:15px;height:15px;cursor:pointer;accent-color:var(--accent)}
+/* 勾选框固定在左上角：卡片本身仍是可点区域（文件夹进入 / 文件看标题）。
+   角标只负责「可点、可点得准」，外观交给全局控件规则 —— 之前这里自己画了一个
+   15px 的系统蓝方块压在深色圆底上，和列表视图、全选两处的勾选框三种长相。 */
+.lib-card-cb{position:absolute;top:10px;left:10px;z-index:3;display:flex;align-items:center;
+  justify-content:center;width:26px;height:26px;cursor:pointer;border-radius:var(--radius-xs);
+  transition:background var(--transition-fast)}
+.lib-card-cb:hover{background:var(--hover-wash)}
+.lib-card-cb input{cursor:pointer}
 .lib-card-poster{position:relative;width:100%;aspect-ratio:2/3;overflow:hidden;background:rgba(255,255,255,.03)}
 /* 无海报时的占位块：海报 2:3 在桌面 5 列下高达 ~360px，对「没有海报」的文件
    来说是一大片空白（issue #27 观感反馈：卡片太高、空得难受）。
@@ -1689,15 +1763,29 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .lib-card-meta{font-size:var(--fs-xs);color:var(--text2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lib-card-info{padding:9px 10px 10px;display:flex;flex-direction:column;gap:5px;flex:1}
 .lib-card-ops{display:flex;justify-content:flex-end}
-/* 文件夹卡：不放海报，用图标 + 名称的紧凑块（避免给目录也去匹配 TMDB） */
-.lib-card-body{display:flex;flex-direction:column;align-items:center;gap:8px;padding:22px 10px 12px;
-  text-decoration:none;color:inherit;flex:1;text-align:center}
+/* 文件夹卡（issue #27 跟进：文件夹也走 TMDB 匹配）
+   海报块与文件卡同为 2:3，未匹配到时是 16:9 的文件夹图标块（见上方 :has 规则）；
+   海报与文件夹角标都挂在链接内部，点任意位置仍然是「进入该目录」。 */
+.lib-card-body{display:flex;flex-direction:column;align-items:stretch;gap:8px;padding:0 0 12px;
+  text-decoration:none;color:inherit;flex:1}
+.lib-card-body .lib-card-title{padding:0 10px;text-align:center}
+.lib-card-body .lib-card-meta{text-align:center;padding:0 10px}
+.lib-card-poster-dir{display:flex;align-items:center;justify-content:center}
+.lib-card-poster-dir .lib-card-ph{width:100%;height:100%}
 .lib-card-dir .lib-card-title{color:var(--accent)}
 .lib-card-body:hover .lib-card-title{text-decoration:underline}
-.lib-card-dir .lib-card-ops{padding:0 10px 10px}
+.lib-card-dir .lib-card-ops{padding:0 10px}
+/* 「文件夹」角标：海报只说明「这是哪部作品」，不能让人误判点击行为 */
+.lib-dir-badge{position:absolute;left:8px;bottom:8px;z-index:2;
+  padding:2px 7px;border-radius:999px;background:rgba(0,0,0,.62);color:#fff;
+  font-size:var(--fs-xs);line-height:1.5;backdrop-filter:blur(4px)}
+.lib-card-poster-dir .tmdb-rating-badge{top:auto;left:auto;right:8px;bottom:8px}
 
 @media (max-width:760px){
   .lib-row{padding:8px 6px;gap:8px}
+  /* 触屏下勾选框再放大一档，避免 18px 目标点不准（视觉尺寸不变，只放热区） */
+  .lib-cb{width:28px;height:28px}
+  .lib-card-cb{width:30px;height:30px}
   /* 窄屏收起「修改时间」，文件表只保留 选择/名称/大小/操作 */
   #libList .lib-row{grid-template-columns:30px minmax(0,1fr) 62px auto}
   #libList .lib-row > .lib-sub:nth-of-type(3){display:none}
