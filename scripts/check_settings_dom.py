@@ -145,6 +145,19 @@ VIEWPORTS = [
 ]
 
 
+
+def _launch_kwargs():
+    """本机 playwright 版本与已装 chromium 目录不匹配时回退到显式可执行文件。
+
+    仅影响开发环境的手工走查（CI 上通常直接跳过），不改变断言内容。
+    """
+    import glob
+    for cand in sorted(glob.glob("/opt/ms-playwright/chromium-*/chrome-linux64/chrome")):
+        if os.path.isfile(cand):
+            return {"executable_path": cand}
+    return {}
+
+
 def _start_server():
     class _QuietHandler(http.server.SimpleHTTPRequestHandler):
         def log_message(self, *a):
@@ -189,7 +202,7 @@ def main():
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(args=["--no-sandbox"])
+            browser = p.chromium.launch(args=["--no-sandbox"], **_launch_kwargs())
             for width, height, label in VIEWPORTS:
                 page = browser.new_page(viewport={"width": width, "height": height})
                 page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")

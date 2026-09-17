@@ -119,6 +119,20 @@ class QASClient(APIClient):
     def update(self, data):
         return self.post(self._add_token_to_url("/update"), data)
 
+    def update_tasklist(self, tasklist):
+        """整体写回 QAS 的 tasklist（用于删除任务配置）。
+
+        对应 QAS `/update` 的 `tasklist` 字段：QAS 侧是「整表替换」语义
+        （见其 WebUI `removeTask` 的实现：splice 后提交整个 formData），
+        因此删除任务必须提交**删减后的完整列表**——只发被删的那一条，
+        会把其余任务全部抹掉。
+
+        刻意不改动列表内任何字段：QAS 的 `/update` 会把传入 tasklist 直接落盘，
+        `addition`（任务级插件配置，如 auto_unarchive）、`shareurl_ban`（失效标记）
+        若被重写/丢弃，任务的解压、订阅等行为就会静默改变。
+        """
+        return self.update({"tasklist": tasklist})
+
     # ---------- 网盘文件管理（媒体库浏览 / 删除，用于双向同步） ----------
 
     def get_savepath_detail(self, path=None, fid=None):

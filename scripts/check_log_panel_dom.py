@@ -52,6 +52,19 @@ _LONG_LINE = ("2026-09-15 10:01:00 转存《一个名字特别长的示例作品
               "用于验证折行缩进对齐效果》：https://pan.quark.cn/s/verylongsharelinkabcdefghijklmnop")
 
 
+
+def _launch_kwargs():
+    """本机 playwright 版本与已装 chromium 目录不匹配时回退到显式可执行文件。
+
+    仅影响开发环境的手工走查（CI 上通常直接跳过），不改变断言内容。
+    """
+    import glob
+    for cand in sorted(glob.glob("/opt/ms-playwright/chromium-*/chrome-linux64/chrome")):
+        if os.path.isfile(cand):
+            return {"executable_path": cand}
+    return {}
+
+
 def _progress():
     lines = [_LOG_LINE.format(i % 60, i, i) for i in range(60)]
     lines.insert(10, _LONG_LINE)
@@ -193,7 +206,7 @@ def main():
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(args=["--no-sandbox"])
+            browser = p.chromium.launch(args=["--no-sandbox"], **_launch_kwargs())
             for width, height, narrow, label in VIEWPORTS:
                 page = browser.new_page(viewport={"width": width, "height": height})
                 page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")

@@ -14,17 +14,23 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 from unittest.mock import patch
 
 import media_library
-from media_library import list_tasks, list_library, delete_entries, MAX_DELETE_BATCH
+from media_library import (
+    list_tasks, list_library, delete_entries, delete_tasks,
+    MAX_DELETE_BATCH, MAX_TASK_DELETE_BATCH,
+)
 
 
 class _FakeClient:
     """按调用记录返回预置响应的 QAS 假客户端。"""
 
-    def __init__(self, data_resp=None, savepath_resp=None, delete_resp=None):
+    def __init__(self, data_resp=None, savepath_resp=None, delete_resp=None,
+                 update_resp=None):
         self.data_resp = data_resp or {"success": True, "data": {"tasklist": []}}
         self.savepath_resp = savepath_resp or {"success": True, "data": {"fid": 0, "list": []}}
         self.delete_resp = delete_resp or {"success": True, "code": 0}
+        self.update_resp = update_resp or {"success": True, "message": "配置更新成功"}
         self.delete_calls = []
+        self.update_calls = []
 
     def get_data(self):
         return self.data_resp
@@ -35,6 +41,10 @@ class _FakeClient:
     def delete_file(self, path=None, fid=None):
         self.delete_calls.append({"path": path, "fid": fid})
         return self.delete_resp
+
+    def update_tasklist(self, tasklist):
+        self.update_calls.append(tasklist)
+        return self.update_resp
 
 
 # ---------- list_tasks ----------
@@ -292,3 +302,149 @@ def test_route_get_returns_502_when_qas_down():
         assert h._handle_library_get("/api/qas/library") is True
     assert h.status == 502
     assert h.sent["success"] is False
+
+
+# ---------- delete_tasks：删除 QAS 任务条目（issue #27 跟进） ----------
+#
+# 用户确认 QAS 为自部署服务，因此「改任务配置」只影响自己的任务表。
+# 风险点不在「能不能改」，而在「怎么改不会把别的任务一起抹掉」——
+# QAS `/update` 是整表替换语义，以下用例围绕这一点锁死行为。
+
+
+def _tasks(*names):
+    return [{"taskname": n, "shareurl": "https://pan.quark.cn/s/{}".format(n),
+             "savepath": "/媒体库/{}".format(n), "pattern": "$TV", "replace": "",
+             "addition": {"auto_unarchive": {"enable": True}}} for n in names]
+
+
+def test_delete_task_removes_only_target():
+    """核心：删除 1 条任务，写回的列表必须保留其余任务且字段原样。"""
+    fake = _FakeClient(data_resp={"success": True, "data": {"tasklist": _tasks("A", "B", "C")}})
+    with patch.object(media_library, "_client", return_value=fake):
+        res = delete_tasks([{"taskname": "B", "savepath": "/媒体库/B"}])
+    assert res["success"] is True and res["deleted"] == 1
+    written = [t["taskname"] for t in fake.update_calls[0]]
+    assert written == ["A", "C"], "整表写回时必须保留其它任务"
+    # addition（任务级插件配置）不得被清洗，否则解压/订阅行为会静默改变
+    assert fake.update_calls[0][0]["addition"]["auto_unarchive"]["enable"] is True
+    assert fake.update_calls[0][0]["pattern"] == "$TV"
+    assert [t["taskname"] for t in res["tasks"]] == ["A", "C"]
+
+
+def test_delete_task_by_index():
+    fake = _FakeClient(data_resp={"success": True, "data": {"tasklist": _tasks("A", "B")}})
+    with patch.object(media_library, "_client", return_value=fake):
+        res = delete_tasks([{"index": 0}])
+    assert res["success"] is True
+    assert [t["taskname"] for t in fake.update_calls[0]] == ["B"]
+
+
+def test_delete_task_same_name_distinguished_by_savepath():
+    """同名不同路径的两条任务必须只删指定的那条（键为 taskname+savepath）。"""
+    tasks = [
+        {"taskname": "同名", "savepath": "/A", "shareurl": "u1"},
+        {"taskname": "同名", "savepath": "/B", "shareurl": "u2"},
+    ]
+    fake = _FakeClient(data_resp={"success": True, "data": {"tasklist": tasks}})
+    with patch.object(media_library, "_client", return_value=fake):
+        res = delete_tasks([{"taskname": "同名", "savepath": "/B"}])
+    assert res["success"] is True and res["deleted"] == 1
+    assert [t["savepath"] for t in fake.update_calls[0]] == ["/A"]
+
+
+def test_delete_task_missing_target_aborts_whole_batch():
+    """有任一条定位失败 → 整批不写回（半途只删一部分比报错更危险）。"""
+    fake = _FakeClient(data_resp={"success": True, "data": {"tasklist": _tasks("A")}})
+    with patch.object(media_library, "_client", return_value=fake):
+        res = delete_tasks([
+            {"taskname": "A", "savepath": "/媒体库/A"},
+            {"taskname": "不存在", "savepath": "/x"},
+        ])
+    assert res["success"] is False and res["deleted"] == 0
+    assert fake.update_calls == [], "定位失败时不得向 QAS 写回任何东西"
+    assert "未做任何改动" in res["message"]
+
+
+def test_delete_task_writeback_failure_not_reported_as_success():
+    fake = _FakeClient(data_resp={"success": True, "data": {"tasklist": _tasks("A")}},
+                       update_resp={"success": False, "message": "配置更新失败"})
+    with patch.object(media_library, "_client", return_value=fake):
+        res = delete_tasks([{"taskname": "A", "savepath": "/媒体库/A"}])
+    assert res["success"] is False and res["deleted"] == 0
+    assert "配置更新失败" in res["message"]
+
+
+def test_delete_task_qas_read_error_graceful():
+    class Boom:
+        def get_data(self):
+            raise TimeoutError("connect timed out")
+
+    with patch.object(media_library, "_client", return_value=Boom()):
+        res = delete_tasks([{"taskname": "A"}])
+    assert res["success"] is False
+    assert "读取 QAS 任务失败" in res["message"]
+
+
+def test_delete_task_rejects_empty_and_oversized_and_invalid():
+    fake = _FakeClient()
+    with patch.object(media_library, "_client", return_value=fake):
+        assert delete_tasks([])["success"] is False
+        assert delete_tasks([{}])["success"] is False
+        many = [{"taskname": "T{}".format(i)} for i in range(MAX_TASK_DELETE_BATCH + 1)]
+        res = delete_tasks(many)
+    assert "最多删除" in res["message"]
+    assert fake.update_calls == []
+
+
+def test_delete_task_updates_qas_cache():
+    """删完必须同步 transfer 的任务缓存，否则重新转存仍被判为「已转存」而跳过。"""
+    import transfer
+    transfer.init_qas_cache  # 触发模块导入
+    transfer.add_to_qas("A")
+    transfer.add_to_qas("B")
+    fake = _FakeClient(data_resp={"success": True, "data": {"tasklist": _tasks("A", "B")}})
+    with patch.object(media_library, "_client", return_value=fake):
+        delete_tasks([{"taskname": "A", "savepath": "/媒体库/A"}])
+    assert transfer.is_in_qas("A") is False, "被删任务仍留在 QAS 缓存里"
+    assert transfer.is_in_qas("B") is True, "不应误清未删除任务的缓存"
+    transfer.remove_from_qas("B")
+
+
+def test_remove_from_qas_semantics():
+    import transfer
+    transfer.add_to_qas("X")
+    assert transfer.remove_from_qas("X") is True
+    assert transfer.remove_from_qas("X") is False
+    assert transfer.remove_from_qas("") is False
+
+
+# ---------- 路由：POST /api/qas/delete_tasks ----------
+
+def test_route_delete_tasks_ok():
+    fake = _FakeClient(data_resp={"success": True, "data": {"tasklist": _tasks("A")}})
+    h = _make_handler()
+    with patch.object(media_library, "_client", return_value=fake):
+        assert h._handle_library_post(
+            "/api/qas/delete_tasks",
+            {"tasks": [{"taskname": "A", "savepath": "/媒体库/A"}]}) is True
+    assert h.sent["success"] is True and h.status == 200
+
+
+def test_route_delete_tasks_rejects_empty_and_invalid():
+    h = _make_handler()
+    assert h._handle_library_post("/api/qas/delete_tasks", {"tasks": []}) is True
+    assert h.status == 400
+    h2 = _make_handler()
+    assert h2._handle_library_post("/api/qas/delete_tasks", {"tasks": [{"savepath": "/x"}]}) is True
+    assert "taskname" in h2.sent["error"] and h2.status == 400
+
+
+def test_route_delete_tasks_returns_502_when_qas_down():
+    class Boom:
+        def get_data(self):
+            raise RuntimeError("QAS down")
+
+    h = _make_handler()
+    with patch.object(media_library, "_client", return_value=Boom()):
+        assert h._handle_library_post("/api/qas/delete_tasks", {"tasks": [{"taskname": "A"}]}) is True
+    assert h.status == 502 and h.sent["success"] is False

@@ -1633,6 +1633,8 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   padding:9px 10px;border-bottom:1px solid var(--border);font-size:13px}
 /* 文件表多一列复选框、一列操作 */
 #libList .lib-row{grid-template-columns:34px minmax(0,2.2fr) 84px 130px auto}
+/* 任务表：选择/任务名/转存路径/分享链接/操作 */
+#qasTaskList .lib-row{grid-template-columns:34px minmax(0,1.8fr) minmax(0,1.6fr) 72px auto}
 .lib-row.lib-head{color:var(--text3);font-size:12px;font-weight:600;
   text-transform:none;border-bottom:1px solid var(--border2)}
 .lib-row:last-child{border-bottom:none}
@@ -1660,4 +1662,7 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   #libList .lib-row{grid-template-columns:30px minmax(0,1fr) 62px auto}
   #libList .lib-row > .lib-sub:nth-of-type(3){display:none}
   .lib-table .lib-row.lib-head > span:nth-child(3){display:none}
+  /* 任务表窄屏收起「转存路径」，保留 选择/任务名/分享链接/操作 */
+  #qasTaskList .lib-row{grid-template-columns:30px minmax(0,1fr) 56px auto}
+  #qasTaskList .lib-row > .lib-sub:nth-of-type(2){display:none}
 }

@@ -205,6 +205,20 @@ def add_to_qas(name):
     with _qas_cache_lock:
         _qas_cache.add(name)
 
+def remove_from_qas(name):
+    """从 QAS 任务缓存中移除一条（删除任务后调用）。
+
+    不清理缓存会导致「删完任务、重新转存仍被判为已转存而跳过」，
+    与网盘删除后必须同步历史是同一类问题。
+    """
+    if not name:
+        return False
+    with _qas_cache_lock:
+        if name in _qas_cache:
+            _qas_cache.discard(name)
+            return True
+    return False
+
 def search_pansou(keyword, category="movie"):
     cached = _pansou_cache.get("{}:{}".format(category, keyword))
     if cached is not None:

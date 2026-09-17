@@ -100,6 +100,10 @@ MEASURE = r"""
     pageOverflowX: page ? page.scrollWidth - page.clientWidth : 0,
     rowCols: rows.length ? getComputedStyle(rows[rows.length - 1]).gridTemplateColumns : '',
     rowH: rows.length ? Math.round(r(rows[rows.length - 1]).height) : 0,
+    // QAS 任务表（issue #27 跟进：条目删除）
+    qasRows: qas ? qas.querySelectorAll('.lib-row:not(.lib-head)').length : 0,
+    qasDelBtn: qas ? qas.querySelector('.lib-ops button') ? qas.querySelector('.lib-ops button').textContent : '' : '',
+    qasActionBar: q('#qasActionBar') ? getComputedStyle(q('#qasActionBar')).display : '',
     vh: window.innerHeight,
   };
 }
@@ -109,6 +113,18 @@ VIEWPORTS = [
     (1440, 900, "1440x900"),
     (390, 844, "390x844 移动端"),
 ]
+
+
+def _launch_kwargs():
+    """本机 playwright 的版本与已装 chromium 目录不匹配时，回退到显式可执行文件。
+
+    仅影响开发环境的手工走查（CI 上通常直接跳过），不改变断言内容。
+    """
+    import glob
+    for cand in sorted(glob.glob("/opt/ms-playwright/chromium-*/chrome-linux64/chrome")):
+        if os.path.isfile(cand):
+            return {"executable_path": cand}
+    return {}
 
 
 def _start_server():
@@ -172,7 +188,7 @@ def main():
 
     try:
         with sync_playwright() as p:
-            browser = p.chromium.launch(args=["--no-sandbox"])
+            browser = p.chromium.launch(args=["--no-sandbox"], **_launch_kwargs())
             for width, height, label in VIEWPORTS:
                 log = []
                 page = browser.new_page(viewport={"width": width, "height": height})
@@ -311,6 +327,100 @@ def main():
                     detail["hasBody"]))
             page.close()
 
+            # --- 7. QAS 任务删除链路（issue #27 跟进） ---
+            # 用户诉求：夸克自动转存为自部署服务，任务条目也要能在 DBAuto 里删。
+            log4 = []
+            deleted = []
+            state = {"tasks": [dict(t) for t in _QAS_TASKS["tasks"]]}
+
+            def route_del(route):
+                url = route.request.url
+                if "/api/" not in url:
+                    return route.fallback()
+                path = url.split(str(PORT), 1)[-1].split("?", 1)[0]
+                if path.rstrip("/").endswith("/api/sse"):
+                    return route.fulfill(status=200, content_type="text/event-stream", body=b"")
+                if path == "/api/qas/tasks":
+                    return route.fulfill(status=200, content_type="application/json",
+                                         body=json.dumps({"success": True, "tasks": state["tasks"]},
+                                                         ensure_ascii=False).encode())
+                if path == "/api/qas/delete_tasks":
+                    body = json.loads(route.request.post_data or "{}")
+                    keys = {(i.get("taskname"), i.get("savepath")) for i in body.get("tasks", [])}
+                    deleted.extend(body.get("tasks", []))
+                    state["tasks"] = [t for t in state["tasks"]
+                                      if (t.get("taskname"), t.get("savepath")) not in keys]
+                    return route.fulfill(status=200, content_type="application/json",
+                                         body=json.dumps({"success": True, "deleted": len(keys),
+                                                          "tasks": state["tasks"]},
+                                                         ensure_ascii=False).encode())
+                return _route(route, log4)
+
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")
+            page.route("**/*", route_del)
+            page.goto(URL, wait_until="load", timeout=20000)
+            page.evaluate("()=>switchTab('library')")
+            page.wait_for_timeout(1200)
+
+            def qas_state():
+                return page.evaluate(MEASURE)
+
+            m0 = qas_state()
+            report.append({"label": "任务删除(1440x900)", "qasRows": m0["qasRows"],
+                           "qasDelBtn": m0["qasDelBtn"]})
+            if m0["qasRows"] != 8:
+                problems.append("[任务删除] QAS 任务表行数异常（{} 行）".format(m0["qasRows"]))
+            if m0["qasDelBtn"] != "删除":
+                problems.append("[任务删除] QAS 任务行缺少删除入口（按钮文案 {!r}）".format(
+                    m0["qasDelBtn"]))
+
+            # 单条删除 → 必须弹确认（不可逆操作）
+            page.evaluate("()=>deleteQasTask(qasKey(qasTasks[0]))")
+            page.wait_for_timeout(300)
+            shown = page.evaluate(
+                "()=>document.getElementById('confirmOverlay').classList.contains('show')")
+            desc = page.evaluate("()=>document.getElementById('confirmDesc').textContent")
+            if not shown:
+                problems.append("[任务删除] 单条删除没有弹确认框")
+            if "网盘里已转存的文件不受影响" not in desc:
+                problems.append("[任务删除] 确认文案未说明「只删任务配置、不动网盘文件」")
+            page.click("#confirmOk")
+            page.wait_for_timeout(600)
+            m1 = qas_state()
+            if not deleted:
+                problems.append("[任务删除] 确认后未调用 /api/qas/delete_tasks")
+            elif len(deleted) != 1:
+                problems.append("[任务删除] 单条删除提交了 {} 条".format(len(deleted)))
+            if m1["qasRows"] != 7:
+                problems.append("[任务删除] 单条删除后行数未减少（{} 行）".format(m1["qasRows"]))
+
+            # 全选 → 批量删除
+            page.evaluate("()=>toggleQasSelectAll(true)")
+            page.wait_for_timeout(200)
+            cnt = page.evaluate("()=>document.getElementById('qasSelCount').textContent")
+            if "已选 7 条" not in cnt:
+                problems.append("[任务删除] 全选计数异常（{!r}）".format(cnt))
+            bar = page.evaluate(
+                "()=>getComputedStyle(document.getElementById('qasActionBar')).display")
+            if bar == "none":
+                problems.append("[任务删除] 批量操作条在勾选后仍不可见")
+            page.evaluate("()=>deleteSelectedQasTasks()")
+            page.wait_for_timeout(300)
+            page.click("#confirmOk")
+            page.wait_for_timeout(600)
+            m2 = qas_state()
+            if m2["qasRows"] != 0:
+                problems.append("[任务删除] 批量删除后仍有 {} 行任务".format(m2["qasRows"]))
+            empty_txt = page.evaluate("()=>document.getElementById('qasTaskList').textContent")
+            if "暂无任务" not in empty_txt:
+                problems.append("[任务删除] 删空后未给出空态文案")
+
+            # 横向溢出复查（新增了一列操作）
+            if m2.get("docOverflowX", 0) > 0:
+                problems.append("[任务删除] 文档横向溢出 {}px".format(m2["docOverflowX"]))
+            page.close()
+
             browser.close()
     finally:
         if httpd is not None:
@@ -328,6 +438,9 @@ def main():
             elif "requests" in m:
                 print("{:<22} 请求序列 {} 行数 {} 计数 {}".format(
                     m["label"], m["requests"], m["hasBody"], m["libCountText"]))
+            elif "qasRows" in m:
+                print("{:<22} 任务行数 {:<3} 行内删除入口 {!r}".format(
+                    m["label"], m["qasRows"], m["qasDelBtn"]))
             else:
                 print("{:<22} 快速失败用时 {}s".format(m["label"], m.get("elapsed")))
         print()
