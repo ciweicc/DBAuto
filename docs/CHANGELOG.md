@@ -2,6 +2,72 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
+## [当前] 媒体库卡片去掉封面图：从「有图/没图混排」改为等高无图卡（issue #27）
+
+> 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户诉求：
+> 「有一些有图，有一些没图，太丑了，干脆直接不要图了」，附 2560px 宽屏截图。
+
+**先说结论：这次不是调排版，是把图片整块去掉**
+
+上一版把所有卡片的缩略块统一成固定 16:9，高度是齐了，但**「有没有图」本身**
+就是观感噪音：网盘文件名/目录名与 TMDB 的命中率天然不可能 100%，
+于是同一行里永远同时存在「贴着海报的卡」和「一大块灰色占位块」——
+目录越大越花，跟卡片怎么排无关。用户给出的解也很直接：不要图了。
+
+**改成了什么**
+
+- 卡片 = `勾选框 + 类型图标 + 名称/元信息 + 删除图标` 的单行紧凑卡：
+  文件夹用文件夹图标、文件用影片图标，**没有任何图片位、没有占位块、没有评分角标**；
+- 卡片是单行 flex，所有卡天然等高，不存在「这张有图那张没图」的差异；
+- 元信息回到「文件夹」/「大小 · 修改时间」——之前为了让位给海报，修改时间被塞进
+  `title` 悬停查看，现在直接显示；
+- 视图切换文案由「图文视图 / 列表视图」改为「卡片视图 / 列表视图」，
+  页面说明文案同步改掉「自动去 TMDB 匹配海报」的承诺。
+
+**边界说明**
+
+- 前端不再调用 `/api/tmdb/match`（卡片渲染不再依赖任何外部服务）；
+- 后端的 `match_tmdb_by_name()` 与 `/api/tmdb/match` 路由**保留未删**，
+  它是独立可测的能力，以后想恢复封面图可以直接接回来；
+  `tests/test_build.py::test_library_backend_match_api_kept` 防止后人误删。
+
+**改动**
+
+- `static/src/scripts/library.js`：
+  - 删除整条海报链路：`_libPatchPosters` / `_libMatchChunked` / `_libMatchWorker` /
+    `_libFileNames` / `_libApplyPoster` / `libPosterBroken` / `_libPlaceholderHtml` /
+    `_libDirPhHtml` / `libMatch` 及 `LIB_MATCH_*` 常量（净减约 200 行）；
+  - `_libCardShell(it, kind, icon)` 统一产出单行卡片；`_libMetaText()` 产出元信息；
+  - `_updateLibViewBtn()` 文案改为「卡片视图」。
+- `static/src/styles/main.css`：删除 `.lib-card-thumb` / `.lib-card-thumb-inner` /
+  `.lib-card-link` / `.lib-card-ph*` / `.lib-card-foot` / `.lib-dir-badge` /
+  `.lib-card-thumb .tmdb-rating-badge`；`.lib-grid` 改为 `auto-fill minmax(180px,1fr)`；
+  `.lib-card` 改为单行 `display:flex;align-items:center`；新增 `.lib-card-icon` /
+  `.lib-card-dirlink`。
+- `static/src/body.html`：说明文案改为「文件夹与文件以等高卡片展示（不显示封面图）」。
+- `scripts/check_library_dom.py`：移除 TMDB 海报桩与相关度量；
+  **新增核心断言「媒体库列表里 `img` 数量必须为 0」**、类型图标数 == 卡片数、
+  元信息非空、卡片视图不得请求 `/api/tmdb/match`；
+  保留同一行卡片高差 ≤8px、标题/元信息零折行、全选与面包屑同行等整齐度断言。
+- `tests/test_build.py`：`test_library_poster_cards_wired` /
+  `test_library_folder_cards_get_tmdb_posters` / `test_library_poster_cards_keep_fast_budget`
+  合并改写为 `test_library_cards_have_no_images`（从「源码无海报逻辑 / 样式无缩略块 /
+  文案无图文 / 产物已重建」四个方向钉死），新增
+  `test_library_backend_match_api_kept`。
+
+**验证证据**
+
+- `python3 -m pytest tests/ -q` → **303 passed**；`ruff check .` 通过。
+- `python3 scripts/check_library_dom.py --serve` → **0 处问题**；
+  实测：`#libList img` **0 张**、卡片 12 张 / 类型图标 12 个、同一行卡片高差 **0px**、
+  标题折行 **0 个**、1440 与 390 视口均无横向溢出。
+- 走查脚本在改造过程中真的抓到两处问题（都已修）：
+  1. 网格 `minmax(230px)` 时 1440 宽只有 3 列 → 报「桌面网格只有 3 列」（收窄到 180px）；
+  2. 脚本自身把目录/任务请求误计成 TMDB 请求 → 报「仍在依赖图片服务」，
+     已改为独立计数器（这是脚本的 bug，不是产品的）。
+- 其余走查（概览 / 设置 / 日志栏 / 勾选框 / 对比度）全部 0 处问题；
+  前端产物已重建（`bash static/src/build.sh`）。
+
 ## [当前] 媒体库图文视图排版重做：从「大海报框」改为紧凑对齐的网格（issue #27）
 
 > 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户诉求：

@@ -8,8 +8,14 @@
 //   POST /api/qas/delete         {entries:[{fid,name,title?}], sync_history:true}
 //   POST /api/qas/delete_tasks   {tasks:[{taskname,savepath}]} 删除 QAS 任务配置
 //                                （QAS 为自部署服务，改动只影响自己的任务表）
-//   GET  /api/tmdb/match?names=a&names=b
-//                                按文件名批量匹配 TMDB 作品（图文卡片的海报/评分来源）
+//
+// ---- 为什么不显示图片（issue #27 反馈「有一些有图，有一些没图，太丑了」） ----
+// 上一版卡片会拿文件名去 TMDB 匹配海报。问题是网盘目录名/文件名与 TMDB 的命中率
+// 天然不可能全中：命中就贴着海报、未命中就是一大块灰色占位块，同一行里两种形态混排，
+// 越大的目录越花。用户明确要求「干脆直接不要图了」，因此本轮：
+//   1. 卡片不再有缩略图/海报/评分角标，改为「图标 + 名称 + 元信息」的等高紧凑卡；
+//   2. 前端不再调用 /api/tmdb/match（后端接口与匹配实现保留，未删除）；
+//   3. 「图文视图 / 列表视图」改名为「卡片视图 / 列表视图」—— 已经没有图了。
 //
 // ---- 加载慢的根因与优化（issue #27 反馈「网盘文件模块访问有点慢」） ----
 // 1. 根因一：单次目录请求的失败预算被拉到 33s。
@@ -49,18 +55,10 @@ var LIB_CACHE_TTL = 60000;
 var libCache = {};        // path -> {ts, entries}
 var libInflight = {};     // path -> Promise（同一目录并发只打一次）
 
-// 图文卡片（issue #27：媒体库要像 TMDB 那样图文并茂）
-//
-// 两阶段渲染是「既要海报、又不能拖慢目录浏览」的关键：
-//   阶段一：目录数据一到就立刻出卡片骨架（文件夹图标 / 文件名占位），可点、可勾、可删；
-//   阶段二：后台把文件名批量丢给 /api/tmdb/match，拿到结果后**只就地补丁**该卡片的海报与评分，
-//           不重渲染整个列表 —— 否则用户的勾选状态、滚动位置会被打断。
+// 两种视图（issue #27）：卡片视图（默认，等高的紧凑卡）/ 列表视图（紧凑表格）。
+// 偏好存 localStorage，用户切过一次之后一直记住。
 var LIB_VIEW_KEY = 'lib_view';       // 'card' | 'list'
 var libView = 'card';
-var libMatch = {};                   // 文件名 -> TMDB 结果（会话级缓存，翻页回来不重复匹配）
-var LIB_MATCH_CONCURRENCY = 2;       // 单个目录同时在飞的匹配批次数（每批 ≤ 12 个名字）
-var LIB_MATCH_BATCH = 12;
-var LIB_MATCH_LIMIT = 60;            // 单目录最多匹配多少个文件（与后端 MAX_MATCH_NAMES 对齐）
 
 function libViewMode(){
   try{
@@ -80,8 +78,8 @@ function toggleLibView(){
 function _updateLibViewBtn(){
   var btn = document.getElementById('libViewBtn');
   if(!btn) return;
-  btn.textContent = (libView === 'card') ? '列表视图' : '图文视图';
-  btn.setAttribute('aria-label', (libView === 'card') ? '切换为列表视图' : '切换为图文视图');
+  btn.textContent = (libView === 'card') ? '列表视图' : '卡片视图';
+  btn.setAttribute('aria-label', (libView === 'card') ? '切换为列表视图' : '切换为卡片视图');
 }
 
 // 单请求预算：与 QAS「本地服务」定位匹配，宁可快速失败也不让用户干等 30s+
@@ -491,7 +489,6 @@ function _renderLibrary(path, entries, fromCache, ms){
   libView = libView || libViewMode();
   _updateLibViewBtn();
   box.innerHTML = (libView === 'card') ? _libCardHtml() : _libTableHtml();
-  if(libView === 'card') _libPatchPosters();
   updateLibActionBar();
 }
 
@@ -516,22 +513,22 @@ function _libTableHtml(){
   return html;
 }
 
-// ---------- 图文视图（网格卡片，issue #27 观感重做） ----------
-// 阶段一：只用「文件名 + 网盘元数据」出骨架。不依赖任何网络，
-// 所以目录数据一到就能看、能点、能勾、能删，观感上不存在「等海报」。
+// ---------- 卡片视图（等高紧凑卡，issue #27 观感重做） ----------
 //
-// 版式取舍（issue #27 反馈「排版太丑、实在很乱」的真实成因）：
-//   1. 旧版把整张卡做成 2:3 海报框（无海报时 16:9），行内出现 200~300px 的
-//      纯色空框，每张卡一个高度 → 视觉高度参差、大片空白；
-//   2. 「标题 / 元信息 / 删除按钮 / 勾选框」四样东西各占一块，卡片里外都散；
-//   3. 网格 5 列时单卡宽不到 150px，中文标题一折三行。
-// 现在是「紧凑网格缩略图 + 名称 + 一行元信息」的媒体网格：
-//   缩略图只用较小固定比例（有海报 2:3、无海报 16:9），标题最多两行，
-//   删除收成卡片右上角的图标按钮，勾选框贴左上角 —— 所有卡片高度可控，
-//   信息密度与对齐都一致；超大目录按「卡片高度预判行数」决定是否开内滚。
+// 排版取舍（issue #27 两轮反馈的真因）：
+//   1. 第一版：整张卡做成 2:3 海报框 → 有海报的卡很高、无海报的卡一大块纯色空框，
+//      行内高矮参差、大片空白；
+//   2. 第二版：缩略块改成固定 16:9 想压平高度，但「有些卡有图、有些卡没图」本身
+//      就是观感噪音 —— 灰块与海报混排，越大的目录越花；
+//   3. 现在（本轮）：**整块缩略图去掉**。卡片 = 「一行图标 + 名称 + 元信息」，
+//      文件夹用文件夹图标、文件用影片图标，所有卡天然等高、无空框、无占位块。
+//
+// 卡片内所有元素都在底部信息行里：
+//   [勾选框] [图标 + 名称 / 元信息] [删除图标]
+// 「进入目录」仍然是文件夹卡标题上的链接（图标与标题同在链接里）。
 function _libCardHtml(){
-  // 条目多时给网格一个高度上限（用户可以在卡片内滚动，不用被一堆空框推着翻页面）。
-  // 记录数量用于走查断言：行数多而高度未被限制 = 「很乱」会复发。
+  // 条目多时给网格一个高度上限（用户可以在卡片内滚动，不用被一堆卡推着翻页面）。
+  // 记录数量用于走查断言：行数多而高度未被限制 = 会变成「一屏全是卡」。
   var box = document.getElementById('libList');
   if(box) box.setAttribute('data-lib-count', String(libEntries.length));
   var html = '<div class="lib-grid" id="libGrid">';
@@ -542,193 +539,45 @@ function _libCardHtml(){
   return html;
 }
 
-// 文件夹卡（issue #27 跟进：文件夹也要吃 TMDB 海报）
-//
-// 网盘里的「文件夹」几乎就是作品本身（/影视/复仇者联盟4、/影视/繁花），
-// 之前只给文件匹配海报，根目录下全是文件夹 → 整页都是灰色文件夹图标，
-// 用户看到的正是「这个页面不能通过 TMDB 匹配图片文字吗」。
-//
-// 结构上文件夹卡必须保留「点哪都能进目录」：
-// 因此缩略图只作为链接内的可视块（libPoster-<key>），链接本身不被替换，
-// 补丁仅替换该块的内容 —— 无论匹配成功与否，进入目录都不受影响。
-function _libCardShell(it, bodyHtml, kind){
-  // 勾选框 / 删除按钮都不进 <a>：避免点「勾选」「删除」时被链接吞掉事件
+// 卡片外壳：勾选框 / 删除按钮 / 标题分别渲染。
+// 图标（文件夹 / 影片）由调用方通过 icon 参数给出 SVG use id。
+function _libCardShell(it, kind, icon){
+  var nameHtml = it.dir
+    ? '<a class="lib-card-title lib-card-dirlink" href="javascript:void(0)" onclick="enterDir(' + jsArg(it.name) + ')" title="进入 ' + esc(it.name) + '">' + esc(it.name) + '</a>'
+    : '<span class="lib-card-title" title="' + esc(it.name) + '">' + esc(it.name) + '</span>';
   return '<div class="lib-card lib-card-' + kind + '" data-key="' + esc(it._key) + '" data-name="' + esc(it.name) + '">' +
-    '<div class="lib-card-thumb" id="libThumb-' + esc(it._key) + '">' + bodyHtml + '</div>' +
-    '<div class="lib-card-foot">' +
-      '<label class="lib-card-cb" title="选择该' + (it.dir ? '文件夹' : '文件') + '">' +
-        '<input type="checkbox" aria-label="选择 ' + esc(it.name) + '" onchange="toggleLibSelect(' + jsArg(it._key) + ', this.checked)">' +
-      '</label>' +
-      '<span class="lib-card-name-col">' +
-        '<span class="lib-card-title" title="' + esc(it.name) + '">' + esc(it.name) + '</span>' +
-        '<span class="lib-card-meta" id="libMeta-' + esc(it._key) + '">' + _libMetaSeed(it) + '</span>' +
-      '</span>' +
-      '<button class="lib-icon-btn" title="删除" aria-label="删除 ' + esc(it.name) + '" onclick="deleteOne(' + jsArg(it._key) + ')">' +
-        '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><use href="#icon-trash"/></svg>' +
-      '</button>' +
-    '</div>' +
+    '<label class="lib-card-cb" title="选择该' + (it.dir ? '文件夹' : '文件') + '">' +
+      '<input type="checkbox" aria-label="选择 ' + esc(it.name) + '" onchange="toggleLibSelect(' + jsArg(it._key) + ', this.checked)">' +
+    '</label>' +
+    '<span class="lib-card-icon" aria-hidden="true">' +
+      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#' + icon + '"/></svg>' +
+    '</span>' +
+    '<span class="lib-card-name-col">' +
+      nameHtml +
+      '<span class="lib-card-meta">' + _libMetaText(it) + '</span>' +
+    '</span>' +
+    '<button class="lib-icon-btn" title="删除" aria-label="删除 ' + esc(it.name) + '" onclick="deleteOne(' + jsArg(it._key) + ')">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><use href="#icon-trash"/></svg>' +
+    '</button>' +
   '</div>';
 }
 
-// 元信息第一行：文件夹标「文件夹」，文件标大小（时间挪到 title，避免一行挤成省略号）
-function _libMetaSeed(it){
-  return it.dir ? '文件夹' : fmtSize(it.size);
+// 元信息一行：文件夹标「文件夹」，文件标「大小 · 修改时间」。
+// 修改时间原来只放在 title 里（为了给海报腾位置），现在没有海报了，直接显示。
+function _libMetaText(it){
+  if(it.dir) return '文件夹';
+  var bits = [fmtSize(it.size)];
+  var ts = fmtTs(it.updated_at);
+  if(ts && ts !== '—') bits.push(ts);
+  return bits.join(' · ');
 }
 
 function _libDirCardHtml(it){
-  var body = '<a class="lib-card-link" href="javascript:void(0)" onclick="enterDir(' + jsArg(it.name) + ')" title="进入 ' + esc(it.name) + '">' +
-      '<span class="lib-card-thumb-inner lib-card-poster-dir" id="libPoster-' + esc(it._key) + '" data-key="' + esc(it._key) + '" data-name="' + esc(it.name) + '">' +
-        _libDirPhHtml(it) +
-      '</span>' +
-    '</a>';
-  return _libCardShell(it, body, 'dir');
-}
-
-// 文件夹占位块：保留原来的图标观感，作为「没匹配到海报」的降级形态
-function _libDirPhHtml(it){
-  return '<span class="lib-card-ph lib-card-ph-dir">' +
-    '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-folder"/></svg>' +
-    '<span class="tmdb-no-poster-title">' + esc(it.name) + '</span>' +
-  '</span>';
-}
-
-function _libPlaceholderHtml(it){
-  return '<span class="lib-card-ph tmdb-no-poster">' +
-    '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-movie"/></svg>' +
-    '<span class="tmdb-no-poster-title">' + esc(it.name) + '</span>' +
-  '</span>';
+  return _libCardShell(it, 'dir', 'icon-folder');
 }
 
 function _libFileCardHtml(it){
-  var body = '<span class="lib-card-thumb-inner" id="libPoster-' + esc(it._key) + '" data-key="' + esc(it._key) + '" data-name="' + esc(it.name) + '">' + _libPlaceholderHtml(it) + '</span>';
-  return _libCardShell(it, body, 'file');
-}
-
-// ---------- 阶段二：异步补海报（就地打补丁，不重渲染） ----------
-//
-// 不做整表重渲染的原因：用户可能已经勾了几项、滚动到中段，
-// 重渲染会把勾选状态和滚动位置一起丢掉。
-//
-// 匹配失败/未配置 TMDB 时**什么都不做**：卡片保持占位态，
-// 媒体库的主功能（浏览 / 删除）不受 TMDB 可用性影响。
-function _libFileNames(){
-  var names = [];
-  libEntries.forEach(function(it){
-    if(libMatch[it.name] !== undefined) return;   // 已匹配过（含「确认无结果」）
-    names.push(it.name);
-  });
-  return names.slice(0, LIB_MATCH_LIMIT);
-}
-
-function _libPatchPosters(){
-  var names = _libFileNames();
-  if(names.length) _libMatchChunked(names);
-  // 命中会话缓存的：直接补丁，不发请求（翻回父目录/刷新后秒出海报）
-  libEntries.forEach(function(it){
-    if(libMatch[it.name]) _libApplyPoster(it, libMatch[it.name]);
-  });
-}
-
-async function _libMatchChunked(names){
-  var queue = [];
-  for(var i = 0; i < names.length; i += LIB_MATCH_BATCH){
-    queue.push(names.slice(i, i + LIB_MATCH_BATCH));
-  }
-  var workers = [];
-  for(var w = 0; w < Math.min(LIB_MATCH_CONCURRENCY, queue.length); w++){
-    workers.push(_libMatchWorker(queue));
-  }
-  await Promise.all(workers);
-}
-
-async function _libMatchWorker(queue){
-  while(queue.length){
-    var batch = queue.shift();
-    if(!batch || !batch.length) return;
-    var url = '/api/tmdb/match?' + batch.map(function(n){
-      return 'names=' + encodeURIComponent(n);
-    }).join('&');
-    try{
-      var r = await libFetch(url);
-      if(!r.ok) return;
-    }catch(e){ return; }
-    var matches = (r.data && r.data.matches) || {};
-    batch.forEach(function(name){
-      var item = matches[name] || null;
-      libMatch[name] = item;
-      var it = _findLibEntryByName(name);
-      if(it && item) _libApplyPoster(it, item);
-    });
-  }
-}
-
-function _findLibEntryByName(name){
-  for(var i = 0; i < libEntries.length; i++){
-    if(libEntries[i].name === name) return libEntries[i];
-  }
-  return null;
-}
-
-function _libApplyPoster(it, tmdb){
-  // 补丁点必须仍然是「当前目录的同一条目」——用户可能已经切目录了，
-  // 这时 #libPoster-<key> 已经指向别的条目，必须靠 data-key/data-name 复核。
-  if(!it) return;
-  var card = document.querySelector('#libGrid .lib-card[data-key="' + _cssQuote(it._key) + '"]');
-  if(!card || card.getAttribute('data-name') !== it.name) return;
-  var holder = document.getElementById('libPoster-' + it._key);
-  if(!holder) return;
-  if(holder.getAttribute('data-matched') === '1') return;
-  var poster = tmdb.poster || '';
-  if(!poster) return;          // 只贴真海报；没海报就连补丁都不打，保持原占位形态
-  holder.setAttribute('data-matched', '1');
-  var alt = it.dir ? ('文件夹 ' + it.name) : it.name;
-  var img = '<img class="tmdb-poster" src="' + esc(poster) + '" loading="lazy" decoding="async" alt="' + esc(tmdb.title || alt) + '" draggable="false" ondragstart="return false" onerror="libPosterBroken(this)">';
-  // 文件夹卡：海报之上再叠一枚「文件夹」角标。海报只表达「这是哪部作品」，
-  // 不能让人误以为点它会打开文件详情 —— 点击行为仍然是进入目录。
-  var badge = it.dir ? '<span class="lib-dir-badge">文件夹</span>' : '';
-  var rating = (tmdb.rating > 0)
-    ? '<span class="tmdb-rating-badge">★ ' + Number(tmdb.rating).toFixed(1) + '</span>'
-    : '';
-  holder.innerHTML = img + badge + rating;
-  holder.title = (tmdb.title || '') + (tmdb.year ? ' (' + tmdb.year + ')' : '');
-  var meta = document.getElementById('libMeta-' + it._key);
-  if(meta){
-    // 一行只放「作品名 · 年份 · 大小」：再多就必定被截断成省略号，反而更乱。
-    // 文件大小仍然是可读信息（后端返回的 size 字段），放最后一个；
-    // 原始文件名与修改时间挪到卡片 title（悬停可查），不占视觉宽度。
-    var bits = [];
-    if(tmdb.title) bits.push(tmdb.title);
-    if(tmdb.year) bits.push(tmdb.year);
-    if(!it.dir) bits.push(fmtSize(it.size));
-    meta.textContent = bits.length ? bits.join(' · ') : (it.dir ? '文件夹' : fmtSize(it.size));
-  }
-  // 悬停标题：完整文件名 + 修改时间 + TMDB 匹配到的作品名（信息不丢，只是不占版面）
-  var nameEl = card.querySelector('.lib-card-title');
-  if(nameEl){
-    nameEl.title = it.name + '\n' + (it.dir ? '文件夹' : fmtSize(it.size))
-      + ' · ' + fmtTs(it.updated_at)
-      + (tmdb.title ? '\nTMDB：' + tmdb.title + (tmdb.year ? ' (' + tmdb.year + ')' : '') : '');
-  }
-}
-
-// 海报加载失败（TMDB 图片域名在国内常被墙）：退回占位块，不留破图。
-// 注意：缩略图容器是 .lib-card-thumb-inner（文件夹 / 文件各一份），
-// 判定卡片类型不能再靠旧类名，而要看外层 .lib-card 的类型。
-function libPosterBroken(img){
-  try{
-    var inner = img.parentNode;
-    if(!inner) return;
-    var card = img.closest ? img.closest('.lib-card') : null;
-    var name = card ? (card.getAttribute('data-name') || '') : '';
-    var isDir = !!(card && card.classList.contains('lib-card-dir'));
-    // 文件夹卡回退成文件夹图标（不是电影图标），否则会把目录看成一个文件
-    var icon = isDir ? 'icon-folder' : 'icon-movie';
-    inner.className = 'lib-card-thumb-inner lib-card-ph' + (isDir ? ' lib-card-ph-dir' : ' tmdb-no-poster');
-    inner.innerHTML = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><use href="#' + icon + '"/></svg>' +
-      '<span class="tmdb-no-poster-title">' + esc(name) + '</span>';
-    // 海报补丁留下的角标要一起清掉，避免「占位块 + 评分角标」的错配
-    inner.setAttribute('data-matched', '0');
-  }catch(e){}
+  return _libCardShell(it, 'file', 'icon-movie');
 }
 
 function invalidateLibCache(path){

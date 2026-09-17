@@ -1725,37 +1725,26 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .lib-actionbar{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;
   border-top:1px solid var(--border)}
 
-/* ---------- 图文视图（紧凑网格卡片，issue #27 观感重做） ----------
-   用户反馈「这个媒体库的排版太丑了，实在是很乱」，成因是旧版把每张卡做成
-   2:3 / 16:9 的大海报框：行内高矮参差（有海报 2:3、无海报 16:9、文件夹又一种），
-   无海报时是一大块纯色空框；标题/元信息/删除/勾选框四样东西各占一处。
-   现在统一为「缩略图 + 名称 + 一行元信息」的紧凑网格：
-     - 缩略块比例固定且更小（有海报 16:9 顶裁、无海报同高），行内不再高矮参差；
-     - 勾选框与删除图标放在底部信息行里，卡片内部不再有多余留白；
+/* ---------- 卡片视图（等高紧凑卡，issue #27 观感重做） ----------
+   用户先反馈「排版太丑、很乱」，改完又反馈「有一些有图，有一些没图，干脆不要图了」。
+   结论是**图片本身**就是噪音源：网盘文件名与 TMDB 的命中率不可能全中，
+   于是同一行里海报卡与灰色占位块混排。本轮直接把缩略图整块去掉：
+     - 卡片 = 「勾选框 + 图标 + 名称/元信息 + 删除图标」单行紧凑卡，天然等高；
+     - 没有海报、没有占位块、没有评分角标，不存在「有没有图」的差异；
      - 超大目录给网格高度上限（卡片内滚动），底部操作条始终可见。 */
-.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;
+.lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px;
   margin-top:10px;align-items:start;max-height:560px;overflow:auto;padding:2px}
-@media(max-width:900px){.lib-grid{grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:10px}}
-@media(max-width:600px){.lib-grid{grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:8px;max-height:520px}}
-.lib-card{position:relative;display:flex;flex-direction:column;min-width:0;
-  background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
-  overflow:hidden;transition:border-color var(--transition-fast),transform var(--transition-fast)}
-.lib-card:hover{transform:translateY(-2px);border-color:rgba(10,132,255,.4)}
-/* 缩略块：所有卡片等高。有海报时 16:9 顶裁（网格里比 2:3 更利于整齐），
-   无海报或海报挂了就是同一块高度的图标占位 —— 行内不会再出现高矮不齐。 */
-.lib-card-thumb{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;
-  background:rgba(255,255,255,.03);border-bottom:1px solid var(--border)}
-.lib-card-thumb-inner{position:absolute;inset:0;display:block}
-.lib-card-link{display:block;position:absolute;inset:0}
-.lib-card-thumb .tmdb-poster{width:100%;height:100%;object-fit:cover;display:block}
-.lib-card-ph{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;
-  justify-content:center;gap:6px;padding:8px 10px;text-align:center;color:var(--text2)}
-.lib-card-ph svg{opacity:.5;flex:0 0 auto}
-.lib-card-ph .tmdb-no-poster-title{font-size:var(--fs-xs);color:var(--text2);max-width:100%;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.lib-card-ph-dir svg{opacity:.65}
-/* 底部信息行：勾选框 + 名称/元信息 + 删除图标，三者一行排布，卡片内无多余空白 */
-.lib-card-foot{display:flex;align-items:center;gap:8px;padding:8px 10px 9px;min-width:0}
+@media(max-width:900px){.lib-grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}}
+@media(max-width:600px){.lib-grid{grid-template-columns:1fr;gap:8px;max-height:520px}}
+.lib-card{position:relative;display:flex;align-items:center;gap:8px;min-width:0;
+  padding:7px 8px;background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);overflow:hidden;
+  transition:border-color var(--transition-fast),background var(--transition-fast)}
+.lib-card:hover{border-color:rgba(10,132,255,.4);background:var(--hover-wash)}
+/* 类型图标：文件夹 / 影片各一枚，纯文本观感，不再有任何图片位 */
+.lib-card-icon{display:flex;align-items:center;justify-content:center;width:22px;height:22px;
+  flex:0 0 auto;color:var(--text3)}
+.lib-card-dir .lib-card-icon{color:var(--accent)}
 .lib-card-cb{display:flex;align-items:center;justify-content:center;width:24px;height:24px;
   flex:0 0 auto;cursor:pointer;border-radius:var(--radius-xs)}
 .lib-card-cb:hover{background:var(--hover-wash)}
@@ -1763,17 +1752,17 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .lib-card-name-col{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
 .lib-card-title{display:block;font-size:var(--fs-sm);font-weight:600;color:var(--text);
   line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lib-card-dirlink{color:var(--accent);text-decoration:none}
+.lib-card-dirlink:hover{text-decoration:underline}
 .lib-card-meta{display:block;font-size:var(--fs-xs);color:var(--text2);min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-/* 删除按钮：收成右上角图标按钮，常态低调、悬停/键盘聚焦才显形（不抢标题的宽度） */
+/* 删除按钮：收成图标按钮，常态低调、悬停/键盘聚焦才显形（不抢标题的宽度） */
 .lib-icon-btn{display:flex;align-items:center;justify-content:center;width:24px;height:24px;
   flex:0 0 auto;padding:0;border:1px solid transparent;border-radius:var(--radius-xs);
   background:transparent;color:var(--text3);cursor:pointer;
   transition:background var(--transition-fast),color var(--transition-fast)}
 .lib-icon-btn:hover{background:var(--hover-wash);color:var(--danger)}
 .lib-icon-btn:focus-visible{outline:2px solid var(--accent);outline-offset:1px}
-.lib-card-dir .lib-card-title{color:var(--accent)}
-.lib-card-link:hover ~ .lib-card-foot .lib-card-title{text-decoration:underline}
 /* 目录栏：面包屑与「全选」同一行（原来全选独占一行，卡片底部一片空荡） */
 .lib-crumbbar{display:flex;align-items:center;gap:10px;margin:6px 0 2px;min-height:22px}
 .lib-crumbbar .lib-crumb{margin:0;flex:1}
@@ -1781,17 +1770,12 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   cursor:pointer;flex:0 0 auto}
 .lib-selectall input{cursor:pointer}
 .lib-tip{color:var(--text3);font-size:12px;margin-top:8px;line-height:1.5}
-/* 文件夹角标：海报只说明「这是哪部作品」，不能让人误判点击行为 */
-.lib-dir-badge{position:absolute;left:8px;bottom:8px;z-index:2;
-  padding:2px 7px;border-radius:999px;background:rgba(0,0,0,.62);color:#fff;
-  font-size:var(--fs-xs);line-height:1.5;backdrop-filter:blur(4px)}
-.lib-card-thumb .tmdb-rating-badge{top:6px;right:6px}
 @media (max-width:760px){
   .lib-row{padding:8px 6px;gap:8px}
   /* 触屏下勾选框再放大一档，避免 18px 目标点不准（视觉尺寸不变，只放热区） */
   .lib-cb{width:28px;height:28px}
   .lib-card-cb{width:28px;height:28px}
-  .lib-card-foot{padding:7px 8px 8px;gap:6px}
+  .lib-card{padding:6px 7px;gap:6px}
   /* 窄屏收起「修改时间」，文件表只保留 选择/名称/大小/操作 */
   #libList .lib-row{grid-template-columns:30px minmax(0,1fr) 62px auto}
   #libList .lib-row > .lib-sub:nth-of-type(3){display:none}

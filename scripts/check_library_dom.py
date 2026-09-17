@@ -39,11 +39,10 @@ PORT = 8126
 URL = "http://127.0.0.1:{}/index_new.html".format(PORT)
 
 # ---------------------------------------------------------------- 桩数据
-# 覆盖范围（issue #27 图文卡片改造）：
-#   - 图文视图：TMDB 风格海报卡，文件夹卡 / 占位卡 / 匹配到的海报卡都要能渲染；
+# 覆盖范围（issue #27 卡片视图）：
+#   - 卡片视图：等高紧凑卡（**不含任何图片/海报**），文件夹卡与文件卡都要能渲染；
 #   - 列表视图：保留原表格，桌面列数 / 行高断言不能因为改造被丢掉；
-#   - 两阶段渲染：目录数据一到就出卡片（首屏不依赖 TMDB 响应），
-#     TMDB 接口卡住/不可用时媒体库仍可用（只显示占位卡）。
+#   - 渲染不依赖外部服务：卡片视图不得向 TMDB 发请求，接口挂掉也照常可用。
 #
 # 与 app_modules/routes_library.py 契约一致：
 #   GET /api/qas/tasks          -> {success, tasks:[{taskname,savepath,shareurl}]}
@@ -57,15 +56,17 @@ _QAS_TASKS = {"success": True, "tasks": [
 
 
 def _entries(path):
-    """两类条目都要覆盖，因为「排版很乱」的成因正是「有海报 / 无海报 / 超长名」
-    混排：旧版把每张卡做成大海报框，行内高度全靠海报比例决定，于是参差不齐。
+    """两类条目都要覆盖，因为「排版很乱 / 有些有图有些没图」的成因正是
+    「文件夹 / 文件 / 超长名 / 各种文件名形态」混排。
 
     这里刻意放进去：
-      - 能匹配到海报的文件夹与文件；
-      - 匹配不到的文件夹与文件（占位块）；
+      - 文件夹与文件各若干（验证类型图标正确、卡片等高）；
       - 一个超长中文文件名（验证单行省略，不再折成三行把卡片撑高）；
-      - 一个很短的文件夹名。
+      - 一个很短的文件夹名；
+      - 带年份/清晰度/季集标记的发布名（真实网盘文件名形态）。
+
     数量 12 条，足以让网格排成多行、暴露行内高度不一致。
+    卡片已不含任何图片，所以这里不再需要海报桩数据。
     """
     if path in ("", "/"):
         return [
@@ -96,39 +97,9 @@ def _entries(path):
     ]
 
 
-# TMDB 匹配桩（issue #27 图文卡片）：按文件名返回海报/评分。
-# 约定「匹配不上」时返回 None —— 卡片必须退化为占位块，而不是破图或空白。
-#
-# 海报刻意用**不同比例与不同尺寸**的真实 data-URI 图片（竖版 / 横版各一份）：
-# 旧版排版正是因为「有海报的卡按海报比例长高、没海报的卡另一个高度」而参差不齐，
-# 所以走查必须用真实图片来验证「缩略块比例被 CSS 钉死、行内等高」。
-_POSTER_PORTRAIT = ("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' "
-                    "width='200' height='300'><rect width='200' height='300' fill='%23345'/></svg>")
-_POSTER_LANDSCAPE = ("data:image/svg+xml;charset=utf-8,<svg xmlns='http://www.w3.org/2000/svg' "
-                     "width='500' height='200'><rect width='500' height='200' fill='%23534'/></svg>")
-# 故意给一个加载不出来的地址：海报挂了必须回退成占位块，不留破图
-_POSTER_BROKEN = "http://127.0.0.1:9/not-an-image.png"
-
-
-def _match_item(name, **kw):
-    d = {"id": abs(hash(name)) % 9999, "title": name, "year": 2024, "rating": 8.6, "votes": 1200,
-         "poster": _POSTER_PORTRAIT, "media_type": "movie", "score": 0.99, "matched_by": name}
-    d.update(kw)
-    return d
-
-
-_TMDB_MATCH = {
-    # 文件夹名与文件名不同名，验证「目录也参与匹配」
-    "示例作品标题-01": _match_item("示例作品标题-01"),
-    "示例作品标题-01.2024.2160p.BluRay.x265-GROUP.mkv": _match_item("示例作品标题-01"),
-    "示例作品标题-02.mkv": _match_item("示例作品标题-02", poster=_POSTER_LANDSCAPE, year=2021),
-    "示例作品标题-03.2021.1080p.mkv": _match_item("示例作品标题-03", year=2021, rating=7.1),
-    "示例作品标题-04": _match_item("示例作品标题-04", year=2019, rating=6.4),
-    "示例作品标题-04.2019.mkv": _match_item("示例作品标题-04", year=2019, rating=6.4),
-    "示例作品标题-05.mkv": _match_item("示例作品标题-05", poster=_POSTER_BROKEN, year=2018),
-    # 「短名」「无法匹配的*」故意不在此表里 → 必须落占位块
-}
-
+# 说明：媒体库卡片**不再显示封面图**（issue #27 第三轮反馈：「有一些有图，
+# 有一些没图，太丑了，干脆直接不要图了」）。因此这里不再需要 TMDB 海报桩，
+# 也不再需要 /api/tmdb/match 的桩数据 —— 走查改为断言「页面里不存在任何图片」。
 STUBS = {
     "/api/categories": {"movie": [], "tv": [], "variety": []},
     "/api/dashboard/all": {"stats": {}, "schedule_status": {}, "version": "1.2.0"},
@@ -150,10 +121,9 @@ MEASURE = r"""
   const page = q('#tabLibrary');
   const rows = [...document.querySelectorAll('#libList .lib-row')];
   const cards = [...document.querySelectorAll('#libGrid .lib-card')];
-  const th = [...document.querySelectorAll('#libGrid .lib-card-thumb')];
   const titles = [...document.querySelectorAll('#libGrid .lib-card-title')];
   const mets = [...document.querySelectorAll('#libGrid .lib-card-meta')];
-  const fts = [...document.querySelectorAll('#libGrid .lib-card-foot')];
+  const ics = [...document.querySelectorAll('#libGrid .lib-card-icon')];
   const cbs = [...document.querySelectorAll('#libGrid .lib-card-cb')];
   const stat = el => {
     const b = r(el); if(!b) return null;
@@ -183,9 +153,10 @@ MEASURE = r"""
       });
       return Math.round(worst);
     })(),
-    // 缩略块必须等高（比例被 CSS 钉死，不受图片自身比例影响）
-    thumbSpread: Math.round(span(th)),
-    footSpread: Math.round(span(fts)),
+    // 卡片里不得有任何图片：走查断言的核心（「有些有图有些没图」不得复发）
+    imgsInList: lib ? lib.querySelectorAll('img').length : 0,
+    // 类型图标（文件夹 / 影片）必须每张卡都有
+    cardIcons: ics.length,
     titleLines: (function(){
       const t = titles.filter(e => getComputedStyle(e).whiteSpace === 'nowrap');
       return t.every(e => e.scrollHeight <= r(e).height + 2 || true) ? 1 : 1;
@@ -195,15 +166,11 @@ MEASURE = r"""
     // 每张卡必须仍有勾选框与删除入口（改造不得把主功能挤掉）
     cardCardCheckbox: cbs.filter(e => e.querySelector('input')).length,
     cardDelBtn: [...document.querySelectorAll('#libGrid .lib-icon-btn')].length,
-    posterImgs: lib ? lib.querySelectorAll('#libGrid img.tmdb-poster').length : 0,
-    dirPosterImgs: lib ? lib.querySelectorAll('.lib-card-dir img.tmdb-poster').length : 0,
-    filePosterImgs: lib ? lib.querySelectorAll('.lib-card-file img.tmdb-poster').length : 0,
-    ratingBadges: lib ? lib.querySelectorAll('#libGrid .tmdb-rating-badge').length : 0,
-    dirBadges: lib ? lib.querySelectorAll('.lib-card-dir .lib-dir-badge').length : 0,
-    placeholders: lib ? lib.querySelectorAll('#libGrid .lib-card-ph').length : 0,
     fileCards: lib ? lib.querySelectorAll('.lib-card-file').length : 0,
     dirCards: lib ? lib.querySelectorAll('.lib-card-dir').length : 0,
-    dirEnterLinks: lib ? lib.querySelectorAll('.lib-card-dir a.lib-card-link').length : 0,
+    dirEnterLinks: lib ? lib.querySelectorAll('.lib-card-dir a.lib-card-dirlink').length : 0,
+    // 元信息必须不是空的（文件夹 = 文件夹；文件 = 大小 · 时间）
+    emptyMeta: mets.filter(e => !e.textContent.trim()).length,
     // 全选不再独占一行：必须与面包屑同处一条控制条
     selAllSameRow: (function(){
       const crumb = q('#libBreadcrumb'), all = q('#libSelAllWrap');
@@ -286,12 +253,10 @@ def _route(route, requests_log, slow_seconds=None):
         requests_log.append(time.time())
         body = dict(_QAS_TASKS)
     elif path == "/api/tmdb/match":
-        import urllib.parse
-        names = urllib.parse.parse_qs(url.split("?", 1)[1], keep_blank_values=True).get("names", [])
+        # 前端已不调这个接口；若又有人在卡片里加回海报匹配，这里会记录到请求日志，
+        # 走查末尾的「无图」断言就会把它暴露出来。
         requests_log.append(time.time())
-        body = {"success": True,
-                "matches": {n: _TMDB_MATCH.get(n) for n in names},
-                "truncated": 0}
+        body = {"success": True, "matches": {}, "truncated": 0}
     else:
         body = STUBS.get(path, {})
     return route.fulfill(status=200, content_type="application/json",
@@ -362,54 +327,44 @@ def main():
                     fail("文档横向溢出 {}px".format(m["docOverflowX"]))
                 if m["pageOverflowX"] > 0:
                     fail("媒体库页横向溢出 {}px".format(m["pageOverflowX"]))
-                # 默认是图文视图：必须渲染出卡片、每张卡有勾选框与删除入口
+                # 默认是卡片视图：必须渲染出卡片、每张卡有勾选框与删除入口
                 if m["cards"] < 6:
-                    fail("图文视图未渲染出卡片（{} 张）".format(m["cards"]))
+                    fail("卡片视图未渲染出卡片（{} 张）".format(m["cards"]))
                 if m["dirCards"] < 1:
                     fail("目录卡缺失（文件夹未被渲染为可点击卡片）")
                 if m["cardCardCheckbox"] < m["cards"] or m["cardDelBtn"] < m["cards"]:
                     fail("卡片缺少勾选框或删除入口（cb {} / del {} / 卡片 {}）".format(
                         m["cardCardCheckbox"], m["cardDelBtn"], m["cards"]))
-                if m["posterImgs"] < 1:
-                    fail("没有一张卡片吃到 TMDB 海报（桩数据里至少 2 个文件名可匹配）")
-                # issue #27 跟进：文件夹也必须吃 TMDB 海报
-                # （根目录下全是文件夹，只给文件匹配 = 整页灰色文件夹图标）
-                if m["dirPosterImgs"] < 1:
-                    fail("没有任何文件夹卡吃到 TMDB 海报（桩数据里「示例作品标题-01」是可匹配的目录名）")
-                if m["dirBadges"] != m["dirPosterImgs"]:
-                    fail("文件夹海报缺少「文件夹」角标（角标 {} / 海报 {}）".format(
-                        m["dirBadges"], m["dirPosterImgs"]))
+                # issue #27 第三轮：「有一些有图，有一些没图，太丑了，干脆直接不要图了」
+                # 因此卡片里**一个 <img> 都不允许有**（这是本轮最核心的断言）
+                if m["imgsInList"] > 0:
+                    fail("媒体库列表里仍有 {} 张图片（用户要求不再显示封面图）".format(
+                        m["imgsInList"]))
+                if m["cardIcons"] != m["cards"]:
+                    fail("有卡片缺少「文件夹 / 文件」类型图标（图标 {} / 卡片 {}）".format(
+                        m["cardIcons"], m["cards"]))
+                if m["emptyMeta"] > 0:
+                    fail("有 {} 张卡的元信息为空（应显示「文件夹」或「大小 · 时间」）".format(
+                        m["emptyMeta"]))
                 if m["dirEnterLinks"] != m["dirCards"]:
                     fail("有文件夹卡丢了「进入目录」的点击区（链接 {} / 目录卡 {}）".format(
                         m["dirEnterLinks"], m["dirCards"]))
-                if m["filePosterImgs"] > m["fileCards"]:
-                    fail("文件卡海报数多于文件卡，卡片结构错乱（海报 {} / 文件卡 {}）".format(
-                        m["filePosterImgs"], m["fileCards"]))
-                if width >= 760 and m["ratingBadges"] < 1:
-                    fail("海报卡缺少评分角标")
 
                 # ---- 排版整齐度（issue #27 反馈：「这个媒体库的排版太丑了，实在是很乱」）----
-                # 1. 缩略块必须等高：桩数据里有竖版（200x300）与横版（500x200）两张真图，
-                #    旧版直接按图片比例撑高，同一行卡高差能达到上百像素。
-                if m["thumbSpread"] > 8:
-                    fail("缩略块高度不一致（最大差 {}px）：海报比例又决定了卡片高度，"
-                         "一行会有高矮参差".format(m["thumbSpread"]))
-                # 2. 同一行内卡片总高差（含信息行）
+                # 1. 同一行内卡片高度必须一致。旧版高度由图片比例决定（有图 2:3、
+                #    无图 16:9、文件夹又一种），一行高差能到上百像素。
                 if m["rowSpread"] > 8:
                     fail("同一行卡片高度不一致（最大差 {}px），网格参差不齐".format(m["rowSpread"]))
-                # 3. 底部信息行也必须等高（勾选框 / 删除按钮不得把行撑开）
-                if m["footSpread"] > 8:
-                    fail("卡片信息行高度不一致（最大差 {}px）".format(m["footSpread"]))
-                # 4. 标题与元信息必须单行省略：旧版一个长中文名折成三行把卡片撑高
+                # 2. 标题与元信息必须单行省略：旧版一个长中文名折成三行把卡片撑高
                 if m["titleWrapped"] > 0:
                     fail("有 {} 个标题折行（应单行省略，否则长文件名会把卡片撑高）".format(
                         m["titleWrapped"]))
                 if m["tMetaWrapped"] > 0:
                     fail("有 {} 个元信息折行（应单行省略）".format(m["tMetaWrapped"]))
-                # 5. 目录栏：全选不再独占一行，必须和面包屑同一行（旧版卡片底部一条空条）
+                # 3. 目录栏：全选不再独占一行，必须和面包屑同一行（旧版卡片底部一条空条）
                 if not m["selAllSameRow"]:
                     fail("「全选」未与面包屑同一行，卡片底部又多出空占位")
-                # 6. 桌面网格列数：190px 起跳 → 1440 宽主列必须 ≥4 列（避免又变成「大空框」）
+                # 4. 桌面网格列数：230px 起跳 → 1440 宽主列必须 ≥4 列（避免又变成「大空框」）
                 if width >= 1200 and m["gridCols"] < 4:
                     fail("桌面网格只有 {} 列（卡片过宽会出现大片空白）".format(m["gridCols"]))
                 if width >= 1200 and not (160 <= m["cardW"] <= 320):
@@ -442,7 +397,7 @@ def main():
                 "()=>{var r=document.querySelectorAll('#libList .lib-row');return r.length?Math.round(r[r.length-1].getBoundingClientRect().height):0}")
             if lv_h < 32:
                 problems.append("[列表视图] 表格行高 {}px 过小，内容被压扁".format(lv_h))
-            if "图文视图" not in lv.get("viewBtn", ""):
+            if "卡片视图" not in lv.get("viewBtn", ""):
                 problems.append("[列表视图] 切换按钮文案未反映当前视图（{!r}）".format(lv.get("viewBtn")))
             page.close()
 
@@ -500,11 +455,15 @@ def main():
                                 "（用户会一直盯着「加载中」）")
             page.close()
 
-            # --- 3.5 TMDB 匹配不可用：卡片必须退化为占位卡，媒体库仍可用 ---
-            # 场景：TMDB 未配置 key / 接口挂掉（返回 500 或超时）。
-            # 需求来自 issue #27 的「图片来自 TMDB」——若 TMDB 不可用就把媒体库整体变废，
-            # 那用户连删文件都做不到了。因此这里断言「照常出卡片 + 无破图 + 有占位」。
-            log35 = []
+            # --- 3.5 卡片视图不发任何 TMDB 请求：不依赖外部服务，媒体库始终可用 ---
+            # 背景：上一版卡片会用文件名去 TMDB 匹配海报（接口挂了就全变占位块）。
+            # 用户明确「干脆直接不要图了」后，卡片渲染应当**完全不依赖 TMDB**：
+            # 不给它发请求，也不因为 TMDB 挂掉而影响浏览 / 删除。
+            # 注意：这里用独立的计数器只统计 TMDB 请求。
+            # 踩坑：最初把 _route 的请求日志与 TMDB 计数共用一个 list，
+            # 结果目录/任务请求也被算成「TMDB 请求」，误报「仍在依赖图片服务」。
+            tmdb_hits = []
+            other_log = []
 
             def no_tmdb(route):
                 url = route.request.url
@@ -512,10 +471,10 @@ def main():
                     return route.fallback()
                 path = url.split(str(PORT), 1)[-1].split("?", 1)[0]
                 if path == "/api/tmdb/match":
-                    log35.append(time.time())
+                    tmdb_hits.append(time.time())
                     return route.fulfill(status=500, content_type="application/json",
                                          body=b'{"error":"tmdb down"}')
-                return _route(route, log35)
+                return _route(route, other_log)
 
             page = browser.new_page(viewport={"width": 1440, "height": 900})
             page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")
@@ -526,21 +485,21 @@ def main():
             m35 = page.evaluate(MEASURE)
             report.append({"label": "TMDB 不可用(1440x900)", "libTop": m35["libTop"],
                            "qasTop": m35["qasTop"], "hasBody": m35["hasBody"],
-                           "libCountText": m35["libCountText"]})
+                           "libCountText": m35["libCountText"],
+                           "tmdbRequests": len(tmdb_hits)})
             if m35["cards"] < 3:
-                problems.append("[TMDB 不可用] 卡片视图整体消失（{} 张），媒体库变成不可用".format(
+                problems.append("[无图卡片] 卡片视图整体消失（{} 张），媒体库变成不可用".format(
                     m35["cards"]))
-            # 占位卡只针对「文件卡」：目录卡本来就用图标块，不参与 TMDB 匹配
-            if m35["placeholders"] < m35["fileCards"]:
-                problems.append("[TMDB 不可用] 有文件卡未退化为占位卡（占位 {} / 文件卡 {}）".format(
-                    m35["placeholders"], m35["fileCards"]))
-            if m35["posterImgs"] > 0:
-                problems.append("[TMDB 不可用] 仍出现了海报图（{} 张），可能是假成功".format(
-                    m35["posterImgs"]))
+            if m35["imgsInList"] > 0:
+                problems.append("[无图卡片] 列表里出现了 {} 张图片".format(m35["imgsInList"]))
             del_ok = page.evaluate(
                 "()=>document.querySelectorAll('#libGrid .lib-icon-btn').length>0")
             if not del_ok:
-                problems.append("[TMDB 不可用] 删除入口丢失，主功能受影响")
+                problems.append("[无图卡片] 删除入口丢失，主功能受影响")
+            # 卡片视图不应向 TMDB 发请求：既不依赖它，也不会因它卡住而变慢
+            if tmdb_hits:
+                problems.append("[无图卡片] 卡片视图仍在请求 /api/tmdb/match（{} 次），"
+                                "又回到了「依赖外部图片服务」的老路".format(len(tmdb_hits)))
             page.close()
 
             # --- 4/5. 缓存复用：进子目录再返回父目录，第二次必须 0 新请求且立即渲染 ---
