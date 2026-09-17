@@ -1,10 +1,16 @@
 # routes_tmdb.py — TMDB 相关路由 Mixin
 from tmdb import (
     get_tmdb_list, get_tmdb_genres, refresh_tmdb_cache, get_tmdb_watch_providers,
+    match_tmdb_by_name,
     COUNTRY_OPTIONS, LANGUAGE_OPTIONS, SORT_OPTIONS, MOVIE_LIST_TYPES, TV_LIST_TYPES,
 )
 from utils import log
 from validator import validate_string
+
+
+# 单次批量匹配的文件名上限：一个网盘目录一般 20~60 个条目，
+# 取 60 既覆盖常见目录，又避免匿名/低配额把 TMDB 并发打满。
+MAX_MATCH_NAMES = 60
 
 
 class TmdbRouteMixin:
@@ -70,6 +76,37 @@ class TmdbRouteMixin:
                 "movie_list_types": MOVIE_LIST_TYPES,
                 "tv_list_types": TV_LIST_TYPES,
             })
+            return True
+
+        if route == "/api/tmdb/match":
+            # 媒体库图文卡片（issue #27）：按网盘文件名批量匹配 TMDB 作品。
+            # 目录里文件可能上百个，这里限制单次批量上限并对超限部分如实标记，
+            # 避免一个页面把 TMDB 配额和线程池吃光。
+            params = self._get_query_params()
+            names = params.get("names") or []
+            if isinstance(names, str):
+                names = [names]
+            cleaned = []
+            for n in names[:MAX_MATCH_NAMES]:
+                ok, msg = validate_string(n, min_len=1, max_len=200)
+                if not ok:
+                    continue
+                cleaned.append(n)
+            media_type = params.get("media_type", "")
+            if media_type not in ("movie", "tv"):
+                media_type = ""
+            try:
+                matches = {}
+                for name in cleaned:
+                    matches[name] = match_tmdb_by_name(name, media_type)
+                self._send_json({
+                    "success": True,
+                    "matches": matches,
+                    "truncated": max(0, len(names) - len(cleaned)),
+                })
+            except Exception as e:
+                log("TMDB match 错误: {}".format(e))
+                self._send_json({"error": str(e)}, 500)
             return True
 
         if route == "/api/tmdb/refresh":

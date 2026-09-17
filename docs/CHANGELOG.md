@@ -2,6 +2,76 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
+## [当前] 媒体库：网盘文件改为 TMDB 风格图文卡片（issue #27）
+
+> 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户诉求：
+> 「我想把当前媒体库文件夹样式的选中，改成图文并茂可以吗？像 TMDB 那样，
+> 使用 TMDB 的数据就可以」。
+
+网盘 `get_savepath_detail` 只返回 `fid / file_name / dir / size / updated_at`，
+没有海报、没有简介。要做图文卡片，就必须先从**文件名**判断「这个文件是哪部作品」。
+
+**两条不能破的底线**
+
+1. **不能让「等海报」拖慢目录浏览。** 上一轮刚为「网盘文件访问有点慢」收窄过等待预算
+   （见下方条目），如果这次把目录渲染和 TMDB 匹配串在一起，等于把坑挖回来。
+2. **不能让 TMDB 决定媒体库可用性。** 未配置 key / 图片域名不可达时，
+   浏览与删除必须照常可用。
+
+**改动**
+
+- `app_modules/tmdb.py`：新增「文件名 → TMDB 作品」匹配链路
+  - `_strip_extension` / `_split_fields` / `_episode_cut` / `_split_filename_noise`
+    / `filename_hints`：文件名解析（纯函数，可直接单测）；
+  - 解析顺序刻意是「先定位季集标记、再找噪声 token」：`S02E05` 这类标记比年份更可靠，
+    而 `Some.Show.US.S02E05` 里的 `US` 属于标题，必须靠「向后扩展 ≤2 位短 token」保留下来；
+  - `_score_candidate`：以**核心标题相关性**做闸门（核心名对不上直接 0 分），
+    年份相同 +0.15、冲突 −0.35。同名不同年最容易挂错海报，这条是防它的；
+  - `match_tmdb_by_name`：`/search/multi`（带年份 / 不带年份 / 第 2 页）→
+    未命中再退到 `/search/movie`、`/search/tv`；结果进 `_tmdb_cache`（TTL 30 分钟），
+    重复浏览同一目录不再打网络；
+  - **网络失败不写缓存**，否则 TMDB 恢复后仍一直显示占位卡。
+- `app_modules/routes_tmdb.py`：`GET /api/tmdb/match?names=a&names=b`
+  （单次上限 `MAX_MATCH_NAMES = 60`，超限如实回报 `truncated`）。
+- `static/src/scripts/library.js`：**两阶段渲染**
+  - 阶段一：目录数据一到就出卡片骨架（文件夹 = 图标卡、文件 = 占位卡），
+    立刻可点、可勾、可删，不依赖任何网络；
+  - 阶段二：后台按 ≤12 个/批、最多 2 批并发调 `/api/tmdb/match`，
+    拿到结果后**只就地补丁该卡片的海报与评分**，不重渲染整个列表
+    （否则会把用户的勾选状态与滚动位置一起丢掉）；
+  - 会话级 `libMatch` 缓存：翻回父目录 / 重新进入，海报秒出且零请求；
+  - 新增「图文视图 / 列表视图」切换（`localStorage: lib_view`，默认图文），
+    原表格视图完整保留；
+  - 匹配请求同样走 `libFetch` 短预算通道，失败静默降级为占位卡。
+- `static/src/body.html` / `static/src/styles/main.css`：卡片栅格与查看切换按钮，
+  海报用 2:3、评分角标复用发现区的 `.tmdb-rating-badge` 与 `.tmdb-no-poster` 观感。
+- `scripts/check_library_dom.py`：走查扩到卡片视图
+  （卡片数 / 勾选框 / 删除入口 / 海报数 / 评分角标 / 列表视图表格度量 /
+  **TMDB 接口 500 时仍出占位卡且删除入口不丢**）。
+- `tests/test_tmdb_match.py`（新增，26 条）：文件名解析、打分、候选提取、
+  匹配缓存 / 阈值过滤 / 网络失败不写缓存；全部不联网。
+- `tests/test_build.py`：新增两条接线与预算门禁（卡片接线、匹配必须走短预算通道）。
+
+**放弃的方案**
+
+- 「前端直连 TMDB 拉海报」：API key 会暴露在浏览器，且每个用户各自打 TMDB，
+  缓存完全无法共享 —— 改为后端批量匹配 + 服务端缓存。
+- 「匹配成功再渲染」：首屏会被 TMDB 的响应时间绑架（超时 8s × 多地址），
+  退化成第二个「网盘文件访问很慢」。
+- 「按文件名直接拼 TMDB 图片 URL」：TMDB 的 `poster_path` 只能由搜索接口拿到，
+  文件名拼不出海报地址。
+
+**验证证据**
+
+- `python3 -m pytest tests/ -q` → `281 passed`；`ruff check .` 通过。
+- `python3 scripts/check_library_dom.py --serve` → 0 处问题：
+  - 1440x900 / 390x844：卡片 4 张（含 1 张文件夹图标卡）、勾选框与删除入口齐全、
+    2 张海报卡带评分角标、无横向溢出；
+  - 「列表视图」切换后仍是原表格栅格（桌面 ≥4 列、行高 ≥32px）；
+  - **TMDB 接口返回 500** 时：卡片与删除入口照旧，全部退化为占位卡、无破图；
+  - 慢接口 12s 内快速失败可重试、父目录缓存复用（请求数 +1 / +0）仍成立。
+- 概览页 / 日志栏 / 设置页 / 对比度四套走查 0 问题；前端产物已重建（两次构建哈希一致）。
+
 ## [当前] 媒体库：可删除夸克自动转存的任务条目（issue #27 跟进）
 
 > 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户确认：

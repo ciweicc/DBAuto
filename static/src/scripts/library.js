@@ -8,6 +8,8 @@
 //   POST /api/qas/delete         {entries:[{fid,name,title?}], sync_history:true}
 //   POST /api/qas/delete_tasks   {tasks:[{taskname,savepath}]} 删除 QAS 任务配置
 //                                （QAS 为自部署服务，改动只影响自己的任务表）
+//   GET  /api/tmdb/match?names=a&names=b
+//                                按文件名批量匹配 TMDB 作品（图文卡片的海报/评分来源）
 //
 // ---- 加载慢的根因与优化（issue #27 反馈「网盘文件模块访问有点慢」） ----
 // 1. 根因一：单次目录请求的失败预算被拉到 33s。
@@ -34,6 +36,41 @@ var qasSelected = {};      // QAS 任务的勾选状态：key -> task
 var LIB_CACHE_TTL = 60000;
 var libCache = {};        // path -> {ts, entries}
 var libInflight = {};     // path -> Promise（同一目录并发只打一次）
+
+// 图文卡片（issue #27：媒体库要像 TMDB 那样图文并茂）
+//
+// 两阶段渲染是「既要海报、又不能拖慢目录浏览」的关键：
+//   阶段一：目录数据一到就立刻出卡片骨架（文件夹图标 / 文件名占位），可点、可勾、可删；
+//   阶段二：后台把文件名批量丢给 /api/tmdb/match，拿到结果后**只就地补丁**该卡片的海报与评分，
+//           不重渲染整个列表 —— 否则用户的勾选状态、滚动位置会被打断。
+var LIB_VIEW_KEY = 'lib_view';       // 'card' | 'list'
+var libView = 'card';
+var libMatch = {};                   // 文件名 -> TMDB 结果（会话级缓存，翻页回来不重复匹配）
+var LIB_MATCH_CONCURRENCY = 2;       // 单个目录同时在飞的匹配批次数（每批 ≤ 12 个名字）
+var LIB_MATCH_BATCH = 12;
+var LIB_MATCH_LIMIT = 60;            // 单目录最多匹配多少个文件（与后端 MAX_MATCH_NAMES 对齐）
+
+function libViewMode(){
+  try{
+    var v = localStorage.getItem(LIB_VIEW_KEY);
+    if(v === 'list' || v === 'card') return v;
+  }catch(e){}
+  return 'card';
+}
+
+function toggleLibView(){
+  libView = (libView === 'card') ? 'list' : 'card';
+  try{ localStorage.setItem(LIB_VIEW_KEY, libView); }catch(e){}
+  _updateLibViewBtn();
+  _renderLibrary(libPath, libEntries, false, null, true);
+}
+
+function _updateLibViewBtn(){
+  var btn = document.getElementById('libViewBtn');
+  if(!btn) return;
+  btn.textContent = (libView === 'card') ? '列表视图' : '图文视图';
+  btn.setAttribute('aria-label', (libView === 'card') ? '切换为列表视图' : '切换为图文视图');
+}
 
 // 单请求预算：与 QAS「本地服务」定位匹配，宁可快速失败也不让用户干等 30s+
 //
@@ -86,6 +123,8 @@ function jsArg(v){
 
 function loadLibraryPage(){
   // 目录与任务互不依赖：并行发起，先到先渲染（原先串行 await 白等一倍时间）
+  libView = libViewMode();
+  _updateLibViewBtn();
   loadLibrary(libPath);
   loadQasTasks();
 }
@@ -412,6 +451,15 @@ function _renderLibrary(path, entries, fromCache, ms){
     if(a.dir !== b.dir) return a.dir ? -1 : 1;
     return String(a.name).localeCompare(String(b.name), 'zh');
   });
+  libView = libView || libViewMode();
+  _updateLibViewBtn();
+  box.innerHTML = (libView === 'card') ? _libCardHtml() : _libTableHtml();
+  if(libView === 'card') _libPatchPosters();
+  updateLibActionBar();
+}
+
+// ---------- 列表视图（保留原有紧凑表格，随时可切回） ----------
+function _libTableHtml(){
   var html = '<div class="lib-table">';
   html += '<div class="lib-row lib-head"><span class="lib-cb"></span><span>名称</span><span>大小</span><span>修改时间</span><span></span></div>';
   libEntries.forEach(function(it){
@@ -428,8 +476,165 @@ function _renderLibrary(path, entries, fromCache, ms){
       '</div>';
   });
   html += '</div>';
-  box.innerHTML = html;
-  updateLibActionBar();
+  return html;
+}
+
+// ---------- 图文视图（TMDB 风格卡片） ----------
+// 阶段一：只用「文件名 + 网盘元数据」出骨架。不依赖任何网络，
+// 所以目录数据一到就能看、能点、能勾、能删，观感上不存在「等海报」。
+function _libCardHtml(){
+  var html = '<div class="lib-grid" id="libGrid">';
+  libEntries.forEach(function(it){
+    html += it.dir ? _libDirCardHtml(it) : _libFileCardHtml(it);
+  });
+  html += '</div>';
+  return html;
+}
+
+function _libDirCardHtml(it){
+  return '<div class="lib-card lib-card-dir" data-key="' + esc(it._key) + '" data-name="' + esc(it.name) + '">' +
+    '<label class="lib-card-cb" title="选择该文件夹">' +
+      '<input type="checkbox" aria-label="选择 ' + esc(it.name) + '" onchange="toggleLibSelect(' + jsArg(it._key) + ', this.checked)">' +
+    '</label>' +
+    '<a class="lib-card-body" href="javascript:void(0)" onclick="enterDir(' + jsArg(it.name) + ')" title="' + esc(it.name) + '">' +
+      '<span class="lib-card-icon"><svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg></span>' +
+      '<span class="lib-card-title">' + esc(it.name) + '</span>' +
+      '<span class="lib-card-meta">文件夹</span>' +
+    '</a>' +
+    '<span class="lib-card-ops"><button class="btn btn-sm btn-outline" onclick="deleteOne(' + jsArg(it._key) + ')">删除</button></span>' +
+  '</div>';
+}
+
+function _libPlaceholderHtml(it){
+  return '<div class="tmdb-no-poster lib-card-ph">' +
+    '<span class="lib-card-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-movie"/></svg></span>' +
+    '<span class="tmdb-no-poster-title">' + esc(it.name) + '</span>' +
+  '</div>';
+}
+
+function _libFileCardHtml(it){
+  return '<div class="lib-card' + (it.dir ? '' : ' lib-card-file') + '" data-key="' + esc(it._key) + '" data-name="' + esc(it.name) + '">' +
+    '<label class="lib-card-cb" title="选择该文件">' +
+      '<input type="checkbox" aria-label="选择 ' + esc(it.name) + '" onchange="toggleLibSelect(' + jsArg(it._key) + ', this.checked)">' +
+    '</label>' +
+    '<div class="lib-card-poster" id="libPoster-' + esc(it._key) + '" data-key="' + esc(it._key) + '" data-name="' + esc(it.name) + '">' + _libPlaceholderHtml(it) + '</div>' +
+    '<div class="lib-card-info">' +
+      '<div class="lib-card-title" title="' + esc(it.name) + '">' + esc(it.name) + '</div>' +
+      '<div class="lib-card-meta"><span id="libMeta-' + esc(it._key) + '">' + fmtSize(it.size) + ' · ' + fmtTs(it.updated_at) + '</span></div>' +
+      '<div class="lib-card-ops"><button class="btn btn-sm btn-outline" onclick="deleteOne(' + jsArg(it._key) + ')">删除</button></div>' +
+    '</div>' +
+  '</div>';
+}
+
+// ---------- 阶段二：异步补海报（就地打补丁，不重渲染） ----------
+//
+// 不做整表重渲染的原因：用户可能已经勾了几项、滚动到中段，
+// 重渲染会把勾选状态和滚动位置一起丢掉。
+//
+// 匹配失败/未配置 TMDB 时**什么都不做**：卡片保持占位态，
+// 媒体库的主功能（浏览 / 删除）不受 TMDB 可用性影响。
+function _libFileNames(){
+  var names = [];
+  libEntries.forEach(function(it){
+    if(it.dir) return;
+    if(libMatch[it.name] !== undefined) return;   // 已匹配过（含「确认无结果」）
+    names.push(it.name);
+  });
+  return names.slice(0, LIB_MATCH_LIMIT);
+}
+
+function _libPatchPosters(){
+  var names = _libFileNames();
+  if(names.length) _libMatchChunked(names);
+  // 命中会话缓存的：直接补丁，不发请求（翻回父目录/刷新后秒出海报）
+  libEntries.forEach(function(it){
+    if(!it.dir && libMatch[it.name]) _libApplyPoster(it, libMatch[it.name]);
+  });
+}
+
+async function _libMatchChunked(names){
+  var queue = [];
+  for(var i = 0; i < names.length; i += LIB_MATCH_BATCH){
+    queue.push(names.slice(i, i + LIB_MATCH_BATCH));
+  }
+  var workers = [];
+  for(var w = 0; w < Math.min(LIB_MATCH_CONCURRENCY, queue.length); w++){
+    workers.push(_libMatchWorker(queue));
+  }
+  await Promise.all(workers);
+}
+
+async function _libMatchWorker(queue){
+  while(queue.length){
+    var batch = queue.shift();
+    if(!batch || !batch.length) return;
+    var url = '/api/tmdb/match?' + batch.map(function(n){
+      return 'names=' + encodeURIComponent(n);
+    }).join('&');
+    try{
+      var r = await libFetch(url);
+      if(!r.ok) return;
+    }catch(e){ return; }
+    var matches = (r.data && r.data.matches) || {};
+    batch.forEach(function(name){
+      var item = matches[name] || null;
+      libMatch[name] = item;
+      var it = _findLibEntryByName(name);
+      if(it && item) _libApplyPoster(it, item);
+    });
+  }
+}
+
+function _findLibEntryByName(name){
+  for(var i = 0; i < libEntries.length; i++){
+    if(libEntries[i].name === name) return libEntries[i];
+  }
+  return null;
+}
+
+function _libApplyPoster(it, tmdb){
+  // 补丁点必须仍然是「当前目录的同一条目」——用户可能已经切目录了，
+  // 这时 #libPoster-<key> 已经指向别的条目，必须靠 data-key/data-name 复核。
+  if(!it || it.dir) return;
+  var card = document.querySelector('#libGrid .lib-card[data-key="' + _cssQuote(it._key) + '"]');
+  if(!card || card.getAttribute('data-name') !== it.name) return;
+  var holder = document.getElementById('libPoster-' + it._key);
+  if(!holder) return;
+  if(holder.getAttribute('data-matched') === '1') return;
+  holder.setAttribute('data-matched', '1');
+  var poster = tmdb.poster || '';
+  var html = poster
+    ? '<img class="tmdb-poster" src="' + esc(poster) + '" loading="lazy" decoding="async" alt="' + esc(tmdb.title || it.name) + '" draggable="false" ondragstart="return false" onerror="libPosterBroken(this)">'
+    : _libPlaceholderHtml(it);
+  var rating = (tmdb.rating > 0)
+    ? '<span class="tmdb-rating-badge">★ ' + Number(tmdb.rating).toFixed(1) + '</span>'
+    : '';
+  holder.innerHTML = html + rating;
+  holder.title = (tmdb.title || '') + (tmdb.year ? ' (' + tmdb.year + ')' : '');
+  var meta = document.getElementById('libMeta-' + it._key);
+  if(meta){
+    var bits = [];
+    if(tmdb.title) bits.push(tmdb.title);
+    if(tmdb.year) bits.push(tmdb.year);
+    bits.push(fmtSize(it.size));
+    meta.textContent = bits.join(' · ');
+  }
+}
+
+// 海报加载失败（TMDB 图片域名在国内常被墙）：退回占位卡，不留破图
+function libPosterBroken(img){
+  try{
+    var wrap = img.parentNode;
+    var card = img.closest ? img.closest('.lib-card-poster') : null;
+    if(wrap){
+      var ph = document.createElement('div');
+      ph.className = 'tmdb-no-poster lib-card-ph';
+      ph.innerHTML = '<span class="lib-card-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4"><use href="#icon-movie"/></svg></span>' +
+        '<span class="tmdb-no-poster-title">' + esc(card ? (card.getAttribute('data-name') || '') : '') + '</span>';
+      wrap.innerHTML = '';
+      wrap.appendChild(ph);
+    }
+  }catch(e){}
 }
 
 function invalidateLibCache(path){
