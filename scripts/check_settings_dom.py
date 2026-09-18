@@ -159,9 +159,30 @@ MEASURE = r"""
       closedHit = document.elementFromPoint(x, y) === input;
     }
     const closedH = Math.round(d.getBoundingClientRect().height);
+    // 路径前缀字段（issue #27「配了 OpenList 却仍回落」的修复入口）：
+    // 它必须真的存在于这个子分区里且展开后可见可点 —— 否则用户
+    // 只知道「回落了」，却找不到该改哪儿。
+    d.open = true;
+    const rootEl = document.getElementById('cfg_openlist_root');
+    const rootH = rootEl ? Math.round(rootEl.getBoundingClientRect().height) : 0;
+    let rootHit = false;
+    let rootInVp = false;
+    if (rootEl) {
+      // 与上面的输入框同理：elementFromPoint 只对**视口内**的点有效。
+      // 移动端视口比子分区还矮，scrollIntoView({block:'center'}) 无法把
+      // 最后一个字段推进视口 —— 此时 rootHit=false 只说明「滚不进来」，
+      // 不能据此判「点不到」（那是假阳性）。先显式滚进视口，再用 inViewport
+      // 作为判定前置条件，与 openInVp 完全同口径。
+      rootEl.scrollIntoView({block: 'center'});
+      rootInVp = inViewport(rootEl);
+      if (rootInVp) {
+        const [rx, ry] = centerOf(rootEl);
+        rootHit = document.elementFromPoint(rx, ry) === rootEl;
+      }
+    }
     d.open = wasOpen;
     return {closedH, openH, openInputH, openInVp, openHit: hit,
-            closedInVp, closedHit};
+            closedInVp, closedHit, rootH, rootHit, rootInVp};
   })();
   const cards = [...document.querySelectorAll('#tabSettings .settings-grid > .card')]
     .map((c, i) => {
@@ -324,6 +345,15 @@ def main():
                         fail("折叠子分区展开后输入框点不到：用户无法配置")
                     if cs["closedInVp"] and cs["closedHit"]:
                         fail("折叠子分区收起后输入框仍可点：折叠只是视觉假象")
+                    if cs.get("rootH", 0) <= 0:
+                        fail("折叠子分区内缺少「路径前缀」输入框（cfg_openlist_root）："
+                             "OpenList 挂载点与网盘路径不一致时用户无处可配，"
+                             "只能看着「已回落」")
+                    elif not cs.get("rootInVp"):
+                        fail("「路径前缀」输入框滚不进视口（探针前置条件不成立，"
+                             "不能据此判定可点）")
+                    elif not cs.get("rootHit"):
+                        fail("「路径前缀」输入框展开后点不到，用户无法修复回落问题")
 
                 # 超宽视口必须把设置页压到 MAX_WIDE_TAB_H 以内：
                 # 这是 issue #15 的核心指标（修复前 2560px 下 1756px 高）。

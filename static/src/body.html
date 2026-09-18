@@ -628,6 +628,10 @@
                         <label for="cfg_openlist_user">账号</label><input type="text" id="cfg_openlist_user" placeholder="admin">
                         <label for="cfg_openlist_pass">密码</label><div class="pwd-wrap"><input type="password" id="cfg_openlist_pass" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div>
                       </div>
+                      <div class="form-group form-group-inline">
+                        <label for="cfg_openlist_root">路径前缀</label><input type="text" id="cfg_openlist_root" placeholder="/夸克（留空=与网盘路径一致）">
+                      </div>
+                      <div class="form-hint">OpenList 上挂载夸克网盘的那个目录。媒体库路径（如 <code>/影视/电影</code>）会拼在它后面去 OpenList 取目录；<b>填错会导致每次浏览都回落 QAS</b>。</div>
                       <div class="form-hint" id="openlistSelfCheckHint">填地址后媒体库目录改由 OpenList 回答（比经 QAS 实时拉取快）；留空回落 QAS 直连。未填令牌时用账号密码登录，两者都留空按游客模式。</div>
                       <div class="set-card-actions">
                         <button class="btn btn-outline btn-sm" id="openlistCheckBtn" onclick="checkOpenList()">连接自检</button>

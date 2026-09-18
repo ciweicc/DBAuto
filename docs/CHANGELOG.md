@@ -2,7 +2,7 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
-## [当前] OpenList 改为「令牌优先」鉴权（issue #27 追问）
+## [当前] OpenList 改为「令牌优先」鉴权，并与路径前缀联立（issue #27 追问）
 
 > 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户追问：
 > 「可以把 OpenList 的验证方式变成 OpenList 令牌验证吗，是不是令牌验证的权限更大一点？」
@@ -70,7 +70,97 @@
   1500px 门禁）；媒体库 / 概览页 / 日志栏 / 对比度四套走查 0 问题；
   前端产物已重建。
 
+**与「路径前缀（配了却仍回落）」那一轮的合并**
+
+两轮改的是**同一段自检链路**，语义必须联立，不能取一边丢一边：
+
+- **`/api/library/source` 同时回答三件事** ——「配置里是什么凭据」（`auth_status`，
+  不联网）、「服务端实际接受了什么身份」、「真的列一次目录的结果」（`self_check`）。
+  合并前的两侧各答一半：只看 `ping` 会把「前缀填错」误判成可用，只看 `self_check`
+  又答不出「我到底在用令牌还是账号密码」。`openlist_root_prefix` / `openlist_stage`
+  / `openlist_path` / `openlist_count` 与 `openlist_auth*` 一并回传。
+- **自检文案分档**：`stage=list`（登录已通过、列目录失败）优先提示「路径前缀没填对」，
+  而不是让用户去翻令牌；只有「没有可用凭据」时才提示去填令牌。
+  令牌路径再补一句「令牌不会获得额外权限」——用户问的就是这个。
+- **配置校验按字段各管各的**：`openlist_token`（敏感字段，留空/`***` 不修改）与
+  `openlist_root`（绝对路径、禁 `..`）是两个独立维度 —— 前者决定「以谁的身份请求」，
+  后者决定「路径怎么拼」，缺任一个都表现为回落 QAS。
+- **设置页顺序即优先级**：令牌 → 账号密码 → 路径前缀，说明文案两轮的说法合并成一条。
+- 反向验证仍成立：把令牌框挪到账号之后、或去掉「登录已通过…路径前缀」分档提示，
+  `check_settings_dom.py` / `tests/test_build.py` 对应断言会失败。
+- 新增 `tests/test_build.py::test_openlist_selfcheck_keeps_auth_and_path_semantics`：
+  把「鉴权侧字段」与「路径自检侧字段」**同时存在**钉死，任一侧被合并掉即失败。
+- 合并后实测：`pytest` → **403 passed**；`ruff check .` 通过；
+  `check_settings_dom.py --serve` 10 组视口 0 问题；`check_library_dom.py` 0 问题；
+  概览页 9 组、日志栏 10 组、登录页 10 组、对比度 18 组全部 0 问题；
+  产物连续两次构建 md5 一致（`9deb85f2…`）。
+
+**合并中顺手修掉的走查假阳性**
+
+`check_settings_dom.py` 的「路径前缀输入框可点」探针在 390px 移动端报「点不到」。
+实为探针缺陷而非布局缺陷：移动端视口比 OpenList 子分区还矮，
+`scrollIntoView({block:'center'})` 无法把**最后一个**字段推进视口，
+于是 `elementFromPoint` 根本没执行、`rootHit` 恒为 false。
+与同文件里账号输入框的写法对齐——先显式滚进视口，再用 `inViewport`
+作为判定前置条件（滚不进来时报「前置条件不成立」，而不是误判「点不到」）。
+修后 10 组视口 0 问题。
+
 ---
+
+## [此前] 修复「配了 OpenList 却仍回落」（issue #27 追问）
+
+> 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户追问：
+> 「为什么我配置了 OpenList，但还是 OpenList 回落了」（附媒体库截图，
+> 徽标显示「QAS（OpenList 回落）」）。
+
+**根因不是 OpenList 挂了，而是路径对不上**
+
+DBAuto 的媒体库路径来自 QAS 的 `savepath`（如 `/影视/电影`），而 OpenList 只认
+**自己的挂载点**（Quark 驱动常挂在 `/夸克` 之类的目录下）。两者不一致时
+OpenList 的 `/api/fs/list` 会稳定返回 500（`storage not found` / `failed to list objs`），
+于是**每一次浏览都回落 QAS**。
+
+这个失败形态极具误导性：登录（`/api/me`）是通的，所以设置页的「连接自检」
+一路报「OpenList 可用，目录将由其回答」，而用户实际每翻一次目录都在走慢链路 ——
+「自检说正常」与「实际一直回落」同时成立，线索完全断掉。
+
+**修了什么**
+
+- `app_modules/openlist.py`：新增 `openlist_root`（OpenList 侧挂载前缀）与
+  `to_openlist_path` / `from_openlist_path` 双向翻译；`list_dir` / `remove`
+  都先翻译再请求，不再把网盘路径原样发给 OpenList。前缀留空时行为不变（两边同构）。
+- `app_modules/openlist.py`：新增 `self_check()` —— 自检从「只 ping `/api/me`」
+  改成「登录 + **真的列一次目录**」。只验证登录是无法发现路径不匹配的。
+- `app_modules/openlist.py`：目录不存在时不再含糊地报「OpenList 错误 500」，
+  而是明确说明「OpenList 上找不到目录 X，请检查路径前缀」，并置
+  `path_missing` / `fallback_hint` 标记；**只对「目录不存在」类报错这样提示**，
+  真正的超时/连接故障仍如实报原始原因（避免把用户带偏）。
+- `app_modules/media_library.py`：回落时把 `fallback_reason` / `fallback_hint`
+  一起带给前端 —— 只显示「已回落」等于没有信息。
+- `app_modules/routes_library.py`：`/api/library/source` 改为调用完整自检，
+  并回报实测列到的条目数、失败发生在哪一步（`login` / `list`）、实际请求的
+  OpenList 路径；自检失败时 `source` 如实回落为 `qas`，不与徽标自相矛盾。
+- `app_modules/routes_config.py`：`openlist_root` 校验（必须绝对路径、禁止 `..`）。
+- 前端：设置页新增「路径前缀」输入框；「连接自检」文案区分
+  「登录失败」与「登录通过但列目录失败（多半是路径前缀没填对）」；
+  媒体库徽标把回落原因与修复方向写进 title，点开给出完整排查步骤。
+
+**验证证据**
+
+- `python -m pytest tests/ -q` → **387 passed**；`ruff check .` 通过。
+- 新增 `tests/test_openlist.py` 8 条，把因果链锁死：前缀生效后请求路径必须是
+  `/夸克/影视/电影`；目录不存在时必须报「路径前缀」而不是含糊失败；
+  真正超时**不得**被误报成路径问题；自检必须真的列目录。
+- 反向验证：移除「路径前缀」输入框 → `check_settings_dom.py` 报
+  「用户无处可配，只能看着已回落」；把回落原因从徽标 title 里去掉 →
+  `check_library_dom.py` 报「用户只知道回落了，不知道该去改哪儿」。
+- 桩 OpenList 端到端：`/api/me` 通、`/api/fs/list` 对未挂载路径返回 500，
+  复现「自检说可用 + 浏览全回落」；配上前缀 `/夸克` 后 `self_check` 转为
+  `stage=ok`，浏览不再回落。
+- `scripts/check_library_dom.py` / `check_settings_dom.py` / `check_overview_dom.py` /
+  `check_log_panel_dom.py` / `check_contrast.py` 全部 0 处问题；
+  前端产物重建三次 md5 一致（无漂移）。
+
 
 ## [当前] 媒体库接入 OpenList 数据源 + QAS 任务对账（issue #27 追问）
 

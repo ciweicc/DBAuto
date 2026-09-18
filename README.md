@@ -219,6 +219,7 @@ DBAuto/
 | `OPENLIST_TOKEN` | — | OpenList 访问令牌（可选，推荐；加密存储）。填写后直接用令牌请求，不再走账号密码登录 |
 | `OPENLIST_USER` | `admin` | OpenList 账号（可选，未填令牌时用于登录） |
 | `OPENLIST_PASS` | — | OpenList 密码（可选，加密存储） |
+| `OPENLIST_ROOT` | — | OpenList 上挂载夸克网盘的目录前缀（如 `/夸克`）。**填错会导致媒体库每次都回落 QAS**；两边路径一致时留空 |
 | `TZ` | `Asia/Shanghai` | 时区 |
 
 ## 数据目录

@@ -17,6 +17,7 @@ document.getElementById('cfg_tmdb_proxy').value=cfg.tmdb_proxy||'';
 var _olEl=document.getElementById('cfg_openlist'); if(_olEl)_olEl.value=cfg.openlist||'';
 var _oltEl=document.getElementById('cfg_openlist_token'); if(_oltEl)_oltEl.value='';
 var _oluEl=document.getElementById('cfg_openlist_user'); if(_oluEl)_oluEl.value=cfg.openlist_user||'admin';
+var _olrEl=document.getElementById('cfg_openlist_root'); if(_olrEl)_olrEl.value=cfg.openlist_root||'';
 var _olpEl=document.getElementById('cfg_openlist_pass'); if(_olpEl)_olpEl.value='';
 // 折叠子分区的默认态由「有没有配过」决定：
 //   未配置 → 展开（用户正是来配它的，收起等于把入口藏起来）；
@@ -80,6 +81,7 @@ tmdb_proxy:document.getElementById('cfg_tmdb_proxy').value.trim(),
 openlist:document.getElementById('cfg_openlist').value.trim(),
 openlist_token:document.getElementById('cfg_openlist_token').value.trim(),
 openlist_user:document.getElementById('cfg_openlist_user').value.trim()||'admin',
+openlist_root:document.getElementById('cfg_openlist_root').value.trim(),
 openlist_pass:document.getElementById('cfg_openlist_pass').value};
 try{
 var d=await apiPost('/api/config',cfg);
@@ -224,20 +226,30 @@ async function checkOpenList(){
   if(hint)hint.textContent='自检中...';
   if(btn)btn.classList.add('loading');
   try{
+    // 自检会**真的列一次目录**（后端 openlist.self_check）：
+    // 只验证登录时，「挂载路径不匹配」会被误判成可用 —— 那正是
+    // 「配了 OpenList 却仍回落」的成因，必须在这里就暴露出来。
     var d=await apiGet('/api/library/source');
     var msg;
-    // 提示里必须同时出现「谁在回答」与「用什么身份回答」：
-    // 只报「可用」，用户配了令牌也不知道到底生效没有（两者行为差异肉眼不可见）。
+    // 提示里必须同时出现「谁在回答」「用什么身份回答」「实测列到了什么」：
+    // 只报「可用」，用户配了令牌也不知道到底生效没有（两者行为差异肉眼不可见）；
+    // 只报「登录成功」，前缀填错时又会被误判成可用 —— 那正是
+    // 「配了 OpenList 却仍回落」的成因，必须在这里就暴露出来。
     // 令牌这条路径还要点明「不会获得额外权限」—— 用户问的就是这个，
     // 若默认「令牌权限更大」，填了令牌却发现删不掉（403）时只会以为程序坏了。
     var mode=d.openlist_auth_mode||'';
     var modeTxt=mode==='token'?'令牌鉴权':(mode==='mixed'?'令牌鉴权（账号密码仅作兜底）':(mode==='password'?'账号密码登录':(mode==='guest'?'游客模式':'')));
     var noExtra=mode==='token'||mode==='mixed'?'令牌只用于识别身份（不会获得额外权限），可看可删仍取决于该账号的角色与目录权限。':'';
     if(d.source==='openlist'&&d.openlist_ok){
-      msg='OpenList 可用（'+(modeTxt||'已鉴权')+'，身份：'+(d.openlist_user||'游客')+'），媒体库目录将由其回答。'+noExtra;
+      msg='OpenList 可用（'+(modeTxt||'已鉴权')+'，身份：'+(d.openlist_user||'游客')+'），已实测列出「'
+        +(d.openlist_browse_path||'/')+'」共 '+(d.openlist_count||0)+' 项，媒体库目录将由其回答。'+noExtra;
       showToast('OpenList 连接正常',true);
     }else if(d.openlist){
       msg='OpenList 不可用：'+(d.openlist_message||'未知原因')+'。媒体库已回落到 QAS 直连。';
+      if(d.openlist_stage==='list'){
+        // 登录已通过 → 不是凭据问题，别再让用户去翻令牌/密码。
+        msg+='（登录已通过，问题出在列目录 —— 多半是「路径前缀」没填对）';
+      }
       if(d.openlist_auth&&!d.openlist_auth.token_set&&!d.openlist_auth.user_set){msg+='当前没有可用凭据（游客模式），若 OpenList 关闭了游客访问，请在下方填访问令牌。'}
       showToast('OpenList 不可用',false);
     }else{

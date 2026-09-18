@@ -2182,6 +2182,62 @@ def test_openlist_token_ui_keeps_mode_hint_honest():
         "自检提示未点明「令牌不会带来越权」，用户会继续以为令牌权限更大"
 
 
+def test_openlist_selfcheck_keeps_auth_and_path_semantics(dist):
+    """回归：自检链路上「鉴权方式」与「路径前缀自检」必须**联立**生效。
+
+    两条改动落在同一个 `/api/library/source` 上（issue #27 的两次追问）：
+      - 一路回答「我到底在用令牌还是账号密码」（问的是鉴权）；
+      - 一路回答「登录通过但目录列不出来，多半是路径前缀填错」（问的是回落）。
+    合并时若取一边丢一边，就会各丢半个答案：
+      只有 `ping` → 前缀填错时自检仍报「可用」，用户继续看着 QAS 徽标找不到原因；
+      只有 `self_check` → 答不出「凭据是什么」，配了令牌也不知道生效没有。
+    """
+    routes = _read(os.path.join(_ROOT, "app_modules", "routes_library.py"))
+    src_block = routes[routes.index('if route == "/api/library/source":'):]
+    src_block = src_block[:src_block.index('if route == "/api/openlist/tasks/audit":')]
+    # 鉴权侧（不联网，配置里有什么）
+    assert "openlist.auth_status()" in src_block, \
+        "自检未回传「配置里是什么凭据」——配了令牌也不知道生效没有"
+    assert "openlist_auth_mode" in src_block, "自检未回传鉴权方式"
+    # 路径侧（真的列一次目录）
+    assert "openlist.self_check(" in src_block, \
+        "自检退回成只 ping：路径前缀填错会被误判成可用（「配了却仍回落」的成因）"
+    assert "openlist_root_prefix" in src_block, \
+        "自检未回传路径前缀：用户无法从提示定位到该改哪个字段"
+    assert 'info["openlist_stage"]' in src_block, \
+        "自检未区分「登录失败」与「登录通过但列目录失败」"
+    assert "LIBRARY_SOURCE_QAS" in src_block, "自检失败时 source 未如实回落为 qas"
+    # 两侧字段必须并存，而不是互相覆盖
+    for field in ("openlist_auth", "openlist_auth_mode", "openlist_auth_source",
+                  "openlist_stage", "openlist_path", "openlist_count",
+                  "openlist_root_prefix"):
+        assert field in src_block, "自检响应缺少 {}（合并时丢了一边）".format(field)
+
+    ol = _read(os.path.join(_ROOT, "app_modules", "openlist.py"))
+    sc = ol[ol.index("def self_check("):]
+    sc = sc[:sc.index("# OpenList / AList")]
+    assert "list_dir(" in sc, "自检没有真的列目录：只验登录无法发现路径不匹配"
+    assert "stage" in sc, "自检未回报失败发生在哪一步"
+
+    # 设置页文案：登录通过时优先引导到「路径前缀」，而不是让用户去翻令牌
+    js = _read(os.path.join(_JS_DIR, "settings.js"))
+    assert "openlist_stage==='list'" in js.replace(" ", ""), \
+        "自检提示未区分「登录通过但列目录失败」档位"
+    assert "路径前缀" in js, "自检提示未把用户引向「路径前缀」"
+    # 同时仍要报出「谁 + 什么身份 + 列到了什么」
+    assert "openlist_browse_path" in js and "openlist_count" in js, \
+        "自检提示丢了实测结果（前缀对不对只能靠它看出来）"
+    assert "openlist_auth_mode" in js, "自检提示丢了鉴权方式"
+
+    # 配置校验：两个维度各管各的（令牌=敏感字段不修改，前缀=绝对路径）
+    rc = _read(os.path.join(_ROOT, "app_modules", "routes_config.py"))
+    assert 'k == "openlist_token"' in rc and 'k == "openlist_root"' in rc, \
+        "令牌与路径前缀必须都能保存（两者缺任一个都表现为回落 QAS）"
+
+    assert "cfg_openlist_token" in dist and "cfg_openlist_root" in dist, \
+        "产物未包含令牌 + 路径前缀两个输入框（需重跑 build.sh）"
+
+
 def test_openlist_dom_audit_is_committed():
     """走查脚本必须覆盖数据源徽标与对账面板（渲染后才能验证的部分）。"""
     src = _read(os.path.join(_ROOT, "scripts", "check_library_dom.py"))
@@ -2453,8 +2509,12 @@ def test_library_read_path_keeps_both_source_and_cache_semantics(dist):
     # 3. 前端（#42+#43）：一次响应同时写「缓存条目 + 骨架行数 + 数据源元信息」
     js = _read(os.path.join(_JS_DIR, "library.js"))
     load = js[js.index("async function loadLibrary("):js.index("function _renderLibError(")]
-    assert "meta = {source: res.source, fallback: res.fallback}" in load, \
+    assert "meta = {source: res.source, fallback: res.fallback," in load, \
         "前端未保留数据源元信息（合并时把 #43 的 meta 丢了）"
+    # 回落原因必须一路带到前端（issue #27「配了 OpenList 却仍回落」）：
+    # 只显示「已回落」而不给原因，用户无从判断是地址错还是路径前缀错。
+    assert "fallback_reason" in load and "fallback_hint" in load, \
+        "前端未保留回落原因（回落只会显示「已回落」，无法排查）"
     assert "_libRememberRows(entries.length)" in load, \
         "前端未保留骨架行数校准（合并时把 #42 的首帧占位丢了）"
 
