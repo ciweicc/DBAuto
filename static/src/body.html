@@ -177,9 +177,11 @@
               <table class="ov-table">
                 <thead>
                   <tr>
+                    <!-- 标题列不声明宽度：table-layout:fixed 下它是唯一的 auto 列，
+                         独占剩余宽度（issue #39 追问）；其余列按内容钉死宽度。 -->
                     <th>标题</th>
-                    <th>时间</th>
-                    <th>状态</th>
+                    <th class="ov-col-date">时间</th>
+                    <th class="ov-col-state">状态</th>
                     <!-- 「库内」「链接」按需列（issue #39）：只有当本屏渲染出的行里
                          至少有一行「不在库内」/「有分享链接」时，该列才携带信息。
                          恒等于常量（全「是」）或恒为空（全「—」）的列由 renderOvRecent

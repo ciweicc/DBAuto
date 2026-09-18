@@ -636,6 +636,51 @@ def test_overview_recent_constant_columns_are_folded():
         "缺少按需列的隐藏规则，折叠后仍会占列宽"
 
 
+def test_overview_recent_columns_are_content_sized(dist):
+    """回归（issue #39 追问）：标题列必须独占剩余宽度，不被短列平分。
+
+    原表现：`table-layout:fixed` 下**未声明宽度**的列平分剩余宽度，
+    于是「标题 / 时间 / 状态」各拿 1/4 —— 2560px 视口下标题列只有 83px，
+    而一条带分类前缀的常规标题实测需要约 157px，恒定被省略号截断。
+    用户原话：「能不能让这个模块的横向面积更大一点显示完整内容？」
+
+    修法是两件事一起做（缺任一个都无效，见 PR 描述的反向验证）：
+      1. 时间/状态/链接按内容钉死宽度 → 标题成为唯一 auto 列，独占剩余宽度；
+      2. `--ov-rec-w` 由 300px 提到 390px → 剩余宽度本身够用。
+    真实度量由 scripts/check_overview_dom.py 负责（9 组视口 + 标题不截断断言）。
+    """
+    html = _read(os.path.join(_SRC, "body.html"))
+    assert 'class="ov-col-date"' in html and 'class="ov-col-state"' in html, \
+        "时间/状态表头缺少定宽类名（否则会与标题列平分宽度）"
+    # 标题表头必须**没有** width 声明类，否则它就不再是 auto 列
+    m = re.search(r"<th([^>]*)>标题</th>", html)
+    assert m, "找不到「标题」表头"
+    assert "ov-col" not in m.group(1), "「标题」表头被钉死宽度，无法独占剩余空间"
+
+    css = re.sub(r"\s+", "", _read(MAIN_CSS))
+    # 定宽列：时间/状态/链接必须显式声明宽度 —— 这是「标题独占剩余宽度」的前提
+    assert ".ov-table.ov-col-date,.ov-table.ov-table-date{width:90px}" in css, \
+        "「时间」列未按内容定宽"
+    assert ".ov-table.ov-col-state{width:88px}" in css, "「状态」列未按内容定宽"
+    assert ".ov-table.ov-col-link,.ov-table.ov-table-actions{width:44px" in css, \
+        "「链接」列未按内容定宽"
+
+    tokens = _read(TOKENS_CSS)
+    m = re.search(r"--ov-rec-w:\s*(\d+)px", tokens)
+    assert m, "找不到 --ov-rec-w 声明"
+    assert int(m.group(1)) >= 380, (
+        "--ov-rec-w 被缩回 {}px：定宽列合计约 222px，剩余宽度不足以放下常规标题"
+        .format(m.group(1))
+    )
+
+    # 走查脚本必须保留「标题不截断」门禁，且阈值不得放宽
+    audit = _read(os.path.join(_ROOT, "scripts", "check_overview_dom.py"))
+    assert "recentTitle" in audit, "概览页走查缺少 recentTitle（标题列宽度）度量"
+    assert "titleColW" in audit, "概览页走查缺少 titleColW 断言"
+    assert 't["titleColW"] < 150' in audit, "标题列宽度下限断言被删（应拦住 83px 那类回归）"
+    assert 't["fixedColW"] > 240' in audit, "定宽列上限断言被删（防定宽列反向膨胀）"
+
+
 def test_overview_date_sorting_and_format():
     """回归：空日期不得插到列表最前，日期格式统一为 MM/DD HH:MM。"""
     js = _overview_js()
