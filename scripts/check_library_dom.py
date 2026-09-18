@@ -190,8 +190,32 @@ MEASURE = r"""
     })(),
     // 卡片里不得有任何图片：走查断言的核心（「有些有图有些没图」不得复发）
     imgsInList: lib ? lib.querySelectorAll('img').length : 0,
-    // 类型图标（文件夹 / 影片）必须每张卡都有
+    // 类型图标（文件夹 / 文件）必须每张卡都有
     cardIcons: ics.length,
+    // ---- 类型图标几何（issue #47「文件缩略图图标异常」）----
+    // 用户给的是截图，所以这里必须用**渲染后的数值**判定「图标是否真的画出来了」：
+    //   * 图形尺寸：0 尺寸 / 过小 = 图标没画出来或被压扁（<use> 找不到 symbol 时
+    //     常见表现就是「有图标位、没图形」）；与外框脱节 = 「渲染错了」。
+    //   * 外框与勾选框、删除按钮同量级 = 一行内控件比例齐整。
+    iconBoxes: ics.map(e => { const b = r(e); return b ? [Math.round(b.width), Math.round(b.height)] : [0, 0]; }),
+    iconSvgMissing: ics.filter(e => !e.querySelector('svg')).length,
+    // 图形必须真的有绘制内容（path/circle/rect…），空 <svg> 同样是「图标异常」
+    iconSvgEmpty: ics.filter(e => {
+      const svg = e.querySelector('svg');
+      if(!svg) return true;
+      return !svg.querySelector('path, circle, rect, polygon, polyline, line, ellipse');
+    }).length,
+    // 图形实际尺寸：用内联属性与 computed style 双口径，避免只看声明不看结果
+    iconSvgs: [...document.querySelectorAll('#libGrid .lib-card-icon svg')].map(svg => {
+      const b = r(svg), st = getComputedStyle(svg);
+      return {w: Math.round(b.width), h: Math.round(b.height),
+              cssW: Math.round(parseFloat(st.width) || 0),
+              vb: svg.getAttribute('viewBox') || ''};
+    }),
+    // 图标不得比同一行的勾选框小太多（否则视觉上就是「小得离谱」）
+    cbW: cbs.length ? Math.round(r(cbs[0]).width) : 0,
+    iconFillCount: [...document.querySelectorAll('#libGrid .lib-card-icon .lib-card-icon-fill')].length,
+    iconDirFillCount: [...document.querySelectorAll('#libGrid .lib-card-dir .lib-card-icon-fill')].length,
     titleLines: (function(){
       const t = titles.filter(e => getComputedStyle(e).whiteSpace === 'nowrap');
       return t.every(e => e.scrollHeight <= r(e).height + 2 || true) ? 1 : 1;
@@ -452,6 +476,35 @@ def main():
                 if m["cardIcons"] != m["cards"]:
                     fail("有卡片缺少「文件夹 / 文件」类型图标（图标 {} / 卡片 {}）".format(
                         m["cardIcons"], m["cards"]))
+                # issue #47「文件缩略图图标异常」：必须有图形、尺寸成比例
+                if m["iconSvgMissing"] > 0:
+                    fail("有 {} 张卡的图标位里没有 <svg>".format(m["iconSvgMissing"]))
+                if m["iconSvgEmpty"] > 0:
+                    fail("有 {} 个图标是空 <svg>（没有 path/circle 等图形 = 图标没画出来）".format(
+                        m["iconSvgEmpty"]))
+                bad_box = [b for b in m["iconBoxes"] if b[0] < 16 or b[1] < 16]
+                if bad_box:
+                    fail("图标外框过小或塌陷（{}，要求 ≥16px）：图标会看起来像没渲染".format(
+                        bad_box[:3]))
+                bad_svg = [v for v in m["iconSvgs"]
+                           if v["w"] < 16 or v["h"] < 16 or v["cssW"] < 16]
+                if bad_svg:
+                    fail("图标图形实际尺寸过小（{}，要求 ≥16px）".format(bad_svg[:3]))
+                # 图形视口必须与「外框 / 图形」两段尺寸自洽，否则会发虚或被裁
+                bad_vb = [v for v in m["iconSvgs"] if v["vb"] not in ("0 0 20 20", "0 0 24 24")]
+                if bad_vb:
+                    fail("图标 viewBox 异常（{!r}）".format([v["vb"] for v in bad_vb][:3]))
+                if m["iconSvgs"] and all(v["vb"] == "0 0 20 20" for v in m["iconSvgs"]):
+                    # 20 视口只允许在「同一档」的尺寸上渲染：桌面 20px / 窄屏 24px。
+                    # 视口与渲染尺寸脱节（如 20 视口渲成 40px）会让笔画随缩放发虚。
+                    if any(v["w"] != v["h"] or v["w"] not in (20, 24) for v in m["iconSvgs"]):
+                        fail("图标视口是 20x20，但渲染尺寸不是等比且不落在 20/24px 档（{}）".format(
+                            m["iconSvgs"][:3]))
+                if m["cbW"] and m["iconBoxes"] and m["iconBoxes"][0][0] < m["cbW"] - 6:
+                    fail("图标明显小于同行的勾选框（图标 {} vs 勾选框 {}），比例不齐".format(
+                        m["iconBoxes"][0], m["cbW"]))
+                if m["dirCards"] and m["iconDirFillCount"] < m["dirCards"]:
+                    fail("文件夹卡缺少填充层（图形只有描边，缩到 20px 不容易辨认）")
                 if m["emptyMeta"] > 0:
                     fail("有 {} 张卡的元信息为空（应显示「文件夹」或「大小 · 时间」）".format(
                         m["emptyMeta"]))
