@@ -285,21 +285,23 @@ def test_remove_sends_names_not_paths():
 
     不做路径拼接：把条目名拼成完整路径意味着要猜父目录，猜错就删掉别的东西。
     """
-    seen = {}
+    seen = []
 
     def fake_api(path, data=None, method=None, timeout=None, **k):
-        seen["path"] = path
-        seen["data"] = data
-        seen["timeout"] = timeout
-        return None
+        seen.append({"path": path, "data": data, "timeout": timeout})
+        if path.endswith("/fs/remove"):
+            return None
+        return {"content": [], "write": True}
 
     with patch.object(openlist, "is_configured", return_value=True), \
          patch.object(openlist, "_api", side_effect=fake_api):
         res = openlist.remove(["影片A.mkv", "影片B.mkv"], dir_path="/影视/电影")
     assert res["success"] is True and res["deleted"] == 2
-    assert seen["path"] == "/api/fs/remove"
-    assert seen["data"] == {"dir": "/影视/电影", "names": ["影片A.mkv", "影片B.mkv"]}
-    assert seen["timeout"] == openlist.OPENLIST_WRITE_TIMEOUT, "删除必须用完整写预算"
+    rm = [c for c in seen if c["path"] == "/api/fs/remove"]
+    assert len(rm) == 1 and seen[0]["path"] == "/api/fs/remove", \
+        "第一条必须是删除请求本身（预热是删除之后的动作）"
+    assert rm[0]["data"] == {"dir": "/影视/电影", "names": ["影片A.mkv", "影片B.mkv"]}
+    assert rm[0]["timeout"] == openlist.OPENLIST_WRITE_TIMEOUT, "删除必须用完整写预算"
 
 
 def test_remove_rejects_bad_names_and_trims():
@@ -1207,12 +1209,18 @@ def test_refresh_and_selfcheck_bypass_cache_and_backoff():
 
 
 def test_remove_invalidates_dir_cache():
-    """删除后必须作废缓存：否则 30s 内再进同一目录还会看到已删条目。"""
-    calls = {"n": 0}
+    """删除后必须作废缓存：否则 30s 内再进同一目录还会看到已删条目。
+
+    同时锁死「删除后**预热**」这个动作（见 openlist.remove 注释）：
+      - 预热必须用**诊断预算**（慢 ≠ 错），不能拿 8s 交互预算去撞冷查询；
+      - 预热失败绝不能影响删除结论（删除已经成功，预热只是优化）。
+    """
+    calls = {"n": 0, "list_timeouts": []}
 
     def api(path, data=None, method=None, timeout=None, retry_auth=True):
         calls["n"] += 1
         if path.endswith("/fs/list"):
+            calls["list_timeouts"].append(timeout)
             return {"content": [], "write": True}
         return {}
 
@@ -1221,6 +1229,99 @@ def test_remove_invalidates_dir_cache():
          patch.object(openlist, "_api", side_effect=api):
         openlist.invalidate_dir_cache()
         openlist.list_dir("/影视/电影")      # 写缓存（第 1 次网络）
-        openlist.remove(["影片.mkv"], dir_path="/影视/电影")  # 删除（第 2 次）+ 作废缓存
-        openlist.list_dir("/影视/电影")      # 缓存已作废 → 必须再打一次（第 3 次）
-    assert calls["n"] == 3, "删除后必须作废目录缓存，使下一次浏览重新拉取"
+        openlist.remove(["影片.mkv"], dir_path="/影视/电影")  # 删除 + 作废缓存 + 预热
+        openlist.list_dir("/影视/电影")      # 缓存已作废 → 必须再打一次
+    # 预热（第 3 次）与随后的浏览（第 4 次）都必须真的打网络
+    assert calls["n"] == 4, "删除后必须作废目录缓存并预热，使下一次浏览拿到最新列表"
+    # list_timeouts 的第 1 条是删除**之前**那次浏览（交互预算 8s），
+    # 第 2 条才是删除后的预热 —— 断言必须指向预热那一次。
+    assert calls["list_timeouts"][0] == openlist.OPENLIST_READ_TIMEOUT, \
+        "普通浏览仍应使用交互预算（快速失败）"
+    assert calls["list_timeouts"][1] == openlist.OPENLIST_PROBE_TIMEOUT, \
+        "预热必须用诊断预算（冷查询可能很慢，不该被 8s 交互预算掐断）"
+
+
+def test_remove_warms_dir_cache_ignoring_failure():
+    """预热失败不能把「删除成功」变成失败：删除已经落地，预热只是优化。
+
+    这里刻意让 `_dir_cache_put` 之前的 list 调用**直接抛异常**（而不是走
+    `_api` 返回失败）：`list_dir` 自己会把内部错误收敛成 success=False，
+    只有「list_dir 之外抛出来的东西」才能真正验证 `_warm_dir_after_remove`
+    那层 try/except 有没有生效。踩坑记录：最初用 `_api` 抛异常写这条用例，
+    结果是**空跑** —— 把预热换成裸调用、把 try/except 删掉，用例照样通过。
+    """
+    def api(path, data=None, method=None, timeout=None, retry_auth=True):
+        if path.endswith("/fs/remove"):
+            return {}
+        return {"content": [], "write": True}
+
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "tok")), \
+         patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "_api", side_effect=api), \
+         patch.object(openlist, "list_dir", side_effect=RuntimeError("预热炸了")):
+        res = openlist.remove(["影片.mkv"], dir_path="/影视/电影")
+    assert res["success"] is True and res["deleted"] == 1, \
+        "预热失败（哪怕抛出非预期异常）也不得影响删除结论 —— 否则用户会以为没删掉而重复操作"
+
+
+def test_success_clears_backoff_record():
+    """成功（含命中成功缓存）必须清掉该路径的失败退避记录。
+
+    否则「先超时一次 → 后恢复正常」会留下「成功结果与失败原因并存」的状态：
+    下一次**真正失败**时读到的是那条陈旧原因（用户看到的原因与自己这次的操作
+    对不上，排查方向自然也是错的）。
+
+    顺序很讲究，这里刻意按真实时间线走：
+      1. 一次真实成功（普通浏览）→ 结果进 30s 缓存；
+      2. 塞入一条失败记录（模拟「上一次真的超时过」）；
+      3. 再来一次普通浏览 → 命中的是**成功缓存**，这条路径显然还被认为可用，
+         因此失败记录必须被一并清掉。
+    注意第 3 步只能命中缓存、不能落进退避分支：退避检查在缓存命中之前，
+    窗口内的路径压根到不了缓存那一步（这是刻意的顺序，见 list_dir 注释）。
+    所以第 2 步必须先让缓存里有成功结果，再把失败记录塞进去。
+    """
+    _seen, api = _fake_api_ok([{"name": "电影", "is_dir": True, "size": 0, "modified": ""}])
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "tok")), \
+         patch.object(openlist, "_root_prefix", return_value=""), \
+         patch.object(openlist, "_api", side_effect=api), \
+         patch.object(openlist, "is_configured", return_value=True):
+        openlist.invalidate_dir_cache()
+        api_path = openlist.to_openlist_path("/影视")
+
+        r1 = openlist.list_dir("/影视")          # 1. 真实成功 → 写缓存
+        assert r1.get("success") is True and r1.get("cached") is None
+        assert openlist._dir_cache_get(api_path) is not None, "前置条件：成功结果已进缓存"
+
+        openlist._dir_fail_put(api_path, {"kind": openlist.KIND_TIMEOUT,
+                                         "message": "上一次真的超时过"})
+        assert openlist._dir_fail_get(api_path) is not None, "前置条件：失败记录已写入"
+
+        r2 = openlist.list_dir("/影视")          # 2. 命中成功缓存
+        assert r2.get("cached") is True, "前置条件：这次必须命中成功缓存"
+        assert openlist._dir_fail_get(api_path) is None, \
+            "命中成功缓存说明这条路径是好的，旧的失败记录不得残留"
+
+
+def test_backoff_carries_window_for_countdown():
+    """退避命中时要把「记录时刻 + 窗口长度」一起给出。
+
+    前端要写「约 N 秒内自动回到 OpenList」；N 只能来自后端真实窗口，
+    否则两处各写一个数字，迟早脱节成一个会骗人的倒计时。
+    """
+    def flaky(path, data=None, method=None, timeout=None, retry_auth=True):
+        raise openlist.OpenListError("OpenList 请求失败: timed out",
+                                     kind=openlist.KIND_TIMEOUT)
+
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "tok")), \
+         patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "_api", side_effect=flaky):
+        openlist.invalidate_dir_cache()
+        openlist.list_dir("/影视电影")
+        r2 = openlist.list_dir("/影视电影")
+    assert r2.get("backoff") is True
+    assert r2.get("backoff_seconds") == openlist.OPENLIST_FAIL_BACKOFF
+    assert r2.get("backoff_since", 0) > 0, "必须带上失败记录时刻，否则无法算剩余时间"
+    left = media_library._backoff_left(r2)
+    assert 0 < left <= int(openlist.OPENLIST_FAIL_BACKOFF), "剩余秒数必须落在窗口内"
+    assert media_library._backoff_left({}) == 0, \
+        "拿不到信息时返回 0（前端退化为「稍后」，不编造倒计时）"

@@ -2684,3 +2684,100 @@ def test_library_read_path_keeps_both_source_and_cache_semantics(dist):
     # 4. 产物两侧特性都在
     assert "libSourceBadge" in dist, "产物缺少数据源徽标（#43）"
     assert "lib-grid-skeleton" in dist, "产物缺少首帧骨架（#42）"
+
+
+def test_library_cache_never_asserts_data_source(dist):
+    """缓存内容可以复用，但**数据源结论只能来自最近一次真实响应**。
+
+    背景（issue #47 追问「在文件目录返回上一级时 OpenList 自动回落」）：
+    渲染缓存时把缓存里的 meta 一起当「当前状态」用，会产生一个很坑的现象 ——
+      根目录第一次回落 QAS → 进子目录（OpenList 正常）→ 返回根目录命中缓存
+      → 徽标一直停在「QAS（OpenList 回落）」、提示说「OpenList 不可用」，
+      而 OpenList 其实完全正常，而且此后**不会再有任何请求**来纠正它。
+
+    实测确认过：`loadLibrary('/')` 在缓存命中时只调一次 `_renderLibrary`
+    （fromCache=true），所以「徽标只可能来自那次渲染」是硬事实。
+
+    这条用例用**结构断言**把不变式钉住：缓存分支渲染时必须传 null
+    （= 只画内容、不对数据源下结论）。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    load = js[js.index("async function loadLibrary("):js.index("function _renderLibError(")]
+    # 两条缓存分支都不得把缓存里的 meta 当当前状态渲染
+    assert "_renderLibrary(target, hit.entries, true, null, hit.meta)" not in load, \
+        "缓存命中时用缓存的 meta 断言数据源：徽标会停在过期结论且无人纠正"
+    assert load.count("_renderLibrary(target, hit.entries, true, null, null)") == 2, \
+        "两条缓存分支（新鲜 / 陈旧）都必须「只画内容、不对数据源下结论」"
+
+    # _renderLibrary 在 source 为 null 时必须**原样保留**当前状态
+    # （无条件覆盖会把回落原因清空，留下一个自相矛盾的状态）
+    render = js[js.index("function _renderLibrary("):js.index("// ---------- 列表视图")]
+    assert "if(source){" in render, \
+        "_renderLibrary 未区分「无 source 断言」与「source 为空对象」"
+    assert "if(source && source.source) libSource = source.source;" not in render, \
+        "仍在使用「部分覆盖」：null 会清空回落原因却留下旧 source"
+
+
+def test_library_error_state_clears_stale_fallback_attribution(dist):
+    """失败态不得继续挂着上一轮的「OpenList 回落」结论。
+
+    实测：先在某目录看到回落，再打开另一个目录、这次连 QAS 都失败了 ——
+    页面会同时显示「读取失败」和「QAS（OpenList 回落）· OpenList 请求超时…」，
+    用户据此去改 OpenList 配置，而真正挂了的是 QAS。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    err = js[js.index("function _renderLibError("):js.index("// 渲染一次目录")]
+    for reset in ("libFallback = false;", "libFallbackReason = '';",
+                  "libFallbackKind = '';", "libFallbackBackoff = false;"):
+        assert reset in err, \
+            "失败态未清理上一轮的回落状态（{}）：提示会自相矛盾".format(reset)
+    assert "_renderLibSourceBadge();" in err, \
+        "失败态未重绘徽标：会残留上一轮的数据源结论"
+
+
+def test_library_drops_entries_without_name(dist):
+    """无名条目必须被丢弃，并且如实计数。
+
+    OpenList / QAS 都可能返回 name 为空串的条目：渲染出来是一张
+    名称空白、勾选框与删除按钮 aria-label 全空的卡片（实测确认），
+    而且按条目名删除时根本不成立（后端会报「未指定要删除的条目」）——
+    用户点了删除却什么都没发生，且无从理解为什么。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    load = js[js.index("async function loadLibrary("):js.index("function _renderLibError(")]
+    assert "String(it.name || '').trim()" in load, \
+        "未过滤无名条目（会渲染出无法删除、无标签的空壳卡片）"
+    assert "libHiddenNoName" in load, \
+        "丢弃了条目却没如实计数：用户会以为「数据少了」"
+    # 计数文案必须把这件事说出来
+    assert "项无名称未显示" in js, "计数里未说明有条目因无名称被隐藏"
+
+
+def test_library_delete_guards_entry_dir_consistency(dist):
+    """OpenList 侧删除必须按「条目所属目录 + 条目名」提交，并校验一致性。
+
+    OpenList 的 /fs/remove 认的是「目录 + 条目名」这一对，而目录如果取
+    「删除那一刻的 libPath」，就等于假设渲染目录与删除目录始终相同 ——
+    这个假设一旦不成立就会**删掉别的东西**（不可逆）。
+    因此：条目所属目录在渲染时固定（it._dir），删除前再校验一次。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    assert "it._dir = path;" in js, \
+        "条目未在渲染时固定所属目录（删除时会用漂移后的 libPath）"
+    assert "e.dir = it._dir || libPath;" in js, \
+        "删除未使用条目自己的目录"
+    do_del = js[js.index("async function doDelete("):js.index("function deleteOne(")]
+    assert "删除已取消" in do_del and "e.dir !== libPath" in do_del, \
+        "删除前缺少「条目目录 vs 当前目录」一致性校验"
+
+
+def test_openlist_prefers_diagnostic_budget_unknown_before_browsing(dist):
+    """自检不得因为「kind 不认识」而丢掉「目录不存在」这个信息。
+
+    openlist.self_check 在 path_missing 时由 list_dir 给出 kind，
+    路由若不透传 openlist_path_missing，前端就只能给笼统提示，
+    用户又会去乱试地址 / 令牌。
+    """
+    routes = _read(os.path.join(_ROOT, "app_modules", "routes_library.py"))
+    assert 'info["openlist_path_missing"]' in routes, \
+        "自检未透传「目录不存在」标记（前端只能笼统提示，用户会乱试配置）"

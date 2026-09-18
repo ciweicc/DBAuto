@@ -983,6 +983,159 @@ def main():
                                 .format(backoff_title[:80]))
             page.close()
 
+            # --- 6.8 返回上一级不得「凭空回落」（issue #47 追问的形态） ---
+            # 用户现象：「在文件目录返回上一级时 OpenList 自动回落」。
+            # 真实成因是一条**前端缓存**缺陷：缓存命中时把缓存里的数据源
+            # 结论（source/fallback/回落原因）当作当前状态渲染，于是
+            #   ① 目录在服务端其实由 OpenList 回答，徽标却停在上一轮的
+            #      「QAS（OpenList 回落）」；
+            #   ② 这次渲染之后**不会再发任何请求**，所以那个错的徽标会一直挂着。
+            # 这一节用真实 DOM + 请求计数钉住两件事：
+            #   返回上一级命中缓存时，数据源徽标必须与**服务端最近一次真实回答**一致；
+            #   并且不得因此多发一次请求（缓存的意义就是不发）。
+            #
+            # 桩设计：第 1 个目录请求回落 QAS，之后的请求都由 OpenList 回答。
+            seq = {"n": 0}
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")
+            back_requests = []
+
+            def route_back_to_root(r):
+                url = r.request.url
+                if "/api/" not in url:
+                    return r.fallback()
+                path = url.split(str(PORT), 1)[-1].split("?", 1)[0]
+                if path.rstrip("/").endswith("/api/sse"):
+                    return r.fulfill(status=200, content_type="text/event-stream", body=b"")
+                if path == "/api/qas/library":
+                    seq["n"] += 1
+                    back_requests.append(seq["n"])
+                    qp = url.split("path=", 1)[1].split("&")[0] if "path=" in url else "/"
+                    import urllib.parse
+                    qp = urllib.parse.unquote(qp)
+                    body = {"success": True, "path": qp, "entries": _entries(qp),
+                            "source": "qas", "fallback": True,
+                            "fallback_reason": "OpenList 请求失败: 请求超时（timed out）",
+                            "fallback_kind": "timeout", "fallback_backoff": True,
+                            "fallback_backoff_left": 17}
+                    if seq["n"] > 1:
+                        body = {"success": True, "path": qp, "entries": _entries(qp),
+                                "source": "openlist", "fallback": False}
+                    return r.fulfill(status=200, content_type="application/json",
+                                     body=json.dumps(body, ensure_ascii=False).encode())
+                if path == "/api/qas/tasks":
+                    return r.fulfill(status=200, content_type="application/json",
+                                     body=json.dumps(dict(_QAS_TASKS), ensure_ascii=False).encode())
+                return _route(r, back_requests)
+
+            page.route("**/*", route_back_to_root)
+            page.goto(URL, wait_until="load", timeout=20000)
+            page.evaluate("()=>switchTab('library')")
+            page.wait_for_timeout(1200)
+            first_badge = page.evaluate(
+                "()=>document.getElementById('libSourceBadge').textContent")
+            page.evaluate("()=>enterDir('电影')")
+            page.wait_for_timeout(1000)
+            sub_badge = page.evaluate(
+                "()=>document.getElementById('libSourceBadge').textContent")
+            n_after_sub = len(back_requests)
+            # 返回上一级：命中缓存，不得再打网络
+            page.evaluate("()=>libGoUp()")
+            page.wait_for_timeout(600)
+            back_badge = page.evaluate(
+                "()=>document.getElementById('libSourceBadge').textContent")
+            back_title = page.evaluate(
+                "()=>document.getElementById('libSourceBadge').getAttribute('title')||''")
+            report.append({"label": "返回上一级·数据源一致性(1440x900)",
+                           "first": first_badge, "sub": sub_badge, "back": back_badge})
+            if "回落" not in first_badge:
+                problems.append("[上一级] 桩未生效：第一次打开应当是回落态（{!r}）".format(
+                    first_badge))
+            if "OpenList" not in sub_badge:
+                problems.append("[上一级] 桩未生效：子目录应当由 OpenList 回答（{!r}）".format(
+                    sub_badge))
+            if len(back_requests) != n_after_sub:
+                problems.append("[上一级] 返回上一级又打了网络（{} -> {}）：缓存未生效".format(
+                    n_after_sub, len(back_requests)))
+            if "回落" in back_badge:
+                problems.append("[上一级] 返回上一级后徽标停在过期的「回落」结论（{!r}）："
+                                "服务端此时由 OpenList 回答，用户看到的就是"
+                                "「一返回上一级就回落」".format(back_badge))
+            if "回落" in back_title:
+                problems.append("[上一级] 徽标 title 仍带过期的回落原因（{!r}）："
+                                "用户会照着去改 OpenList 配置".format(back_title[:80]))
+            page.close()
+
+            # --- 6.9 失败态不得残留上一轮的回落归因 ---
+            # 「先在某目录看到回落，再打开另一个目录、这次连 QAS 都失败」时，
+            # 页面若同时显示「读取失败」与「QAS（OpenList 回落）」，
+            # 用户会去改 OpenList —— 而真正挂了的是 QAS。
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")
+            fail_seq = {"n": 0}
+
+            def route_fail_after_fallback(r):
+                url = r.request.url
+                if "/api/" not in url:
+                    return r.fallback()
+                path = url.split(str(PORT), 1)[-1].split("?", 1)[0]
+                if path.rstrip("/").endswith("/api/sse"):
+                    return r.fulfill(status=200, content_type="text/event-stream", body=b"")
+                if path == "/api/qas/library":
+                    fail_seq["n"] += 1
+                    qp = url.split("path=", 1)[1].split("&")[0] if "path=" in url else "/"
+                    import urllib.parse
+                    qp = urllib.parse.unquote(qp)
+                    if fail_seq["n"] == 1:
+                        return r.fulfill(status=200, content_type="application/json",
+                                         body=json.dumps({
+                                             "success": True, "path": qp, "entries": _entries(qp),
+                                             "source": "qas", "fallback": True,
+                                             "fallback_reason": "OpenList 请求失败: 请求超时（timed out）",
+                                             "fallback_kind": "timeout",
+                                         }, ensure_ascii=False).encode())
+                    # 第二个目录：连 QAS 都失败
+                    return r.fulfill(status=502, content_type="application/json",
+                                     body=json.dumps({
+                                         "success": False, "entries": [],
+                                         "message": "读取网盘目录失败: timed out",
+                                     }, ensure_ascii=False).encode())
+                if path == "/api/qas/tasks":
+                    return r.fulfill(status=200, content_type="application/json",
+                                     body=json.dumps(dict(_QAS_TASKS), ensure_ascii=False).encode())
+                return _route(r, [])
+
+            page.route("**/*", route_fail_after_fallback)
+            page.goto(URL, wait_until="load", timeout=20000)
+            page.evaluate("()=>switchTab('library')")
+            page.wait_for_timeout(1200)
+            page.evaluate("()=>enterDir('电影')")
+            page.wait_for_timeout(1000)
+            fe = page.evaluate(r"""() => {
+              const badge = document.getElementById('libSourceBadge');
+              const st = getComputedStyle(badge);
+              const list = document.getElementById('libList');
+              return {
+                failed: (list.textContent || '').indexOf('读取失败') >= 0,
+                badgeVisible: st.display !== 'none' && badge.offsetHeight > 0,
+                badgeText: badge.textContent || '',
+                badgeTitle: badge.getAttribute('title') || '',
+              };
+            }""")
+            report.append({"label": "失败态·归因清理(1440x900)",
+                           "failed": fe["failed"], "badgeVisible": fe["badgeVisible"],
+                           "badgeText": fe["badgeText"]})
+            if not fe["failed"]:
+                problems.append("[失败态] 桩未生效：第二个目录应当是「读取失败」")
+            if fe["badgeVisible"]:
+                problems.append("[失败态] 读取失败时仍挂着数据源徽标（{!r}）："
+                                "页面同时说「读取失败」和「OpenList 回落会误导排查方向」"
+                                .format(fe["badgeText"]))
+            if "回落" in fe["badgeTitle"]:
+                problems.append("[失败态] 徽标仍留着上一轮的回落原因（{!r}）".format(
+                    fe["badgeTitle"][:80]))
+            page.close()
+
             # --- 7. QAS 任务删除链路（issue #27 跟进） ---
             # 用户诉求：夸克自动转存为自部署服务，任务条目也要能在 DBAuto 里删。
             log4 = []

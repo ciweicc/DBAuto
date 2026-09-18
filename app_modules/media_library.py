@@ -514,6 +514,26 @@ def library_source():
     return LIBRARY_SOURCE_OPENLIST if openlist.is_configured() else LIBRARY_SOURCE_QAS
 
 
+def _backoff_left(res):
+    """退避窗口还剩多少秒（取整，至少 1）。
+
+    窗口长度由 openlist 侧给出（backoff_seconds），记录时刻由 backoff_since 给出。
+    任一缺失时返回 0，表示「不知道还剩多久」—— 前端会退化成「稍后自动重试」，
+    而不是显示一个编造出来的倒计时。
+    """
+    try:
+        since = float(res.get("backoff_since") or 0)
+        window = float(res.get("backoff_seconds") or 0)
+    except (TypeError, ValueError):
+        return 0
+    if since <= 0 or window <= 0:
+        return 0
+    left = window - (time.time() - since)
+    if left <= 0:
+        return 0
+    return max(1, int(round(left)))
+
+
 def list_library_entries(path=None, refresh=False):
     """按当前数据源列出网盘目录（统一入口，前端只认这一个）。
 
@@ -553,6 +573,12 @@ def list_library_entries(path=None, refresh=False):
         # 前端据此告诉用户「正在自动重试，不必改配置」，避免用户在
         # 20 秒的自动恢复期里就去翻设置、把好配置改坏。
         qas["fallback_backoff"] = bool(res.get("backoff"))
+        # 退避窗口的剩余时长（issue #47 追问「上一级就回落」）：徽标要写
+        # 「约 N 秒内自动回到 OpenList」，N 必须来自后端真实窗口，而不是前端
+        # 硬编码一个数字 —— 两处一旦脱节，用户会按一个错的时间去重试。
+        if res.get("backoff"):
+            qas["fallback_backoff_seconds"] = res.get("backoff_seconds", 0)
+            qas["fallback_backoff_left"] = _backoff_left(res)
         if qas.get("success"):
             qas["message"] = ""
             return qas
