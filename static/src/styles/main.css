@@ -1359,7 +1359,7 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 }
 .ov-link-btn:hover{text-decoration:underline}
 
-/* ---- 最近转存：与左侧概览等高，「查看全部」已是唯一出口（不再面板内滚动） ---- */
+/* ---- 最近转存：与左侧概览等高，出口收敛到左侧导航的「历史」（不再面板内滚动） ---- */
 .ov-panel-recent{display:flex;flex-direction:column}
 .ov-panel-recent .ov-table-wrap{flex:1;min-height:0;overflow:auto}
 /* 与左侧概览「等高」的实现方式（issue #15 第 4 轮）：
@@ -1390,6 +1390,11 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 }
 .ov-table .ov-table-date{font-variant-numeric:tabular-nums;color:var(--text2)}
 /* 固定列宽：标题自适应，其余列按内容给足宽度（fixed 布局下不会再出现横向滚动条） */
+/* 按需列（issue #39）：表头被 JS 打上 hidden 时整列不占宽度。
+   必须显式声明 —— UA 的 [hidden]{display:none} 在 table-cell 布局下
+   会被 `.ov-table thead th` 的 padding/white-space 规则"弱化"掉风险，
+   这里写死一条同选择器族的规则，保证折叠后的列不残留列宽。 */
+.ov-table thead th[hidden]{display:none}
 .ov-table .ov-col-lib,.ov-table .ov-table-lib{width:52px}
 .ov-table .ov-col-link,.ov-table .ov-table-actions{width:48px;text-align:center}
 .ov-table .ov-table-actions a{display:inline-flex}

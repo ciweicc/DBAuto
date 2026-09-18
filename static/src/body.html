@@ -104,7 +104,6 @@
                 转存概览
               </span>
               <span class="ov-overview-sub" id="ovOverviewSub"></span>
-              <button class="ov-link-btn" onclick="switchTab('history')">历史记录 →</button>
             </div>
 
             <div class="ov-overview-body">
@@ -173,7 +172,6 @@
                 最近转存
               </div>
               <span class="ov-panel-sub" id="ovRecentSub">最近 10 条</span>
-              <button class="ov-link-btn" onclick="switchTab('history')">查看全部 →</button>
             </div>
             <div class="ov-table-wrap">
               <table class="ov-table">
@@ -182,18 +180,25 @@
                     <th>标题</th>
                     <th>时间</th>
                     <th>状态</th>
-                    <th class="ov-col-lib" title="「库内」表示该资源已在转存历史中；豆瓣榜单为幂等转存，重复执行会跳过而不产生新链接">库内</th>
-                    <th class="ov-col-link">链接</th>
+                    <!-- 「库内」「链接」按需列（issue #39）：只有当本屏渲染出的行里
+                         至少有一行「不在库内」/「有分享链接」时，该列才携带信息。
+                         恒等于常量（全「是」）或恒为空（全「—」）的列由 renderOvRecent
+                         折叠掉，并把结论并进面板副标题，避免纯占位列占宽度。
+                         表头带 data-ov-col，与 tbody 的 td.ov-table-lib / .ov-table-actions 同名。 -->
+                    <th class="ov-col-lib" data-ov-col="lib" title="「库内」表示该资源已在转存历史中；豆瓣榜单为幂等转存，重复执行会跳过而不产生新链接">库内</th>
+                    <th class="ov-col-link" data-ov-col="link">链接</th>
                   </tr>
                 </thead>
                 <tbody id="ovRecentBody">
-                  <tr><td colspan="5" class="ov-table-empty">加载中...</td></tr>
+                  <tr><td colspan="3" class="ov-table-empty">加载中...</td></tr>
                 </tbody>
               </table>
             </div>
-            <!-- 面板底部不再放第二个底部入口：
-                 面板头已有「查看全部 →」，同一面板两个去向相同的入口属于重复导航。
-                 「库内」列的语义说明移交 colgroup 之外的表头 title（见 th.ov-col-lib）。 -->
+            <!-- 概览页不再放任何指向历史页的入口（issue #39）：
+                 面板头的「查看全部 →」与左侧「转存概览」头的「历史记录 →」都指向
+                 switchTab('history')，而左侧导航栏本就有「历史」项，同屏 3 个同去向入口。
+                 按「同去向入口只留一个」的既有判据收敛到左侧导航唯一一个；
+                 面板副标题「最近 N 条 / 共 M 条」已说明这里是截断视图。 -->
           </div>
         </div>
 

@@ -213,6 +213,9 @@ function ovRecentState(item){
  * 1. 渲染上限由硬编码 8 条提升到 OV_RECENT_LIMIT，与「查看全部」的关系不再是三重截断；
  * 2. 日期做空值保护（存储里的 date 可能为空串），避免空值参与比较后把条目排到最前；
  * 3. 「库内」列直接表达幂等跳过，而不是让用户从空链接列去猜。
+ *
+ * 修复（issue #39）：概览页不再放任何指向历史页的入口（同去向入口收敛到左侧导航），
+ * 「库内」「链接」改为**按需列** —— 恒等于常量的列不渲染，结论并进面板副标题。
  */
 function renderOvRecent(hist){
   var tbody = document.getElementById('ovRecentBody');
@@ -249,29 +252,70 @@ function renderOvRecent(hist){
   var cap = stacked ? OV_RECENT_LIMIT : OV_RECENT_ROWS_FIT;
   var shownLimit = Math.min(OV_RECENT_LIMIT, cap);
   var shown = Math.min(items.length, shownLimit);
-  var subEl = document.getElementById('ovRecentSub');
-  if(subEl) subEl.textContent = '最近 ' + shown + ' 条 / 共 ' + total + ' 条';
+  var rows = items.slice(0, shownLimit);
+  // 按需列：列在「本屏渲染出的行」里是否携带信息。
+  //   库内 —— 只要有一行不在库内，这一列才有区分度；全是「是」就是常量列。
+  //   链接 —— 只要有一行有分享链接，这一列才有内容；全是「—」就是空列。
+  // 判据只看已渲染的行（而不是全量 items），与用户实际看到的内容一致。
+  var showLib = rows.some(function(it){ return !ovInLibrary(it); });
+  var showLink = rows.some(function(it){ return !!it.shareurl; });
+  setOvRecentCol('lib', showLib);
+  setOvRecentCol('link', showLink);
 
+  var subEl = document.getElementById('ovRecentSub');
+  if(subEl){
+    // 折叠掉的列把结论并进副标题：用户不必为了「都入库了没」再扫一遍列表
+    var notes = [];
+    if(!showLib && rows.length) notes.push('均在库内');
+    if(!showLink && rows.length) notes.push('暂无分享链接');
+    subEl.textContent = '最近 ' + shown + ' 条 / 共 ' + total + ' 条'
+      + (notes.length ? ' · ' + notes.join(' · ') : '');
+  }
+
+  var colCount = 3 + (showLib ? 1 : 0) + (showLink ? 1 : 0);
   if(!items.length){
-    tbody.innerHTML = '<tr><td colspan="5" class="ov-table-empty">暂无转存记录</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="' + colCount + '" class="ov-table-empty">暂无转存记录</td></tr>';
     return;
   }
   tbody.innerHTML = '';
-  items.slice(0, shownLimit).forEach(function(item){
+  rows.forEach(function(item){
     var tr = document.createElement('tr');
     // 2.3 移动端表格卡片化：td 携带 data-label，<640px 时由 CSS 渲染为字段行
-    tr.innerHTML =
+    var html =
       '<td class="ov-table-title"><span class="ov-table-cat">' + esc(ovCategoryLabel(item.category)) + '</span>' + esc(item.title) + '</td>' +
       '<td class="ov-table-date" data-label="时间">' + esc(ovDateShort(item.date)) + '</td>' +
-      '<td data-label="状态">' + ovStateBadgeHtml(item) + '</td>' +
-      '<td class="ov-table-lib" data-label="库内">' + (ovInLibrary(item) ? '<span class="ov-lib-ok" title="已在转存历史中">是</span>' : '<span class="ov-table-nolink">—</span>') + '</td>' +
-      '<td class="ov-table-actions" data-label="链接">' +
+      '<td data-label="状态">' + ovStateBadgeHtml(item) + '</td>';
+    if(showLib){
+      html += '<td class="ov-table-lib" data-ov-col="lib" data-label="库内">' +
+        (ovInLibrary(item) ? '<span class="ov-lib-ok" title="已在转存历史中">是</span>' : '<span class="ov-table-nolink">—</span>') +
+        '</td>';
+    }
+    if(showLink){
+      html += '<td class="ov-table-actions" data-ov-col="link" data-label="链接">' +
         (item.shareurl
           ? '<a href="' + esc(item.shareurl) + '" target="_blank" rel="noopener" class="ov-btn-icon" title="打开分享链接" aria-label="打开「' + esc(item.title) + '」的分享链接"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>'
           : '<span class="ov-table-nolink">—</span>') +
-      '</td>';
+        '</td>';
+    }
+    tr.innerHTML = html;
     tbody.appendChild(tr);
   });
+}
+
+/**
+ * 切换「最近转存」按需列（issue #39）的表头可见性。
+ *
+ * th 在静态 HTML 里（body.html），td 在上一行渲染时已按需生成；
+ * 两者用同一个 data-ov-col 值对应，列可见性只由本函数决定，避免两处判据漂移。
+ * 用 hidden 属性而不是 inline style：hidden 会被 CSS 的 display 规则覆盖，
+ * 这里配合样式表里的 `[hidden]{display:none}` 语义，且可被断言脚本直接读属性。
+ */
+function setOvRecentCol(col, visible){
+  var head = document.querySelectorAll('th[data-ov-col="' + col + '"]');
+  for(var i = 0; i < head.length; i++){
+    if(visible) head[i].removeAttribute('hidden');
+    else head[i].setAttribute('hidden', '');
+  }
 }
 
 /** 状态徽标 HTML（概览列表专用，跳过/失败不再一律显示为「已转存」） */

@@ -2,6 +2,67 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
+## [当前] 概览页收敛历史入口 + 折叠恒常列（issue #39）
+
+> 对应 [issue #39](https://cnb.cool/ciweicc/DBAuto/-/issues/39) 用户诉求：
+> 截图框选概览首屏右侧「最近转存」面板，指「这个模块的存在没有实际意义」。
+
+**先做了一次判据澄清：删入口，不删面板**
+
+上一轮已删掉该面板底部的「打开历史 →」，只留面板头的「查看全部 →」。
+但左侧导航栏本来就有「历史」项，而概览页的「转存概览」面板头还挂着
+「历史记录 →」——**三个入口去向完全相同**（都是 `switchTab('history')`）。
+按上一轮同一条判据（同去向入口只留一个），本轮把概览页内这两个也删掉，
+历史入口收敛到左侧导航唯一一个。
+
+面板本身**保留**：`最近转存`（资源级，`/api/history` / `transfer_history`，
+回答「我库里有啥」）与历史页（任务级，`/api/exec_history`，回答「上次跑成啥样」）
+不是同一张表，字段与能力都不同，删任一个都丢信息。
+
+**第二部分：恒常列折叠**
+
+用户截图里「库内」列 4 行全是「是」，「链接」列 4 行全是「—」，
+一列恒等于常量、一列恒为空，都是纯占位列。改为**按需列**：
+
+- 判据只看**本屏渲染出的行**：有任意一行「不在库内」才渲染「库内」列，
+  有任意一行带分享链接才渲染「链接」列；
+- 折叠掉的列把结论并进面板副标题（`均在库内` / `暂无分享链接`），
+  信息不丢，用户不必为了「都入库了没」再扫一遍列表；
+- 表头与表体用同一个 `data-ov-col` 值对应（`lib` / `link`），
+  列可见性只由 `setOvRecentCol()` 决定，避免两处判据漂移；
+- 空态 `colspan` 跟着可见列数走（`3 + showLib + showLink`）。
+
+**改了哪些文件**
+
+- `static/src/body.html`：删「转存概览」面板头的「历史记录 →」与「最近转存」
+  面板头的「查看全部 →」；两个可选列表头加 `data-ov-col`；首载占位行 `colspan` 5 → 3。
+- `static/src/scripts/overview.js`：新增 `setOvRecentCol()`；`renderOvRecent()`
+  按需拼 td、按需算 colspan、并把折叠结论并进副标题。
+- `static/src/styles/main.css`：新增 `.ov-table thead th[hidden]{display:none}`
+  （折叠后的列不得残留列宽）；面板注释同步改为「出口收敛到左侧导航」。
+- `tests/test_build.py`：
+  - `test_overview_recent_has_single_history_entry` →
+    `test_overview_has_no_history_entry_at_all`（概览页内同去向入口应为 0，
+    且左侧导航的「历史」必须仍在）；
+  - `test_product_dist_has_no_duplicate_history_link` 产物层面同步收紧；
+  - 新增 `test_overview_recent_constant_columns_are_folded`（判据 / 结论并入副标题 /
+    colspan / 表头标记 / 隐藏规则）。
+- `scripts/check_overview_dom.py`：新增 4 类渲染后断言 —— 常量列必须折叠且表体无该 td、
+  有区分度的列不得折叠、表头可见列数 == 表体单元格数（防列错位）、
+  副标题必须含折叠结论；另加「概览页内无 `switchTab('history')` 入口」。
+
+**验证证据**
+
+- `python3 -m pytest tests/ -q` → **306 passed**；`ruff check .` 通过；
+  `python3 scripts/check_contrast.py` → 18 组受检 0 组未达标。
+- `python3 scripts/check_overview_dom.py --serve` → **9 组视口 0 处问题**
+  （桩数据 status 恒非空 → 「库内」列已折叠、副标题带「均在库内」；
+   shareurl 每 4 条留空 → 「链接」列按预期保留）。
+- **反向验证**（证明断言不是摆设）：把产物里 `setOvRecentCol("lib", f)` 改成
+  恒 `true` 后重跑，9 组视口全部报出
+  「「库内」列是常量列却未被折叠」+「表头可见列数 5 与表体单元格数 4 不一致」；
+  还原后恢复 0 问题。
+
 ## [当前] 媒体库卡片显式显示「修改时间」（issue #27 跟进）
 
 > 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户诉求：
