@@ -21,7 +21,8 @@ _TZ_OFFSETS = {
 _TZ_OFFSET = _TZ_OFFSETS.get(_TZ_NAME, 8)
 LOCAL_TZ = timezone(timedelta(hours=_TZ_OFFSET))
 
-_SENSITIVE_FIELDS = {"qas_token", "auth_pass", "douban_cookie", "openlist_pass"}
+_SENSITIVE_FIELDS = {"qas_token", "auth_pass", "douban_cookie",
+                     "openlist_pass", "openlist_token"}
 
 
 def _is_encrypted(val):
@@ -69,6 +70,10 @@ DEFAULT_CONFIG = {
     # 改由 OpenList 回答（对夸克驱动有列表缓存），解决「访问太慢」；
     # 留空则回落到 QAS 直连，媒体库照常可用。
     "openlist": os.environ.get("OPENLIST", ""),
+    # OpenList 鉴权（issue #27 追问）：令牌优先，账号/密码仅作兜底，
+    # 都留空则按游客模式（能否浏览由 OpenList 侧权限决定）。
+    # 见 openlist.py 文件头「鉴权优先级」。
+    "openlist_token": os.environ.get("OPENLIST_TOKEN", ""),
     "openlist_user": os.environ.get("OPENLIST_USER", "admin"),
     "openlist_pass": os.environ.get("OPENLIST_PASS", ""),
 }

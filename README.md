@@ -216,7 +216,8 @@ DBAuto/
 | `QAS` | — | QAS 地址（首次，可选） |
 | `QAS_TOKEN` | — | QAS Token（首次，可选） |
 | `OPENLIST` | — | OpenList 地址（首次，可选）。填写后媒体库目录改由 OpenList 回答，浏览更快 |
-| `OPENLIST_USER` | `admin` | OpenList 账号（可选，留空按游客模式） |
+| `OPENLIST_TOKEN` | — | OpenList 访问令牌（可选，推荐；加密存储）。填写后直接用令牌请求，不再走账号密码登录 |
+| `OPENLIST_USER` | `admin` | OpenList 账号（可选，未填令牌时用于登录） |
 | `OPENLIST_PASS` | — | OpenList 密码（可选，加密存储） |
 | `TZ` | `Asia/Shanghai` | 时区 |
 

@@ -68,10 +68,19 @@ class LibraryRouteMixin:
             src = media_library.library_source()
             info = {"source": src, "openlist": openlist.is_configured()}
             if info["openlist"]:
+                # 鉴权方式（令牌 / 账号密码 / 游客）来自配置，不依赖可达性 ——
+                # 用户问「我现在到底在用哪种鉴权」时不该因为网络不通就答不上来。
+                info["openlist_auth"] = openlist.auth_status()
                 ping = openlist.ping()
                 info["openlist_ok"] = bool(ping.get("success"))
                 info["openlist_user"] = ping.get("user", "")
                 info["openlist_message"] = ping.get("message", "")
+                # 「配置里写的」与「服务端实际接受的」可能不同（例如令牌写错、
+                # 账号密码被 OpenList 侧改过），两者都带给前端，让提示能落地。
+                info["openlist_auth_mode"] = info["openlist_auth"].get("mode", "")
+                info["openlist_auth_source"] = ping.get("mode", "")
+                info["openlist_auth_label"] = ping.get("mode_label", "") or \
+                    info["openlist_auth"].get("mode_label", "")
             self._send_json({"success": True, **info})
             return True
 

@@ -6,6 +6,8 @@
 本用例覆盖四层：
   1. **客户端契约**（openlist.py）：登录（含明文密码语义）、token 复用与 401 自动重登、
      目录归一化（is_dir→dir、RFC3339→秒级时间戳）、删除的批量上限与条目名校验；
+     以及**鉴权优先级**（issue #27 追问：「可以把 OpenList 的验证方式变成令牌验证吗」）：
+     令牌优先且直发、令牌失效必须如实报错而不是白重登一轮、改配置后不得复用旧凭据；
   2. **错误可读性**：OpenList 的业务错误以 JSON 返回，不能把原因吞成
      「HTTP Error 400: Bad Request」——用户必须看到「用户名或密码错误」这类原因；
   3. **数据源选择与回落**（media_library）：配了 OpenList 就走它，不可用时回落 QAS，
@@ -28,6 +30,12 @@ import media_library
 
 
 # ---------------------------------------------------------------- 契约：登录与 token
+def _login(base=None):
+    """按当前 patch 的 _cfg 调用登录（_cfg 现为 4 元组，_login 只吃后三项）。"""
+    b, token, user, password = openlist._cfg()
+    return openlist._login(b, user, password)
+
+
 
 def test_login_uses_plaintext_password():
     """登录必须发明文密码。
@@ -44,10 +52,10 @@ def test_login_uses_plaintext_password():
         seen["data"] = data
         return 200, {"code": 200, "data": {"token": "tok"}}
 
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "admin", "pw123")), \
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "admin", "pw123")), \
          patch.object(openlist, "_request", side_effect=fake_request):
         openlist.reset_token_cache()
-        assert openlist._token() == "tok"
+        assert _login() == "tok"
     assert seen["url"].endswith("/api/auth/login")
     assert seen["data"] == {"username": "admin", "password": "pw123"}, \
         "登录必须发明文密码（sha256 是 /api/auth/login/hash 的语义）"
@@ -55,12 +63,12 @@ def test_login_uses_plaintext_password():
 
 def test_login_error_message_is_from_body():
     """登录失败的提示必须来自响应体，而不是 urllib 的通用文案。"""
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "admin", "bad")), \
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "admin", "bad")), \
          patch.object(openlist, "_request",
                       return_value=(400, {"code": 400, "message": "Invalid username or password"})):
         openlist.reset_token_cache()
         try:
-            openlist._token()
+            _login()
             raise AssertionError("错误密码不应登录成功")
         except openlist.OpenListError as e:
             assert "Invalid username or password" in str(e)
@@ -68,11 +76,11 @@ def test_login_error_message_is_from_body():
 
 def test_login_non_json_response_explains_likely_cause():
     """地址指向非 OpenList 服务（返回 HTML）时，提示要说明「未返回 JSON」。"""
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "admin", "pw")), \
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "admin", "pw")), \
          patch.object(openlist, "_request", return_value=(200, None)):
         openlist.reset_token_cache()
         try:
-            openlist._token()
+            _login()
             raise AssertionError("非 JSON 响应不应登录成功")
         except openlist.OpenListError as e:
             assert "未返回 JSON" in str(e)
@@ -86,11 +94,11 @@ def test_token_is_cached_and_reused():
         calls["n"] += 1
         return 200, {"code": 200, "data": {"token": "tok"}}
 
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "admin", "pw")), \
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "admin", "pw")), \
          patch.object(openlist, "_request", side_effect=fake_request):
         openlist.reset_token_cache()
         for _ in range(5):
-            openlist._token()
+            _login()
     assert calls["n"] == 1, "token 未复用，每次调用都重新登录"
 
 
@@ -100,10 +108,10 @@ def test_token_cache_is_per_base_url():
                       side_effect=[(200, {"code": 200, "data": {"token": "t1"}}),
                                    (200, {"code": 200, "data": {"token": "t2"}})]):
         openlist.reset_token_cache()
-        with patch.object(openlist, "_cfg", return_value=("http://a:5244", "admin", "pw")):
-            assert openlist._token() == "t1"
-        with patch.object(openlist, "_cfg", return_value=("http://b:5244", "admin", "pw")):
-            assert openlist._token() == "t2", "换地址后仍在复用上个实例的 token"
+        with patch.object(openlist, "_cfg", return_value=("http://a:5244", "", "admin", "pw")):
+            assert _login() == "t1"
+        with patch.object(openlist, "_cfg", return_value=("http://b:5244", "", "admin", "pw")):
+            assert _login() == "t2", "换地址后仍在复用上个实例的 token"
 
 
 def test_401_triggers_silent_relogin():
@@ -118,7 +126,7 @@ def test_401_triggers_silent_relogin():
             return 200, {"code": 200, "data": {"token": "new"}}
         return seq.pop(0)
 
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "admin", "pw")), \
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "admin", "pw")), \
          patch.object(openlist, "_request", side_effect=fake_request):
         openlist.reset_token_cache()
         data = openlist._api("/api/fs/list", {"path": "/"})
@@ -135,12 +143,187 @@ def test_guest_mode_when_no_credentials():
         seen["url"] = url
         return 200, {"code": 200, "data": {"content": [], "total": 0}}
 
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "")), \
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "", "")), \
          patch.object(openlist, "_request", side_effect=fake_request):
         openlist.reset_token_cache()
         openlist._api("/api/fs/list", {"path": "/"})
     assert seen["token"] == ""
     assert not seen["url"].endswith("/api/auth/login"), "游客模式不应先尝试登录"
+
+
+# ---------------------------------------------------------------- 契约：鉴权优先级（令牌优先）
+
+def test_token_is_sent_directly_without_login_round_trip():
+    """配了令牌就**直发**，绝不先登录换取 token。
+
+    这是「令牌验证」这条需求的全部意义：少一轮登录往返。若实现成
+    「先登录再无视登录结果用令牌」，功能看起来是对的，但省下的那一轮
+    根本没省 —— 因此这里直接断言「没有任何登录请求发出」。
+    """
+    seen = []
+
+    def fake_request(url, data=None, method=None, timeout=None, token=""):
+        seen.append((url, token))
+        return 200, {"code": 200, "data": {"content": [], "total": 0}}
+
+    with patch.object(openlist, "_cfg",
+                      return_value=("http://o:5244", "jwt-token-abc", "", "")), \
+         patch.object(openlist, "_request", side_effect=fake_request):
+        openlist.reset_token_cache()
+        openlist._api("/api/fs/list", {"path": "/"})
+    assert len(seen) == 1, "令牌模式下发出了多余请求（应先登录的往返必须被省掉）: {}".format(seen)
+    url, token = seen[0]
+    assert not url.endswith("/api/auth/login"), "令牌模式不应再去登录"
+    assert token == "jwt-token-abc", "Authorization 必须是配置里的令牌原文（OpenList 不吃 Bearer 前缀）"
+
+
+def test_token_wins_over_account_password():
+    """令牌与账号密码同时存在时，令牌优先（用户配令牌就是为了不用它）。"""
+    seen = {}
+
+    def fake_request(url, data=None, method=None, timeout=None, token=""):
+        seen["url"] = url
+        seen["token"] = token
+        return 200, {"code": 200, "data": {"content": [], "total": 0}}
+
+    with patch.object(openlist, "_cfg",
+                      return_value=("http://o:5244", "tok-1", "admin", "pw")), \
+         patch.object(openlist, "_request", side_effect=fake_request):
+        openlist.reset_token_cache()
+        openlist._api("/api/fs/list", {"path": "/"})
+    assert not seen["url"].endswith("/api/auth/login")
+    assert seen["token"] == "tok-1"
+
+
+def test_invalid_token_is_reported_not_silently_retried():
+    """令牌无效（401）必须如实报错，且在消息里点明「令牌」二字。
+
+    绝不能走「401 → 重新登录」那条路：手填令牌根本没法重新登录，
+    重发同一个令牌只是白等一轮，最后用户拿到的还是一句
+    「读取失败」，无从知道要去改哪个字段。
+    """
+    calls = {"n": 0}
+
+    def fake_request(url, data=None, method=None, timeout=None, token=""):
+        calls["n"] += 1
+        return 401, {"code": 401, "message": "token is invalid"}
+
+    with patch.object(openlist, "_cfg",
+                      return_value=("http://o:5244", "tok-bad", "", "")), \
+         patch.object(openlist, "_request", side_effect=fake_request):
+        openlist.reset_token_cache()
+        try:
+            openlist._api("/api/fs/list", {"path": "/"})
+            raise AssertionError("无效令牌不应被当成成功")
+        except openlist.OpenListError as e:
+            msg = str(e)
+    assert calls["n"] == 1, "令牌失效后又重试了一次（重发同一个令牌没有任何意义）"
+    assert "令牌" in msg, "报错必须点明是令牌的问题，用户才知道改哪里: {}".format(msg)
+    assert "token is invalid" in msg, "服务端给出的原因被吞掉了: {}".format(msg)
+
+
+def test_token_change_takes_effect_without_restart():
+    """改令牌后必须立刻生效：旧凭据不能因为 base 未变而被复用。
+
+    这是最隐蔽的一种「保存了但没生效」—— 用登录 token 做缓存键、
+    只按 base 失效的实现在这里会拿到旧身份，且现象完全看不出来。
+    """
+    seen = []
+
+    def fake_request(url, data=None, method=None, timeout=None, token=""):
+        seen.append(token)
+        return 200, {"code": 200, "data": {"content": [], "total": 0}}
+
+    with patch.object(openlist, "_request", side_effect=fake_request):
+        openlist.reset_token_cache()
+        with patch.object(openlist, "_cfg",
+                          return_value=("http://o:5244", "tok-old", "", "")):
+            openlist._api("/api/fs/list", {"path": "/"})
+        with patch.object(openlist, "_cfg",
+                          return_value=("http://o:5244", "tok-new", "", "")):
+            openlist._api("/api/fs/list", {"path": "/"})
+    assert seen == ["tok-old", "tok-new"], "换令牌后仍在用旧凭据: {}".format(seen)
+
+
+def test_guest_mode_still_sends_no_authorization():
+    """凭据全空仍是游客模式（不带 Authorization）—— 这是既有行为，不能被令牌改动打破。"""
+    seen = {}
+
+    def fake_request(url, data=None, method=None, timeout=None, token=""):
+        seen["token"] = token
+        seen["url"] = url
+        return 200, {"code": 200, "data": {"content": [], "total": 0}}
+
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "", "")), \
+         patch.object(openlist, "_request", side_effect=fake_request):
+        openlist.reset_token_cache()
+        openlist._api("/api/fs/list", {"path": "/"})
+    assert seen["token"] == ""
+    assert not seen["url"].endswith("/api/auth/login")
+
+
+def test_password_only_still_logs_in():
+    """只填密码（历史上「账号留空 + 密码非空」是有效的登录组合）不得退化成游客。"""
+    seen = []
+
+    def fake_request(url, data=None, method=None, timeout=None, token=""):
+        seen.append((url, token))
+        if url.endswith("/api/auth/login"):
+            return 200, {"code": 200, "data": {"token": "from-login"}}
+        return 200, {"code": 200, "data": {"content": [], "total": 0}}
+
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "", "pw-only")), \
+         patch.object(openlist, "_request", side_effect=fake_request):
+        openlist.reset_token_cache()
+        openlist._api("/api/fs/list", {"path": "/"})
+    assert seen[0][0].endswith("/api/auth/login"), "只填密码时未走登录（会被当成游客）"
+    assert seen[-1][1] == "from-login"
+
+
+def test_auth_status_reports_configured_mode_without_network():
+    """auth_status 只回答「配置里有什么」，不联网 —— 用户问「我在用哪种鉴权」不该依赖可达性。"""
+    with patch.object(openlist, "_cfg",
+                      return_value=("http://o:5244", "tok", "admin", "pw")):
+        st = openlist.auth_status()
+    assert st["mode"] == openlist.AUTH_MIXED
+    assert st["token_set"] is True and st["user_set"] is True and st["password_set"] is True
+
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "tok", "", "")):
+        assert openlist.auth_status()["mode"] == openlist.AUTH_TOKEN
+        assert openlist.auth_status()["user_set"] is False
+
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "admin", "pw")):
+        assert openlist.auth_status()["mode"] == openlist.AUTH_PASSWORD
+
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "", "")):
+        assert openlist.auth_status()["mode"] == openlist.AUTH_GUEST
+
+
+def test_ping_reports_auth_mode():
+    """自检必须带回「以什么身份在读」—— 否则用户配了令牌也不知道生效没有。"""
+    def fake_request(url, data=None, method=None, timeout=None, token=""):
+        return 200, {"code": 200, "data": {"username": "admin"}}
+
+    with patch.object(openlist, "_cfg",
+                      return_value=("http://o:5244", "tok", "", "")), \
+         patch.object(openlist, "_request", side_effect=fake_request):
+        openlist.reset_token_cache()
+        res = openlist.ping()
+    assert res["success"] is True and res["user"] == "admin"
+    assert res["mode"] == openlist.AUTH_TOKEN
+    assert "令牌" in res["mode_label"]
+
+
+def test_ping_invalid_token_message_mentions_token():
+    """自检失败也要说清是令牌问题（设置页把它直接显示给用户）。"""
+    with patch.object(openlist, "_cfg",
+                      return_value=("http://o:5244", "tok-bad", "", "")), \
+         patch.object(openlist, "_request",
+                      return_value=(401, {"code": 401, "message": "not login"})):
+        openlist.reset_token_cache()
+        res = openlist.ping()
+    assert res["success"] is False
+    assert "令牌" in res["message"], res["message"]
 
 
 # ---------------------------------------------------------------- 契约：目录归一化
@@ -710,3 +893,85 @@ def test_config_post_openlist_pass_placeholder_keeps_existing():
         h._handle_config_post("/api/config", {"openlist_pass": "***"})
     assert saved["openlist_pass"] == "旧密码", \
         "`***` 占位符把已有密码覆盖掉了（用户每次保存设置都得重填密码）"
+
+
+# ---------------------------------------------------------------- 令牌配置往返
+
+def test_openlist_token_is_masked_and_encrypted():
+    """令牌按敏感字段处理：加密落盘 + 脱敏回传（与 qas_token 同口径）。"""
+    import config as cfg_mod
+    import routes_config
+    assert "openlist_token" in cfg_mod._SENSITIVE_FIELDS, \
+        "OpenList 令牌必须加密落盘（它是可直接冒充该用户的全权凭据）"
+    with patch.object(routes_config, "load_config",
+                      return_value={"openlist": "http://o:5244", "openlist_user": "admin",
+                                    "openlist_pass": "", "openlist_token": "jwt.secret"}):
+        payload = routes_config.build_config_payload()
+    assert payload["openlist_token"] == "***", "令牌不得回传给前端"
+
+
+def test_openlist_token_default_is_empty():
+    import config as cfg_mod
+    assert "openlist_token" in cfg_mod.DEFAULT_CONFIG
+    assert cfg_mod.DEFAULT_CONFIG["openlist_token"] == "", "默认必须留空（不配令牌也能用）"
+
+
+def test_config_post_accepts_openlist_token_and_placeholder_keeps_existing():
+    """`***` 表示「不修改」：否则用户每次保存设置都得重新贴一遍令牌。"""
+    import routes_config
+    saved = {}
+
+    def fake_load():
+        return {"openlist": "http://o:5244", "openlist_user": "admin",
+                "openlist_pass": "", "openlist_token": "旧令牌"}
+
+    class H(routes_config.ConfigRouteMixin):
+        def __init__(self):
+            self.sent = None
+            self.status = None
+
+        def _send_json(self, data, status=200):
+            self.sent = data
+            self.status = status
+
+    def _patch():
+        return patch.object(routes_config, "load_config", side_effect=fake_load)
+
+    with _patch(), \
+         patch.object(routes_config, "save_config", side_effect=lambda c: saved.update(c)), \
+         patch.object(routes_config, "reset_qas_client"), \
+         patch.object(routes_config, "add_exec_record"), \
+         patch.object(routes_config, "sse_broadcast"):
+        h = H()
+        h._handle_config_post("/api/config", {"openlist_token": "jwt.new"})
+    assert h.sent == {"success": True}, h.sent
+    assert saved["openlist_token"] == "jwt.new"
+
+    saved.clear()
+    with _patch(), \
+         patch.object(routes_config, "save_config", side_effect=lambda c: saved.update(c)), \
+         patch.object(routes_config, "reset_qas_client"), \
+         patch.object(routes_config, "add_exec_record"), \
+         patch.object(routes_config, "sse_broadcast"):
+        h2 = H()
+        h2._handle_config_post("/api/config", {"openlist_token": "***"})
+    assert saved.get("openlist_token") == "旧令牌", \
+        "`***` 占位符把已有令牌覆盖掉了（用户每次保存设置都得重贴令牌）"
+
+
+def test_route_library_source_selfcheck_reports_auth_mode():
+    """自检响应必须带上鉴权方式与凭据齐备情况（前端据此给出可操作的提示）。"""
+    h = _make_handler()
+    with patch("routes_library.media_library.library_source", return_value="openlist"), \
+         patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "ping", return_value={"success": True, "user": "admin",
+                                                      "mode": "token",
+                                                      "mode_label": "OpenList 令牌"}), \
+         patch.object(openlist, "auth_status",
+                      return_value={"mode": "token", "mode_label": "OpenList 令牌",
+                                    "token_set": True, "user_set": False,
+                                    "password_set": False}):
+        h._handle_library_get("/api/library/source")
+    assert h.sent["openlist_auth"]["mode"] == "token"
+    assert h.sent["openlist_auth_mode"] == "token"
+    assert h.sent["openlist_auth_source"] == "token"

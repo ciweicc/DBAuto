@@ -619,11 +619,16 @@
                     </summary>
                     <div class="set-fields">
                       <div class="form-group"><label for="cfg_openlist">OpenList 地址</label><input type="text" id="cfg_openlist" placeholder="http://192.168.1.1:5244"></div>
+                      <!-- 鉴权（issue #27 追问：「可以把 OpenList 的验证方式变成 OpenList 令牌验证吗」）：
+                           令牌放开放在账号密码之前 —— 顺序就是优先级，用户一眼能看出「填了令牌
+                           就不走登录」。反过来把令牌藏在账号密码后面，会出现「两个都填了，到底用哪个」
+                           的长期困惑，而这两种凭据的行为差异（多一轮登录往返）是看不见的。 -->
+                      <div class="form-group"><label for="cfg_openlist_token">访问令牌（推荐）</label><div class="pwd-wrap"><input type="password" id="cfg_openlist_token" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示令牌" title="显示令牌"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div><div class="form-hint" id="openlistAuthHint">在 OpenList 后台「个人资料 / 令牌」处获取。填了令牌就直接用它请求，不再走账号密码登录（少一轮往返，也不受改密影响）。令牌不会获得额外权限：它只回答「你是谁」，能看什么、能不能删由该账号的角色与目录权限决定 —— 所以请填有权限账号的令牌，而不是随便一个。</div></div>
                       <div class="form-group form-group-inline">
                         <label for="cfg_openlist_user">账号</label><input type="text" id="cfg_openlist_user" placeholder="admin">
                         <label for="cfg_openlist_pass">密码</label><div class="pwd-wrap"><input type="password" id="cfg_openlist_pass" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div>
                       </div>
-                      <div class="form-hint" id="openlistSelfCheckHint">填地址后媒体库目录改由 OpenList 回答（比经 QAS 实时拉取快）；留空回落 QAS 直连，账号密码留空按游客模式。</div>
+                      <div class="form-hint" id="openlistSelfCheckHint">填地址后媒体库目录改由 OpenList 回答（比经 QAS 实时拉取快）；留空回落 QAS 直连。未填令牌时用账号密码登录，两者都留空按游客模式。</div>
                       <div class="set-card-actions">
                         <button class="btn btn-outline btn-sm" id="openlistCheckBtn" onclick="checkOpenList()">连接自检</button>
                       </div>

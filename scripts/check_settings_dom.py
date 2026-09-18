@@ -371,10 +371,22 @@ def main():
               const b = document.getElementById('openlistSubBadge');
               const i = document.getElementById('cfg_openlist');
               const rc = i ? i.getBoundingClientRect() : null;
+              // 令牌输入（issue #27 追问）：必须比「账号」更靠前 —— 顺序即优先级，
+              // 用户一眼能看出「填了令牌就不走登录」。这是纯视觉/顺序问题，
+              // 静态扫描只能证明元素存在，证明不了它排在账号前面。
+              const tk = document.getElementById('cfg_openlist_token');
+              const usr = document.getElementById('cfg_openlist_user');
+              const tkc = tk ? tk.getBoundingClientRect() : null;
+              const usc = usr ? usr.getBoundingClientRect() : null;
+              const hint = document.getElementById('openlistAuthHint');
               return {
                 open: !!(d && d.open),
                 badge: b ? b.textContent.trim() : '',
                 inputH: rc ? Math.round(rc.height) : 0,
+                tokenH: tkc ? Math.round(tkc.height) : 0,
+                tokenBeforeUser: !!(tkc && usc && tkc.top < usc.top),
+                tokenType: tk ? tk.type : '',
+                hintMentionsPerm: !!(hint && hint.textContent.indexOf('权限') >= 0),
               };
             }""")
             report.append({"label": "OpenList 未配置(1440x900)", **ol})
@@ -386,6 +398,18 @@ def main():
                     ol["badge"]))
             if ol["inputH"] <= 0:
                 problems.append("[OpenList 未配置] 地址输入框不可见，无法配置")
+            if ol["tokenH"] <= 0:
+                problems.append("[OpenList 未配置] 令牌输入框不可见，无法配置令牌鉴权")
+            if ol["tokenType"] != "password":
+                problems.append("[OpenList 未配置] 令牌输入框不是 password 类型"
+                                "（令牌是可直接冒充该用户的全权凭据，不应明文显示，"
+                                "当前 {}）".format(ol["tokenType"]))
+            if not ol["tokenBeforeUser"]:
+                problems.append("[OpenList 未配置] 令牌输入未排在账号之前："
+                                "顺序即优先级，排在账号后面会出现「两个都填了到底用哪个」的困惑")
+            if not ol["hintMentionsPerm"]:
+                problems.append("[OpenList 未配置] 令牌说明未提到「权限」："
+                                "用户会以为令牌能获得更大权限")
             page.close()
 
             browser.close()
@@ -403,9 +427,10 @@ def main():
                 print("{:<26} 页高 {:<6} 卡片底部空白 [{}]".format(
                     m["label"], m["tabH"], blanks))
             else:
-                print("{:<26} 折叠态 {:<4} 徽标 {!r} 输入框高 {}".format(
-                    m["label"], "展开" if m.get("open") else "收起",
-                    m.get("badge", ""), m.get("inputH", "")))
+                print("{:<26} 折叠态 {:<4} 徽标 {!r} 输入框高 {} 令牌框高 {} 令牌先于账号 {}"
+                      .format(m["label"], "展开" if m.get("open") else "收起",
+                              m.get("badge", ""), m.get("inputH", ""),
+                              m.get("tokenH", ""), m.get("tokenBeforeUser", "")))
         print()
         if problems:
             print("发现 {} 处问题：".format(len(problems)))

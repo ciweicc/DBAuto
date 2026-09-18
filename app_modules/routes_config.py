@@ -25,7 +25,7 @@ def build_config_payload():
     masked = {}
     for k, v in cfg.items():
         if k in ("qas_token", "auth_pass", "douban_cookie", "tmdb_api_key",
-                 "openlist_pass"):
+                 "openlist_pass", "openlist_token"):
             masked[k] = "***" if v else ""
         else:
             masked[k] = v
@@ -106,6 +106,15 @@ class ConfigRouteMixin:
                         ok, msg = validate_url(v, required=False)
                         if not ok:
                             self._send_json({"success": False, "message": "{}: {}".format(k, msg)}, 400)
+                            return True
+                        cfg[k] = v
+                elif k == "openlist_token":
+                    # OpenList 令牌（issue #27 追问）：与 qas_token 同口径 ——
+                    # 留空 / `***` 表示不修改，避免用户每次保存设置都要重贴一遍令牌。
+                    if v and v != "***":
+                        ok, msg = validate_string(v, min_len=1, max_len=2048)
+                        if not ok:
+                            self._send_json({"success": False, "message": "openlist_token: {}".format(msg)}, 400)
                             return True
                         cfg[k] = v
                 elif k == "openlist_user":

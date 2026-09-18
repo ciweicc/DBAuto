@@ -2028,12 +2028,16 @@ def test_openlist_pass_is_never_echoed_to_frontend():
     与 qas_token 同口径，任何一条漏掉都会把凭据写进明文配置或直接回给浏览器。
     """
     cfg = _read(os.path.join(_ROOT, "app_modules", "config.py"))
-    assert "openlist_pass" in cfg.split("_SENSITIVE_FIELDS = ")[1].split("\n")[0], \
-        "openlist_pass 未进 _SENSITIVE_FIELDS（会明文落盘）"
+    sensitive = cfg.split("_SENSITIVE_FIELDS = ")[1]
+    sensitive = sensitive[:sensitive.index("}")]
+    for key in ("openlist_pass", "openlist_token"):
+        assert key in sensitive, \
+            "{} 未进 _SENSITIVE_FIELDS（会明文落盘）".format(key)
     routes_cfg = _read(os.path.join(_ROOT, "app_modules", "routes_config.py"))
     mask_block = routes_cfg[routes_cfg.index("def build_config_payload"):]
     mask_block = mask_block[:mask_block.index("return masked")]
-    assert "openlist_pass" in mask_block, "openlist_pass 未脱敏（会把密码回传给前端）"
+    for key in ("openlist_pass", "openlist_token"):
+        assert key in mask_block, "{} 未脱敏（会把凭据回传给前端）".format(key)
     assert "elif k in (\"pansou\", \"qas\", \"openlist\")" in routes_cfg, \
         "openlist 地址未走 URL 校验（与 pansou/qas 同口径）"
 
@@ -2107,6 +2111,75 @@ def test_openlist_settings_subsection_is_collapsible(dist):
     assert "OpenList 未配置" in chk, "走查脚本未覆盖「未配置→默认展开」这一态"
 
     assert "openlistSubGroup" in dist, "产物未包含 OpenList 折叠子分区（需重跑 build.sh）"
+
+
+def test_openlist_token_auth_is_wired_end_to_end(dist):
+    """回归（issue #27 追问）：OpenList 支持「令牌验证」，且令牌必须优先直发。
+
+    用户原话：「可以把 OpenList 的验证方式变成 OpenList 令牌验证吗，是不是令牌验证的
+    权限更大一点」。
+
+    本用例锁住实现的关键形状（行为细节见 tests/test_openlist.py）：
+      1. 存在令牌配置项，且与密码同口径（加密落盘 + 脱敏回传）；
+      2. 令牌走的仍是 OpenList 标准的 Authorization 头，**直发不登录**
+         —— 这才是令牌相对账号密码的收益（少一轮往返）；
+      3. 令牌失效时**不许**走 401 自动重登（手填令牌没法重登，只会白等一轮）；
+      4. 设置页提供令牌输入，自检把「以什么身份在读」显示出来，产物已重建。
+    """
+    cfg = _read(os.path.join(_ROOT, "app_modules", "config.py"))
+    assert '"openlist_token"' in cfg, "缺少 openlist_token 配置项"
+    assert 'OPENLIST_TOKEN' in cfg, "环境变量可设置令牌（与其它配置项同口径）"
+
+    ol = _read(os.path.join(_ROOT, "app_modules", "openlist.py"))
+    assert "def _resolve_auth(" in ol, "缺少鉴权解析入口"
+    assert "AUTH_TOKEN" in ol and "AUTH_GUEST" in ol and "AUTH_PASSWORD" in ol, \
+        "缺少鉴权方式区分（无法把「用令牌还是账号密码」如实告诉用户）"
+    assert "def auth_status(" in ol, "缺少不联网的鉴权自检"
+    # 令牌优先：解析顺序里必须先看 token，且命中即返回，不发登录请求
+    auth_fn = ol[ol.index("def _resolve_auth("):]
+    auth_fn = auth_fn[:auth_fn.index("def _login(")]
+    assert "if token:" in auth_fn and auth_fn.index("if token:") < auth_fn.index("_login("), \
+        "令牌未优先于账号密码登录（配了令牌仍会多一轮登录往返）"
+    assert 'headers["Authorization"] = token' in ol, "令牌未放进 Authorization 头"
+    # 401 重登必须限定在「账号密码」路径上
+    api_fn = ol[ol.index("def _api("):]
+    api_fn = api_fn[:api_fn.index("def ping(")]
+    assert "mode == AUTH_PASSWORD" in api_fn, \
+        "401 自动重登未与令牌路径区分开：令牌失效时会白等一轮且报错含糊"
+    assert "令牌无效或已过期" in api_fn, "令牌失效未给出可操作的原因"
+
+    routes = _read(os.path.join(_ROOT, "app_modules", "routes_library.py"))
+    assert "openlist.auth_status()" in routes, "数据源自检未回传鉴权方式"
+    assert "openlist_auth" in routes, "自检响应缺少鉴权字段"
+
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert 'id="cfg_openlist_token"' in body, "设置页缺少 OpenList 令牌输入"
+
+    js = _read(os.path.join(_JS_DIR, "settings.js"))
+    assert "openlist_token" in js, "保存配置未带上 OpenList 令牌"
+    assert "openlist_auth" in js, "设置页未展示当前鉴权方式"
+
+    assert "cfg_openlist_token" in dist and "openlist_token" in dist, \
+        "产物未包含 OpenList 令牌鉴权改动（需重跑 build.sh）"
+
+
+def test_openlist_token_ui_keeps_mode_hint_honest():
+    """回归：设置页不得暗示「令牌权限更大」。
+
+    用户问的就是这个。OpenList 的 Authorization 就是登录换来的同一个 JWT，
+    令牌只回答「你是谁」；权限来自角色与目录权限。若 UI 写成
+    「令牌权限更大」，用户会以为填了令牌就能删掉原本 403 的东西 ——
+    这种误解在删除这种不可逆操作上代价很高，必须由界面文案挡住。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    hint_start = body.index('id="openlistAuthHint"')
+    hint = body[hint_start:hint_start + 900]
+    assert "权限" in hint, "令牌分区缺少「权限取决于账号/目录权限」的说明"
+    assert "令牌" in hint and "账号" in hint, "令牌分区未说明与账号密码的关系"
+
+    js = _read(os.path.join(_JS_DIR, "settings.js"))
+    assert "不会获得额外权限" in js, \
+        "自检提示未点明「令牌不会带来越权」，用户会继续以为令牌权限更大"
 
 
 def test_openlist_dom_audit_is_committed():
