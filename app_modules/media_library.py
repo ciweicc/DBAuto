@@ -546,6 +546,9 @@ def list_library_entries(path=None, refresh=False):
         # 才能区分「地址/密码错」和「路径前缀不对」这两类完全不同的成因。
         qas["fallback_reason"] = ol_msg
         qas["fallback_hint"] = res.get("fallback_hint", "")
+        # 失败归类（issue #47）：只给一句话，前端没法判断该让用户做什么
+        # （超时 → 重试；地址错 → 改地址；前缀错 → 改前缀）。
+        qas["fallback_kind"] = res.get("kind", "")
         if qas.get("success"):
             qas["message"] = ""
             return qas

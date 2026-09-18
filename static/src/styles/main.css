@@ -1068,6 +1068,11 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .form-hint code{font-family:var(--mono);font-size:var(--fs-xs);
   padding:1px 5px;border-radius:var(--radius-xs);background:var(--card-2);border:1px solid var(--border)}
 .set-card-actions{margin-top:12px;display:flex;gap:8px;flex-wrap:wrap}
+/* 连接自检结论（issue #47）：结论必须**留在页面上**，不能只靠会自动消失的 toast。
+   失败态用左侧色条 + 描边区分，成功态保持中性文案（不喧宾夺主）。
+   颜色全部取自 tokens.css，不引入新色值（对比度门禁 check_contrast.py 会校验）。 */
+.ol-selfcheck.ol-ok{color:var(--green);border-left:2px solid var(--green-border);padding-left:8px}
+.ol-selfcheck.ol-fail{color:var(--red);border-left:2px solid var(--red-border);padding-left:8px}
 
 /* ===== 设置页：分组并排（消灭「卡片被拉到容器宽 + 同行空白」） ===== */
 /* 问题（issue #15）：分组是 flex 纵向单列，容器 1440px 宽时每个分组独占整行，

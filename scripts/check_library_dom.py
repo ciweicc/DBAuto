@@ -822,6 +822,62 @@ def main():
                     badge_title[:80]))
             page.close()
 
+            # --- 6.6 回落归因·超时（issue #47） ---
+            # 用户反馈：「在正确填写账号、用户名、密码。根文件路径还有令牌后
+            # 依旧存在这个问题」——配置全填对了却仍报「OpenList 不可用」。
+            # 真实原因是 OpenList **慢**（等夸克返回目录），不是配错。
+            # 旧实现把两者混成一句「不可用」，并把用户引向「路径前缀」，
+            # 于是用户改了一圈配置问题依旧。这一节锁死「慢 ≠ 错」：
+            #   ① 徽标必须标「超时」，不得再说「路径前缀」；
+            #   ② 提示必须明确排除「配置错误」。
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")
+
+            def route_timeout(r):
+                url = r.request.url
+                if "/api/" not in url:
+                    return r.fallback()
+                path = url.split(str(PORT), 1)[-1].split("?", 1)[0]
+                if path.rstrip("/").endswith("/api/sse"):
+                    return r.fulfill(status=200, content_type="text/event-stream", body=b"")
+                if path == "/api/qas/library":
+                    qp = url.split("path=", 1)[1].split("&")[0] if "path=" in url else "/"
+                    import urllib.parse
+                    return r.fulfill(status=200, content_type="application/json",
+                                     body=json.dumps({
+                                         "success": True, "path": urllib.parse.unquote(qp),
+                                         "entries": _entries(urllib.parse.unquote(qp)),
+                                         "source": "qas", "fallback": True,
+                                         "fallback_reason": "OpenList 请求失败: 请求超时（timed out）",
+                                         "fallback_kind": "timeout",
+                                         "message": "",
+                                     }, ensure_ascii=False).encode())
+                if path == "/api/qas/tasks":
+                    return r.fulfill(status=200, content_type="application/json",
+                                     body=json.dumps(dict(_QAS_TASKS), ensure_ascii=False).encode())
+                return r.fallback()
+
+            page.route("**/*", route_timeout)
+            page.goto(URL, wait_until="load", timeout=20000)
+            page.evaluate("()=>switchTab('library')")
+            page.wait_for_timeout(1200)
+            badge_title = page.evaluate(
+                "()=>{var b=document.getElementById('libSourceBadge');"
+                "return b?(b.getAttribute('title')||''):''}")
+            report.append({"label": "回落归因·超时(1440x900)"})
+            if "超时" not in badge_title:
+                problems.append("[回落·超时] 徽标未点明「超时」（title={!r}）："
+                                "用户会把「慢」当成「配错」反复重填配置".format(
+                                    badge_title[:80]))
+            if "路径前缀" in badge_title:
+                problems.append("[回落·超时] 超时提示里出现「路径前缀」："
+                                "把用户引向与实际原因无关的修改动作（title={!r}）".format(
+                                    badge_title[:80]))
+            if "不是配置错误" not in badge_title:
+                problems.append("[回落·超时] 提示未排除「配置错误」这一可能（title={!r}）"
+                                .format(badge_title[:80]))
+            page.close()
+
             # --- 7. QAS 任务删除链路（issue #27 跟进） ---
             # 用户诉求：夸克自动转存为自部署服务，任务条目也要能在 DBAuto 里删。
             log4 = []

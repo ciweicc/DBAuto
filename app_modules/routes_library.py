@@ -90,6 +90,10 @@ class LibraryRouteMixin:
                 info["openlist_user"] = chk.get("user", "")
                 info["openlist_message"] = chk.get("message", "")
                 info["openlist_stage"] = chk.get("stage", "")
+                # 失败归类（issue #47）：前端靠它区分「慢」与「配错」。
+                # 只报「不可用」，用户会去翻地址/密码/前缀，方向可能是错的。
+                info["openlist_fail_kind"] = chk.get("kind", "")
+                info["openlist_timeout_seconds"] = chk.get("timeout_seconds", 0)
                 info["openlist_path"] = chk.get("openlist_path", "")
                 info["openlist_browse_path"] = chk.get("browse_path", "")
                 info["openlist_count"] = chk.get("count", 0)
