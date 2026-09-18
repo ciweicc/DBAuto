@@ -2096,7 +2096,10 @@ def test_openlist_source_is_wired_end_to_end(dist):
       4. 产物已重建。
     """
     ol = _read(os.path.join(_ROOT, "app_modules", "openlist.py"))
-    for path in ("/api/fs/list", "/api/fs/remove", "/api/auth/login"):
+    # 注意：这里刻意**不**要求 /api/auth/login —— issue #47 已把它移除
+    # （OpenList 只保留令牌验证），下面 test_openlist_account_login_is_removed
+    # 反向锁住「不得复活」。
+    for path in ("/api/fs/list", "/api/fs/remove"):
         assert path in ol, "openlist.py 未调用 {}".format(path)
     assert "def list_dir(" in ol and "def remove(" in ol, "缺少目录浏览 / 删除实现"
     assert "def reconcile_tasks(" in ol, "缺少任务对账实现"
@@ -2115,8 +2118,7 @@ def test_openlist_source_is_wired_end_to_end(dist):
     assert 'id="libSourceBadge"' in body, "媒体库缺少数据源徽标"
     assert 'id="auditResult"' in body, "缺少任务对账结果容器"
     assert 'id="cfg_openlist"' in body, "设置页缺少 OpenList 地址输入"
-    assert 'id="cfg_openlist_user"' in body and 'id="cfg_openlist_pass"' in body, \
-        "设置页缺少 OpenList 凭据输入"
+    assert 'id="cfg_openlist_token"' in body, "设置页缺少 OpenList 令牌输入"
 
     js = _read(os.path.join(_JS_DIR, "library.js"))
     assert "function _renderLibSourceBadge(" in js, "缺少数据源徽标渲染"
@@ -2126,30 +2128,77 @@ def test_openlist_source_is_wired_end_to_end(dist):
 
     st = _read(os.path.join(_JS_DIR, "settings.js"))
     assert "function checkOpenList(" in st, "缺少 OpenList 连接自检"
-    assert "openlist_pass" in st, "保存配置未带上 OpenList 密码"
+    assert "openlist_token" in st, "保存配置未带上 OpenList 令牌"
 
     assert "lib-src-badge" in dist and "runTaskAudit" in dist, \
         "产物未包含 OpenList 数据源改动（需重跑 build.sh）"
 
 
-def test_openlist_pass_is_never_echoed_to_frontend():
-    """回归：OpenList 密码必须按敏感字段处理（加密落盘 + 脱敏回传）。
+def test_openlist_token_is_never_echoed_to_frontend():
+    """回归：OpenList 令牌必须按敏感字段处理（加密落盘 + 脱敏回传）。
 
     与 qas_token 同口径，任何一条漏掉都会把凭据写进明文配置或直接回给浏览器。
+    issue #47 起它还是 OpenList **唯一**的凭据，漏一处就没有第二条路可退。
     """
     cfg = _read(os.path.join(_ROOT, "app_modules", "config.py"))
     sensitive = cfg.split("_SENSITIVE_FIELDS = ")[1]
     sensitive = sensitive[:sensitive.index("}")]
-    for key in ("openlist_pass", "openlist_token"):
-        assert key in sensitive, \
-            "{} 未进 _SENSITIVE_FIELDS（会明文落盘）".format(key)
+    assert "openlist_token" in sensitive, \
+        "openlist_token 未进 _SENSITIVE_FIELDS（会明文落盘）"
     routes_cfg = _read(os.path.join(_ROOT, "app_modules", "routes_config.py"))
     mask_block = routes_cfg[routes_cfg.index("def build_config_payload"):]
     mask_block = mask_block[:mask_block.index("return masked")]
-    for key in ("openlist_pass", "openlist_token"):
-        assert key in mask_block, "{} 未脱敏（会把凭据回传给前端）".format(key)
+    assert "openlist_token" in mask_block, "openlist_token 未脱敏（会把凭据回传给前端）"
     assert "elif k in (\"pansou\", \"qas\", \"openlist\")" in routes_cfg, \
         "openlist 地址未走 URL 校验（与 pansou/qas 同口径）"
+
+
+def test_openlist_account_login_is_removed(dist):
+    """回归（issue #47）：OpenList 只保留令牌验证，账号密码链路必须**整体**消失。
+
+    用户要求：「把 OpenList 用户名密码验证的功能去掉，只保留令牌验证」。
+
+    「删功能」最容易只删一半，而每一半都留下一个独立的坑：
+      - 只删前端输入框 → 旧配置里的人还在被读取，行为与用户看到的不一致；
+      - 只删后端调用 → 界面上仍有两个框，用户填了一个永远不生效的字段；
+      - 只删配置项 → `unknown config key` 这种含糊报错，用户以为是参数名拼错。
+    因此这里把四层一起锁死：实现、配置、校验、界面（含产物）。
+    """
+    ol = _read(os.path.join(_ROOT, "app_modules", "openlist.py"))
+    assert "/api/auth/login" not in ol, "openlist.py 仍会调登录接口（账号密码没删干净）"
+    assert "def _login(" not in ol, "openlist.py 仍保留 _login 实现"
+    for name in ("AUTH_PASSWORD", "AUTH_MIXED"):
+        assert name not in ol, "{} 语义仍在（「账号密码」这条路还留在代码里）".format(name)
+    assert "def _resolve_auth(" in ol and "AUTH_TOKEN" in ol, "令牌鉴权入口被误删"
+
+    cfg = _read(os.path.join(_ROOT, "app_modules", "config.py"))
+    for key in ("openlist_user", "openlist_pass"):
+        assert '"{}"'.format(key) not in cfg, \
+            "{} 仍在默认配置里（功能没有真正移除）".format(key)
+
+    routes_cfg = _read(os.path.join(_ROOT, "app_modules", "routes_config.py"))
+    assert "_REMOVED_OPENLIST_KEYS" in routes_cfg, \
+        "缺少对已移除字段的显式拒绝：旧客户端回传时只会得到含糊的 unknown config key"
+
+    body = _read(os.path.join(_SRC, "body.html"))
+    for eid in ("cfg_openlist_user", "cfg_openlist_pass"):
+        assert 'id="{}"'.format(eid) not in body, \
+            "设置页仍有 {} 输入框：用户会继续填一个后端已不再接受的字段".format(eid)
+    assert 'id="cfg_openlist_token"' in body, "设置页缺少令牌输入（唯一凭据入口）"
+
+    js = _read(os.path.join(_JS_DIR, "settings.js"))
+    # 只看**保存配置**那段：自检提示里的 d.openlist_user 是 OpenList /api/me
+    # 回报的身份名，与配置无关（不能一并禁掉，否则等于禁止展示「以谁的身份在读」）。
+    save_fn = js[js.index("async function saveConfig("):js.index("// 3.6 前置校验辅助")]
+    for key in ("openlist_user", "openlist_pass"):
+        assert key not in save_fn, \
+            "保存配置仍在回传已移除的字段 {}（后端会 400，用户看到「保存失败」）".format(key)
+    assert "openlist_token" in save_fn, "保存配置未带上 OpenList 令牌"
+
+    # 产物：删掉的输入框不能还留在生成文件里
+    assert "cfg_openlist_user" not in dist and "openlist_pass" not in dist, \
+        "产物里仍带着账号/密码入口（需重跑 build.sh）"
+    assert "cfg_openlist_token" in dist, "产物未包含令牌输入（需重跑 build.sh）"
 
 
 def test_openlist_delete_requires_same_source():
@@ -2219,21 +2268,24 @@ def test_openlist_settings_subsection_is_collapsible(dist):
         "走查脚本未跳过折叠区内的元素：会给折叠区算出负数「空白」"
     assert "collapsedSub" in chk, "走查脚本未断言折叠子分区可用性"
     assert "OpenList 未配置" in chk, "走查脚本未覆盖「未配置→默认展开」这一态"
+    # issue #47：账号 / 密码入口必须被真实渲染结果断言为「不存在」，
+    # 静态扫描只能证明 body.html 里没有，证明不了产物与运行时 DOM 里没有。
+    assert "removedEls" in chk, "走查脚本未断言「账号/密码入口已从页面消失」"
 
     assert "openlistSubGroup" in dist, "产物未包含 OpenList 折叠子分区（需重跑 build.sh）"
 
 
 def test_openlist_token_auth_is_wired_end_to_end(dist):
-    """回归（issue #27 追问）：OpenList 支持「令牌验证」，且令牌必须优先直发。
+    """回归（issue #27 追问）：OpenList 支持「令牌验证」，且令牌必须直发。
 
     用户原话：「可以把 OpenList 的验证方式变成 OpenList 令牌验证吗，是不是令牌验证的
     权限更大一点」。
 
     本用例锁住实现的关键形状（行为细节见 tests/test_openlist.py）：
-      1. 存在令牌配置项，且与密码同口径（加密落盘 + 脱敏回传）；
+      1. 存在令牌配置项，且按敏感字段处理（加密落盘 + 脱敏回传）；
       2. 令牌走的仍是 OpenList 标准的 Authorization 头，**直发不登录**
-         —— 这才是令牌相对账号密码的收益（少一轮往返）；
-      3. 令牌失效时**不许**走 401 自动重登（手填令牌没法重登，只会白等一轮）；
+         —— 这才是令牌相对其它凭据的收益（少一轮往返）；
+      3. 令牌失效时**不许**有任何「自动重登」路径（手填令牌没法重登，只会白等一轮）；
       4. 设置页提供令牌输入，自检把「以什么身份在读」显示出来，产物已重建。
     """
     cfg = _read(os.path.join(_ROOT, "app_modules", "config.py"))
@@ -2242,21 +2294,20 @@ def test_openlist_token_auth_is_wired_end_to_end(dist):
 
     ol = _read(os.path.join(_ROOT, "app_modules", "openlist.py"))
     assert "def _resolve_auth(" in ol, "缺少鉴权解析入口"
-    assert "AUTH_TOKEN" in ol and "AUTH_GUEST" in ol and "AUTH_PASSWORD" in ol, \
-        "缺少鉴权方式区分（无法把「用令牌还是账号密码」如实告诉用户）"
+    assert "AUTH_TOKEN" in ol and "AUTH_GUEST" in ol, \
+        "缺少鉴权方式区分（无法把「用令牌还是游客」如实告诉用户）"
     assert "def auth_status(" in ol, "缺少不联网的鉴权自检"
-    # 令牌优先：解析顺序里必须先看 token，且命中即返回，不发登录请求
+    # 令牌直发：命中即返回，不经过任何登录
     auth_fn = ol[ol.index("def _resolve_auth("):]
-    auth_fn = auth_fn[:auth_fn.index("def _login(")]
-    assert "if token:" in auth_fn and auth_fn.index("if token:") < auth_fn.index("_login("), \
-        "令牌未优先于账号密码登录（配了令牌仍会多一轮登录往返）"
+    auth_fn = auth_fn[:auth_fn.index("def reset_token_cache(")]
+    assert "if token:" in auth_fn, "令牌未被直接采用（配了令牌仍可能绕一圈）"
+    assert "auth/login" not in auth_fn, "鉴权解析里又出现了登录接口"
     assert 'headers["Authorization"] = token' in ol, "令牌未放进 Authorization 头"
-    # 401 重登必须限定在「账号密码」路径上
+    # 401 只有一条处理：如实报错（不再有「重登一次」这条路）
     api_fn = ol[ol.index("def _api("):]
     api_fn = api_fn[:api_fn.index("def ping(")]
-    assert "mode == AUTH_PASSWORD" in api_fn, \
-        "401 自动重登未与令牌路径区分开：令牌失效时会白等一轮且报错含糊"
     assert "令牌无效或已过期" in api_fn, "令牌失效未给出可操作的原因"
+    assert "AUTH_PASSWORD" not in api_fn, "401 分支里仍留着账号密码的重登逻辑"
 
     routes = _read(os.path.join(_ROOT, "app_modules", "routes_library.py"))
     assert "openlist.auth_status()" in routes, "数据源自检未回传鉴权方式"
@@ -2276,7 +2327,7 @@ def test_openlist_token_auth_is_wired_end_to_end(dist):
 def test_openlist_token_ui_keeps_mode_hint_honest():
     """回归：设置页不得暗示「令牌权限更大」。
 
-    用户问的就是这个。OpenList 的 Authorization 就是登录换来的同一个 JWT，
+    用户问的就是这个。OpenList 的 Authorization 就是账号自己的 JWT，
     令牌只回答「你是谁」；权限来自角色与目录权限。若 UI 写成
     「令牌权限更大」，用户会以为填了令牌就能删掉原本 403 的东西 ——
     这种误解在删除这种不可逆操作上代价很高，必须由界面文案挡住。
@@ -2285,7 +2336,9 @@ def test_openlist_token_ui_keeps_mode_hint_honest():
     hint_start = body.index('id="openlistAuthHint"')
     hint = body[hint_start:hint_start + 900]
     assert "权限" in hint, "令牌分区缺少「权限取决于账号/目录权限」的说明"
-    assert "令牌" in hint and "账号" in hint, "令牌分区未说明与账号密码的关系"
+    assert "令牌" in hint and "游客" in hint, \
+        "令牌分区未说明留空时按游客模式访问（现在的另一档语义）"
+    assert "唯一" in hint, "令牌分区未点明它是 OpenList 唯一的鉴权方式"
 
     js = _read(os.path.join(_JS_DIR, "settings.js"))
     assert "不会获得额外权限" in js, \

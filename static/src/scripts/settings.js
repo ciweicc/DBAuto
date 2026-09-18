@@ -13,12 +13,10 @@ document.getElementById('cfg_auth_pass').value='';
 document.getElementById('cfg_tmdb_api_key').value='';
 document.getElementById('cfg_tmdb_base_url').value=cfg.tmdb_base_url||'';
 document.getElementById('cfg_tmdb_proxy').value=cfg.tmdb_proxy||'';
-// OpenList 媒体库数据源（issue #27 追问）：密码同样留空不修改
+// OpenList 媒体库数据源（issue #47：只剩令牌鉴权）：令牌留空不修改
 var _olEl=document.getElementById('cfg_openlist'); if(_olEl)_olEl.value=cfg.openlist||'';
 var _oltEl=document.getElementById('cfg_openlist_token'); if(_oltEl)_oltEl.value='';
-var _oluEl=document.getElementById('cfg_openlist_user'); if(_oluEl)_oluEl.value=cfg.openlist_user||'admin';
 var _olrEl=document.getElementById('cfg_openlist_root'); if(_olrEl)_olrEl.value=cfg.openlist_root||'';
-var _olpEl=document.getElementById('cfg_openlist_pass'); if(_olpEl)_olpEl.value='';
 // 折叠子分区的默认态由「有没有配过」决定：
 //   未配置 → 展开（用户正是来配它的，收起等于把入口藏起来）；
 //   已配置 → 收起（保持设置页高度门禁，issue #15）。
@@ -80,9 +78,7 @@ tmdb_base_url:document.getElementById('cfg_tmdb_base_url').value.trim(),
 tmdb_proxy:document.getElementById('cfg_tmdb_proxy').value.trim(),
 openlist:document.getElementById('cfg_openlist').value.trim(),
 openlist_token:document.getElementById('cfg_openlist_token').value.trim(),
-openlist_user:document.getElementById('cfg_openlist_user').value.trim()||'admin',
-openlist_root:document.getElementById('cfg_openlist_root').value.trim(),
-openlist_pass:document.getElementById('cfg_openlist_pass').value};
+openlist_root:document.getElementById('cfg_openlist_root').value.trim()};
 try{
 var d=await apiPost('/api/config',cfg);
 if(d.success){if(!silent)showToast('设置已保存',true);clearSettingsDirty()}
@@ -216,7 +212,7 @@ function _applyOpenListSubState(openlist){
 
 // ============ OpenList 连接自检（issue #27 追问） ============
 // 为什么需要单独一个按钮：OpenList 配错的失败形态非常多（地址写错、端口不通、
-// 密码错、只给了游客权限…），而它们**都表现为「媒体库读取失败」**。
+// 令牌抄漏 / 已过期、只给了游客权限…），而它们**都表现为「媒体库读取失败」**。
 // 若不在设置页就能直接验证，「配错了」和「OpenList 自己挂了」完全无法区分。
 // 自检走的是后端现有的 /api/library/source，返回的是「谁在回答 + OpenList 是否可用 +
 // 登录到的用户名」，不额外引入新接口。
@@ -255,10 +251,16 @@ async function checkOpenList(){
     // 令牌这条路径还要点明「不会获得额外权限」—— 用户问的就是这个，
     // 若默认「令牌权限更大」，填了令牌却发现删不掉（403）时只会以为程序坏了。
     var mode=d.openlist_auth_mode||'';
-    var modeTxt=mode==='token'?'令牌鉴权':(mode==='mixed'?'令牌鉴权（账号密码仅作兜底）':(mode==='password'?'账号密码登录':(mode==='guest'?'游客模式':'')));
-    var noExtra=mode==='token'||mode==='mixed'?'令牌只用于识别身份（不会获得额外权限），可看可删仍取决于该账号的角色与目录权限。':'';
+    // 鉴权只剩两档（issue #47）：令牌 / 游客。旧档位的文案一并删掉 ——
+    // 留着 'mixed'/'password' 分支等于在界面上承认「还有账号密码这条路」，
+    // 而它已经不存在了，只会让用户去翻一个没有的输入框。
+    var modeTxt=mode==='token'?'令牌鉴权':(mode==='guest'?'游客模式（未填令牌）':'');
+    var noExtra=mode==='token'?'令牌只用于识别身份（不会获得额外权限），可看可删仍取决于该账号的角色与目录权限。':'';
     if(d.source==='openlist'&&d.openlist_ok){
-      msg='OpenList 可用（'+(modeTxt||'已鉴权')+'，身份：'+(d.openlist_user||'游客')+'），已实测列出「'
+      // d.openlist_user 是自检时 OpenList /api/me 回报的**身份名**，
+      // 不是配置项（配置里只有令牌，见 issue #47）—— 变量名容易误读，故加注。
+      var who=d.openlist_user||'游客';
+      msg='OpenList 可用（'+(modeTxt||'已鉴权')+'，身份：'+who+'），已实测列出「'
         +(d.openlist_browse_path||'/')+'」共 '+(d.openlist_count||0)+' 项，媒体库目录将由其回答。'+noExtra;
       showToast('OpenList 连接正常',true);
     }else if(d.openlist){
@@ -277,7 +279,7 @@ async function checkOpenList(){
         msg+='（OpenList 有响应但太慢：这通常**不是配置错误**，而是它正在等网盘返回目录。'
            +'请稍后重试；本次自检已按 '+(d.openlist_timeout_seconds||30)+' 秒预算等待。）';
       }
-      if(d.openlist_auth&&!d.openlist_auth.token_set&&!d.openlist_auth.user_set){msg+='当前没有可用凭据（游客模式），若 OpenList 关闭了游客访问，请在下方填访问令牌。'}
+      if(d.openlist_auth&&!d.openlist_auth.token_set){msg+='当前没有可用凭据（游客模式，令牌留空），若 OpenList 关闭了游客访问，请在下方填访问令牌。'}
       showToast(title,false);
     }else{
       msg='未配置 OpenList 地址，媒体库目录由 QAS 直连回答（较慢）。';

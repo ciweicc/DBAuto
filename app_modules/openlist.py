@@ -10,7 +10,7 @@
 #      /get_savepath_detail 每次都真的去夸克列目录，没有任何缓存，
 #      目录一大就要等几秒。引入 OpenList 后，目录浏览改为读 OpenList 自己的
 #      文件系统视图（OpenList 对夸克驱动有列表缓存，且支持 Refresh 显式绕过），
-#      并且在多次浏览之间复用登录 token，省掉每请求一轮会话成本。
+#      并且用配置里的访问令牌直发鉴权，省掉每请求一轮会话成本。
 #   2. 「同时管理 QAS 自动任务条目」的诉求不能丢：任务条目的增删仍在 QAS 侧
 #      （media_library.delete_tasks / update_tasklist），OpenList 只负责
 #      **文件侧**的真实情况。有了文件侧真相，才能做「任务对账」：
@@ -26,17 +26,20 @@
 #   - 未配置 OpenList 时所有函数均可用（返回 unconfigured），
 #     媒体库自动回落到 QAS 直连，不会因为「没配 OpenList」而不可用。
 #
-# 鉴权优先级（issue #27 追问：「可以把 OpenList 的验证方式变成 OpenList 令牌验证吗」）：
-#   1. **令牌优先**：配了 openlist_token 就把它原样放进 Authorization 直发，
-#      完全不发登录请求（少一轮往返，且令牌不受「账号密码改没改」影响）；
-#   2. 账号 + 密码：未配令牌时用 /api/auth/login 换 token（结果进进程内缓存）；
-#   3. 游客模式：都没配就不带 Authorization，能否浏览交给 OpenList 侧权限裁决。
+# 鉴权方式（issue #47 追问「把 OpenList 用户名密码验证的功能去掉，只保留令牌验证」）：
+#   **只有一种**：把 openlist_token 原样放进 Authorization 直发。
+#   令牌留空 → 不带 Authorization（游客模式），能否浏览交给 OpenList 侧权限裁决。
+#
+#   历史上还支持「账号 + 密码换 token」，已按用户要求移除。移除的理由不只是简化：
+#     1. 两种凭据并存时，用户必须自己判断「我到底在用哪一种」，
+#        而两者的行为差异（多一轮登录往返、改密后失效）在界面上看不见；
+#     2. 账号密码必须先换取一次会话凭据，多一条凭据链路就多一份落盘密文
+#        与一次明文传输；令牌没有这个问题（它本来就是可撤销的授权凭据）。
 #
 # 这里要说清一个容易误解的点：**令牌不会带来额外权限**。OpenList 的
 # Authorization 就是登录换来的那个 JWT（/api/me 自省时同样是 Bearer），
 # 它只回答「你是谁」。列表的 write 字段与删除是否放行，取决于该用户的
-# 角色与目录权限 —— 也就是说：用 admin 的令牌 = admin 的权限，
-# 与「用 admin 账号密码登录」完全等价；游客令牌仍只是游客。
+# 角色与目录权限 —— 也就是说：用 admin 的令牌 = admin 的权限。
 # 令牌的真实收益是**少一次登录往返**，以及不受 OpenList 侧改密影响。
 import json
 import threading
@@ -89,7 +92,7 @@ OPENLIST_FAIL_BACKOFF = 20.0
 # 不同 KIND 对应**完全不同的用户动作**，混在一起就是让用户乱试：
 #   TIMEOUT      → 网络/网盘慢，等一会重试，别去改配置；
 #   NETWORK      → 地址/端口不通（或不是 OpenList），去核对地址；
-#   AUTH         → 令牌/账号密码不对，去换凭据；
+#   AUTH         → 令牌不对（没填或失效），去 OpenList 后台重取；
 #   PATH_MISSING → 路径前缀不对（配置问题），去改「路径前缀」；
 #   HTTP         → OpenList 自己报错（服务端问题）；
 #   UNCONFIGURED → 根本没配地址。
@@ -108,20 +111,16 @@ MAX_REMOVE_BATCH = 50
 RECONCILE_MAX_DEPTH = 2
 RECONCILE_MAX_DIRS = 40
 
-# 登录 token 复用：OpenList 的 token 默认 48 小时有效（conf.TokenExpiresIn）。
-# 这里只在进程内缓存，预留 10 分钟余量；登录失败不影响其它链路。
-# 仅「账号密码」这条路径会用到它 —— 手填令牌是直发的，不经过登录。
-_TOKEN_SKEW = 600
-_token_lock = threading.Lock()
-_token_cache = {"token": "", "expire_at": 0.0, "base": ""}
-
-# 鉴权方式缓存：与凭据指纹绑定。
-# 为什么不能只按 base 缓存：用户从「账号密码」改成「令牌」时 base 没变，
-# 若还吃着旧的登录 token，改了配置却毫无效果（现象是「保存了，但没生效」）。
-# 把 (令牌, 账号, 密码) 的哈希折进缓存键，任一改动即自然失效，无需重启。
-_AUTH_CACHE_TTL = 120
-_auth_lock = threading.Lock()
-_auth_cache = {"fingerprint": "", "mode": "", "expire_at": 0.0, "base": "", "user": ""}
+# 鉴权方式（用于把「谁在回答 + 用什么身份回答」如实告诉前端）。
+#
+# 令牌只剩两种可能，因此不再需要任何进程内凭据缓存：
+#   - 令牌是**配置里的常量**，每个请求原样直发，不存在「缓存与新配置不一致」
+#     这种最难排查的失效（历史上账号密码路径正是为此引入指纹缓存的）；
+#   - 旧的 401 自动重登也随之消失：手填令牌没法「重新登录」，重发同一个令牌
+#     只是白等一轮，所以 401 一律如实报「令牌无效或已过期」。
+#
+# 注意：下面的**目录浏览缓存 / 失败退避与鉴权无关**，因此不受本次收敛影响 ——
+# 它按路径缓存「目录内容」，换凭据不代表目录内容变了（改前缀会自然换键）。
 
 # 目录浏览缓存 / 失败退避（issue #47）。
 # 键 = OpenList 侧的真实路径（含前缀映射后的结果），与鉴权指纹无关 ——
@@ -133,9 +132,7 @@ _dir_fail = {}           # api_path -> {"ts": float, "kind": str, "message": str
 
 # 鉴权方式（用于把「谁在回答 + 用什么身份回答」如实告诉前端）
 AUTH_TOKEN = "token"
-AUTH_PASSWORD = "password"
 AUTH_GUEST = "guest"
-AUTH_MIXED = "mixed"
 
 
 def _is_timeout(exc):
@@ -176,12 +173,12 @@ class OpenListError(Exception):
 
 
 def _cfg():
-    """读取 OpenList 配置（地址 / 令牌 / 账号 / 密码）。
+    """读取 OpenList 配置（地址 / 令牌）。
 
-    返回 (base, token, user, password)；未配置地址时 base 为空字符串。
+    返回 (base, token)；未配置地址时 base 为空字符串。
 
-    密码与令牌都可能在进程内被 ConfigManager 解密后带出，这里不做任何
-    加工（令牌里的 `.` / `-` / `_` 必须原样保留，任何 strip 都不能动中间字符）。
+    令牌可能在进程内被 ConfigManager 解密后带出，这里不做任何加工
+    （令牌里的 `.` / `-` / `_` 必须原样保留，任何 strip 都不能动中间字符）。
     """
     try:
         c = ConfigManager.get_instance().get_config()
@@ -191,20 +188,7 @@ def _cfg():
     if base and not base.startswith(("http://", "https://")):
         base = "http://" + base
     token = (c.get("openlist_token") or "").strip()
-    user = (c.get("openlist_user") or "").strip()
-    password = c.get("openlist_pass") or ""
-    return base.rstrip("/"), token, user, password
-
-
-def _fingerprint(base, token, user, password):
-    """凭据指纹：鉴权缓存只对「完全没变的凭据」生效。
-
-    用哈希而不是明文：缓存会经 _auth_status() 暴露到 API 响应里，
-    绝不能有任何路径把口令/令牌回显给前端。
-    """
-    import hashlib
-    raw = "\u0000".join([base or "", token or "", user or "", password or ""])
-    return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+    return base.rstrip("/"), token
 
 
 def _conn_kind(exc):
@@ -227,23 +211,18 @@ def _conn_message(prefix, exc):
     return "{}: {}".format(prefix, exc)
 
 
-def _credential_mode(token, user, password):
-    """按「配置里有什么」推断鉴权方式（不代表服务端是否真的接受它）。"""
-    has_user = bool(user)
-    if token and has_user:
-        return AUTH_MIXED
-    if token:
-        return AUTH_TOKEN
-    if has_user or password:
-        return AUTH_PASSWORD
-    return AUTH_GUEST
+def _credential_mode(token):
+    """按「配置里有什么」推断鉴权方式（不代表服务端是否真的接受它）。
+
+    只剩两档：有令牌 = 令牌鉴权；没有 = 游客。刻意不留「凭据缺失」这种
+    中间态 —— 用户填没填令牌是**可见**的，含糊的第三档只会制造新困惑。
+    """
+    return AUTH_TOKEN if token else AUTH_GUEST
 
 
 _MODE_LABELS = {
     AUTH_TOKEN: "OpenList 令牌",
-    AUTH_PASSWORD: "账号密码登录",
-    AUTH_GUEST: "游客模式",
-    AUTH_MIXED: "令牌优先（账号密码仅作兜底）",
+    AUTH_GUEST: "游客模式（未填令牌）",
 }
 
 
@@ -308,12 +287,12 @@ def from_openlist_path(path):
 def is_configured():
     """OpenList 是否已配置（地址非空即视为已配置）。
 
-    凭据全部留空时按 OpenList 的「游客模式」处理：部分部署允许匿名列目录，
+    令牌留空时按 OpenList 的「游客模式」处理：部分部署允许匿名列目录，
     这种情况下浏览可用、删除会返回 403（由 OpenList 自己裁决权限）。
     若设置了强制登录（conf.GuestLogin=false 覆盖含 WebDAV），游客模式
-    会在自检里直接报 401，用户能在设置页看到「需填令牌或账号密码」。
+    会在自检里直接报 401，用户能在设置页看到「请填访问令牌」。
     """
-    base, _, _, _ = _cfg()
+    base, _token = _cfg()
     return bool(base)
 
 
@@ -380,96 +359,49 @@ def _request(url, data=None, method=None, timeout=None, token=""):
         return status, None
 
 
-def _resolve_auth(force=False):
-    """决定本次请求用什么凭据。
+def _resolve_auth():
+    """决定本次请求用什么凭据（唯一一条鉴权路径：令牌直发）。
 
-    返回 (mode, credential, user)：
-      - mode=token    → credential 是手填令牌，**直发**，不发登录请求；
-      - mode=password → credential 是登录换来的 token（进程内复用）；
-      - mode=guest    → credential 为空串，不带 Authorization。
+    返回 (mode, credential)：
+      - mode=token → credential 是配置里的令牌，**直发**，不发任何登录请求；
+      - mode=guest → credential 为空串，不带 Authorization。
 
-    令牌优先是刻意的：它少一轮登录往返，且不受 OpenList 侧改密 / 重启影响。
-    凭据留空时的顺序是「令牌 → 账号 → 密码」：只要有一项能用来鉴权，
-    就不按游客模式发请求 —— 用户配了东西却被当游客，会得到莫名的 401。
+    这里刻意没有任何缓存：令牌是配置常量，直发即最新 —— 用户「保存了却没生效」
+    这种最难排查的失效在这条链路上根本不存在（账号密码路径正因如此才需要指纹缓存）。
     """
-    base, token, user, password = _cfg()
+    base, token = _cfg()
     if not base:
         raise OpenListError("未配置 OpenList 地址", unconfigured=True)
     if token:
-        return AUTH_TOKEN, token, ""
-
-    now = time.time()
-    if not user and not password:
-        # 游客模式：不带 Authorization，是否放行交给 OpenList
-        return AUTH_GUEST, "", ""
-
-    fingerprint = _fingerprint(base, token, user, password)
-    with _auth_lock:
-        if (not force and _auth_cache["fingerprint"] == fingerprint
-                and _auth_cache["base"] == base and now < _auth_cache["expire_at"]):
-            return _auth_cache["mode"], _auth_cache["token"], _auth_cache["user"]
-
-    login_token = _login(base, user, password)
-    with _auth_lock:
-        _auth_cache.update({"fingerprint": fingerprint, "mode": AUTH_PASSWORD,
-                            "token": login_token, "base": base,
-                            "expire_at": now + _AUTH_CACHE_TTL, "user": user})
-    return AUTH_PASSWORD, login_token, user
-
-
-def _login(base, user, password):
-    """用账号密码登录 OpenList，返回 token 字符串（进程内缓存复用）。
-
-    缓存键含 base 地址：用户改了地址后旧 token 不再被复用。
-    """
-    now = time.time()
-    cache_key = "{}|{}|{}".format(base, user, password or "")
-    with _token_lock:
-        if (_token_cache["token"] and _token_cache["key"] == cache_key
-                and now < _token_cache["expire_at"]):
-            return _token_cache["token"]
-
-    url = "{}/api/auth/login".format(base)
-    try:
-        # 注意：OpenList 的 /api/auth/login 收**明文**密码，服务端自己做 StaticHash；
-        # 不要先做 sha256（那是 /api/auth/login/hash 的语义，两者不能混用）。
-        status, payload = _request(url, {"username": user, "password": password},
-                                   timeout=OPENLIST_READ_TIMEOUT)
-    except Exception as e:
-        raise OpenListError(_conn_message("OpenList 登录失败", e), kind=_conn_kind(e))
-    token = ((payload or {}).get("data") or {}).get("token") or ""
-    if not token:
-        raise OpenListError("OpenList 登录失败: {}".format(_resp_message(payload, status)),
-                            kind=KIND_AUTH if status in (400, 401, 403) else KIND_HTTP)
-    with _token_lock:
-        _token_cache.update({"token": token, "key": cache_key, "base": base,
-                             "expire_at": now + 3600})
-    return token
+        return AUTH_TOKEN, token
+    # 游客模式：不带 Authorization，是否放行交给 OpenList
+    return AUTH_GUEST, ""
 
 
 def reset_token_cache():
-    """清空登录 token / 鉴权方式缓存（改配置后调用；测试也用）。"""
-    with _token_lock:
-        _token_cache.update({"token": "", "key": "", "base": "", "expire_at": 0.0})
-    with _auth_lock:
-        _auth_cache.update({"fingerprint": "", "mode": "", "expire_at": 0.0,
-                            "base": "", "user": ""})
+    """历史接口，保留为无操作。
 
-
-def _api(path, data=None, method=None, timeout=None, retry_auth=True):
-    """带一次鉴权重试的 OpenList 调用。
-
-    重试的边界（这里刻意与「账号密码」路径不同）：
-      - 用**账号密码**时 401 通常是登录 token 到期/服务端重启 → 丢掉缓存重登一次，
-        用户不该看到莫名的「读取失败」；
-      - 用**手填令牌**时 401 只可能是令牌本身不对（过期 / 撤销 / 抄漏）→
-        重发同一个令牌只是白等一轮，必须**如实报错**，并在消息里点明
-        「令牌」二字，用户才知道要去哪儿改。
+    令牌鉴权不需要任何进程内缓存（见 _resolve_auth）。这个函数存在的唯一原因
+    是**防止外部/脚本里残留的调用直接 NameError** —— 它曾经用于「改配置后
+    清空登录 token」，现在没有可清的东西。
     """
-    base, _, _, _ = _cfg()
+    return None
+
+
+def _api(path, data=None, method=None, timeout=None):
+    """OpenList 调用（带凭据直发）。
+
+    这里**没有**「401 自动重试」这条分支了：能自动重试的前提是「凭据可重新获取」，
+    而现在是手填令牌 —— 重发同一个令牌只是白等一轮。401 一律如实报错，
+    并在消息里点明「令牌」二字，用户才知道要去哪儿改。
+
+    也不再保留「是否重试」这类开关形参：留着它只会让调用方误以为
+    「凭据还能重新获取、401 会自动恢复」。
+    """
+    base, _token = _cfg()
     if not base:
         raise OpenListError("未配置 OpenList 地址", unconfigured=True)
-    mode, credential, _user = _resolve_auth()
+    mode, credential = _resolve_auth()
     url = base + path
     try:
         status, payload = _request(url, data, method=method,
@@ -477,13 +409,6 @@ def _api(path, data=None, method=None, timeout=None, retry_auth=True):
                                    token=credential)
     except Exception as e:
         raise OpenListError(_conn_message("OpenList 请求失败", e), kind=_conn_kind(e))
-    if status == 401 and retry_auth and mode == AUTH_PASSWORD:
-        reset_token_cache()
-        mode, credential, _user = _resolve_auth(force=True)
-        if credential:
-            status, payload = _request(url, data, method=method,
-                                       timeout=timeout or OPENLIST_READ_TIMEOUT,
-                                       token=credential)
     if status == 401 and mode == AUTH_TOKEN:
         raise OpenListError(
             "OpenList 令牌无效或已过期（HTTP 401）：{}。请到 OpenList 后台重新获取令牌后"
@@ -515,7 +440,7 @@ def ping():
                 "kind": KIND_UNCONFIGURED,
                 "mode": AUTH_GUEST, "mode_label": _MODE_LABELS[AUTH_GUEST]}
     try:
-        mode, _cred, _u = _resolve_auth()
+        mode, _cred = _resolve_auth()
     except OpenListError as e:
         return {"success": False, "message": str(e), "user": "", "kind": e.kind,
                 "mode": AUTH_GUEST, "mode_label": _MODE_LABELS[AUTH_GUEST]}
@@ -528,35 +453,38 @@ def ping():
     user = ((data or {}).get("username") or "").strip()
     if not user:
         # 游客模式下 /api/me 可能返回空用户名：如实说明「以游客身份访问」，
-        # 而不是显示成「登录成功但用户为空」（后者会被误读成配错了）。
-        label = "游客（未提供凭据）" if mode == AUTH_GUEST else ""
+        # 而不是显示成「鉴权通过但用户为空」（后者会被误读成配错了）。
         if mode == AUTH_GUEST:
             return {"success": True, "message": "", "user": "", "mode": mode,
-                    "kind": "", "mode_label": label}
+                    "kind": "", "mode_label": "游客（未填令牌）"}
     return {"success": True, "message": "", "user": user,
             "mode": mode, "kind": "", "mode_label": _MODE_LABELS.get(mode, "")}
 
 
 def auth_status():
-    """鉴权自检（不联网）：返回配置里用的是哪种鉴权、凭据是否齐备。
+    """鉴权自检（不联网）：返回配置里用的是哪种鉴权、令牌是否已填。
 
-    与 ping 的区别：ping 证明「服务端真的接受了这套凭据」，auth_status 只说明
-    「配置里有什么」。两者都要有 —— 用户问「我到底在用令牌还是账号密码」
+    与 ping 的区别：ping 证明「服务端真的接受了这个令牌」，auth_status 只说明
+    「配置里有什么」。两者都要有 —— 用户问「我到底在用令牌还是游客」
     时不该依赖网络可达。
+
+    user_set / password_set 恒为 False，保留字段只为兼容既有前端与走查脚本：
+    它们曾经表示「账号 / 密码已配置」，现在这两项已不受支持（issue #47 要求
+    只保留令牌验证），字段比「悄悄消失导致前端读 undefined」更安全。
     """
-    base, token, user, password = _cfg()
-    mode = _credential_mode(token, user, password)
+    _base, token = _cfg()
+    mode = _credential_mode(token)
     return {
         "mode": mode,
         "mode_label": _MODE_LABELS[mode],
         "token_set": bool(token),
-        "user_set": bool(user),
-        "password_set": bool(password),
+        "user_set": False,
+        "password_set": False,
     }
 
 
 def self_check(browse_path="/"):
-    """完整自检：登录 + **真的列一次目录**。
+    """完整自检：鉴权 + **真的列一次目录**。
 
     为什么必须列目录（issue #27 追问「为什么我配置了 OpenList，但还是回落」）：
       只 ping `/api/me` 时，设置页会显示「OpenList 可用，目录将由其回答」，
@@ -565,7 +493,7 @@ def self_check(browse_path="/"):
       「实际用着 QAS」之间彻底失去线索 —— 这是本次问题的关键一环。
 
     返回 {
-      "success": 登录+列目录都成功,
+      "success": 鉴权+列目录都成功,
       "message": 不可用时的具体原因（可直接展示给用户）,
       "user", "browse_path": 实际尝试的网盘路径,
       "openlist_path": 实际请求的 OpenList 路径（体现前缀映射）,
@@ -574,10 +502,10 @@ def self_check(browse_path="/"):
       "timeout_seconds": 本次自检实际使用的超时预算,
     }
 
-    stage 取值：config（没配） / login（凭据或连通性） / list（列目录）
-    / timeout（列目录超时：慢，不等于配错） / ok。
-    
+    stage 取值：config（没配） / login（令牌或连通性，历史档位名，前端文案已收敛）
+    / list（列目录） / timeout（列目录超时：慢，不等于配错） / ok。
     """
+
     info = {"success": False, "message": "", "user": "", "count": 0,
             "browse_path": str(browse_path or "/"), "openlist_path": "",
             "stage": "config", "kind": ""}
@@ -594,7 +522,7 @@ def self_check(browse_path="/"):
         info["message"] = base.get("message", "")
         info["kind"] = base.get("kind") or KIND_HTTP
         return info
-    # 登录通过 → 再真的列一次目录，这才是「媒体库能不能走 OpenList」的判据
+    # 鉴权通过 → 再真的列一次目录，这才是「媒体库能不能走 OpenList」的判据
     info["stage"] = "list"
     target = info["browse_path"] or "/"
     info["openlist_path"] = to_openlist_path(target)

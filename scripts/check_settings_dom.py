@@ -53,7 +53,8 @@ STUBS = {
             # —— 高度门禁量的必须是常态，而不是「第一次来配置」的临时展开态。
             # （未配置时自动展开由 check_library_dom / 设置页本身的行为覆盖。）
             "openlist": "http://192.168.1.1:5244",
-            "openlist_user": "admin",
+            # issue #47：OpenList 只剩令牌鉴权，账号/密码字段已从配置与界面移除。
+            "openlist_token": "***",
         },
         "schedule": {
             "_next_runs": {},
@@ -86,6 +87,8 @@ STUBS = {
                           "token_set": True, "user_set": False, "password_set": False},
         "openlist_auth_mode": "token",
         "openlist_auth_source": "token",
+        # 自检回报的身份（OpenList 侧 /api/me 的用户名），不是配置项 ——
+        # 配置里已没有账号字段（issue #47 只保留令牌）。
         "openlist_user": "admin",
         "openlist_root_prefix": "", "openlist_path": "/影视",
         "openlist_browse_path": "/影视", "openlist_count": 0,
@@ -449,18 +452,21 @@ def main():
               // 用户一眼能看出「填了令牌就不走登录」。这是纯视觉/顺序问题，
               // 静态扫描只能证明元素存在，证明不了它排在账号前面。
               const tk = document.getElementById('cfg_openlist_token');
-              const usr = document.getElementById('cfg_openlist_user');
               const tkc = tk ? tk.getBoundingClientRect() : null;
-              const usc = usr ? usr.getBoundingClientRect() : null;
               const hint = document.getElementById('openlistAuthHint');
+              // issue #47：账号 / 密码入口必须真的消失 —— 只从配置里删字段
+              // 而把输入框留在页面上，用户会继续填、继续以为它有用。
+              const removed = ['cfg_openlist_user','cfg_openlist_pass']
+                .filter(id => !!document.getElementById(id));
               return {
                 open: !!(d && d.open),
                 badge: b ? b.textContent.trim() : '',
                 inputH: rc ? Math.round(rc.height) : 0,
                 tokenH: tkc ? Math.round(tkc.height) : 0,
-                tokenBeforeUser: !!(tkc && usc && tkc.top < usc.top),
+                removedEls: removed.join(','),
                 tokenType: tk ? tk.type : '',
                 hintMentionsPerm: !!(hint && hint.textContent.indexOf('权限') >= 0),
+                hintSaysOnlyToken: !!(hint && hint.textContent.indexOf('唯一') >= 0),
               };
             }""")
             report.append({"label": "OpenList 未配置(1440x900)", **ol})
@@ -478,12 +484,16 @@ def main():
                 problems.append("[OpenList 未配置] 令牌输入框不是 password 类型"
                                 "（令牌是可直接冒充该用户的全权凭据，不应明文显示，"
                                 "当前 {}）".format(ol["tokenType"]))
-            if not ol["tokenBeforeUser"]:
-                problems.append("[OpenList 未配置] 令牌输入未排在账号之前："
-                                "顺序即优先级，排在账号后面会出现「两个都填了到底用哪个」的困惑")
+            if ol["removedEls"]:
+                problems.append("[OpenList 未配置] 账号 / 密码入口仍在页面上（{}）："
+                                "issue #47 要求只保留令牌验证，留着输入框会让用户继续填"
+                                "一个后端已不再接受的字段".format(ol["removedEls"]))
             if not ol["hintMentionsPerm"]:
                 problems.append("[OpenList 未配置] 令牌说明未提到「权限」："
                                 "用户会以为令牌能获得更大权限")
+            if not ol["hintSaysOnlyToken"]:
+                problems.append("[OpenList 未配置] 令牌说明未点明它是**唯一**鉴权方式："
+                                "用户会继续找账号密码入口")
             page.close()
 
             # ------------------------------------------------------------
