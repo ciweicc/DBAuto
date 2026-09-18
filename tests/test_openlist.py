@@ -280,6 +280,132 @@ def test_remove_unconfigured_is_explicit():
     assert res["success"] is False and "未配置" in res["message"]
 
 
+# ------------------------------------------------- 「配了 OpenList 却仍回落」的根因
+#
+# 用户现象（issue #27 追问）：OpenList 明明配好了，「连接自检」也说可用，
+# 但媒体库每次都显示「QAS（OpenList 回落）」。
+#
+# 根因：DBAuto 的媒体库路径来自 QAS 的 savepath（如 `/影视/电影`），
+# 而 OpenList 只认自己的挂载点。两者不一致时 `/api/fs/list` 稳定返回
+# 500（storage not found），于是**每一次浏览都回落** —— 而登录 (/api/me)
+# 是通的，所以只验证登录的自检会误报「可用」。
+#
+# 下面三条用例把这条因果链锁死：映射生效 → 不再回落；映射缺失 → 回落但
+# 报出「可定位的原因」；自检必须真的列目录。
+
+
+def test_root_prefix_maps_network_path_to_openlist_path():
+    """配了路径前缀后：QAS 路径必须被翻译成 OpenList 路径再请求。"""
+    seen = {}
+    with patch.object(openlist, "_root_prefix", return_value="/夸克"), \
+         patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "_api",
+                      side_effect=lambda path, data=None, **k: seen.update(data or {}) or {"content": []}):
+        openlist.list_dir("/影视/电影")
+        assert seen["path"] == "/夸克/影视/电影", \
+            "路径前缀未生效：会把网盘路径直接发给 OpenList，必然 500 → 回落"
+        assert openlist.to_openlist_path("/") == "/夸克"
+        assert openlist.to_openlist_path("/影视") == "/夸克/影视"
+        assert openlist.from_openlist_path("/夸克/影视") == "/影视"
+        assert openlist.from_openlist_path("/夸克") == "/"
+
+
+def test_remove_uses_the_same_prefix_mapping():
+    """删除也必须走前缀映射：否则「能看到却删不掉」。"""
+    seen = {}
+    with patch.object(openlist, "_root_prefix", return_value="/夸克"), \
+         patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "_api",
+                      side_effect=lambda path, data=None, **k: seen.update(data or {}) or None):
+        openlist.remove(["影片.mkv"], dir_path="/影视/电影")
+    assert seen["dir"] == "/夸克/影视/电影", "删除未按挂载前缀翻译目录"
+
+
+def test_no_prefix_means_paths_are_identical():
+    """未配置前缀时必须原样透传（两边同构的部署不该被改动）。"""
+    seen = {}
+    with patch.object(openlist, "_root_prefix", return_value=""), \
+         patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "_api",
+                      side_effect=lambda path, data=None, **k: seen.update(data or {}) or {"content": []}):
+        openlist.list_dir("/影视/电影")
+    assert seen["path"] == "/影视/电影"
+
+
+def test_missing_path_error_names_the_fix_and_is_flagged():
+    """目录不存在时必须报「去配路径前缀」，而不是含糊的「OpenList 不可用」。
+
+    「路径配错」与「OpenList 挂了」都表现为 success:false；不区分开，
+    用户只会反复检查地址 / 密码，永远找不到真正的原因。
+    """
+    with patch.object(openlist, "_root_prefix", return_value=""), \
+         patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "_api",
+                      side_effect=openlist.OpenListError(
+                          "OpenList 错误 500: failed to list objs: storage not found")):
+        res = openlist.list_dir("/影视/电影")
+    assert res["success"] is False
+    assert res.get("path_missing") is True, "目录不存在未被识别成路径问题"
+    assert res.get("fallback_hint") == "path_prefix"
+    assert "路径前缀" in res["message"], "报错必须直接告诉用户去配「路径前缀」"
+
+
+def test_generic_failure_is_not_misreported_as_path_problem():
+    """真正的连接故障不得被误报成「路径前缀不对」（否则会把用户带偏）。"""
+    with patch.object(openlist, "_root_prefix", return_value="/夸克"), \
+         patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "_api",
+                      side_effect=openlist.OpenListError("OpenList 请求失败: timed out")):
+        res = openlist.list_dir("/影视")
+    assert res["success"] is False
+    assert not res.get("path_missing")
+    assert "超时" in res["message"] or "timed out" in res["message"]
+
+
+def test_self_check_actually_lists_a_directory():
+    """自检必须真的列一次目录 —— 只 ping /api/me 无法发现路径不匹配。"""
+    with patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "ping", return_value={"success": True, "user": "admin"}), \
+         patch.object(openlist, "list_dir",
+                      return_value={"success": False, "path": "/影视",
+                                    "entries": [], "path_missing": True,
+                                    "message": "OpenList 上找不到目录 /影视"}):
+        chk = openlist.self_check("/影视")
+    assert chk["success"] is False, \
+        "登录通但列目录失败时自检必须失败（否则用户会以为 OpenList 在工作）"
+    assert chk["stage"] == "list"
+    assert "找不到目录" in chk["message"]
+
+
+def test_self_check_success_reports_listed_count():
+    with patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "ping", return_value={"success": True, "user": "admin"}), \
+         patch.object(openlist, "_root_prefix", return_value="/夸克"), \
+         patch.object(openlist, "list_dir",
+                      return_value={"success": True, "path": "/影视",
+                                    "entries": [{"name": "a", "dir": True, "size": 0,
+                                                 "updated_at": 0}]}):
+        chk = openlist.self_check("/影视")
+    assert chk["success"] is True and chk["count"] == 1 and chk["stage"] == "ok"
+
+
+def test_fallback_carries_reason_to_frontend():
+    """回落必须连原因一起返回，前端才能告诉用户「该去改哪个设置」。"""
+    with patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "list_dir",
+                      return_value={"success": False, "path": "/影视", "entries": [],
+                                    "message": "OpenList 上找不到目录 /影视",
+                                    "fallback_hint": "path_prefix"}), \
+         patch.object(media_library, "list_library",
+                      return_value={"success": True, "path": "/影视",
+                                    "entries": [{"name": "A", "dir": True, "size": 0,
+                                                 "updated_at": 0}]}):
+        res = media_library.list_library_entries("/影视")
+    assert res["source"] == media_library.LIBRARY_SOURCE_QAS and res["fallback"] is True
+    assert "找不到目录" in res["fallback_reason"], "回落原因未透传给前端"
+    assert res["fallback_hint"] == "path_prefix"
+
+
 # ---------------------------------------------------------------- 数据源选择与回落
 
 def test_library_source_prefers_openlist_then_falls_back():
@@ -534,18 +660,46 @@ def test_route_library_source_selfcheck():
     h = _make_handler()
     with patch("routes_library.media_library.library_source", return_value="openlist"), \
          patch.object(openlist, "is_configured", return_value=True), \
-         patch.object(openlist, "ping", return_value={"success": True, "user": "admin"}):
+         patch.object(openlist, "self_check",
+                      return_value={"success": True, "user": "admin", "message": "",
+                                    "stage": "ok", "browse_path": "/影视", "count": 3,
+                                    "openlist_path": "/夸克/影视"}):
         assert h._handle_library_get("/api/library/source") is True
     assert h.sent["source"] == "openlist" and h.sent["openlist_ok"] is True
     assert h.sent["openlist_user"] == "admin"
+    # 自检必须回报「实测列到了几条」，否则用户无法区分「登录通过」与「真的能列目录」
+    assert h.sent["openlist_count"] == 3
+
+
+def test_route_library_source_selfcheck_lists_a_real_dir():
+    """自检必须**真的列一次目录**，而不是只 ping /api/me。
+
+    这是「配了 OpenList 却仍回落」的关键一环：挂载路径不匹配时，
+    登录是通的、列目录必然失败；若自检只验证登录，就会显示「可用」，
+    而用户实际每翻一次目录都在回落 QAS。
+    """
+    h = _make_handler()
+    with patch("routes_library.media_library.library_source", return_value="openlist"), \
+         patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "self_check",
+                      return_value={"success": False, "user": "admin",
+                                    "message": "OpenList 上找不到目录 /影视",
+                                    "stage": "list", "browse_path": "/影视",
+                                    "openlist_path": "/影视", "count": 0}):
+        h._handle_library_get("/api/library/source")
+    assert h.sent["openlist_ok"] is False, \
+        "登录通但列目录失败时，自检不得报「可用」"
+    assert h.sent["openlist_stage"] == "list", "自检需说明失败发生在哪一步"
+    assert h.sent["source"] == "qas", "自检失败时 source 必须如实回落为 qas"
 
 
 def test_route_library_source_selfcheck_when_unavailable():
     h = _make_handler()
     with patch("routes_library.media_library.library_source", return_value="qas"), \
          patch.object(openlist, "is_configured", return_value=True), \
-         patch.object(openlist, "ping",
-                      return_value={"success": False, "message": "登录失败", "user": ""}):
+         patch.object(openlist, "self_check",
+                      return_value={"success": False, "message": "登录失败",
+                                    "user": "", "stage": "login", "count": 0}):
         h._handle_library_get("/api/library/source")
     assert h.sent["openlist_ok"] is False
     assert "登录失败" in h.sent["openlist_message"]

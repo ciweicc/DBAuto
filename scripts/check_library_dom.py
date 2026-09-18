@@ -753,6 +753,68 @@ def main():
                                 "source 未随目录数据一起缓存".format(detail["srcBadge"]))
             page.close()
 
+            # --- 6.5 回落原因可归因（issue #27 追问「配了 OpenList 却仍回落」） ---
+            # 用户现象：OpenList 配好了，但每次打开媒体库都显示「QAS（OpenList 回落）」，
+            # 且无从知道为什么。这一节锁死「回落必须能解释」：
+            #   ① 徽标必须标出「回落」；
+            #   ② 徽标 title / 点击提示里必须带上 OpenList 侧的**真实原因**；
+            #   ③ 前端不得把 reason 丢掉（丢了就又回到「只看到回落」）。
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")
+
+            def route_fallback(r):
+                url = r.request.url
+                if "/api/" not in url:
+                    return r.fallback()
+                path = url.split(str(PORT), 1)[-1].split("?", 1)[0]
+                if path.rstrip("/").endswith("/api/sse"):
+                    return r.fulfill(status=200, content_type="text/event-stream", body=b"")
+                if path == "/api/qas/library":
+                    qp = url.split("path=", 1)[1].split("&")[0] if "path=" in url else "/"
+                    import urllib.parse
+                    return r.fulfill(status=200, content_type="application/json",
+                                     body=json.dumps({
+                                         "success": True, "path": urllib.parse.unquote(qp),
+                                         "entries": _entries(urllib.parse.unquote(qp)),
+                                         "source": "qas", "fallback": True,
+                                         "fallback_reason": "OpenList 上找不到目录 /影视/电影",
+                                         "fallback_hint": "path_prefix",
+                                     }, ensure_ascii=False).encode())
+                if path == "/api/qas/tasks":
+                    return r.fulfill(status=200, content_type="application/json",
+                                     body=json.dumps(dict(_QAS_TASKS), ensure_ascii=False).encode())
+                if path == "/api/library/source":
+                    return r.fulfill(status=200, content_type="application/json",
+                                     body=json.dumps({"success": True, "source": "qas",
+                                                      "openlist": True, "openlist_ok": False,
+                                                      "openlist_stage": "list",
+                                                      "openlist_message": "OpenList 上找不到目录 /影视/电影",
+                                                      }, ensure_ascii=False).encode())
+                return r.fallback()
+
+            page.route("**/*", route_fallback)
+            page.goto(URL, wait_until="load", timeout=20000)
+            page.evaluate("()=>switchTab('library')")
+            page.wait_for_timeout(1200)
+            fb = page.evaluate(MEASURE)
+            report.append({"label": "回落归因(1440x900)", "libTop": fb["libTop"],
+                           "qasTop": fb["qasTop"], "hasBody": fb["hasBody"],
+                           "libCountText": fb["libCountText"]})
+            if "回落" not in fb["srcBadge"]:
+                problems.append("[回落] 回落时徽标未标注「回落」（{!r}）：用户会以为在用 OpenList"
+                                .format(fb["srcBadge"]))
+            if fb["hasBody"] < 3:
+                problems.append("[回落] 回落路径未渲染出目录内容（{} 行）".format(fb["hasBody"]))
+            badge_title = page.evaluate(
+                "()=>{var b=document.getElementById('libSourceBadge');return b?(b.getAttribute('title')||''):''}")
+            if "找不到目录" not in badge_title:
+                problems.append("[回落] 徽标未带回落原因（title={!r}）："
+                                "用户只知道「回落了」，不知道该去改哪儿".format(badge_title[:80]))
+            if "路径前缀" not in badge_title:
+                problems.append("[回落] 徽标未给出可操作的修复方向（title={!r}）".format(
+                    badge_title[:80]))
+            page.close()
+
             # --- 7. QAS 任务删除链路（issue #27 跟进） ---
             # 用户诉求：夸克自动转存为自部署服务，任务条目也要能在 DBAuto 里删。
             log4 = []

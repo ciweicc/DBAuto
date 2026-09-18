@@ -2380,8 +2380,12 @@ def test_library_read_path_keeps_both_source_and_cache_semantics(dist):
     # 3. 前端（#42+#43）：一次响应同时写「缓存条目 + 骨架行数 + 数据源元信息」
     js = _read(os.path.join(_JS_DIR, "library.js"))
     load = js[js.index("async function loadLibrary("):js.index("function _renderLibError(")]
-    assert "meta = {source: res.source, fallback: res.fallback}" in load, \
+    assert "meta = {source: res.source, fallback: res.fallback," in load, \
         "前端未保留数据源元信息（合并时把 #43 的 meta 丢了）"
+    # 回落原因必须一路带到前端（issue #27「配了 OpenList 却仍回落」）：
+    # 只显示「已回落」而不给原因，用户无从判断是地址错还是路径前缀错。
+    assert "fallback_reason" in load and "fallback_hint" in load, \
+        "前端未保留回落原因（回落只会显示「已回落」，无法排查）"
     assert "_libRememberRows(entries.length)" in load, \
         "前端未保留骨架行数校准（合并时把 #42 的首帧占位丢了）"
 

@@ -16,6 +16,7 @@ document.getElementById('cfg_tmdb_proxy').value=cfg.tmdb_proxy||'';
 // OpenList 媒体库数据源（issue #27 追问）：密码同样留空不修改
 var _olEl=document.getElementById('cfg_openlist'); if(_olEl)_olEl.value=cfg.openlist||'';
 var _oluEl=document.getElementById('cfg_openlist_user'); if(_oluEl)_oluEl.value=cfg.openlist_user||'admin';
+var _olrEl=document.getElementById('cfg_openlist_root'); if(_olrEl)_olrEl.value=cfg.openlist_root||'';
 var _olpEl=document.getElementById('cfg_openlist_pass'); if(_olpEl)_olpEl.value='';
 // 折叠子分区的默认态由「有没有配过」决定：
 //   未配置 → 展开（用户正是来配它的，收起等于把入口藏起来）；
@@ -78,6 +79,7 @@ tmdb_base_url:document.getElementById('cfg_tmdb_base_url').value.trim(),
 tmdb_proxy:document.getElementById('cfg_tmdb_proxy').value.trim(),
 openlist:document.getElementById('cfg_openlist').value.trim(),
 openlist_user:document.getElementById('cfg_openlist_user').value.trim()||'admin',
+openlist_root:document.getElementById('cfg_openlist_root').value.trim(),
 openlist_pass:document.getElementById('cfg_openlist_pass').value};
 try{
 var d=await apiPost('/api/config',cfg);
@@ -222,13 +224,20 @@ async function checkOpenList(){
   if(hint)hint.textContent='自检中...';
   if(btn)btn.classList.add('loading');
   try{
+    // 自检会**真的列一次目录**（后端 openlist.self_check）：
+    // 只验证登录时，「挂载路径不匹配」会被误判成可用 —— 那正是
+    // 「配了 OpenList 却仍回落」的成因，必须在这里就暴露出来。
     var d=await apiGet('/api/library/source');
     var msg;
-    if(d.source==='openlist'&&d.openlist_ok){
-      msg='OpenList 可用（登录用户：'+(d.openlist_user||'游客')+'），媒体库目录将由其回答。';
+    if(d.openlist_ok){
+      msg='OpenList 可用（登录用户：'+(d.openlist_user||'游客')+'），已实测列出「'
+        +(d.openlist_browse_path||'/')+'」共 '+(d.openlist_count||0)+' 项，媒体库目录将由其回答。';
       showToast('OpenList 连接正常',true);
     }else if(d.openlist){
       msg='OpenList 不可用：'+(d.openlist_message||'未知原因')+'。媒体库已回落到 QAS 直连。';
+      if(d.openlist_stage==='list'){
+        msg+='（登录已通过，问题出在列目录 —— 多半是「路径前缀」没填对）';
+      }
       showToast('OpenList 不可用',false);
     }else{
       msg='未配置 OpenList 地址，媒体库目录由 QAS 直连回答（较慢）。';

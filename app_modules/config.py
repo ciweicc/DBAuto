@@ -71,6 +71,13 @@ DEFAULT_CONFIG = {
     "openlist": os.environ.get("OPENLIST", ""),
     "openlist_user": os.environ.get("OPENLIST_USER", "admin"),
     "openlist_pass": os.environ.get("OPENLIST_PASS", ""),
+    # OpenList 侧的挂载前缀（issue #27 追问「配了 OpenList 却回落」）：
+    #   DBAuto 的媒体库路径来自 QAS 的 savepath（如 `/影视/电影`），
+    #   而 OpenList 只认自己的挂载点（如 `/夸克/影视/电影`）。两者不一致时
+    #   `/api/fs/list` 会返回 500（storage not found / object not found），
+    #   于是每次浏览都回落 QAS —— 用户看到的正是「配了却仍回落」。
+    #   这里声明 OpenList 上对应「网盘根」的那个前缀，浏览时自动拼接。
+    "openlist_root": os.environ.get("OPENLIST_ROOT", ""),
 }
 
 DEFAULT_SETTINGS = {

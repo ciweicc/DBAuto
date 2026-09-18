@@ -108,6 +108,20 @@ class ConfigRouteMixin:
                             self._send_json({"success": False, "message": "{}: {}".format(k, msg)}, 400)
                             return True
                         cfg[k] = v
+                elif k == "openlist_root":
+                    # OpenList 侧的挂载前缀（issue #27 追问「配了却回落」）。
+                    # 留空 = 两边路径同构；填了必须是绝对路径且不含 `..`。
+                    if v:
+                        v = str(v).strip()
+                        if not v.startswith("/") or ".." in v.split("/"):
+                            self._send_json(
+                                {"success": False,
+                                 "message": "openlist_root: 必须是绝对路径（如 /夸克），且不能包含 .."},
+                                400)
+                            return True
+                        cfg[k] = v.rstrip("/")
+                    else:
+                        cfg[k] = ""
                 elif k == "openlist_user":
                     if v:
                         ok, msg = validate_string(v, min_len=1, max_len=100)

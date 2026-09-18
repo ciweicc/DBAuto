@@ -78,6 +78,64 @@ def _cfg():
     return base.rstrip("/"), (c.get("openlist_user") or "").strip(), c.get("openlist_pass") or ""
 
 
+def _root_prefix():
+    """OpenList 侧的挂载前缀（对应「网盘根」的那个目录）。
+
+    为什么必须有这个映射（issue #27 追问「为什么我配置了 OpenList，但还是回落」）：
+      DBAuto 的媒体库路径来自 QAS 的 savepath（`/影视/电影`），而 OpenList 只认
+      自己的挂载点（`/夸克/影视/电影`）。两者不一致时 `/api/fs/list` 会稳定返回
+      500（storage not found / object not found），于是**每一次浏览都回落 QAS** ——
+      用户看到的现象正是「配了 OpenList 却仍然回落」。
+
+      这个报错还极容易被误判成「OpenList 挂了」，因为它和网络故障表现一样
+      （都只是 `success:false`）。所以这里显式声明前缀并自动拼接。
+
+    返回值形如 `""`（未配置，表示两边路径同构）或 `"/夸克"`（带前导斜杠、无尾斜杠）。
+    """
+    try:
+        c = ConfigManager.get_instance().get_config()
+    except Exception:
+        c = {}
+    raw = (c.get("openlist_root") or "").strip()
+    if not raw or raw == "/":
+        return ""
+    if not raw.startswith("/"):
+        raw = "/" + raw
+    while len(raw) > 1 and raw.endswith("/"):
+        raw = raw[:-1]
+    if ".." in raw.split("/"):
+        return ""
+    return raw
+
+
+def to_openlist_path(path):
+    """把「网盘路径」（QAS savepath / 媒体库根）翻译成 OpenList 路径。
+
+    双向里的「去程」：`/影视/电影` + 前缀 `/夸克` → `/夸克/影视/电影`。
+    前缀为空时原样返回（两边同构）。
+    """
+    p = "/" + str(path or "/").strip().lstrip("/")
+    if p != "/":
+        p = p.rstrip("/") or "/"
+    prefix = _root_prefix()
+    if not prefix:
+        return p
+    if p == "/":
+        return prefix
+    return prefix + p
+
+
+def from_openlist_path(path):
+    """把 OpenList 路径翻译回「网盘路径」（反向，供提示与对账使用）。"""
+    p = "/" + str(path or "/").strip().lstrip("/")
+    prefix = _root_prefix()
+    if prefix and (p == prefix or p.startswith(prefix + "/")):
+        p = p[len(prefix):] or "/"
+    if p != "/":
+        p = p.rstrip("/") or "/"
+    return p
+
+
 def is_configured():
     """OpenList 是否已配置（地址非空即视为已配置）。
 
@@ -224,6 +282,65 @@ def ping():
     return {"success": True, "message": "", "user": (data or {}).get("username", "")}
 
 
+def self_check(browse_path="/"):
+    """完整自检：登录 + **真的列一次目录**。
+
+    为什么必须列目录（issue #27 追问「为什么我配置了 OpenList，但还是回落」）：
+      只 ping `/api/me` 时，设置页会显示「OpenList 可用，目录将由其回答」，
+      但只要 OpenList 的挂载点与网盘路径不一致（或该目录未挂载），
+      **每一次浏览都会回落 QAS**。用户因此在「自检说正常」与
+      「实际用着 QAS」之间彻底失去线索 —— 这是本次问题的关键一环。
+
+    返回 {
+      "success": 登录+列目录都成功,
+      "message": 不可用时的具体原因（可直接展示给用户）,
+      "user", "browse_path": 实际尝试的网盘路径,
+      "openlist_path": 实际请求的 OpenList 路径（体现前缀映射）,
+      "count": 列到的条目数, "stage": 失败发生在哪一步,
+    }
+    """
+    info = {"success": False, "message": "", "user": "", "count": 0,
+            "browse_path": str(browse_path or "/"), "openlist_path": "",
+            "stage": "config"}
+    if not is_configured():
+        info["message"] = "未配置 OpenList 地址"
+        return info
+    base = ping()
+    info["user"] = base.get("user", "")
+    if not base.get("success"):
+        info["stage"] = "login"
+        info["message"] = base.get("message", "")
+        return info
+    # 登录通过 → 再真的列一次目录，这才是「媒体库能不能走 OpenList」的判据
+    info["stage"] = "list"
+    target = info["browse_path"] or "/"
+    info["openlist_path"] = to_openlist_path(target)
+    res = list_dir(target)
+    if not res.get("success"):
+        info["message"] = res.get("message") or "OpenList 列目录失败"
+        info["path_missing"] = bool(res.get("path_missing"))
+        return info
+    info["success"] = True
+    info["count"] = len(res.get("entries") or [])
+    info["stage"] = "ok"
+    return info
+
+
+# OpenList / AList 在「目录或存储不存在」时的典型报错文案。
+# 用来把「配置错路径」和「OpenList 真的挂了」区分开 —— 两者都表现为
+# success:false，混在一起用户永远查不出原因。
+_MISSING_PATH_HINTS = (
+    "storage not found", "object not found", "not found", "failed to list objs",
+    "failed get objs", "directory not found", "no such file", "not exist",
+)
+
+
+def _looks_like_missing_path(message):
+    """判断报错是不是「这个路径在 OpenList 上不存在」。"""
+    low = str(message or "").lower()
+    return any(h in low for h in _MISSING_PATH_HINTS)
+
+
 def _norm_path(path):
     """规范化 OpenList 路径：必须绝对、去掉结尾斜杠、禁止上跳。"""
     p = str(path or "/").strip() or "/"
@@ -254,13 +371,30 @@ def list_dir(path="/", refresh=False):
     if not is_configured():
         return {"success": False, "path": p, "entries": [],
                 "message": "未配置 OpenList 地址", "unconfigured": True}
+    # 网盘路径 → OpenList 路径（挂载前缀映射，见 _root_prefix 的注释）。
+    # 不做这一步时，只要 OpenList 的挂载点不是「网盘根」，每一次浏览都会
+    # 因「目录不存在」而回落 QAS —— 这正是「配了 OpenList 却仍回落」的主因。
+    api_path = to_openlist_path(p)
     try:
-        data = _api("/api/fs/list", {"path": p, "refresh": bool(refresh),
+        data = _api("/api/fs/list", {"path": api_path, "refresh": bool(refresh),
                                      "page": 1, "per_page": 0},
                     timeout=OPENLIST_READ_TIMEOUT)
     except OpenListError as e:
+        msg = str(e)
+        if e.unconfigured or not _looks_like_missing_path(msg):
+            return {"success": False, "path": p, "entries": [],
+                    "message": msg, "unconfigured": e.unconfigured}
+        # 路径不存在是**配置问题**，不是「OpenList 挂了」。把它说清楚，
+        # 否则用户只会看到「回落 QAS」，永远不知道该去配挂载前缀。
+        msg = ("OpenList 上找不到目录 {}{}（原始报错：{}）。"
+               "若 OpenList 的挂载点不是网盘根，请在「设置 → OpenList 路径前缀」"
+               "填写 OpenList 上对应网盘根的目录（例如 /夸克）。".format(
+                   api_path,
+                   "" if _root_prefix() else "（当前未配置路径前缀）",
+                   msg))
         return {"success": False, "path": p, "entries": [],
-                "message": str(e), "unconfigured": e.unconfigured}
+                "message": msg, "unconfigured": False, "path_missing": True,
+                "fallback_hint": "path_prefix" if _looks_like_missing_path(str(e)) else ""}
     content = (data or {}).get("content") or []
     entries = []
     for it in content:
@@ -332,7 +466,8 @@ def remove(names, dir_path="/"):
             return {"success": False, "deleted": 0, "failed": 0, "results": [],
                     "message": "条目名不合法: {}".format(n)}
     try:
-        _api("/api/fs/remove", {"dir": base_dir, "names": clean},
+        # 与浏览同源：目录同样要按挂载前缀翻译，否则「能看到却删不掉」。
+        _api("/api/fs/remove", {"dir": to_openlist_path(base_dir), "names": clean},
              timeout=OPENLIST_WRITE_TIMEOUT)
     except OpenListError as e:
         # 整批失败：OpenList 的 /fs/remove 遇到第一条失败即中止，

@@ -218,6 +218,7 @@ DBAuto/
 | `OPENLIST` | — | OpenList 地址（首次，可选）。填写后媒体库目录改由 OpenList 回答，浏览更快 |
 | `OPENLIST_USER` | `admin` | OpenList 账号（可选，留空按游客模式） |
 | `OPENLIST_PASS` | — | OpenList 密码（可选，加密存储） |
+| `OPENLIST_ROOT` | — | OpenList 上挂载夸克网盘的目录前缀（如 `/夸克`）。**填错会导致媒体库每次都回落 QAS**；两边路径一致时留空 |
 | `TZ` | `Asia/Shanghai` | 时区 |
 
 ## 数据目录

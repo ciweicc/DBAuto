@@ -541,6 +541,11 @@ def list_library_entries(path=None, refresh=False):
         qas = list_library(path=target, use_cache=not refresh)
         qas["source"] = LIBRARY_SOURCE_QAS
         qas["fallback"] = True
+        # 回落原因必须带给前端（issue #27 追问「配了 OpenList 却仍回落」）：
+        # 只说「已回落」用户无从下手，要把 OpenList 侧的原始原因一起透出，
+        # 才能区分「地址/密码错」和「路径前缀不对」这两类完全不同的成因。
+        qas["fallback_reason"] = ol_msg
+        qas["fallback_hint"] = res.get("fallback_hint", "")
         if qas.get("success"):
             qas["message"] = ""
             return qas

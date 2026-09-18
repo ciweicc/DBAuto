@@ -65,13 +65,30 @@ class LibraryRouteMixin:
         if route == "/api/library/source":
             # 数据源自检：让设置页能一键验证 OpenList 配置是否真的可用，
             # 而不是等用户翻媒体库时才发现配错了。
+            #
+            # 自检必须「真的列一次目录」（issue #27 追问「配了却仍回落」）：
+            # 只验证登录时，挂载路径不匹配（OpenList 上目录不存在）的场景
+            # 会被判成「可用」，而实际每一次浏览都在回落 QAS。
             src = media_library.library_source()
             info = {"source": src, "openlist": openlist.is_configured()}
             if info["openlist"]:
-                ping = openlist.ping()
-                info["openlist_ok"] = bool(ping.get("success"))
-                info["openlist_user"] = ping.get("user", "")
-                info["openlist_message"] = ping.get("message", "")
+                params = self._get_query_params()
+                probe = str(params.get("path") or "").strip() or media_library.get_library_root()
+                if ".." in probe:
+                    probe = "/"
+                chk = openlist.self_check(probe)
+                info["openlist_ok"] = bool(chk.get("success"))
+                info["openlist_user"] = chk.get("user", "")
+                info["openlist_message"] = chk.get("message", "")
+                info["openlist_stage"] = chk.get("stage", "")
+                info["openlist_path"] = chk.get("openlist_path", "")
+                info["openlist_browse_path"] = chk.get("browse_path", "")
+                info["openlist_count"] = chk.get("count", 0)
+                info["openlist_root_prefix"] = openlist._root_prefix()
+                if not chk.get("success"):
+                    # 自检失败时，「谁在回答」会回落成 qas；让 source 如实反映，
+                    # 前端文案才不会和徽标自相矛盾。
+                    info["source"] = media_library.LIBRARY_SOURCE_QAS
             self._send_json({"success": True, **info})
             return True
 
