@@ -5,6 +5,7 @@ from scheduler import (
     schedule_status, schedule_lock, _next_fire_time, _run_scheduled_transfer, _run_scheduled_expired_check,
     notify_settings_changed,
 )
+import openlist
 from transfer import reset_qas_client
 from utils import log, sse_broadcast
 from storage import add_exec_record
@@ -186,6 +187,11 @@ class ConfigRouteMixin:
 
             save_config(cfg)
             reset_qas_client()
+            # 改了 OpenList 地址 / 凭据 / 路径前缀后，目录缓存必须作废 ——
+            # 否则用户「改完前缀再点开媒体库」会先看到 30s 内的旧回落结果，
+            # 会误判成「改了也没用」（issue #47 的「正确填写后依旧回落」）。
+            openlist.reset_token_cache()
+            openlist.invalidate_dir_cache()
             log("配置已更新")
             add_exec_record("config", "update config")
             sse_broadcast("config_update", {})

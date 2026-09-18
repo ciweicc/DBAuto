@@ -549,6 +549,10 @@ def list_library_entries(path=None, refresh=False):
         # 失败归类（issue #47）：只给一句话，前端没法判断该让用户做什么
         # （超时 → 重试；地址错 → 改地址；前缀错 → 改前缀）。
         qas["fallback_kind"] = res.get("kind", "")
+        # 是否处于「失败退避」窗口（issue #47）：退避是**自动的、短暂的**，
+        # 前端据此告诉用户「正在自动重试，不必改配置」，避免用户在
+        # 20 秒的自动恢复期里就去翻设置、把好配置改坏。
+        qas["fallback_backoff"] = bool(res.get("backoff"))
         if qas.get("success"):
             qas["message"] = ""
             return qas

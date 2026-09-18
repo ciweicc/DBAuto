@@ -64,6 +64,27 @@ OPENLIST_PROBE_TIMEOUT = 30
 # 写接口（删除）超时：破坏性操作需要拿到完整响应，不为了快而糊弄结果。
 OPENLIST_WRITE_TIMEOUT = 15
 
+# 目录浏览的**短命缓存 / 失败退避**（issue #47：「OpenList 经常回落」）。
+#
+# 症状：同一台 OpenList、配置全对，浏览媒体库却**经常**落到 QAS（徽标
+# 「QAS（OpenList 回落）」），不是每次都回落、但频率很高。
+#
+# 根因不是配置，而是「浏览路径缺了两块常见机制」：
+#   1. **成功结果不缓存**：QAS 侧的目录有 30s 短命缓存，OpenList 侧却每次
+#      浏览都实打实打一次网络。夸克驱动的目录列表在**冷启动 / 命中不到
+#      OpenList 自身缓存**时会超过交互预算（8s），于是一次超时 = 一次回落；
+#      而回落结果又被 QAS 缓存 30s —— 用户看到的就是「明明配好了却经常回落」。
+#   2. **失败不退避**：上一次刚超时，下一次请求立刻又以同样预算捅同一个
+#      慢接口，几乎必然再次超时 → 回落变成「连续、粘住」的状态。
+#
+# 所以这里补两块，且**只补浏览路径**（自检仍走 OPENLIST_PROBE_TIMEOUT）：
+#   - 成功 → 进 30s 缓存，重复打开 / 切标签 / 返回父目录不再打网络；
+#   - 失败 → 进一个短退避窗口，窗口内直接走回落缓存，不再反复干等 8 秒。
+# 退避不是「放弃」：窗口很短，过期后自动重新尝试 OpenList（网盘侧恢复即好）。
+OPENLIST_CACHE_TTL = 30.0
+OPENLIST_CACHE_MAX = 64
+OPENLIST_FAIL_BACKOFF = 20.0
+
 # 失败归类（issue #47）：把「为什么失败」从一句含糊的「不可用」里拆出来。
 # 不同 KIND 对应**完全不同的用户动作**，混在一起就是让用户乱试：
 #   TIMEOUT      → 网络/网盘慢，等一会重试，别去改配置；
@@ -101,6 +122,14 @@ _token_cache = {"token": "", "expire_at": 0.0, "base": ""}
 _AUTH_CACHE_TTL = 120
 _auth_lock = threading.Lock()
 _auth_cache = {"fingerprint": "", "mode": "", "expire_at": 0.0, "base": "", "user": ""}
+
+# 目录浏览缓存 / 失败退避（issue #47）。
+# 键 = OpenList 侧的真实路径（含前缀映射后的结果），与鉴权指纹无关 ——
+# 换凭据不代表目录内容变了；但**改路径前缀**会自然换键，不会串数据。
+# 存「成功的结果字典」与「最近一次失败的 (kind, message, ts)」两类信息。
+_dir_cache_lock = threading.Lock()
+_dir_cache = {}          # api_path -> {"ts": float, "data": dict}
+_dir_fail = {}           # api_path -> {"ts": float, "kind": str, "message": str, "hint": str}
 
 # 鉴权方式（用于把「谁在回答 + 用什么身份回答」如实告诉前端）
 AUTH_TOKEN = "token"
@@ -615,6 +644,72 @@ def _norm_path(path):
     return p
 
 
+def invalidate_dir_cache(path=None):
+    """作废 OpenList 目录缓存 / 失败退避（改配置、删除后调用）。
+
+    path 为 None 时全清 —— 删除会同时影响当前目录与其父目录（条目数变了），
+    等回落发生再纠正会让用户先看到一屏旧数据。
+    """
+    with _dir_cache_lock:
+        if path is None:
+            _dir_cache.clear()
+            _dir_fail.clear()
+            return
+        api = to_openlist_path(_norm_path(path))
+        _dir_cache.pop(api, None)
+        _dir_fail.pop(api, None)
+
+
+def _dir_cache_get(api_path):
+    """命中返回数据字典的浅拷贝；过期即清。只缓存**成功**结果。"""
+    now = time.time()
+    with _dir_cache_lock:
+        item = _dir_cache.get(api_path)
+        if not item:
+            return None
+        if now - item["ts"] >= OPENLIST_CACHE_TTL:
+            _dir_cache.pop(api_path, None)
+            return None
+        return dict(item["data"])
+
+
+def _dir_cache_put(api_path, data):
+    with _dir_cache_lock:
+        if len(_dir_cache) >= OPENLIST_CACHE_MAX:
+            oldest = min(_dir_cache.items(), key=lambda kv: kv[1]["ts"])[0]
+            _dir_cache.pop(oldest, None)
+        _dir_cache[api_path] = {"ts": time.time(), "data": dict(data)}
+
+
+def _dir_fail_get(api_path):
+    """退避窗口内返回上次失败信息（含 kind），窗口外返回 None。
+
+    看点：**只有失败才退避，且窗口很短**。这不是「记住失败」，而是
+    「刚超时的接口别在同一秒里被再捅一次」—— 否则连续三次浏览就是 24 秒
+    的干等，用户感知就是「OpenList 老是回落」。
+    """
+    now = time.time()
+    with _dir_cache_lock:
+        item = _dir_fail.get(api_path)
+        if not item:
+            return None
+        if now - item["ts"] >= OPENLIST_FAIL_BACKOFF:
+            _dir_fail.pop(api_path, None)
+            return None
+        return dict(item)
+
+
+def _dir_fail_put(api_path, payload):
+    """记录一次失败用于短期退避。路径不存在是**配置问题**，不退避 ——
+    用户可能马上就去改前缀，退避反而会让他改完还看不到效果。"""
+    if payload.get("kind") == KIND_PATH_MISSING or payload.get("unconfigured"):
+        return
+    with _dir_cache_lock:
+        _dir_fail[api_path] = {"ts": time.time(), "kind": payload.get("kind", ""),
+                               "message": payload.get("message", ""),
+                               "hint": payload.get("fallback_hint", "")}
+
+
 def list_dir(path="/", refresh=False, timeout=None):
     """列出目录（对应 GET /api/fs/list）。
 
@@ -622,11 +717,15 @@ def list_dir(path="/", refresh=False, timeout=None):
     entries 字段口径与 media_library.list_library 一致（name/dir/size/updated_at），
     这样前端不需要区分数据源 —— 换源只换「谁在回答」，不换数据形状。
 
-    refresh=True 时向 OpenList 索取最新列表（绕过它的目录缓存）；
-    默认 False 走缓存，这正是「访问更快」的来源。
+    refresh=True 时向 OpenList 索取最新列表（绕过它的目录缓存与本地缓存）；
+    默认 False 走缓存，这正是「访问更快」的来源，也是「不再经常回落」的
+    关键（issue #47：成功结果不缓存时，每次打开都要重新面对一次慢查询）。
 
     timeout：不传用交互预算 OPENLIST_READ_TIMEOUT；自检会传更长的
     OPENLIST_PROBE_TIMEOUT（见该常量的注释）。
+
+    缓存/退避只对**交互浏览**生效：传了显式 timeout（自检）或 refresh=True
+    时一律穿透 —— 自检的职责是如实回答「现在到底通不通」，不能吃缓存。
     """
     try:
         p = _norm_path(path)
@@ -640,6 +739,33 @@ def list_dir(path="/", refresh=False, timeout=None):
     # 不做这一步时，只要 OpenList 的挂载点不是「网盘根」，每一次浏览都会
     # 因「目录不存在」而回落 QAS —— 这正是「配了 OpenList 却仍回落」的主因。
     api_path = to_openlist_path(p)
+    # 是否走本地缓存 / 退避：仅「交互浏览」启用（默认预算 + 不带 refresh）。
+    # 显式 timeout（自检）或 refresh=True 时穿透，保证「验证」永远是实时的。
+    cacheable = refresh is not True and timeout is None
+    # 退避的**记录**与**使用**是两个条件：
+    #   - 使用（读退避窗）：只有交互浏览才吃；refresh / 自检必须现摘现报；
+    #   - 记录（写退避窗）：交互浏览**和刷新**都要记。刷新刚超时，紧接着的
+    #     普通打开若无退避就会再干等一轮 —— 那正是「老是回落」的体感来源。
+    # 自检（显式 timeout）不记：它是一次诊断，不该影响用户后续的浏览。
+    remember = timeout is None
+    if cacheable:
+        hit = _dir_cache_get(api_path)
+        if hit is not None:
+            # 命中缓存 = 这次**没有**回落。source 由 media_library 侧照常标 openlist。
+            hit["cached"] = True
+            return hit
+        # 刚失败过：短窗口内直接如实返回上次的失败原因，不再干等一轮。
+        # 这时 media_library 会照常回落 QAS —— 但原因（kind）是真实的，
+        # 且避免了「连续几次浏览 = 连续几次 8 秒等待」的放大。
+        backoff = _dir_fail_get(api_path)
+        if backoff is not None:
+            out = {"success": False, "path": p, "entries": [],
+                   "message": backoff.get("message") or "OpenList 读取失败",
+                   "unconfigured": False, "kind": backoff.get("kind", ""),
+                   "backoff": True}
+            if backoff.get("hint"):
+                out["fallback_hint"] = backoff["hint"]
+            return out
     try:
         data = _api("/api/fs/list", {"path": api_path, "refresh": bool(refresh),
                                      "page": 1, "per_page": 0},
@@ -651,8 +777,13 @@ def list_dir(path="/", refresh=False, timeout=None):
         # 不能因为某条错误路径没带上 kind 就丢掉（旧调用方/自造异常都可能没有）。
         missing = e.kind == KIND_PATH_MISSING or _looks_like_missing_path(msg)
         if e.unconfigured or not missing:
-            return {"success": False, "path": p, "entries": [],
-                    "message": msg, "unconfigured": e.unconfigured, "kind": e.kind}
+            out = {"success": False, "path": p, "entries": [],
+                   "message": msg, "unconfigured": e.unconfigured, "kind": e.kind}
+            # 失败 → 记一个短退避，避免「下一次打开又干等 8 秒」
+            # （连续几次浏览 = 连续几次超时，用户感知就是「经常回落」）。
+            if remember:
+                _dir_fail_put(api_path, out)
+            return out
         # 路径不存在是**配置问题**，不是「OpenList 挂了」。把它说清楚，
         # 否则用户只会看到「回落 QAS」，永远不知道该去配挂载前缀。
         msg = ("OpenList 上找不到目录 {}{}（原始报错：{}）。"
@@ -675,9 +806,15 @@ def list_dir(path="/", refresh=False, timeout=None):
             "size": it.get("size", 0),
             "updated_at": _to_epoch(it.get("modified")),
         })
-    return {"success": True, "path": p, "entries": entries, "message": "",
-            "write": bool((data or {}).get("write")), "unconfigured": False,
-            "kind": ""}
+    out = {"success": True, "path": p, "entries": entries, "message": "",
+           "write": bool((data or {}).get("write")), "unconfigured": False,
+           "kind": ""}
+    if cacheable:
+        # 成功 → 进短命缓存，并清掉该路径的失败记录（已经好了）。
+        _dir_cache_put(api_path, out)
+        with _dir_cache_lock:
+            _dir_fail.pop(api_path, None)
+    return out
 
 
 def _to_epoch(value):
@@ -744,6 +881,9 @@ def remove(names, dir_path="/"):
         # 无法区分「删了几条」，因此拒绝宣称任何成功（与 QAS 删除同口径）。
         return {"success": False, "deleted": 0, "failed": len(clean), "results": [],
                 "message": str(e)}
+    # 目录内容已变：作废缓存，否则用户删完再进同一目录（30s 内）还会看到
+    # 已删条目 —— 与 QAS 侧「删除后 invalidate_library_cache」同口径。
+    invalidate_dir_cache()
     results = [{"name": n, "ok": True, "message": "已删除（移入回收站）"} for n in clean]
     return {"success": True, "deleted": len(clean), "failed": 0,
             "results": results, "message": ""}
