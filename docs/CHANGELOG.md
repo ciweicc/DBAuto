@@ -2,6 +2,56 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
+## [当前] 修复「删除按钮点了没反应」（issue #27 追问）
+
+> 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户反馈：
+> 媒体库「QAS 转存任务」列表里，点某条任务右侧的「删除」没用（附截图）。
+
+**根因：任务定位键里的 NUL 被 HTML 解析器改写了**
+
+QAS 任务的定位键 `qasKey()` 用 `taskname + NUL + savepath` 拼接（QAS 不保证
+任务名唯一，故带上路径）。这个 key 会经 `jsArg()` 拼进内联属性：
+
+```
+<button onclick="deleteQasTask('好孩子<NUL>/影视/电影/好孩子')">删除</button>
+```
+
+问题在于 HTML 规范要求解析器把属性里的**裸 NUL 替换成 U+FFFD**。
+于是浏览器回传的 key 是 `好孩子<U+FFFD>/影视/电影/好孩子`，而 `qasKey()` 现场生成的
+键仍是 `好孩子<NUL>/...`，两者永远不相等 → `findQasTask()` 落空 →
+`deleteQasTask()` 静默 `return`。表现就是**按钮点了毫无反应**（不报错、不弹确认）。
+
+同一条 key 也被勾选框的 `onchange` 使用，所以「勾选 → 批量删除」同样失效。
+
+**为什么之前没被发现**：走查脚本用的是
+`page.evaluate("deleteQasTask(qasKey(qasTasks[0]))")` —— 在 JS 里**现造** key，
+绕过了内联属性的拼装与 HTML 解析这一步，恰好把事故点跳过去了。
+
+**修了什么（两道防线，任一条即可拦住）**
+
+- `static/src/scripts/library.js`：`qasKey()` 分隔符由 NUL 改为可打印的
+  「单位分隔符符号」`\u241f`（`QAS_KEY_SEP`）。该字符在 HTML 里是普通字符，
+  不会被改写，也几乎不可能出现在任务名 / 路径里。
+- `static/src/scripts/library.js`：`jsArg()` 增加控制字符转义 —— 把
+  `\u0000-\u001f`、`\u007f` 一律转成 `\uXXXX` 字面量再拼进属性。这是对
+  「任何走内联参数的字符串」的通用兜底，不再依赖调用方「记得别用控制字符」。
+
+**验证证据**
+
+- `python -m pytest tests/ -q` → **388 passed**；`ruff check .` 通过。
+- 新增 `tests/test_build.py::test_inline_arg_key_has_no_control_chars`：
+  锁死「`QAS_KEY_SEP` 不得是控制字符」+「`jsArg` 必须转义控制字符区间」，
+  CI 无浏览器也能拦住。
+- `scripts/check_library_dom.py` 的 QAS 任务删除段改成**真的点页面按钮**
+  （`page.locator(...).click()`）、全选走真实全选框，不再用 `page.evaluate` 现造 key；
+  点真实按钮后必须弹确认框，否则直接判失败。
+- 反向验证：把分隔符改回 NUL 且移除 `jsArg` 的控制字符转义后重跑
+  `check_library_dom.py --serve` → 明确报
+  「点击行内「删除」按钮后没有弹确认框（内联参数可能被 HTML 改写，按钮成了空操作）」；
+  单独改回 NUL（保留转义）时走查仍通过（证明两道防线各自有效）。
+- `scripts/check_library_dom.py --serve` / `check_contrast.py` 均 0 处问题；
+  前端产物重建两次 md5 一致（无漂移）。
+
 ## [当前] OpenList 改为「令牌优先」鉴权，并与路径前缀联立（issue #27 追问）
 
 > 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户追问：

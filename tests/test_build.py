@@ -1651,6 +1651,43 @@ def test_qas_task_delete_inline_handlers_use_safe_js_arg():
             "内联参数位不得直接拼任务字段，应传 qasKey 后在函数内查表"
 
 
+def test_inline_arg_key_has_no_control_chars():
+    r"""回归（issue #27「删除按钮失效」）：内联参数里的控制字符会被 HTML 改写。
+
+    根因：QAS 任务定位键 qasKey() 曾用 NUL（\u0000）作分隔符，而该 key 会经
+    jsArg 拼进内联 `onclick="deleteQasTask('...')"` 属性。HTML 解析器会把属性里的
+    裸 NUL 替换成 U+FFFD，浏览器回传的 key 与 qasKey() 生成的 key 不再相等，
+    findQasTask 落空 → 删除函数静默 return → 按钮「点了没反应」。
+
+    本用例锁死两条防线（任一即可拦住该类事故）：
+      1. qasKey 的分隔符不得使用控制字符；
+      2. jsArg 必须把控制字符转义成 \uXXXX 字面量再拼进属性。
+    """
+    src = _read(os.path.join(_JS_DIR, "library.js"))
+
+    # 防线 1：qasKey 分隔符常量必须是「非控制字符」
+    assert "QAS_KEY_SEP" in src, "缺少 qasKey 分隔符常量"
+    sep_line = src[src.index("var QAS_KEY_SEP"):]
+    sep_line = sep_line[:sep_line.index("\n")]
+    # 常量里不得出现 \uXXXX 形式的控制码位（\\u0000-\\u001f / \\u007f）
+    for m in re.finditer(r"\\u([0-9a-fA-F]{4})", sep_line):
+        assert int(m.group(1), 16) > 0x1F and int(m.group(1), 16) != 0x7F, \
+            "QAS_KEY_SEP 不得使用控制字符（会被 HTML 解析器改写）"
+    # 也不得直接嵌裸控制字符
+    assert not re.search(r"[\x00-\x1f]", sep_line), "QAS_KEY_SEP 含裸控制字符"
+
+    # qasKey 拼接体本身也不得再拼字符串分隔符（必须用常量）
+    key_fn = src[src.index("function qasKey("):]
+    key_fn = key_fn[:key_fn.index("\n}") + 2]
+    assert "QAS_KEY_SEP" in key_fn, "qasKey 必须用 QAS_KEY_SEP 常量作分隔符"
+
+    # 防线 2：jsArg 必须显式转义控制字符区间
+    js_fn = src[src.index("function jsArg("):]
+    js_fn = js_fn[:js_fn.index("\n}") + 2]
+    assert "u0000-\\u001f" in js_fn or "u0000-\u001f" in js_fn, \
+        "jsArg 必须转义控制字符（否则内联属性会被 HTML 解析器改写）"
+
+
 def test_library_cards_have_no_images(dist):
     """回归（issue #27 第三轮反馈）：媒体库卡片不再显示任何封面图。
 
