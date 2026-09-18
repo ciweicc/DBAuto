@@ -2,6 +2,81 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
+## [当前] 修复「OpenList 不可用」把「慢」误报成「配错」（issue #47）
+
+> 对应 [issue #47](https://cnb.cool/ciweicc/DBAuto/-/issues/47) 用户反馈：
+> 「在正确填写账号、用户名、密码。根文件路径还有令牌后依旧存在这个问题」（附截图，
+> 设置页提示「OpenList 不可用」，而 OpenList 子分区徽标显示「已配置」）。
+
+**根因：超时（慢）与配置错误（错）被收敛成同一句「不可用」，且自检用错了超时预算**
+
+两道叠加的缺陷：
+
+1. **自检用了「交互超时」去问一个可能正在冷启动的服务**
+   `OPENLIST_READ_TIMEOUT = 8s` 本是给「点一下就该出结果」的目录浏览定的。
+   但自检（`openlist.self_check`）复用了它 —— 而它的职责是回答「配置对不对」。
+   刚挂载夸克网盘的 OpenList，第一次 `fs/list` 要等网盘侧返回列表，很容易超过 8 秒。
+   于是**一个健康但慢的 OpenList 被判成「不可用」**，媒体库静默回落 QAS。
+   → 慢 ≠ 错，自检必须独立预算。
+
+2. **失败没有归类，前端只能给一句「不可用」**
+   旧实现里 `stage` 只有 `config / login / list / ok`，超时落在 `list`。
+   而前端对 `stage === 'list'` 的文案是
+   「登录已通过，问题出在列目录 —— **多半是「路径前缀」没填对**」。
+   对超时而言这是**完全错误**的指引：用户照做去改路径前缀，问题当然还在，
+   于是「正确填写了每一项却依旧不可用」。
+
+**修了什么**
+
+- `app_modules/openlist.py`
+  - 新增 `OPENLIST_PROBE_TIMEOUT = 30`：自检/探活单独用**诊断预算**，
+    浏览仍用 8s 交互预算（两条路径的目的不同，不该共用一个超时）。
+  - 新增失败归类 `KIND_*`（`timeout / network / auth / path_missing / http /
+    unconfigured`），`OpenListError` 带上 `kind`；`_conn_kind` 按异常类型
+    与文案区分「超时」和「连不上」（两者对应的用户动作完全不同）。
+  - `_conn_message` 把超时写成「OpenList 有响应但太慢 —— 这通常不是配置错误，
+    多半是它正在等网盘返回列表」。`self_check` 新增 `stage = "timeout"`
+    与 `kind` / `timeout_seconds` 字段。
+  - `list_dir` 增加 `timeout` 参数并在返回值里带 `kind`。
+- `app_modules/media_library.py`：回落时透出 `fallback_kind`。
+- `app_modules/routes_library.py`：`/api/library/source` 回传
+  `openlist_fail_kind` 与 `openlist_timeout_seconds`。
+- `static/src/scripts/settings.js`
+  - 自检结论按 `openlist_fail_kind` 分流：`timeout` 时标题为
+    「OpenList 响应超时」，并明确写出「**不是配置错误**、稍后重试」；
+    只有非超时的 `stage === "list"` 才提示「路径前缀」。
+  - 结论改为**留在页面上**：失败时自动展开 OpenList 子分区 + 给提示加
+    `.ol-fail` 状态样式（此前原因只在一个几秒后消失的 toast 里，
+    文字还落在默认收起的折叠面板内 —— 用户只看得到「不可用」三个字）。
+  - 修正渲染顺序：`_applyOpenListSubState` 会按「已配置」收起面板，
+    必须**先**定基准态、**再**由结论渲染在失败时强制展开（否则结论被盖掉）。
+- `static/src/scripts/library.js`：媒体库徽标与排查提示同样按
+  `fallback_kind` 分流，超时不再出现「路径前缀」字样。
+- `static/src/styles/main.css`：新增 `.ol-selfcheck.ol-ok/.ol-fail`（色值全部取自
+  `tokens.css`，对比度门禁已复核）。
+
+**验证证据**
+
+- `python3 -m pytest tests/ -q` → 410 passed。
+  新增 6 条用例（`tests/test_openlist.py`）：超时被归类为 `timeout` 且自检使用
+  30s 诊断预算；超时文案必须含「不是配置错误」且不得标成路径问题；
+  `_conn_kind` 区分超时 / 不可达；OpenList 自报 500 不得被判成超时；
+  `fallback_kind` 透传到前端；`/api/library/source` 回传归类与预算。
+- `python3 scripts/check_settings_dom.py --serve` → 11 组视口 0 问题。
+  新增「OpenList 超时自检」一节，实测输出：
+  `归类 'timeout' 阶段 'timeout' 面板 展开 结论高 90`。
+  断言四件事：结论不得只说「不可用」、必须写「不是配置错误」、
+  **不得出现「路径前缀」**、失败后面板必须展开且结论可见。
+- `python3 scripts/check_library_dom.py --serve` → 0 问题。
+  新增「回落归因·超时」一节：徽标必须点明「超时」、不得出现「路径前缀」、
+  必须排除「配置错误」。
+- 两条走查脚本都做了**反向验证**：把各自的修复回退后重新运行，
+  均准确报出预期问题（面板被收起 / 文案退化成「OpenList 不可用」），
+  证明它们是真回归守卫而非空断言。
+- `python3 -m ruff check .` → All checks passed。
+- `python3 scripts/check_contrast.py` → 18 组 0 组未达标。
+- `static/index_new.html` 已用 `bash static/src/build.sh` 重建并一并提交。
+
 ## [当前] 修复「删除按钮点了没反应」（issue #27 追问）
 
 > 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户反馈：

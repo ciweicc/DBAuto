@@ -50,8 +50,34 @@ from config import ConfigManager
 # 读接口超时：目录浏览是「点一下就该出结果」的交互，宁可快速失败让用户重试。
 OPENLIST_READ_TIMEOUT = 8
 
+# 诊断/自检超时（issue #47）：
+# 自检与浏览是**两件事**，不能用同一个预算。
+#   - 浏览是交互：慢了就该快速失败让用户重试（否则页面干等）；
+#   - 自检是一次性诊断：它的职责是回答「配置到底对不对」。
+# 用 8 秒去问一个刚挂载夸克网盘、列表冷启动的 OpenList，得到的
+# 「timed out」会被当成「OpenList 不可用 / 配错了」——用户明明填对了
+# 每一项（issue #47：「在正确填写账号、用户名、密码。根文件路径还有令牌后
+# 依旧存在这个问题」），却永远查不出原因。
+# 所以自检单独给足预算：慢 ≠ 错。
+OPENLIST_PROBE_TIMEOUT = 30
+
 # 写接口（删除）超时：破坏性操作需要拿到完整响应，不为了快而糊弄结果。
 OPENLIST_WRITE_TIMEOUT = 15
+
+# 失败归类（issue #47）：把「为什么失败」从一句含糊的「不可用」里拆出来。
+# 不同 KIND 对应**完全不同的用户动作**，混在一起就是让用户乱试：
+#   TIMEOUT      → 网络/网盘慢，等一会重试，别去改配置；
+#   NETWORK      → 地址/端口不通（或不是 OpenList），去核对地址；
+#   AUTH         → 令牌/账号密码不对，去换凭据；
+#   PATH_MISSING → 路径前缀不对（配置问题），去改「路径前缀」；
+#   HTTP         → OpenList 自己报错（服务端问题）；
+#   UNCONFIGURED → 根本没配地址。
+KIND_TIMEOUT = "timeout"
+KIND_NETWORK = "network"
+KIND_AUTH = "auth"
+KIND_PATH_MISSING = "path_missing"
+KIND_HTTP = "http"
+KIND_UNCONFIGURED = "unconfigured"
 
 # 单次删除的条目上限（与 media_library.MAX_DELETE_BATCH 一致，避免批量删库误操作）
 MAX_REMOVE_BATCH = 50
@@ -83,12 +109,41 @@ AUTH_GUEST = "guest"
 AUTH_MIXED = "mixed"
 
 
-class OpenListError(Exception):
-    """OpenList 调用失败（配置缺失 / 网络异常 / 业务错误统一收敛）。"""
+def _is_timeout(exc):
+    """判断异常是不是超时。
 
-    def __init__(self, message, unconfigured=False):
+    urllib 的超时异常是 `socket.timeout`（Python 3.10+ 起等于 `TimeoutError`），
+    也常被包成 `URLError(reason=...)`；这里按文案兜底，避免不同 CPython 版本 /
+    SSL 实现的差异把「超时」判成「网络不通」——那会把用户从「等一会重试」
+    引到「去改地址」，方向完全错了。
+    """
+    import socket
+    seen = []
+    cur = exc
+    for _ in range(4):
+        if cur is None:
+            break
+        seen.append(cur)
+        cur = getattr(cur, "reason", None) or getattr(cur, "__cause__", None)
+    for e in seen:
+        if isinstance(e, (socket.timeout, TimeoutError)):
+            return True
+        low = str(e).lower()
+        if "timed out" in low or "timeout" in low:
+            return True
+    return False
+
+
+class OpenListError(Exception):
+    """OpenList 调用失败（配置缺失 / 网络异常 / 业务错误统一收敛）。
+
+    kind（issue #47）：见上面 KIND_* —— 调用方据此给出**可执行**的提示。
+    """
+
+    def __init__(self, message, unconfigured=False, kind=""):
         super().__init__(message)
         self.unconfigured = unconfigured
+        self.kind = kind or (KIND_UNCONFIGURED if unconfigured else KIND_HTTP)
 
 
 def _cfg():
@@ -121,6 +176,26 @@ def _fingerprint(base, token, user, password):
     import hashlib
     raw = "\u0000".join([base or "", token or "", user or "", password or ""])
     return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def _conn_kind(exc):
+    """把传输层异常归类成 KIND_TIMEOUT / KIND_NETWORK。
+
+    这个区分不是「为了更细」，而是**用户动作完全不同**：
+      - 超时：OpenList 还活着，只是这次慢（冷启动 / 网盘侧限流）→ 等一会重试；
+      - 不通：地址或端口不对（或根本不是 OpenList）→ 去改地址。
+    把超时报成「不可用」，用户会把配置翻个底朝天也找不到问题（issue #47）。
+    """
+    return KIND_TIMEOUT if _is_timeout(exc) else KIND_NETWORK
+
+
+def _conn_message(prefix, exc):
+    """传输层失败的可读文案（超时要显式点名「超时」，不要只说「失败」）。"""
+    if _is_timeout(exc):
+        return ("{}: 请求超时（{}）。OpenList 有响应但太慢 —— 这通常不是配置错误，"
+                "多半是它正在等网盘（如夸克）返回列表。请稍后重试；"
+                "若每次浏览都超时，说明该目录在网盘侧的确很慢。".format(prefix, exc))
+    return "{}: {}".format(prefix, exc)
 
 
 def _credential_mode(token, user, password):
@@ -332,10 +407,11 @@ def _login(base, user, password):
         status, payload = _request(url, {"username": user, "password": password},
                                    timeout=OPENLIST_READ_TIMEOUT)
     except Exception as e:
-        raise OpenListError("OpenList 登录失败: {}".format(e))
+        raise OpenListError(_conn_message("OpenList 登录失败", e), kind=_conn_kind(e))
     token = ((payload or {}).get("data") or {}).get("token") or ""
     if not token:
-        raise OpenListError("OpenList 登录失败: {}".format(_resp_message(payload, status)))
+        raise OpenListError("OpenList 登录失败: {}".format(_resp_message(payload, status)),
+                            kind=KIND_AUTH if status in (400, 401, 403) else KIND_HTTP)
     with _token_lock:
         _token_cache.update({"token": token, "key": cache_key, "base": base,
                              "expire_at": now + 3600})
@@ -371,7 +447,7 @@ def _api(path, data=None, method=None, timeout=None, retry_auth=True):
                                    timeout=timeout or OPENLIST_READ_TIMEOUT,
                                    token=credential)
     except Exception as e:
-        raise OpenListError("OpenList 请求失败: {}".format(e))
+        raise OpenListError(_conn_message("OpenList 请求失败", e), kind=_conn_kind(e))
     if status == 401 and retry_auth and mode == AUTH_PASSWORD:
         reset_token_cache()
         mode, credential, _user = _resolve_auth(force=True)
@@ -382,13 +458,19 @@ def _api(path, data=None, method=None, timeout=None, retry_auth=True):
     if status == 401 and mode == AUTH_TOKEN:
         raise OpenListError(
             "OpenList 令牌无效或已过期（HTTP 401）：{}。请到 OpenList 后台重新获取令牌后"
-            "在设置页更新".format(_resp_message(payload, status)))
+            "在设置页更新".format(_resp_message(payload, status)), kind=KIND_AUTH)
     if payload is None:
-        raise OpenListError("OpenList 返回了非 JSON 响应（HTTP {}）".format(status))
+        raise OpenListError("OpenList 返回了非 JSON 响应（HTTP {}）".format(status),
+                            kind=KIND_NETWORK)
+    if status in (401, 403):
+        # 游客被拒 / 权限不足：这是**凭据或权限**问题，不是路径问题。
+        raise OpenListError("OpenList 拒绝访问（HTTP {}）：{}".format(
+            status, _resp_message(payload, status)), kind=KIND_AUTH)
     code = _resp_code(payload)
     if status >= 400 or (code is not None and code != 200):
-        raise OpenListError("OpenList 错误 {}: {}".format(code or status,
-                                                          _resp_message(payload, status)))
+        msg = "OpenList 错误 {}: {}".format(code or status, _resp_message(payload, status))
+        kind = KIND_PATH_MISSING if _looks_like_missing_path(msg) else KIND_HTTP
+        raise OpenListError(msg, kind=kind)
     return payload.get("data")
 
 
@@ -401,16 +483,18 @@ def ping():
     """
     if not is_configured():
         return {"success": False, "message": "未配置 OpenList 地址", "user": "",
+                "kind": KIND_UNCONFIGURED,
                 "mode": AUTH_GUEST, "mode_label": _MODE_LABELS[AUTH_GUEST]}
     try:
         mode, _cred, _u = _resolve_auth()
     except OpenListError as e:
-        return {"success": False, "message": str(e), "user": "",
+        return {"success": False, "message": str(e), "user": "", "kind": e.kind,
                 "mode": AUTH_GUEST, "mode_label": _MODE_LABELS[AUTH_GUEST]}
     try:
-        data = _api("/api/me", timeout=OPENLIST_READ_TIMEOUT)
+        # 自检用**诊断预算**：慢 ≠ 错（见 OPENLIST_PROBE_TIMEOUT 的注释）。
+        data = _api("/api/me", timeout=OPENLIST_PROBE_TIMEOUT)
     except OpenListError as e:
-        return {"success": False, "message": str(e), "user": "",
+        return {"success": False, "message": str(e), "user": "", "kind": e.kind,
                 "mode": mode, "mode_label": _MODE_LABELS.get(mode, "")}
     user = ((data or {}).get("username") or "").strip()
     if not user:
@@ -419,9 +503,9 @@ def ping():
         label = "游客（未提供凭据）" if mode == AUTH_GUEST else ""
         if mode == AUTH_GUEST:
             return {"success": True, "message": "", "user": "", "mode": mode,
-                    "mode_label": label}
+                    "kind": "", "mode_label": label}
     return {"success": True, "message": "", "user": user,
-            "mode": mode, "mode_label": _MODE_LABELS.get(mode, "")}
+            "mode": mode, "kind": "", "mode_label": _MODE_LABELS.get(mode, "")}
 
 
 def auth_status():
@@ -457,30 +541,48 @@ def self_check(browse_path="/"):
       "user", "browse_path": 实际尝试的网盘路径,
       "openlist_path": 实际请求的 OpenList 路径（体现前缀映射）,
       "count": 列到的条目数, "stage": 失败发生在哪一步,
+      "kind": 失败归类（见 KIND_*）—— 前端据此给**可执行**的提示,
+      "timeout_seconds": 本次自检实际使用的超时预算,
     }
+
+    stage 取值：config（没配） / login（凭据或连通性） / list（列目录）
+    / timeout（列目录超时：慢，不等于配错） / ok。
+    
     """
     info = {"success": False, "message": "", "user": "", "count": 0,
             "browse_path": str(browse_path or "/"), "openlist_path": "",
-            "stage": "config"}
+            "stage": "config", "kind": ""}
+    info["timeout_seconds"] = OPENLIST_PROBE_TIMEOUT
     if not is_configured():
         info["message"] = "未配置 OpenList 地址"
+        info["kind"] = KIND_UNCONFIGURED
+        info["stage"] = "config"
         return info
     base = ping()
     info["user"] = base.get("user", "")
     if not base.get("success"):
         info["stage"] = "login"
         info["message"] = base.get("message", "")
+        info["kind"] = base.get("kind") or KIND_HTTP
         return info
     # 登录通过 → 再真的列一次目录，这才是「媒体库能不能走 OpenList」的判据
     info["stage"] = "list"
     target = info["browse_path"] or "/"
     info["openlist_path"] = to_openlist_path(target)
-    res = list_dir(target)
+    # 自检用诊断预算：用交互预算（8s）会把「网盘目录拉取慢」误判成
+    # 「OpenList 不可用」，进而把用户引去改「路径前缀」——方向完全错（issue #47）。
+    res = list_dir(target, timeout=OPENLIST_PROBE_TIMEOUT)
     if not res.get("success"):
         info["message"] = res.get("message") or "OpenList 列目录失败"
+        info["kind"] = res.get("kind") or KIND_HTTP
         info["path_missing"] = bool(res.get("path_missing"))
+        # 超时是**唯一**一类「配置可能是对的、只是这次慢」的失败：
+        # 单独标一个 stage，前端才不会提示「多半是路径前缀没填对」。
+        if info["kind"] == KIND_TIMEOUT:
+            info["stage"] = "timeout"
         return info
     info["success"] = True
+    info["kind"] = ""
     info["count"] = len(res.get("entries") or [])
     info["stage"] = "ok"
     return info
@@ -513,7 +615,7 @@ def _norm_path(path):
     return p
 
 
-def list_dir(path="/", refresh=False):
+def list_dir(path="/", refresh=False, timeout=None):
     """列出目录（对应 GET /api/fs/list）。
 
     返回 {"success", "path", "entries":[{name,dir,size,updated_at}], "message"}。
@@ -522,6 +624,9 @@ def list_dir(path="/", refresh=False):
 
     refresh=True 时向 OpenList 索取最新列表（绕过它的目录缓存）；
     默认 False 走缓存，这正是「访问更快」的来源。
+
+    timeout：不传用交互预算 OPENLIST_READ_TIMEOUT；自检会传更长的
+    OPENLIST_PROBE_TIMEOUT（见该常量的注释）。
     """
     try:
         p = _norm_path(path)
@@ -538,12 +643,16 @@ def list_dir(path="/", refresh=False):
     try:
         data = _api("/api/fs/list", {"path": api_path, "refresh": bool(refresh),
                                      "page": 1, "per_page": 0},
-                    timeout=OPENLIST_READ_TIMEOUT)
+                    timeout=timeout or OPENLIST_READ_TIMEOUT)
     except OpenListError as e:
         msg = str(e)
-        if e.unconfigured or not _looks_like_missing_path(msg):
+        # 归类优先看 kind，但**同时**保留文案兜底：kind 是新增信息，
+        # 而「能不能认出这是路径问题」关系到用户能不能找到修改入口，
+        # 不能因为某条错误路径没带上 kind 就丢掉（旧调用方/自造异常都可能没有）。
+        missing = e.kind == KIND_PATH_MISSING or _looks_like_missing_path(msg)
+        if e.unconfigured or not missing:
             return {"success": False, "path": p, "entries": [],
-                    "message": msg, "unconfigured": e.unconfigured}
+                    "message": msg, "unconfigured": e.unconfigured, "kind": e.kind}
         # 路径不存在是**配置问题**，不是「OpenList 挂了」。把它说清楚，
         # 否则用户只会看到「回落 QAS」，永远不知道该去配挂载前缀。
         msg = ("OpenList 上找不到目录 {}{}（原始报错：{}）。"
@@ -554,7 +663,7 @@ def list_dir(path="/", refresh=False):
                    msg))
         return {"success": False, "path": p, "entries": [],
                 "message": msg, "unconfigured": False, "path_missing": True,
-                "fallback_hint": "path_prefix" if _looks_like_missing_path(str(e)) else ""}
+                "kind": KIND_PATH_MISSING, "fallback_hint": "path_prefix"}
     content = (data or {}).get("content") or []
     entries = []
     for it in content:
@@ -567,7 +676,8 @@ def list_dir(path="/", refresh=False):
             "updated_at": _to_epoch(it.get("modified")),
         })
     return {"success": True, "path": p, "entries": entries, "message": "",
-            "write": bool((data or {}).get("write")), "unconfigured": False}
+            "write": bool((data or {}).get("write")), "unconfigured": False,
+            "kind": ""}
 
 
 def _to_epoch(value):

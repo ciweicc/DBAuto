@@ -1129,3 +1129,120 @@ def test_route_library_source_selfcheck_reports_auth_mode():
     assert h.sent["openlist_auth"]["mode"] == "token"
     assert h.sent["openlist_auth_mode"] == "token"
     assert h.sent["openlist_auth_source"] == "token"
+
+
+# ================================================================
+# issue #47：正确填写全部配置后仍报「OpenList 不可用」
+#
+# 用户反馈：「在正确填写账号、用户名、密码。根文件路径还有令牌后依旧存在这个问题」。
+# 走查发现真正的缺口在**归因**：慢（超时）和错（配错）在旧实现里都收敛成
+# 同一句「OpenList 不可用」，而且自检用**交互超时**（8s）去问一个可能正在
+# 冷启动拉取夸克目录的 OpenList —— 于是「网盘目录拉得慢」被报成「配错了」，
+# 用户把地址/令牌/密码/路径后缀全部重填一遍，问题当然还在。
+# ================================================================
+def test_timeout_is_classified_and_uses_probe_budget():
+    """超时必须被归类为 timeout，且自检用**诊断预算**（慢 ≠ 错）。"""
+    import socket
+    seen = {}
+
+    def fake_api(path, data=None, method=None, timeout=None, **k):
+        seen["timeout"] = timeout
+        raise openlist.OpenListError(
+            "OpenList 请求失败: {}".format(socket.timeout("timed out")),
+            kind=openlist.KIND_TIMEOUT)
+
+    with patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "ping", return_value={"success": True, "user": "admin",
+                                                      "kind": ""}), \
+         patch.object(openlist, "_api", side_effect=fake_api):
+        chk = openlist.self_check("/影视")
+    assert chk["success"] is False
+    assert chk["kind"] == openlist.KIND_TIMEOUT, "超时未被归类成 timeout"
+    assert chk["stage"] == "timeout", \
+        "stage 仍是 list 时，前端会提示「多半是路径前缀没填对」——把用户带偏"
+    assert seen["timeout"] == openlist.OPENLIST_PROBE_TIMEOUT, \
+        "自检必须用诊断预算（{}s），用交互预算会把「慢」判成「不可用」".format(
+            openlist.OPENLIST_PROBE_TIMEOUT)
+    assert openlist.OPENLIST_PROBE_TIMEOUT > openlist.OPENLIST_READ_TIMEOUT
+
+
+def test_timeout_message_says_retry_not_config_error():
+    """超时文案必须点明「不是配置错误、稍后重试」，否则用户会去翻配置。"""
+    import socket
+    with patch.object(openlist, "_root_prefix", return_value=""), \
+         patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "_api",
+                      side_effect=openlist.OpenListError(
+                          openlist._conn_message("OpenList 请求失败", socket.timeout("timed out")),
+                          kind=openlist.KIND_TIMEOUT)):
+        res = openlist.list_dir("/")
+    assert res["success"] is False
+    assert res["kind"] == openlist.KIND_TIMEOUT
+    assert "不是配置错误" in res["message"], "超时提示必须明确排除「配置错误」这一可能"
+    assert not res.get("path_missing"), "超时不得被标成路径问题"
+
+
+def test_conn_kind_distinguishes_timeout_from_unreachable():
+    """超时与「连不上」必须分开：两者对应的用户动作完全不同。"""
+    import socket
+    import urllib.error
+    assert openlist._conn_kind(socket.timeout("timed out")) == openlist.KIND_TIMEOUT
+    assert openlist._conn_kind(TimeoutError("timed out")) == openlist.KIND_TIMEOUT
+    assert openlist._conn_kind(
+        urllib.error.URLError(socket.timeout("timed out"))) == openlist.KIND_TIMEOUT
+    assert openlist._conn_kind(
+        ConnectionRefusedError("refused")) == openlist.KIND_NETWORK
+    assert openlist._conn_kind(
+        urllib.error.URLError("no route to host")) == openlist.KIND_NETWORK
+
+
+def test_generic_http_error_is_not_classified_as_timeout():
+    """OpenList 自己报的 500 不得被归成 timeout（否则用户只会一直重试）。"""
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "t", "", "")), \
+         patch.object(openlist, "_resolve_auth", return_value=(openlist.AUTH_TOKEN, "t", "")), \
+         patch.object(openlist, "_request",
+                      return_value=(500, {"code": 500, "message": "internal error"})):
+        try:
+            openlist._api("/api/fs/list", {})
+            raise AssertionError("HTTP 500 不应成功")
+        except openlist.OpenListError as e:
+            assert e.kind == openlist.KIND_HTTP
+
+
+def test_fallback_kind_reaches_frontend():
+    """回落链路必须把失败归类透传到前端（前端据此给可执行提示）。"""
+    with patch.object(media_library.openlist, "is_configured", return_value=True), \
+         patch.object(media_library.openlist, "list_dir",
+                      return_value={"success": False, "path": "/", "entries": [],
+                                    "message": "OpenList 请求失败: 超时",
+                                    "kind": openlist.KIND_TIMEOUT}), \
+         patch.object(media_library, "list_library",
+                      return_value={"success": True, "path": "/", "entries": [],
+                                    "message": ""}):
+        res = media_library.list_library_entries("/", refresh=True)
+    assert res["source"] == "qas" and res["fallback"] is True
+    assert res["fallback_kind"] == openlist.KIND_TIMEOUT, \
+        "回落原因没有归类，前端只能显示一句「不可用」"
+
+
+def test_route_library_source_reports_fail_kind_and_budget():
+    """自检响应必须带回失败归类与超时预算（前端文案靠它分流）。"""
+    h = _make_handler()
+    with patch("routes_library.media_library.library_source", return_value="openlist"), \
+         patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "auth_status",
+                      return_value={"mode": "token", "mode_label": "OpenList 令牌",
+                                    "token_set": True, "user_set": False,
+                                    "password_set": False}), \
+         patch.object(openlist, "ping", return_value={"success": True, "user": "admin",
+                                                      "mode": "token",
+                                                      "mode_label": "OpenList 令牌"}), \
+         patch.object(openlist, "self_check",
+                      return_value={"success": False, "message": "请求超时",
+                                    "user": "admin", "count": 0, "stage": "timeout",
+                                    "kind": openlist.KIND_TIMEOUT,
+                                    "timeout_seconds": openlist.OPENLIST_PROBE_TIMEOUT}):
+        h._handle_library_get("/api/library/source")
+    assert h.sent["openlist_fail_kind"] == openlist.KIND_TIMEOUT
+    assert h.sent["openlist_timeout_seconds"] == openlist.OPENLIST_PROBE_TIMEOUT
+    assert h.sent["openlist_stage"] == "timeout"

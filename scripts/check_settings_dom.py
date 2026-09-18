@@ -70,6 +70,26 @@ STUBS = {
                   "daily": []},
         "schedule_status": {}, "version": "1.1.0",
     },
+    # 自检返回「超时」（issue #47）：OpenList 有响应但慢，**不是配置错误**。
+    # 这里刻意不在 message 里出现「路径前缀」——真实超时的报错也不含它，
+    # 若页面把用户往「路径前缀」引，正是本题要抓的误导。
+    "/api/library/source_timeout": {
+        "success": True, "source": "qas", "openlist": True,
+        "openlist_ok": False,
+        "openlist_message": "OpenList 请求失败: 请求超时（timed out）。OpenList 有响应但太慢"
+                            " —— 这通常不是配置错误，多半是它正在等网盘（如夸克）返回列表。"
+                            "请稍后重试",
+        "openlist_stage": "timeout",
+        "openlist_fail_kind": "timeout",
+        "openlist_timeout_seconds": 30,
+        "openlist_auth": {"mode": "token", "mode_label": "OpenList 令牌",
+                          "token_set": True, "user_set": False, "password_set": False},
+        "openlist_auth_mode": "token",
+        "openlist_auth_source": "token",
+        "openlist_user": "admin",
+        "openlist_root_prefix": "", "openlist_path": "/影视",
+        "openlist_browse_path": "/影视", "openlist_count": 0,
+    },
     "/api/history": {"total": 0, "items": {}},
     "/api/exec_history": {"total": 0, "items": []},
 }
@@ -251,6 +271,30 @@ def _start_server():
     httpd.daemon_threads = True
     threading.Thread(target=httpd.serve_forever, daemon=True).start()
     return httpd
+
+
+def _make_router(stubs):
+    """构造 playwright 的 route 处理器：只桩住 /api/*，其余交给真实静态服务。
+
+    `path` 到桩数据的映射由调用方给（便于同一份走查里切换「已配置 / 未配置 /
+    自检超时」等不同后端状态）——后端状态不同时页面结论也必须不同，
+    这正是 issue #47 的要害：用户看到的结论能否被区分开。
+    """
+
+    def _route(route, override_path=None, override_payload=None):
+        url = route.request.url
+        if "/api/" not in url:
+            return route.fallback()
+        path = url.split(str(PORT), 1)[-1].split("?")[0]
+        if path.rstrip("/").endswith("/api/sse"):
+            return route.fulfill(status=200, content_type="text/event-stream", body=b"")
+        if override_path and path == override_path and override_payload is not None:
+            return route.fulfill(status=200, content_type="application/json",
+                                 body=json.dumps(override_payload).encode())
+        return route.fulfill(status=200, content_type="application/json",
+                             body=json.dumps(stubs.get(path, {})).encode())
+
+    return _route
 
 
 def main():
@@ -442,6 +486,59 @@ def main():
                                 "用户会以为令牌能获得更大权限")
             page.close()
 
+            # ------------------------------------------------------------
+            # 自检失败时的「归因」与「可见性」（issue #47）：
+            # 用户「正确填写账号/密码/根路径/令牌后依旧不可用」。
+            # 旧实现把**超时**和**配错**都收敛成一句「OpenList 不可用」，
+            # 且结论只落在会自动消失的 toast + 默认收起的折叠面板里 ——
+            # 用户既看不到原因，也无法区分「慢」和「错」，只能反复重填配置。
+            # 这里断言：慢必须被说成「不是配置错误」，且结论必须看得见。
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")
+            timeout_router = _make_router(STUBS)
+            page.route("**/*", lambda route: timeout_router(
+                route, "/api/library/source", STUBS["/api/library/source_timeout"]))
+            page.goto(URL, wait_until="load", timeout=20000)
+            page.evaluate("()=>switchTab('settings')")
+            page.wait_for_timeout(500)
+            page.evaluate("()=>checkOpenList()")
+            page.wait_for_timeout(600)
+            to = page.evaluate(r"""() => {
+              const h = document.getElementById('openlistSelfCheckHint');
+              const d = document.getElementById('openlistSubGroup');
+              const rc = h ? h.getBoundingClientRect() : null;
+              return {
+                text: h ? h.textContent : '',
+                kind: h && h.dataset ? (h.dataset.olKind || '') : '',
+                stage: h && h.dataset ? (h.dataset.olStage || '') : '',
+                failClass: !!(h && h.className.indexOf('ol-fail') >= 0),
+                panelOpen: !!(d && d.open),
+                visibleH: rc ? Math.round(rc.height) : 0,
+              };
+            }""")
+            report.append({"label": "OpenList 超时自检(1440x900)", **to})
+            if "不可用" in to["text"] and "不是配置错误" not in to["text"]:
+                problems.append("[OpenList 超时] 结论仍只说「不可用」："
+                                "用户会把「慢」当成「配错」反复重填配置")
+            if "不是配置错误" not in to["text"]:
+                problems.append("[OpenList 超时] 自检结论未排除「配置错误」这一可能")
+            if "路径前缀" in to["text"]:
+                problems.append("[OpenList 超时] 超时被提示成「路径前缀没填对」："
+                                "把用户引向与实际原因无关的修改动作")
+            if to["kind"] != "timeout" or to["stage"] != "timeout":
+                problems.append("[OpenList 超时] 结论未按失败归类标注"
+                                "（kind={!r} stage={!r}）".format(to["kind"], to["stage"]))
+            if not to["panelOpen"]:
+                problems.append("[OpenList 超时] 自检失败后子分区仍收起："
+                                "用户在折叠面板外看不到任何失败原因")
+            if to["visibleH"] <= 0:
+                problems.append("[OpenList 超时] 自检结论不可见（高 {}px）".format(
+                    to["visibleH"]))
+            if not to["failClass"]:
+                problems.append("[OpenList 超时] 失败结论没有状态样式，"
+                                "与普通说明文字无从区分")
+            page.close()
+
             browser.close()
     finally:
         if httpd is not None:
@@ -456,6 +553,11 @@ def main():
                 blanks = ", ".join(str(c["blank"]) for c in m["cards"])
                 print("{:<26} 页高 {:<6} 卡片底部空白 [{}]".format(
                     m["label"], m["tabH"], blanks))
+            elif "kind" in m:
+                print("{:<26} 归类 {!r} 阶段 {!r} 面板 {} 结论高 {}"
+                      .format(m["label"], m.get("kind", ""), m.get("stage", ""),
+                              "展开" if m.get("panelOpen") else "收起",
+                              m.get("visibleH", "")))
             else:
                 print("{:<26} 折叠态 {:<4} 徽标 {!r} 输入框高 {} 令牌框高 {} 令牌先于账号 {}"
                       .format(m["label"], "展开" if m.get("open") else "收起",

@@ -220,6 +220,23 @@ function _applyOpenListSubState(openlist){
 // 若不在设置页就能直接验证，「配错了」和「OpenList 自己挂了」完全无法区分。
 // 自检走的是后端现有的 /api/library/source，返回的是「谁在回答 + OpenList 是否可用 +
 // 登录到的用户名」，不额外引入新接口。
+// 自检结论要**留在页面上**（issue #47）：
+// 之前只发一个几秒后自动消失的 toast，而结论文字落在折叠面板里的
+// #openlistSelfCheckHint —— 面板默认收起时用户根本看不到原因，
+// 只能看到「不可用」三个字，于是反复重填配置。
+// 这里：失败时自动展开面板 + 给提示加状态样式（可被 DOM 走查脚本断言）。
+function _renderOpenListHint(hint, msg, d){
+  var grp=document.getElementById('openlistSubGroup');
+  var ok=!!(d&&d.openlist_ok);
+  if(hint){
+    hint.textContent=msg;
+    hint.className='form-hint ol-selfcheck'+(ok?' ol-ok':' ol-fail');
+    hint.dataset.olKind=(d&&d.openlist_fail_kind)||'';
+    hint.dataset.olStage=(d&&d.openlist_stage)||'';
+  }
+  if(grp&&!ok&&d&&d.openlist) grp.open=true;
+}
+
 async function checkOpenList(){
   var btn=document.getElementById('openlistCheckBtn');
   var hint=document.getElementById('openlistSelfCheckHint');
@@ -245,19 +262,32 @@ async function checkOpenList(){
         +(d.openlist_browse_path||'/')+'」共 '+(d.openlist_count||0)+' 项，媒体库目录将由其回答。'+noExtra;
       showToast('OpenList 连接正常',true);
     }else if(d.openlist){
-      msg='OpenList 不可用：'+(d.openlist_message||'未知原因')+'。媒体库已回落到 QAS 直连。';
-      if(d.openlist_stage==='list'){
+      var kind=d.openlist_fail_kind||'';
+      // 标题按「用户该做什么」分岔，而不是一律「不可用」（issue #47）：
+      // 超时的英文/中文原样透出时，用户会把它当作「OpenList 坏了」去改配置，
+      // 而实际上唯一该做的是「等一会重试」。
+      var title=kind==='timeout'?'OpenList 响应超时':'OpenList 不可用';
+      msg=title+'：'+(d.openlist_message||'未知原因')+'。媒体库已回落到 QAS 直连。';
+      // 提示必须与「失败归类」一一对应，否则会把用户引向错误的修改动作。
+      if(d.openlist_stage==='list'&&kind!=='timeout'){
         // 登录已通过 → 不是凭据问题，别再让用户去翻令牌/密码。
         msg+='（登录已通过，问题出在列目录 —— 多半是「路径前缀」没填对）';
       }
+      if(kind==='timeout'){
+        msg+='（OpenList 有响应但太慢：这通常**不是配置错误**，而是它正在等网盘返回目录。'
+           +'请稍后重试；本次自检已按 '+(d.openlist_timeout_seconds||30)+' 秒预算等待。）';
+      }
       if(d.openlist_auth&&!d.openlist_auth.token_set&&!d.openlist_auth.user_set){msg+='当前没有可用凭据（游客模式），若 OpenList 关闭了游客访问，请在下方填访问令牌。'}
-      showToast('OpenList 不可用',false);
+      showToast(title,false);
     }else{
       msg='未配置 OpenList 地址，媒体库目录由 QAS 直连回答（较慢）。';
       showToast('未配置 OpenList',false);
     }
-    if(hint)hint.textContent=msg;
+    // 顺序要紧：_applyOpenListSubState 会按「已配置」把面板收起，
+    // 失败结论若先渲染就会被它盖掉（面板收起时用户看不到任何原因）。
+    // 先定基准态，再由 _renderOpenListHint 在失败时强制展开。
     _applyOpenListSubState(!!d.openlist);
+    _renderOpenListHint(hint, msg, d);
   }catch(e){
     if(hint)hint.textContent='自检失败：'+(e&&e.message?e.message:'网络错误');
     showToast('自检失败',false);
