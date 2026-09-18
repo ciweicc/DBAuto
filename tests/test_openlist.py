@@ -4,10 +4,11 @@
 自动任务条目的需求。当前通过夸克自动转存的媒体库访问速度太慢了」。
 
 本用例覆盖四层：
-  1. **客户端契约**（openlist.py）：登录（含明文密码语义）、token 复用与 401 自动重登、
-     目录归一化（is_dir→dir、RFC3339→秒级时间戳）、删除的批量上限与条目名校验；
-     以及**鉴权优先级**（issue #27 追问：「可以把 OpenList 的验证方式变成令牌验证吗」）：
-     令牌优先且直发、令牌失效必须如实报错而不是白重登一轮、改配置后不得复用旧凭据；
+  1. **客户端契约**（openlist.py）：目录归一化（is_dir→dir、RFC3339→秒级时间戳）、
+     删除的批量上限与条目名校验；
+     以及**鉴权只有一条路**（issue #47：「把 OpenList 用户名密码验证的功能去掉，
+     只保留令牌验证」）：令牌直发、**不存在任何登录请求**、令牌失效如实报错、
+     账号/密码字段彻底不可用（配置、校验、脱敏三处都不留）；
   2. **错误可读性**：OpenList 的业务错误以 JSON 返回，不能把原因吞成
      「HTTP Error 400: Bad Request」——用户必须看到「用户名或密码错误」这类原因；
   3. **数据源选择与回落**（media_library）：配了 OpenList 就走它，不可用时回落 QAS，
@@ -29,113 +30,77 @@ import openlist
 import media_library
 
 
-# ---------------------------------------------------------------- 契约：登录与 token
-def _login(base=None):
-    """按当前 patch 的 _cfg 调用登录（_cfg 现为 4 元组，_login 只吃后三项）。"""
-    b, token, user, password = openlist._cfg()
-    return openlist._login(b, user, password)
+# ------------------------------------------------- 契约：账号密码登录已被移除（issue #47）
+#
+# 用户要求：「把 OpenList 用户名密码验证的功能去掉，只保留令牌验证」。
+# 这类「删功能」的改动最容易只删一半 —— 后端不再调用 /api/auth/login，
+# 但配置项、校验分支、前端输入框还在，于是用户继续填一个永远不生效的字段，
+# 现象与「令牌写错了」完全一样。下面把三处都锁死。
 
+def test_login_helper_is_gone():
+    """登录实现必须整体删除，而不是「留着但没人调」。
 
-
-def test_login_uses_plaintext_password():
-    """登录必须发明文密码。
-
-    踩坑：OpenList 的 /api/auth/login 与 /api/auth/login/hash 是两个语义
-    （前者服务端自己 StaticHash，后者要求客户端先 sha256）。混用会得到
-    「Invalid username or password」，且现象与「密码真的错了」完全一样，
-    极难排查 —— 因此这里直接锁死发出的 payload。
+    留着是危险的：任何一处（旧脚本、未来的重构、并发分支）把它接回去，
+    就等于恢复了「用账号密码调登录接口换 token」的老链路，而它在界面上
+    已经没有任何对应的配置项 —— 用户看不到、也关不掉它。
     """
-    seen = {}
+    assert not hasattr(openlist, "_login"), "_login 仍存在（登录链路没删干净）"
+    src = open(os.path.join(_ROOT, "app_modules", "openlist.py"), encoding="utf-8").read()
+    assert "/api/auth/login" not in src, \
+        "openlist.py 里仍有登录接口调用：账号密码登录没有真正移除"
+    # 同时不得再有名副其实的「登录请求」构造点（换 URL / 换 SDK 都绕不过这条）
+    assert "auth/login" not in src, "openlist.py 里仍拼着登录接口路径"
+
+
+def test_removed_auth_modes_and_caches_are_gone():
+    """鉴权方式与凭据缓存都必须收敛：只剩 token / guest，且不再有任何进程内凭据缓存。"""
+    for name in ("AUTH_PASSWORD", "AUTH_MIXED"):
+        assert not hasattr(openlist, name), \
+            "{} 仍存在：说明「账号密码」这条路的语义还留在代码里".format(name)
+    assert openlist.AUTH_TOKEN == "token" and openlist.AUTH_GUEST == "guest"
+    for name in ("_token_cache", "_auth_cache", "_AUTH_CACHE_TTL"):
+        assert not hasattr(openlist, name), \
+            "{} 仍存在：令牌是配置常量，直发即最新，无需任何凭据缓存".format(name)
+
+
+def test_cfg_only_returns_base_and_token():
+    """_cfg 只返回 (地址, 令牌) —— 账号 / 密码不再从配置里读出来。"""
+    with patch.object(openlist.ConfigManager, "get_instance") as inst:
+        inst.return_value.get_config.return_value = {
+            "openlist": "http://o:5244", "openlist_token": "tok",
+            "openlist_user": "legacy-admin", "openlist_pass": "legacy-pw",
+        }
+        assert openlist._cfg() == ("http://o:5244", "tok")
+
+
+def test_legacy_credentials_are_ignored_not_used():
+    """配置文件里残留的旧账号 / 密码必须被**忽略**，绝不能又被捡起来用。
+
+    这是本改动最需要防的回退点：老用户的 config.json 里就躺着这两项，
+    若 _resolve_auth 顺手读了它们，行为上就等于「功能没删」，
+    而界面上用户看不到任何相关输入框 —— 无从排查。
+    """
+    seen = []
 
     def fake_request(url, data=None, method=None, timeout=None, token=""):
-        seen["url"] = url
-        seen["data"] = data
-        return 200, {"code": 200, "data": {"token": "tok"}}
+        seen.append((url, token, data))
+        return 200, {"code": 200, "data": {"content": [], "total": 0}}
 
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "admin", "pw123")), \
+    with patch.object(openlist.ConfigManager, "get_instance") as inst, \
          patch.object(openlist, "_request", side_effect=fake_request):
-        openlist.reset_token_cache()
-        assert _login() == "tok"
-    assert seen["url"].endswith("/api/auth/login")
-    assert seen["data"] == {"username": "admin", "password": "pw123"}, \
-        "登录必须发明文密码（sha256 是 /api/auth/login/hash 的语义）"
+        inst.return_value.get_config.return_value = {
+            "openlist": "http://o:5244", "openlist_token": "",
+            "openlist_user": "legacy-admin", "openlist_pass": "legacy-pw",
+        }
+        openlist._api("/api/fs/list", {"path": "/"})
+    assert len(seen) == 1, "残留的旧账号密码引发了额外请求（登录链路被复活）: {}".format(seen)
+    url, token, _data = seen[0]
+    assert not url.endswith("/api/auth/login"), "又去登录了：账号密码功能没有真正移除"
+    assert token == "", "残留的旧凭据被当成令牌发出去了"
 
 
-def test_login_error_message_is_from_body():
-    """登录失败的提示必须来自响应体，而不是 urllib 的通用文案。"""
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "admin", "bad")), \
-         patch.object(openlist, "_request",
-                      return_value=(400, {"code": 400, "message": "Invalid username or password"})):
-        openlist.reset_token_cache()
-        try:
-            _login()
-            raise AssertionError("错误密码不应登录成功")
-        except openlist.OpenListError as e:
-            assert "Invalid username or password" in str(e)
-
-
-def test_login_non_json_response_explains_likely_cause():
-    """地址指向非 OpenList 服务（返回 HTML）时，提示要说明「未返回 JSON」。"""
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "admin", "pw")), \
-         patch.object(openlist, "_request", return_value=(200, None)):
-        openlist.reset_token_cache()
-        try:
-            _login()
-            raise AssertionError("非 JSON 响应不应登录成功")
-        except openlist.OpenListError as e:
-            assert "未返回 JSON" in str(e)
-
-
-def test_token_is_cached_and_reused():
-    """token 必须复用（这是「更快」的一部分：省掉每请求一轮登录往返）。"""
-    calls = {"n": 0}
-
-    def fake_request(*a, **k):
-        calls["n"] += 1
-        return 200, {"code": 200, "data": {"token": "tok"}}
-
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "admin", "pw")), \
-         patch.object(openlist, "_request", side_effect=fake_request):
-        openlist.reset_token_cache()
-        for _ in range(5):
-            _login()
-    assert calls["n"] == 1, "token 未复用，每次调用都重新登录"
-
-
-def test_token_cache_is_per_base_url():
-    """改了 OpenList 地址后不得复用旧 token（否则新实例必然 401）。"""
-    with patch.object(openlist, "_request",
-                      side_effect=[(200, {"code": 200, "data": {"token": "t1"}}),
-                                   (200, {"code": 200, "data": {"token": "t2"}})]):
-        openlist.reset_token_cache()
-        with patch.object(openlist, "_cfg", return_value=("http://a:5244", "", "admin", "pw")):
-            assert _login() == "t1"
-        with patch.object(openlist, "_cfg", return_value=("http://b:5244", "", "admin", "pw")):
-            assert _login() == "t2", "换地址后仍在复用上个实例的 token"
-
-
-def test_401_triggers_silent_relogin():
-    """token 失效（401）必须自动重登一次，而不是把「读取失败」甩给用户。"""
-    seq = [(401, {"code": 401, "message": "not login"}),
-           (200, {"code": 200, "data": {"content": [], "total": 0}})]
-    logins = {"n": 0}
-
-    def fake_request(url, data=None, method=None, timeout=None, token=""):
-        if url.endswith("/api/auth/login"):
-            logins["n"] += 1
-            return 200, {"code": 200, "data": {"token": "new"}}
-        return seq.pop(0)
-
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "admin", "pw")), \
-         patch.object(openlist, "_request", side_effect=fake_request):
-        openlist.reset_token_cache()
-        data = openlist._api("/api/fs/list", {"path": "/"})
-    assert data == {"content": [], "total": 0}
-    assert logins["n"] == 2, "401 后未重新登录（用户会看到莫名的读取失败）"
-
-
-def test_guest_mode_when_no_credentials():
-    """账号密码都留空时按游客模式：不带 Authorization，也不去登录。"""
+def test_guest_mode_when_no_token():
+    """令牌留空时按游客模式：不带 Authorization，也不去登录。"""
     seen = {}
 
     def fake_request(url, data=None, method=None, timeout=None, token=""):
@@ -143,15 +108,14 @@ def test_guest_mode_when_no_credentials():
         seen["url"] = url
         return 200, {"code": 200, "data": {"content": [], "total": 0}}
 
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "", "")), \
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "")), \
          patch.object(openlist, "_request", side_effect=fake_request):
-        openlist.reset_token_cache()
         openlist._api("/api/fs/list", {"path": "/"})
     assert seen["token"] == ""
     assert not seen["url"].endswith("/api/auth/login"), "游客模式不应先尝试登录"
 
 
-# ---------------------------------------------------------------- 契约：鉴权优先级（令牌优先）
+# ---------------------------------------------------------------- 契约：令牌直发（唯一路径）
 
 def test_token_is_sent_directly_without_login_round_trip():
     """配了令牌就**直发**，绝不先登录换取 token。
@@ -167,9 +131,8 @@ def test_token_is_sent_directly_without_login_round_trip():
         return 200, {"code": 200, "data": {"content": [], "total": 0}}
 
     with patch.object(openlist, "_cfg",
-                      return_value=("http://o:5244", "jwt-token-abc", "", "")), \
+                      return_value=("http://o:5244", "jwt-token-abc")), \
          patch.object(openlist, "_request", side_effect=fake_request):
-        openlist.reset_token_cache()
         openlist._api("/api/fs/list", {"path": "/"})
     assert len(seen) == 1, "令牌模式下发出了多余请求（应先登录的往返必须被省掉）: {}".format(seen)
     url, token = seen[0]
@@ -177,28 +140,33 @@ def test_token_is_sent_directly_without_login_round_trip():
     assert token == "jwt-token-abc", "Authorization 必须是配置里的令牌原文（OpenList 不吃 Bearer 前缀）"
 
 
-def test_token_wins_over_account_password():
-    """令牌与账号密码同时存在时，令牌优先（用户配令牌就是为了不用它）。"""
-    seen = {}
+def test_token_change_takes_effect_on_every_request():
+    """改令牌后下一个请求立刻用新令牌。
+
+    账号密码时代这里必须靠指纹缓存失效（否则「保存了却没生效」），
+    现在令牌是配置常量、每个请求直发，这个失效模式被结构性地消除了 ——
+    用例仍保留，防止有人日后又把凭据读进缓存。
+    """
+    seen = []
 
     def fake_request(url, data=None, method=None, timeout=None, token=""):
-        seen["url"] = url
-        seen["token"] = token
+        seen.append(token)
         return 200, {"code": 200, "data": {"content": [], "total": 0}}
 
-    with patch.object(openlist, "_cfg",
-                      return_value=("http://o:5244", "tok-1", "admin", "pw")), \
-         patch.object(openlist, "_request", side_effect=fake_request):
-        openlist.reset_token_cache()
-        openlist._api("/api/fs/list", {"path": "/"})
-    assert not seen["url"].endswith("/api/auth/login")
-    assert seen["token"] == "tok-1"
+    with patch.object(openlist, "_request", side_effect=fake_request):
+        with patch.object(openlist, "_cfg",
+                          return_value=("http://o:5244", "tok-old")):
+            openlist._api("/api/fs/list", {"path": "/"})
+        with patch.object(openlist, "_cfg",
+                          return_value=("http://o:5244", "tok-new")):
+            openlist._api("/api/fs/list", {"path": "/"})
+    assert seen == ["tok-old", "tok-new"], "换令牌后仍在用旧凭据: {}".format(seen)
 
 
-def test_invalid_token_is_reported_not_silently_retried():
+def test_invalid_token_is_reported_not_retried():
     """令牌无效（401）必须如实报错，且在消息里点明「令牌」二字。
 
-    绝不能走「401 → 重新登录」那条路：手填令牌根本没法重新登录，
+    绝不能有「401 → 重新登录」这条路：手填令牌根本没法重新登录，
     重发同一个令牌只是白等一轮，最后用户拿到的还是一句
     「读取失败」，无从知道要去改哪个字段。
     """
@@ -209,9 +177,8 @@ def test_invalid_token_is_reported_not_silently_retried():
         return 401, {"code": 401, "message": "token is invalid"}
 
     with patch.object(openlist, "_cfg",
-                      return_value=("http://o:5244", "tok-bad", "", "")), \
+                      return_value=("http://o:5244", "tok-bad")), \
          patch.object(openlist, "_request", side_effect=fake_request):
-        openlist.reset_token_cache()
         try:
             openlist._api("/api/fs/list", {"path": "/"})
             raise AssertionError("无效令牌不应被当成成功")
@@ -222,108 +189,18 @@ def test_invalid_token_is_reported_not_silently_retried():
     assert "token is invalid" in msg, "服务端给出的原因被吞掉了: {}".format(msg)
 
 
-def test_token_change_takes_effect_without_restart():
-    """改令牌后必须立刻生效：旧凭据不能因为 base 未变而被复用。
+def test_api_has_no_retry_knob():
+    """`_api` 不再保留「是否重试鉴权」这类形参。
 
-    这是最隐蔽的一种「保存了但没生效」—— 用登录 token 做缓存键、
-    只按 base 失效的实现在这里会拿到旧身份，且现象完全看不出来。
+    留着它等于在代码里宣告「重试这条路还在」，调用方与新读者会据此
+    以为凭据可重新获取 —— 而事实是只有一个手填令牌。
     """
-    seen = []
-
-    def fake_request(url, data=None, method=None, timeout=None, token=""):
-        seen.append(token)
-        return 200, {"code": 200, "data": {"content": [], "total": 0}}
-
-    with patch.object(openlist, "_request", side_effect=fake_request):
-        openlist.reset_token_cache()
-        with patch.object(openlist, "_cfg",
-                          return_value=("http://o:5244", "tok-old", "", "")):
-            openlist._api("/api/fs/list", {"path": "/"})
-        with patch.object(openlist, "_cfg",
-                          return_value=("http://o:5244", "tok-new", "", "")):
-            openlist._api("/api/fs/list", {"path": "/"})
-    assert seen == ["tok-old", "tok-new"], "换令牌后仍在用旧凭据: {}".format(seen)
-
-
-def test_guest_mode_still_sends_no_authorization():
-    """凭据全空仍是游客模式（不带 Authorization）—— 这是既有行为，不能被令牌改动打破。"""
-    seen = {}
-
-    def fake_request(url, data=None, method=None, timeout=None, token=""):
-        seen["token"] = token
-        seen["url"] = url
-        return 200, {"code": 200, "data": {"content": [], "total": 0}}
-
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "", "")), \
-         patch.object(openlist, "_request", side_effect=fake_request):
-        openlist.reset_token_cache()
-        openlist._api("/api/fs/list", {"path": "/"})
-    assert seen["token"] == ""
-    assert not seen["url"].endswith("/api/auth/login")
-
-
-def test_password_only_still_logs_in():
-    """只填密码（历史上「账号留空 + 密码非空」是有效的登录组合）不得退化成游客。"""
-    seen = []
-
-    def fake_request(url, data=None, method=None, timeout=None, token=""):
-        seen.append((url, token))
-        if url.endswith("/api/auth/login"):
-            return 200, {"code": 200, "data": {"token": "from-login"}}
-        return 200, {"code": 200, "data": {"content": [], "total": 0}}
-
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "", "pw-only")), \
-         patch.object(openlist, "_request", side_effect=fake_request):
-        openlist.reset_token_cache()
-        openlist._api("/api/fs/list", {"path": "/"})
-    assert seen[0][0].endswith("/api/auth/login"), "只填密码时未走登录（会被当成游客）"
-    assert seen[-1][1] == "from-login"
-
-
-def test_auth_status_reports_configured_mode_without_network():
-    """auth_status 只回答「配置里有什么」，不联网 —— 用户问「我在用哪种鉴权」不该依赖可达性。"""
-    with patch.object(openlist, "_cfg",
-                      return_value=("http://o:5244", "tok", "admin", "pw")):
-        st = openlist.auth_status()
-    assert st["mode"] == openlist.AUTH_MIXED
-    assert st["token_set"] is True and st["user_set"] is True and st["password_set"] is True
-
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "tok", "", "")):
-        assert openlist.auth_status()["mode"] == openlist.AUTH_TOKEN
-        assert openlist.auth_status()["user_set"] is False
-
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "admin", "pw")):
-        assert openlist.auth_status()["mode"] == openlist.AUTH_PASSWORD
-
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "", "", "")):
-        assert openlist.auth_status()["mode"] == openlist.AUTH_GUEST
-
-
-def test_ping_reports_auth_mode():
-    """自检必须带回「以什么身份在读」—— 否则用户配了令牌也不知道生效没有。"""
-    def fake_request(url, data=None, method=None, timeout=None, token=""):
-        return 200, {"code": 200, "data": {"username": "admin"}}
-
-    with patch.object(openlist, "_cfg",
-                      return_value=("http://o:5244", "tok", "", "")), \
-         patch.object(openlist, "_request", side_effect=fake_request):
-        openlist.reset_token_cache()
-        res = openlist.ping()
-    assert res["success"] is True and res["user"] == "admin"
-    assert res["mode"] == openlist.AUTH_TOKEN
-    assert "令牌" in res["mode_label"]
-
-
-def test_ping_invalid_token_message_mentions_token():
-    """自检失败也要说清是令牌问题（设置页把它直接显示给用户）。"""
-    with patch.object(openlist, "_cfg",
-                      return_value=("http://o:5244", "tok-bad", "", "")), \
-         patch.object(openlist, "_request",
-                      return_value=(401, {"code": 401, "message": "not login"})):
-        openlist.reset_token_cache()
-        res = openlist.ping()
-    assert res["success"] is False
-    assert "令牌" in res["message"], res["message"]
+    import inspect
+    params = inspect.signature(openlist._api).parameters
+    assert "retry_auth" not in params, "_api 仍保留 retry_auth 形参（重试语义已不存在）"
+    src = open(os.path.join(_ROOT, "app_modules", "openlist.py"), encoding="utf-8").read()
+    # 形参名：只在注释里提一句「不再保留」是允许的，真正不该出现的是 `retry_auth=`
+    assert "retry_auth=" not in src, "openlist.py 里仍残留 retry_auth 形参"
 
 
 # ---------------------------------------------------------------- 契约：目录归一化
@@ -849,8 +726,9 @@ def test_route_library_source_selfcheck():
                                     "openlist_path": "/夸克/影视"}):
         assert h._handle_library_get("/api/library/source") is True
     assert h.sent["source"] == "openlist" and h.sent["openlist_ok"] is True
+    # openlist_user 是 OpenList /api/me 回报的身份名（不是配置项 —— 配置里只有令牌）
     assert h.sent["openlist_user"] == "admin"
-    # 自检必须回报「实测列到了几条」，否则用户无法区分「登录通过」与「真的能列目录」
+    # 自检必须回报「实测列到了几条」，否则用户无法区分「鉴权通过」与「真的能列目录」
     assert h.sent["openlist_count"] == 3
 
 
@@ -948,32 +826,49 @@ def test_route_delete_defaults_to_current_source():
     assert seen["source"] == "qas", "未指定 source 时应与当前浏览数据源一致"
 
 
-# ---------------------------------------------------------------- 配置脱敏与校验
+# ------------------------------------------------- 配置脱敏与校验（issue #47：凭据只剩令牌）
 
-def test_openlist_pass_is_masked_and_encrypted():
+def test_openlist_legacy_credentials_are_gone_from_config():
+    """账号 / 密码必须从「默认配置 + 敏感字段」两处一起消失。
+
+    只删一处都不够：
+      - 还在 DEFAULT_CONFIG → 界面上「无对应输入框」，但配置里一直躺着一个字段；
+      - 还在 _SENSITIVE_FIELDS → 一个已无人读写的字段仍在做加解密，纯噪音。
+    """
     import config as cfg_mod
-    import routes_config
-    assert "openlist_pass" in cfg_mod._SENSITIVE_FIELDS, \
-        "OpenList 密码必须按敏感字段加密落盘（与 qas_token 同口径）"
-    with patch.object(routes_config, "load_config",
-                      return_value={"openlist": "http://o:5244", "openlist_user": "admin",
-                                    "openlist_pass": "secret"}):
-        payload = routes_config.build_config_payload()
-    assert payload["openlist_pass"] == "***", "OpenList 密码不得回传给前端"
-    assert payload["openlist"] == "http://o:5244"
-
-
-def test_openlist_defaults_are_empty():
-    import config as cfg_mod
-    for key in ("openlist", "openlist_user", "openlist_pass"):
+    for key in ("openlist_user", "openlist_pass"):
+        assert key not in cfg_mod.DEFAULT_CONFIG, \
+            "{} 仍在默认配置里（账号密码登录已移除）".format(key)
+        assert key not in cfg_mod._SENSITIVE_FIELDS, \
+            "{} 仍被当成敏感字段（已无人读写它）".format(key)
+    for key in ("openlist", "openlist_token", "openlist_root"):
         assert key in cfg_mod.DEFAULT_CONFIG, "缺少默认配置项 {}".format(key)
     assert cfg_mod.DEFAULT_CONFIG["openlist"] == "", "默认必须留空（不配也能用）"
 
 
-# ---------------------------------------------------------------- 配置保存往返
+def test_config_payload_never_carries_removed_keys():
+    """脱敏响应里不得出现已移除的字段（哪怕是空串）。
 
-def test_config_post_accepts_openlist_keys_and_validates_url():
-    """保存配置必须接受 OpenList 三项，且地址走 URL 校验（与 pansou/qas 同口径）。"""
+    前端遇到这些 key 会以为自己「还有这两个设置」，而输入框已经删了 ——
+    这种「后端说有、前端没入口」的不一致最难自查。
+    """
+    import routes_config
+    with patch.object(routes_config, "load_config",
+                      return_value={"openlist": "http://o:5244", "openlist_token": "jwt",
+                                    "openlist_root": "/夸克"}):
+        payload = routes_config.build_config_payload()
+    assert payload["openlist_token"] == "***", "令牌不得回传给前端"
+    assert payload["openlist"] == "http://o:5244"
+    for key in ("openlist_user", "openlist_pass"):
+        assert key not in payload, "{} 仍在脱敏响应里".format(key)
+
+
+def test_config_post_rejects_removed_keys_with_actionable_message():
+    """旧前端 / 脚本仍回传账号密码时，必须**明确拒绝并指出改用令牌**。
+
+    静默忽略是最坏的选择：用户以为保存成功了，然后在媒体库一直回落 QAS，
+    而所有界面文案都在讲令牌 —— 两个事实对不上，无从排查。
+    """
     import routes_config
 
     saved = {}
@@ -982,7 +877,7 @@ def test_config_post_accepts_openlist_keys_and_validates_url():
         return {"pansou": "", "qas": "", "qas_token": "", "auth_user": "root",
                 "auth_pass": "", "douban_uid": "", "douban_cookie": "",
                 "tmdb_api_key": "", "tmdb_base_url": "", "tmdb_proxy": "",
-                "openlist": "", "openlist_user": "admin", "openlist_pass": ""}
+                "openlist": "", "openlist_token": "", "openlist_root": ""}
 
     class H(routes_config.ConfigRouteMixin):
         def __init__(self):
@@ -993,60 +888,23 @@ def test_config_post_accepts_openlist_keys_and_validates_url():
             self.sent = data
             self.status = status
 
-    with patch.object(routes_config, "load_config", side_effect=fake_load), \
-         patch.object(routes_config, "save_config", side_effect=lambda c: saved.update(c)), \
-         patch.object(routes_config, "reset_qas_client"), \
-         patch.object(routes_config, "add_exec_record"), \
-         patch.object(routes_config, "sse_broadcast"):
-        h = H()
-        h._handle_config_post("/api/config", {"openlist": "http://192.168.1.1:5244",
-                                              "openlist_user": "admin",
-                                              "openlist_pass": "pw"})
-    assert h.sent == {"success": True}, h.sent
-    assert saved["openlist"] == "http://192.168.1.1:5244"
-    assert saved["openlist_pass"] == "pw"
+    def _run(body):
+        with patch.object(routes_config, "load_config", side_effect=fake_load), \
+             patch.object(routes_config, "save_config", side_effect=lambda c: saved.update(c)), \
+             patch.object(routes_config, "reset_qas_client"), \
+             patch.object(routes_config, "add_exec_record"), \
+             patch.object(routes_config, "sse_broadcast"):
+            h = H()
+            h._handle_config_post("/api/config", body)
+        return h
 
-    # 非法地址必须被拒（否则保存成功但媒体库永远读不出来）
-    with patch.object(routes_config, "load_config", side_effect=fake_load), \
-         patch.object(routes_config, "save_config"), \
-         patch.object(routes_config, "reset_qas_client"), \
-         patch.object(routes_config, "add_exec_record"), \
-         patch.object(routes_config, "sse_broadcast"):
-        h2 = H()
-        h2._handle_config_post("/api/config", {"openlist": "不是地址"})
-    assert h2.status == 400 and "openlist" in h2.sent["message"]
-
-
-def test_config_post_openlist_pass_placeholder_keeps_existing():
-    """`***` 表示「不修改」：否则用户每次保存设置都要重填密码。
-
-    与 qas_token 同口径 —— 前端回传的就是脱敏后的 `***`。
-    """
-    import routes_config
-    saved = {}
-
-    def fake_load():
-        return {"openlist": "http://o:5244", "openlist_user": "admin",
-                "openlist_pass": "旧密码"}
-
-    class H(routes_config.ConfigRouteMixin):
-        def __init__(self):
-            self.sent = None
-            self.status = None
-
-        def _send_json(self, data, status=200):
-            self.sent = data
-            self.status = status
-
-    with patch.object(routes_config, "load_config", side_effect=fake_load), \
-         patch.object(routes_config, "save_config", side_effect=lambda c: saved.update(c)), \
-         patch.object(routes_config, "reset_qas_client"), \
-         patch.object(routes_config, "add_exec_record"), \
-         patch.object(routes_config, "sse_broadcast"):
-        h = H()
-        h._handle_config_post("/api/config", {"openlist_pass": "***"})
-    assert saved["openlist_pass"] == "旧密码", \
-        "`***` 占位符把已有密码覆盖掉了（用户每次保存设置都得重填密码）"
+    for key in ("openlist_user", "openlist_pass"):
+        saved.clear()
+        h = _run({key: "whatever"})
+        assert h.status == 400, "{} 未被拒绝（用户会以为保存成功了）".format(key)
+        assert "openlist_token" in h.sent["message"], \
+            "拒绝理由必须指出改用 openlist_token: {}".format(h.sent["message"])
+        assert key not in saved, "{} 被写进了配置（功能没有真正移除）".format(key)
 
 
 # ---------------------------------------------------------------- 令牌配置往返
@@ -1058,8 +916,8 @@ def test_openlist_token_is_masked_and_encrypted():
     assert "openlist_token" in cfg_mod._SENSITIVE_FIELDS, \
         "OpenList 令牌必须加密落盘（它是可直接冒充该用户的全权凭据）"
     with patch.object(routes_config, "load_config",
-                      return_value={"openlist": "http://o:5244", "openlist_user": "admin",
-                                    "openlist_pass": "", "openlist_token": "jwt.secret"}):
+                      return_value={"openlist": "http://o:5244",
+                                    "openlist_token": "jwt.secret"}):
         payload = routes_config.build_config_payload()
     assert payload["openlist_token"] == "***", "令牌不得回传给前端"
 
@@ -1076,8 +934,7 @@ def test_config_post_accepts_openlist_token_and_placeholder_keeps_existing():
     saved = {}
 
     def fake_load():
-        return {"openlist": "http://o:5244", "openlist_user": "admin",
-                "openlist_pass": "", "openlist_token": "旧令牌"}
+        return {"openlist": "http://o:5244", "openlist_token": "旧令牌"}
 
     class H(routes_config.ConfigRouteMixin):
         def __init__(self):
@@ -1123,6 +980,9 @@ def test_route_library_source_selfcheck_reports_auth_mode():
                                                       "mode_label": "OpenList 令牌"}), \
          patch.object(openlist, "auth_status",
                       return_value={"mode": "token", "mode_label": "OpenList 令牌",
+                                    # user_set / password_set 是恒为 False 的兼容字段：
+                                    # 账号密码登录已移除（issue #47），保留只为不让
+                                    # 旧前端读到 undefined。
                                     "token_set": True, "user_set": False,
                                     "password_set": False}):
         h._handle_library_get("/api/library/source")
@@ -1198,8 +1058,8 @@ def test_conn_kind_distinguishes_timeout_from_unreachable():
 
 def test_generic_http_error_is_not_classified_as_timeout():
     """OpenList 自己报的 500 不得被归成 timeout（否则用户只会一直重试）。"""
-    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "t", "", "")), \
-         patch.object(openlist, "_resolve_auth", return_value=(openlist.AUTH_TOKEN, "t", "")), \
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "t")), \
+         patch.object(openlist, "_resolve_auth", return_value=(openlist.AUTH_TOKEN, "t")), \
          patch.object(openlist, "_request",
                       return_value=(500, {"code": 500, "message": "internal error"})):
         try:

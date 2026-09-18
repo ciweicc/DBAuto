@@ -2,6 +2,62 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
+## [当前] OpenList 只保留令牌鉴权，移除用户名/密码登录（issue #47）
+
+> 对应 [issue #47](https://cnb.cool/ciweicc/DBAuto/-/issues/47) 用户要求：
+> 「把 OpenList 用户名密码验证的功能去掉，只保留令牌验证」。
+
+**改了什么**
+
+- `app_modules/openlist.py`
+  - 删除 `_login`（`/api/auth/login` 调登录换 token 的整条链路）、
+    `AUTH_PASSWORD` / `AUTH_MIXED` 两种鉴权档位，以及为「账号密码」路径
+    服务的登录 token 缓存与鉴权指纹缓存（`_token_cache` / `_auth_cache`）。
+    令牌是配置常量、每请求直发，「保存了却没生效」这类失效被结构性消除。
+  - `_cfg()` 现在只返回 `(base, token)`；`_resolve_auth()` 只有两个结果 →
+    `token`（直发）或 `guest`（不带 Authorization）。
+  - `_api()` 去掉「401 自动重登」分支与 `retry_auth` 形参：手填令牌没法重新登录，
+    401 一律如实报「令牌无效或已过期」，并点明去 OpenList 后台重取。
+  - `auth_status()` 只剩 `mode` / `token_set`；`user_set` / `password_set`
+    保留为**恒 False 的兼容字段**（旧前端读到 undefined 会更难排查）。
+- `app_modules/config.py`
+  - `DEFAULT_CONFIG` 移除 `openlist_user` / `openlist_pass`，
+    `_SENSITIVE_FIELDS` 同步移除（已无人读写，留着纯噪音）。
+- `app_modules/routes_config.py`
+  - 脱敏白名单移除 `openlist_pass`；删除 `openlist_user` / `openlist_pass`
+    两个校验分支；新增 `_REMOVED_OPENLIST_KEYS`，旧前端回传这两个字段时
+    **明确 400 并提示改用 `openlist_token`**（而不是含糊的 `unknown config key`，
+    更不是静默丢弃 —— 那会让用户以为保存成功了）。
+- `static/src/body.html` / `static/src/scripts/settings.js`
+  - 设置页移除「账号 / 密码」两个输入框，只留「访问令牌」；保存配置不再回传
+    已移除字段；自检文案删掉 `password` / `mixed` 两档，改为「令牌鉴权」/
+    「游客模式（未填令牌）」。
+
+**为什么删（不只是「少两个框」）**
+
+1. 两种凭据并存时，用户得自己判断「我到底在用哪一种」，而两者的行为差异
+   （多一轮登录往返、改密后失效）在界面上看不见 —— issue #47 的「我全填对了
+   还是不行」部分正来自这种不可观测性；
+2. 账号密码那条链路要传**明文**密码，多一条凭据就多一份落盘密文与一次
+   明文传输；令牌本就是可撤销的授权凭据，没有这个问题。
+
+**验证证据**
+
+- `tests/test_openlist.py` 重写鉴权段（68 条全绿）：`_login` / `AUTH_PASSWORD` /
+  `AUTH_MIXED` / 两个缓存对象**都不存在**；`_cfg` 只返回 `(base, token)`；
+  **配置里残留的旧账号密码必须被忽略而不是被捡起来用**（防「功能没删干净」）；
+  令牌直发且不产生任何登录请求；令牌失效只报错不重试；`_api` 无 `retry_auth`。
+  配置侧新增：默认配置/敏感字段都无旧键、脱敏响应不含旧键、
+  旧键回传被 400 且提示改用 `openlist_token`。
+- `tests/test_build.py` 新增 `test_openlist_account_login_is_removed`：
+  实现、配置、校验、界面（含产物）四层一起锁死；
+  `test_openlist_pass_is_never_echoed_to_frontend` →
+  `test_openlist_token_is_never_echoed_to_frontend`（凭据只剩令牌）。
+- `python3 -m pytest tests/ -q` → 403 passed；`python3 -m ruff check .` → 通过。
+- `python3 scripts/check_settings_dom.py --serve` → 11 组视口 0 问题，
+  且新增断言「账号 / 密码入口在实际渲染 DOM 中不存在」（`removedEls`）。
+- `python3 scripts/check_contrast.py` → 18 组全达标。
+
 ## [当前] 修复「OpenList 不可用」把「慢」误报成「配错」（issue #47）
 
 > 对应 [issue #47](https://cnb.cool/ciweicc/DBAuto/-/issues/47) 用户反馈：

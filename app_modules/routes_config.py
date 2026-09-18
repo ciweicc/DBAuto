@@ -25,7 +25,7 @@ def build_config_payload():
     masked = {}
     for k, v in cfg.items():
         if k in ("qas_token", "auth_pass", "douban_cookie", "tmdb_api_key",
-                 "openlist_pass", "openlist_token"):
+                 "openlist_token"):
             masked[k] = "***" if v else ""
         else:
             masked[k] = v
@@ -48,6 +48,12 @@ def build_schedule_payload():
                                        status.get("last_expired_check")) if e.get("enabled") else None,
     }
     return result
+
+
+# 已移除的 OpenList 凭据字段（issue #47：只保留令牌验证）。
+# 保留这份名单是为了**明确拒绝**而不是静默丢弃：静默丢弃会让用户以为
+# 「保存成功了」，然后在媒体库一直回落 QAS 时找不到原因。
+_REMOVED_OPENLIST_KEYS = ("openlist_user", "openlist_pass")
 
 
 class ConfigRouteMixin:
@@ -84,6 +90,15 @@ class ConfigRouteMixin:
 
             for k, v in body.items():
                 if k not in cfg:
+                    # 已移除的 OpenList 凭据要给出「为什么」而不是「unknown config key」：
+                    # 旧前端 / 脚本仍在回传这两个字段时，含糊的报错会让人以为
+                    # 是自己拼错了参数名，而实际是功能被有意去掉了（issue #47）。
+                    if k in _REMOVED_OPENLIST_KEYS:
+                        self._send_json(
+                            {"success": False,
+                             "message": "{}: OpenList 已只支持令牌验证，请改用 openlist_token".format(k)},
+                            400)
+                        return True
                     self._send_json({"success": False, "message": "unknown config key: {}".format(k)}, 400)
                     return True
 
@@ -111,6 +126,10 @@ class ConfigRouteMixin:
                 elif k == "openlist_token":
                     # OpenList 令牌（issue #27 追问）：与 qas_token 同口径 ——
                     # 留空 / `***` 表示不修改，避免用户每次保存设置都要重贴一遍令牌。
+                    #
+                    # issue #47 起这是 OpenList **唯一**的鉴权方式（账号密码登录已移除），
+                    # 因此这里同时也是「能不能读到网盘」的总开关：填错 = 自检 401 =
+                    # 媒体库回落 QAS，没有第二条凭据路径可以兜底。
                     if v and v != "***":
                         ok, msg = validate_string(v, min_len=1, max_len=2048)
                         if not ok:
@@ -133,20 +152,6 @@ class ConfigRouteMixin:
                         cfg[k] = v.rstrip("/")
                     else:
                         cfg[k] = ""
-                elif k == "openlist_user":
-                    if v:
-                        ok, msg = validate_string(v, min_len=1, max_len=100)
-                        if not ok:
-                            self._send_json({"success": False, "message": "openlist_user: {}".format(msg)}, 400)
-                            return True
-                    cfg[k] = v
-                elif k == "openlist_pass":
-                    if v and v != "***":
-                        ok, msg = validate_string(v, min_len=1, max_len=200)
-                        if not ok:
-                            self._send_json({"success": False, "message": "openlist_pass: {}".format(msg)}, 400)
-                            return True
-                        cfg[k] = v
                 elif k == "auth_user":
                     ok, msg = validate_string(v, min_len=1, max_len=50, allow_empty=False)
                     if not ok:
