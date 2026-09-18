@@ -124,6 +124,30 @@ python -m pytest tests/test_<相关模块>.py -q
   `chromium-1243` 时 `p.chromium.launch()` 直接报「Executable doesn't exist」。
   新建走查脚本要照抄 `_launch_kwargs()`（glob `/opt/ms-playwright/chromium-*/chrome-linux64/chrome`）。
 
+- **「打开慢」先量再改：分段计时脚本比读代码管用**。本轮（issue #27 媒体库打开速度）
+  新增 `scripts/check_library_speed.py`：量「首帧反馈 / 目录可见 / 任务表可见 / 再次打开」
+  + 首帧高度位移。量完才发现慢在**三处**（读接口重试把 6s 尝试翻成 12.5s 预算、
+  重复打开必打网络、首帧高度跳变），只修一处都还是慢。
+- **改超时要连重试次数一起看**：`utils.http_get` 默认 `retries=3` +
+  `HTTP_RETRY_TOTAL=12s`。只把 `timeout` 从 15s 收到 6s，最坏等待仍是
+  `6s + 退避 + 6s > 12s`（预算耗尽）。读类接口应 `retries=1`（重试的是同一个
+  卡住的上游，没有价值），并用**总预算 > 单次超时**，否则「服务慢」会被误报成「不可达」。
+  `APIClient.retries` + `_http_kwargs()` 是本次的通用下传口子。
+- **隐藏页面的 `getBoundingClientRect()` 不等于 0**：给 `display:none` 的容器
+  设了高度时，其**子元素**仍会返回被内容撑开的高度。所以「首帧占位高度」必须在
+  `switchTab('library')` **之后**采样，但在 `switchTab('overview')` 之前采样
+  （后者会把骨架换成空态，高度特征丢失）。
+- **走查脚本里所有 `/api/*` 都要给桩**：只要漏一个返回 401，`auth.js` 会
+  `location.href='/login.html'` 把页面踢走 —— 之后的度量全部落在登录页上，
+  报错信息却只是「卡片始终没有渲染」，极易误判为功能 bug（本轮实测踩到）。
+- **Playwright 的 route 回调里不能 sleep**（前面已记过一次），但**页面内
+  `fetch` 桩 + `setTimeout` 模拟上游延迟**是可行且更确定的替代：
+  延迟显式设定、不阻塞静态资源、不与驱动进程的线程模型打架。
+- **静态走查只报「结构」，报不出「等待」**：视觉/性能类问题要单独落一个
+  计时脚本（本轮的 `check_library_speed.py`），并且必须做**反向验证**
+  （去掉骨架 → 位移断言失败；强制 `force:true` → 缓存断言失败），
+  否则断言可能只是摆设。
+
 ## 4. 收尾
 
 - 停掉后台服务：`kill "$(cat /tmp/dbauto.pid)"`。

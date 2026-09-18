@@ -3,10 +3,22 @@ from utils import http_get, http_post, http_post_stream
 
 
 class APIClient:
+    #: 底层 http_get/http_post 的尝试次数（含首次）。None = 沿用 utils 的默认值（3 次）。
+    #: 读类接口（如媒体库目录浏览）显式设为 1：重试的是同一个「卡住的上游」，
+    #: 只会把等待翻倍，不如快速失败让用户决定是否重试（见 media_library.py 头部）。
+    retries = None
+
     def __init__(self, base_url, token=None, timeout=15):
         self.base_url = base_url.rstrip("/") + "/"
         self.token = token
         self.timeout = timeout
+
+    def _http_kwargs(self):
+        """把 timeout / retries 统一传给 utils 的 http_* 包装函数。"""
+        kwargs = {"timeout": self.timeout}
+        if self.retries is not None:
+            kwargs["retries"] = self.retries
+        return kwargs
 
     def _build_url(self, path):
         if path.startswith("/"):
@@ -20,11 +32,11 @@ class APIClient:
         url = self._build_url(path)
         if params:
             url = "{}?{}".format(url, urllib.parse.urlencode(params))
-        return http_get(url, timeout=self.timeout)
+        return http_get(url, **self._http_kwargs())
 
     def post(self, path, data=None):
         url = self._build_url(path)
-        return http_post(url, data or {}, timeout=self.timeout)
+        return http_post(url, data or {}, **self._http_kwargs())
 
     def post_stream(self, path, data=None, timeout=120):
         url = self._build_url(path)

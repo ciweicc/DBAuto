@@ -82,7 +82,106 @@
   目录归一化（RFC3339 → 秒级时间戳）、删除成功/失败、对账 7 种任务形态。
 - 前端产物已重建，连续两次构建 md5 一致（无漂移）。
 
-## [当前] 「最近转存」标题列独占剩余宽度 + 面板加宽（issue #39 追问）
+**与「媒体库打开速度」那一轮的合并（本节末尾补记）**
+
+两轮改动落在**同一条目录读取链路**上：本节把目录读取改成「OpenList 优先、
+失败回落 QAS」，上一节则给同一链路加了后端目录短命缓存与 `refresh` 绕过。
+合并时这两套语义必须**联立**生效，不能取一边丢一边：
+
+- 路由统一走 `media_library.list_library_entries(path, refresh=...)`，
+  `refresh` 只在 QAS 回落路径上映射为 `use_cache=False`（不读也不写缓存）；
+  前端「刷新」按钮的 `?refresh=1` 依旧同时绕过 OpenList 与 QAS 两级缓存。
+  （本次合并中该语义曾被写反，`refresh=1` 反而走了缓存 —— 已落成用例
+  `test_library_read_path_keeps_both_source_and_cache_semantics` 钉死。）
+- 前端一次响应同时写「缓存条目 + 骨架行数校准 + 数据源元信息」，
+  缓存命中时骨架与徽标都不丢。
+- 新增 5 条联立用例（`tests/test_media_library.py` 3 条 +
+  `tests/test_build.py` 1 条合并门禁 + 路由 refresh 断言修正）；
+  并在合并后重跑 `check_library_dom.py`（0 处问题，含缓存复用场景）、
+  `check_settings_dom.py`（10 组视口 0 处问题）、`check_contrast.py`
+  （18 组 0 组未达标）。
+
+## [当前] 媒体库打开速度：读预算收敛 + 目录缓存 + 首帧占位（issue #27）
+
+> 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户诉求：
+> 「媒体库的访问速度还能优化吗？每次打开都要等几秒」。
+
+**先把「几秒」量出来，再动手**
+
+新增 `scripts/check_library_speed.py`：真实浏览器里跑构建产物，假上游延迟
+显式设定，分段记录「首帧反馈 / 目录可见 / 任务表可见 / 再次打开」，并给出
+首帧高度位移。量完才发现慢在**三个互不相干的地方**，只修一个都还是慢。
+
+**根因一：上一轮只收了单次超时，没管重试次数**
+
+`LIBRARY_READ_TIMEOUT` 把单次尝试从 15s 收到 6s，但 `utils.http_get` 仍是
+默认 `retries=3`（`HTTP_RETRY_TOTAL=12s`），于是单次目录请求最坏
+`6s + 退避 + 6s > 12s` **耗尽预算**，≈12.5s 全部压给用户。
+打开媒体库时目录与任务两条链路并发，等于两份 12.5s 在同时空转。
+更讽刺的是：重试打的是**同一个卡住的上游**，重试本身不产生任何价值。
+
+- `app_modules/api_client.py`：`APIClient` 新增 `retries` 属性 +
+  `_http_kwargs()`，把 `timeout / retries` 统一透传到底层 `http_get/http_post`
+  （默认 `None` = 沿用原语义，其它链路行为不变）。
+- `app_modules/media_library.py`：读客户端 `retries=1`（只尝试一次），
+  新增 `LIBRARY_READ_BUDGET=7.0` 总预算，并显式保证「总预算 > 单次尝试超时」
+  —— 否则「QAS 服务慢」会被误报成「QAS 不可达」。
+
+**根因二：重复打开媒体库页总要再等一次网络往返**
+
+切标签、刷新页面、从子目录退回来，都会重新向 QAS 请求同一目录；而 QAS 侧
+每次都要拿 Cookie 向夸克实查，0.5~3s 是常态。
+
+- 目录响应进**短命缓存**（`LIBRARY_CACHE_TTL=30s`，只在进程内、只缓存成功结果、
+  上限 64 条）。删除/写回后显式 `invalidate_library_cache()` 作废——
+  「删完再看同一目录还显示已删条目」是双向管理的底线，不能踩。
+- 前端「刷新」按钮带 `?refresh=1` 绕过后端缓存，且该响应**不写回**缓存
+  （否则下一次普通打开会拿到「刚强制刷新过」的旧数据）。
+- 缓存返回的就是同一份归一化响应，所以「缓存渲染」与「网络渲染」不会长出
+  第二套语义。
+
+**根因三：首帧高度会跳，用户以为「卡」**
+
+首帧只有一个约 60px 的空态文字块，数据一到换成几百 px 的网格：整页下移，
+用户刚点下的「刷新 / 上一级 / 视图切换」被推到别处，第二次点击落到空白处。
+
+- `static/src/scripts/library.js`：首帧改用与卡片视图**完全相同的网格几何**
+  渲染骨架卡（`_libSkeletonCardHtml`），数据到达时在同一高度内替换内容；
+  骨架行数用上次真实条数校准（`lib_sk_rows`），避免「8 行 → 30 行」再跳一次。
+- 进度文案的刷新间隔 1000ms → 250ms：让「已用 3.2s」与真实等待同步滑动。
+- `static/src/styles/main.css`：新增 `.lib-loading / .lib-grid-skeleton /
+  .lib-card-skeleton / .lib-sk*`，每种灰块都给了显式高度（高度缺失 = 占位塌掉）。
+
+**验证证据（可复核）**
+
+- `python3 -m pytest tests/ -q` → **320 passed**；`ruff check .` 通过。
+- `python3 scripts/check_library_speed.py`（桩上游 0.8s，24 张卡）：
+  首帧反馈 **26ms**、目录可见 **783ms**、任务表可见 **118ms**、
+  再次打开目录可见 **105ms**（< 一次上游延迟 = 缓存生效）；
+  首帧高度 255px → 数据到达 436px（位移 181px，上限 280px）。
+- 慢上游 `--delay 6`：首帧 **11ms**、任务表 **120ms** 照常出，
+  目录按上游时间返回 **6005ms**（不再叠加 12.5s 的无效重试）。
+- **反向验证**（证明断言不是摆设，逐条实测被抓出）：
+  去掉首帧骨架的高度来源 → 「首帧位移 313px 超过上限 280px」；
+  让 `loadLibraryPage` 强制 `force:true`（绕过缓存）→
+  「再次打开更慢（843ms vs 778ms），缓存未生效」。
+  `tests/test_build.py` 侧同样反向验证：去掉骨架名称列 → 断言失败；
+  去掉 `refresh=1` → 断言失败；把读接口 `retries` 改回默认 → 断言失败。
+- 连带回归：`scripts/check_library_dom.py`（0 处问题）、概览页 9 组视口、
+  设置页 9 组、日志栏 10 组、登录页 10 组、对比度 18 组全部 0 问题；
+  前端产物重建后与源码一致（连续两次构建无漂移）。
+
+**新增/调整的用例**
+
+- `tests/test_media_library.py` 新增 9 条：读客户端禁用底层重试、
+  总预算与单次超时的关系、`retries` 透传底层 http_*、
+  缓存命中不打网络、`use_cache=False` 可绕过、失败不进缓存、
+  删除后缓存作废、TTL 到期重查、`refresh=1` 不进缓存。
+- `tests/test_build.py` 新增 3 条：首帧骨架几何与高度、
+  打开速度走查脚本落库（含位移上限与按上游延迟推导的耗时上限）、
+  后端读预算/重试/缓存与 `refresh=1` 链路。
+
+## [此前] 「最近转存」标题列独占剩余宽度 + 面板加宽（issue #39 追问）
 
 > 对应 [issue #39](https://cnb.cool/ciweicc/DBAuto/-/issues/39) 用户追加诉求：
 > 「能不能让这个模块的横向面积更大一点显示完整内容？」

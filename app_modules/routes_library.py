@@ -18,19 +18,18 @@ from media_library import LIBRARY_SOURCE_OPENLIST, LIBRARY_SOURCE_QAS
 from validator import validate_string, validate_list
 
 
-def _truthy(value):
-    """query 参数语义：1/true/yes/on 为真。
-
-    踩坑：`bool("0")` 是 True —— 直接用 bool() 会让 `?refresh=0` 也触发
-    「绕过 OpenList 缓存」，把本来该快的路径变慢（而这正是本次要修的问题）。
-    """
-    if isinstance(value, bool):
-        return value
-    return str(value or "").strip().lower() in ("1", "true", "yes", "on")
-
-
 class LibraryRouteMixin:
     """QAS 任务与网盘媒体库管理路由"""
+
+    # 读接口的缓存开关：前端「刷新」按钮带 ?refresh=1 显式绕过缓存
+    # （普通打开媒体库页 / 切标签命中缓存，重复打开不再等网络）。
+    _NO_CACHE_VALUES = ("1", "true", "yes", "on")
+
+    def _cache_disabled(self, params):
+        raw = params.get("refresh")
+        if isinstance(raw, (list, tuple)):
+            raw = raw[0] if raw else None
+        return str(raw).strip().lower() in self._NO_CACHE_VALUES
 
     def _handle_library_get(self, route):
         if route == "/api/qas/tasks":
@@ -56,7 +55,10 @@ class LibraryRouteMixin:
                 return True
             # 数据源由设置决定：配了 OpenList 就走 OpenList（更快，见 media_library），
             # 未配或不可达时自动回落 QAS，并把「谁回答的 / 是否回落」如实带给前端。
-            res = media_library.list_library_entries(path=path, refresh=_truthy(params.get("refresh")))
+            # refresh=1（前端「刷新」按钮）同时绕过 OpenList 缓存与 QAS 目录短命缓存；
+            # 不带 refresh（普通打开 / 切标签）走缓存，重复打开不再等一次网络往返。
+            res = media_library.list_library_entries(
+                path=path, refresh=self._cache_disabled(params))
             self._send_json(res, 200 if res.get("success") else 502)
             return True
 
