@@ -13,7 +13,11 @@
      而不是无限转圈（历史缺陷：后端 15s×3 重试 ≈ 32s 全部压给用户）；
   4. 进入子目录再返回父目录，第二次必须**命中缓存**（0 次新请求）且立刻出内容；
   5. 目录与任务请求必须**并行**发出，不得串行等待；
-  6. 多视口下无横向溢出、表格列不被压扁（含移动端卡片化）。
+  6. 多视口下无横向溢出、表格列不被压扁（含移动端卡片化）；
+  7. **数据源徽标**（issue #27 追问）：目录由 OpenList 还是 QAS 回答必须显示出来，
+     回落时明确标注 —— 否则用户无从归因「快/慢」，也看不出 OpenList 挂了；
+  8. **任务对账**（issue #27 追问）：只读巡检必须能跑出「失效任务」，
+     且「未核对」不能混进「失效」（这是这类功能最大的误报来源）。
 
 依赖：playwright + chromium（与 scripts/check_overview_dom.py 同依赖），
   pip install playwright && python -m playwright install chromium
@@ -103,6 +107,10 @@ def _entries(path):
 # 也不再需要 /api/tmdb/match 的桩数据 —— 走查改为断言「页面里不存在任何图片」。
 STUBS = {
     "/api/categories": {"movie": [], "tv": [], "variety": []},
+    # 数据源自检（issue #27 追问）：桩里 OpenList 视为已配置且可用
+    "/api/library/source": {"success": True, "source": "openlist", "openlist": True,
+                            "openlist_ok": True, "openlist_user": "admin",
+                            "openlist_message": ""},
     "/api/dashboard/all": {"stats": {}, "schedule_status": {}, "version": "1.2.0"},
     "/api/history": {"total": 0, "items": {}},
     "/api/tmdb/list": {"items": []},
@@ -110,6 +118,24 @@ STUBS = {
     "/api/settings/all": {"config": {}, "schedule": {"_next_runs": {}, "savepaths": {}}},
     "/api/transfer/status": {"running": False, "progress": [], "stats": {}},
     "/api/qas/tasks": _QAS_TASKS,
+}
+
+# 任务对账桩（issue #27 追问）：刻意同时包含「失效」与「未核对」两类。
+# 断言要点：两类必须分开展示 —— 把「没扫到」混成「失效」会让用户去删有效的任务配置。
+_AUDIT = {
+    "success": True,
+    "checked": 6,
+    "missing": [
+        {"taskname": "已失效的作品", "savepath": "/影视/电影",
+         "reason": "网盘对应目录中未找到同名条目（任务可能已失效或内容被手工删除）"},
+    ],
+    "unverified": [
+        {"taskname": "范围外的任务", "savepath": "/别的地方/目录"},
+    ],
+    "orphans": [{"dir": "/影视/无人管的目录", "name": "无人管的目录"}],
+    "scanned_dirs": 4,
+    "truncated": False,
+    "message": "",
 }
 
 MEASURE = r"""
@@ -233,6 +259,18 @@ MEASURE = r"""
     crumbTop: (function(){ const c = q('#libBreadcrumb'); return c ? Math.round(r(c).top) : null; })(),
     selAllTop: (function(){ const c = q('#libSelAllWrap'); return c ? Math.round(r(c).top) : null; })(),
 
+    // 数据源徽标（issue #27 追问）：必须显示、且文案能区分 OpenList / QAS 回落
+    srcBadge: q('#libSourceBadge') ? q('#libSourceBadge').textContent : '',
+    srcBadgeVisible: (function(){
+      const b = q('#libSourceBadge');
+      if(!b) return false;
+      const st = getComputedStyle(b);
+      return st.display !== 'none' && r(b).height > 0 && r(b).width > 0;
+    })(),
+    srcBadgeHasTitle: (function(){
+      const b = q('#libSourceBadge');
+      return !!(b && (b.getAttribute('title') || '').length > 5);
+    })(),
     tipText: q('#libTip') ? q('#libTip').textContent : '',
     viewBtn: q('#libViewBtn') ? q('#libViewBtn').textContent : '',
     loadingHint: q('#libList #libLoadingHint') ? q('#libList #libLoadingHint').textContent : '',
@@ -298,10 +336,15 @@ def _route(route, requests_log, slow_seconds=None):
         qp = qp.split("&")[0]
         import urllib.parse
         body = {"success": True, "path": urllib.parse.unquote(qp),
-                "entries": _entries(urllib.parse.unquote(qp))}
+                "entries": _entries(urllib.parse.unquote(qp)),
+                # 数据源标签（issue #27 追问）：前端据此显示徽标并决定删除走哪条链路
+                "source": "openlist", "fallback": False}
     elif path == "/api/qas/tasks":
         requests_log.append(time.time())
         body = dict(_QAS_TASKS)
+    elif path == "/api/openlist/tasks/audit":
+        requests_log.append(time.time())
+        body = dict(_AUDIT)
     elif path == "/api/tmdb/match":
         # 前端已不调这个接口；若又有人在卡片里加回海报匹配，这里会记录到请求日志，
         # 走查末尾的「无图」断言就会把它暴露出来。
@@ -371,6 +414,15 @@ def main():
                 # 任务表必须在同一页可见（没有被挤掉）
                 if "共 8 条" not in m["qasCountText"]:
                     fail("QAS 任务表未渲染（'{}'）".format(m["qasCountText"]))
+
+                # 数据源徽标（issue #27 追问）：让「快/慢」可归因
+                if not m["srcBadgeVisible"]:
+                    fail("媒体库未显示数据源徽标：用户无法知道目录是 OpenList 还是 QAS 回答的"
+                         "（banner={!r}）".format(m["srcBadge"]))
+                if "OpenList" not in m["srcBadge"]:
+                    fail("数据源徽标未反映实际数据源（{!r}）".format(m["srcBadge"]))
+                if not m["srcBadgeHasTitle"]:
+                    fail("数据源徽标缺少说明性 title，用户看不出徽标含义")
 
                 # 2/6. 溢出
                 if m["docOverflowX"] > 0:
@@ -592,6 +644,71 @@ def main():
                                 "又回到了「依赖外部图片服务」的老路".format(len(tmdb_hits)))
             page.close()
 
+            # --- 3.7 任务对账（issue #27 追问：管理 QAS 任务条目的诉求） ---
+            # 巡检必须：能跑出「失效」，且「未核对」不得混进「失效」。
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")
+            page.route("**/*", lambda r: _route(r, []))
+            page.goto(URL, wait_until="load", timeout=20000)
+            page.evaluate("()=>switchTab('library')")
+            page.wait_for_timeout(1200)
+            page.evaluate("()=>runTaskAudit()")
+            page.wait_for_timeout(800)
+            ad = page.evaluate(r"""() => {
+              const unverifiedTitleOf = g => {
+                const t = g.querySelector(".audit-group-title");
+                if(!t) return "";
+                let out = "";
+                t.childNodes.forEach(n => { if(n.nodeType === 3) out += n.textContent; });
+                return out.trim();
+              };
+              const box = document.getElementById('auditResult');
+              const groups = [...box.querySelectorAll('.audit-group')];
+              const titleOf = g => (g.querySelector('.audit-group-title')||{}).textContent || '';
+              const bad = groups.find(g => g.classList.contains('audit-bad'));
+              const texts = groups.map(titleOf);
+              const missingGroup = groups.find(g => titleOf(g).includes('失效'));
+              const unverifiedGroup = groups.find(g => titleOf(g).includes('未核对'));
+              return {
+                text: box.textContent,
+                groupTitles: texts,
+                missingRows: missingGroup ? missingGroup.querySelectorAll('.lib-row:not(.lib-head)').length : 0,
+                // 「未核对」组的**标题文字**不得说成「失效」。
+                // 口径：只取标题行里除 .audit-group-note 之外的文本 —— note 里
+                // 必须写「不代表失效」（不说清语义同样会被误读），若拿整行文本
+                // 去匹配，正确实现会被判成错的（本轮实测踩到这个假阳性）。
+                unverifiedTitle: unverifiedGroup ? unverifiedTitleOf(unverifiedGroup) : "",
+                unverifiedSaysInvalid: unverifiedGroup
+                  ? /失效/.test(unverifiedTitleOf(unverifiedGroup)) : false,
+                badGroupExists: !!bad,
+                orphansChips: [...box.querySelectorAll('.audit-chip')].length,
+                countText: (document.getElementById('auditCount')||{}).textContent || '',
+                hasRetry: !!box.querySelector('button'),
+                deleteBtns: box.querySelectorAll('.btn-danger').length,
+              };
+            }""")
+            report.append({"label": "任务对账(1440x900)", **{k: ad[k] for k in (
+                "missingRows", "orphansChips", "countText")}})
+            if ad["missingRows"] < 1:
+                problems.append("[任务对账] 未渲染出「任务失效」行（巡检等于没做）")
+            if not ad["badGroupExists"]:
+                problems.append("[任务对账] 「失效」组未使用警示样式，与其它结论无法区分")
+            if "未核对" not in ad["text"]:
+                problems.append("[任务对账] 未展示「未核对」分类："
+                                "「没扫到」会被误读成「任务失效」")
+            if ad["unverifiedSaysInvalid"]:
+                problems.append("[任务对账] 「未核对」组的标题说成了「失效」："
+                                "混类会让用户去删掉本来有效的任务配置")
+            if "不代表失效" not in ad["text"]:
+                problems.append("[任务对账] 未说明「未核对 ≠ 失效」的语义")
+            if "已核对" not in ad["countText"]:
+                problems.append("[任务对账] 计数未说明「已核对多少条」"
+                                "（{!r}）".format(ad["countText"]))
+            if ad["deleteBtns"]:
+                problems.append("[任务对账] 对账面板出现删除按钮："
+                                "巡检必须只读（自动清理会误删有效任务）")
+            page.close()
+
             # --- 4/5. 缓存复用：进子目录再返回父目录，第二次必须 0 新请求且立即渲染 ---
             log3 = []
             page = browser.new_page(viewport={"width": 1440, "height": 900})
@@ -625,6 +742,15 @@ def main():
             if detail["hasBody"] < 3:
                 problems.append("[缓存] 返回父目录后未立即渲染出内容（{} 行）".format(
                     detail["hasBody"]))
+            # 缓存命中后徽标必须仍然可见且不指向别的数据源。
+            # 这条拦的是「徽标只在网络响应分支里渲染」这类实现 —— 那时缓存命中
+            # （最常发生的路径）就会没有徽标，用户看到「缓存」却不知道数据从哪来。
+            if not detail["srcBadgeVisible"]:
+                problems.append("[缓存] 命中缓存后数据源徽标消失："
+                                "用户看到「缓存」却不知道数据是谁给的")
+            if "OpenList" not in detail["srcBadge"]:
+                problems.append("[缓存] 命中缓存后数据源徽标回退成 QAS（{!r}）："
+                                "source 未随目录数据一起缓存".format(detail["srcBadge"]))
             page.close()
 
             # --- 7. QAS 任务删除链路（issue #27 跟进） ---

@@ -24,7 +24,8 @@ def build_config_payload():
     cfg = load_config()
     masked = {}
     for k, v in cfg.items():
-        if k in ("qas_token", "auth_pass", "douban_cookie", "tmdb_api_key"):
+        if k in ("qas_token", "auth_pass", "douban_cookie", "tmdb_api_key",
+                 "openlist_pass"):
             masked[k] = "***" if v else ""
         else:
             masked[k] = v
@@ -100,11 +101,25 @@ class ConfigRouteMixin:
                             self._send_json({"success": False, "message": "{}: {}".format(k, msg)}, 400)
                             return True
                         cfg[k] = v
-                elif k in ("pansou", "qas"):
+                elif k in ("pansou", "qas", "openlist"):
                     if v:
                         ok, msg = validate_url(v, required=False)
                         if not ok:
                             self._send_json({"success": False, "message": "{}: {}".format(k, msg)}, 400)
+                            return True
+                        cfg[k] = v
+                elif k == "openlist_user":
+                    if v:
+                        ok, msg = validate_string(v, min_len=1, max_len=100)
+                        if not ok:
+                            self._send_json({"success": False, "message": "openlist_user: {}".format(msg)}, 400)
+                            return True
+                    cfg[k] = v
+                elif k == "openlist_pass":
+                    if v and v != "***":
+                        ok, msg = validate_string(v, min_len=1, max_len=200)
+                        if not ok:
+                            self._send_json({"success": False, "message": "openlist_pass: {}".format(msg)}, 400)
                             return True
                         cfg[k] = v
                 elif k == "auth_user":

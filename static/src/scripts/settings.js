@@ -13,6 +13,14 @@ document.getElementById('cfg_auth_pass').value='';
 document.getElementById('cfg_tmdb_api_key').value='';
 document.getElementById('cfg_tmdb_base_url').value=cfg.tmdb_base_url||'';
 document.getElementById('cfg_tmdb_proxy').value=cfg.tmdb_proxy||'';
+// OpenList 媒体库数据源（issue #27 追问）：密码同样留空不修改
+var _olEl=document.getElementById('cfg_openlist'); if(_olEl)_olEl.value=cfg.openlist||'';
+var _oluEl=document.getElementById('cfg_openlist_user'); if(_oluEl)_oluEl.value=cfg.openlist_user||'admin';
+var _olpEl=document.getElementById('cfg_openlist_pass'); if(_olpEl)_olpEl.value='';
+// 折叠子分区的默认态由「有没有配过」决定：
+//   未配置 → 展开（用户正是来配它的，收起等于把入口藏起来）；
+//   已配置 → 收起（保持设置页高度门禁，issue #15）。
+_applyOpenListSubState(cfg.openlist);
 if(s.savepaths){
   document.getElementById('cfg_path_category_base').value=s.savepaths.category_base||'/影视';
   document.getElementById('cfg_path_search').value=s.savepaths.search||'/批量转存/手动搜索存';
@@ -35,6 +43,19 @@ async function saveConfig(silent=false){
 SETTINGS_ALL = null;  // 失效缓存，保存后 SSE 触发的 loadConfig 将拉取最新数据
 // 3.6 前置校验：转存路径必须以 / 开头，输入时即时提示，不通过则阻断保存并聚焦首个错误项
 var pathIds=['cfg_path_category_base','cfg_path_search','cfg_path_tmdb','cfg_path_library_root'];
+// OpenList 地址与 pansou/qas 同口径：可留空（留空=不用 OpenList），填了必须以 http(s):// 开头
+var urlIds=['cfg_pansou','cfg_qas','cfg_openlist'];
+var firstBadUrl=null;
+urlIds.forEach(function(id){
+  var el=document.getElementById(id);
+  if(!el)return;
+  var v=el.value.trim();
+  var bad=v.length>0&&!/^https?:\/\//i.test(v);
+  el.classList.toggle('input-error',bad);
+  el.title=bad?'地址需以 http:// 或 https:// 开头':'';
+  if(bad&&!firstBadUrl)firstBadUrl=el;
+});
+if(firstBadUrl){showToast('服务地址需以 http:// 或 https:// 开头',false);firstBadUrl.focus();return}
 var firstBad=null;
 pathIds.forEach(function(id){
   var el=document.getElementById(id);
@@ -54,7 +75,10 @@ auth_user:document.getElementById('cfg_auth_user').value.trim(),
 auth_pass:document.getElementById('cfg_auth_pass').value,
 tmdb_api_key:document.getElementById('cfg_tmdb_api_key').value,
 tmdb_base_url:document.getElementById('cfg_tmdb_base_url').value.trim(),
-tmdb_proxy:document.getElementById('cfg_tmdb_proxy').value.trim()};
+tmdb_proxy:document.getElementById('cfg_tmdb_proxy').value.trim(),
+openlist:document.getElementById('cfg_openlist').value.trim(),
+openlist_user:document.getElementById('cfg_openlist_user').value.trim()||'admin',
+openlist_pass:document.getElementById('cfg_openlist_pass').value};
 try{
 var d=await apiPost('/api/config',cfg);
 if(d.success){if(!silent)showToast('设置已保存',true);clearSettingsDirty()}
@@ -171,3 +195,51 @@ function initSettingsDirty(){
 // 本文件在 body 尾部拼接，DOM 已就绪
 initSettingsJumpSpy();
 initSettingsDirty();
+
+
+// ============ OpenList 子分区状态（issue #27 追问） ============
+// 折叠/展开只在「看」的层面省高度，语义上必须仍是一处正常的配置项：
+// 未配置时默认展开，已配置时默认收起，徽标始终反映当前状态。
+function _applyOpenListSubState(openlist){
+  var d=document.getElementById('openlistSubGroup');
+  var badge=document.getElementById('openlistSubBadge');
+  if(d) d.open=!openlist;
+  if(badge){
+    badge.textContent=openlist?'已配置':'未配置';
+    badge.className='set-sub-badge'+(openlist?' on':'');
+  }
+}
+
+// ============ OpenList 连接自检（issue #27 追问） ============
+// 为什么需要单独一个按钮：OpenList 配错的失败形态非常多（地址写错、端口不通、
+// 密码错、只给了游客权限…），而它们**都表现为「媒体库读取失败」**。
+// 若不在设置页就能直接验证，「配错了」和「OpenList 自己挂了」完全无法区分。
+// 自检走的是后端现有的 /api/library/source，返回的是「谁在回答 + OpenList 是否可用 +
+// 登录到的用户名」，不额外引入新接口。
+async function checkOpenList(){
+  var btn=document.getElementById('openlistCheckBtn');
+  var hint=document.getElementById('openlistSelfCheckHint');
+  if(hint)hint.textContent='自检中...';
+  if(btn)btn.classList.add('loading');
+  try{
+    var d=await apiGet('/api/library/source');
+    var msg;
+    if(d.source==='openlist'&&d.openlist_ok){
+      msg='OpenList 可用（登录用户：'+(d.openlist_user||'游客')+'），媒体库目录将由其回答。';
+      showToast('OpenList 连接正常',true);
+    }else if(d.openlist){
+      msg='OpenList 不可用：'+(d.openlist_message||'未知原因')+'。媒体库已回落到 QAS 直连。';
+      showToast('OpenList 不可用',false);
+    }else{
+      msg='未配置 OpenList 地址，媒体库目录由 QAS 直连回答（较慢）。';
+      showToast('未配置 OpenList',false);
+    }
+    if(hint)hint.textContent=msg;
+    _applyOpenListSubState(!!d.openlist);
+  }catch(e){
+    if(hint)hint.textContent='自检失败：'+(e&&e.message?e.message:'网络错误');
+    showToast('自检失败',false);
+  }finally{
+    if(btn)btn.classList.remove('loading');
+  }
+}

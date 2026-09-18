@@ -5,8 +5,28 @@
 #   GET  /api/qas/library?path=/   —— 夸克网盘目录浏览（媒体库）
 #   POST /api/qas/delete           —— 删除网盘条目 + 可选同步清理 DBAuto 历史
 #   POST /api/qas/delete_tasks     —— 删除 QAS 条目任务配置（整表写回）
-from media_library import list_tasks, list_library, delete_entries, delete_tasks, get_library_root
+#
+# OpenList 数据源（issue #27 追问）：目录浏览可改由 OpenList 回答，
+#   GET  /api/library/source       —— 当前数据源 / 各源可用性自检
+#   GET  /api/openlist/tasks/audit —— QAS 任务 ↔ 网盘内容 对账（只读）
+#
+# 注意：浏览与删除是**同源**的一组接口 —— 浏览器看到的条目由谁列出来，
+# 删除就发给谁（OpenList 用条目名、QAS 用 fid）。跨源拼路径会误删，见 media_library。
+import openlist
+import media_library
+from media_library import LIBRARY_SOURCE_OPENLIST, LIBRARY_SOURCE_QAS
 from validator import validate_string, validate_list
+
+
+def _truthy(value):
+    """query 参数语义：1/true/yes/on 为真。
+
+    踩坑：`bool("0")` 是 True —— 直接用 bool() 会让 `?refresh=0` 也触发
+    「绕过 OpenList 缓存」，把本来该快的路径变慢（而这正是本次要修的问题）。
+    """
+    if isinstance(value, bool):
+        return value
+    return str(value or "").strip().lower() in ("1", "true", "yes", "on")
 
 
 class LibraryRouteMixin:
@@ -14,7 +34,7 @@ class LibraryRouteMixin:
 
     def _handle_library_get(self, route):
         if route == "/api/qas/tasks":
-            res = list_tasks()
+            res = media_library.list_tasks()
             self._send_json(res, 200 if res.get("success") else 502)
             return True
 
@@ -24,7 +44,7 @@ class LibraryRouteMixin:
             # 这样媒体库页打开就在用户指定的路径，而非网盘根（issue #27）。
             raw_path = params.get("path")
             if raw_path is None or not str(raw_path).strip():
-                raw_path = get_library_root()
+                raw_path = media_library.get_library_root()
             path = str(raw_path).strip() or "/"
             ok, msg = validate_string(path, min_len=1, max_len=500, allow_empty=False)
             if not ok:
@@ -34,7 +54,36 @@ class LibraryRouteMixin:
             if ".." in path:
                 self._send_json({"error": "path 不允许包含 .."}, 400)
                 return True
-            res = list_library(path=path)
+            # 数据源由设置决定：配了 OpenList 就走 OpenList（更快，见 media_library），
+            # 未配或不可达时自动回落 QAS，并把「谁回答的 / 是否回落」如实带给前端。
+            res = media_library.list_library_entries(path=path, refresh=_truthy(params.get("refresh")))
+            self._send_json(res, 200 if res.get("success") else 502)
+            return True
+
+        if route == "/api/library/source":
+            # 数据源自检：让设置页能一键验证 OpenList 配置是否真的可用，
+            # 而不是等用户翻媒体库时才发现配错了。
+            src = media_library.library_source()
+            info = {"source": src, "openlist": openlist.is_configured()}
+            if info["openlist"]:
+                ping = openlist.ping()
+                info["openlist_ok"] = bool(ping.get("success"))
+                info["openlist_user"] = ping.get("user", "")
+                info["openlist_message"] = ping.get("message", "")
+            self._send_json({"success": True, **info})
+            return True
+
+        if route == "/api/openlist/tasks/audit":
+            # 任务对账（只读）：QAS 任务在网盘上是否还找得到对应内容。
+            # 刻意不做任何写操作 —— 结论用于提示，删不删由用户在既有链路里决定。
+            params = self._get_query_params()
+            root = params.get("path")
+            if root is not None:
+                root = str(root).strip()
+                if root and ".." in root:
+                    self._send_json({"error": "path 不允许包含 .."}, 400)
+                    return True
+            res = media_library.reconcile_tasks(root=root or None)
             self._send_json(res, 200 if res.get("success") else 502)
             return True
 
@@ -53,19 +102,31 @@ class LibraryRouteMixin:
             self._send_json({"error": "entries: {}".format(msg)}, 400)
             return True
 
-        # 每条必须带 fid 或 path，否则 QAS 无法定位文件
+        # 数据源：OpenList 侧用条目名定位（与浏览同源），QAS 侧用 fid / path。
+        # 默认取当前数据源，允许请求显式指定（前端按条目的 _src 传，防止
+        # 「OpenList 浏览、QAS 删除」这种跨源错配）。
+        source = body.get("source") or media_library.library_source()
+        if source not in (LIBRARY_SOURCE_OPENLIST, LIBRARY_SOURCE_QAS):
+            self._send_json({"error": "source 必须是 openlist 或 qas"}, 400)
+            return True
+
         cleaned = []
         for it in entries:
             if not isinstance(it, dict):
                 self._send_json({"error": "entries 每项必须是对象"}, 400)
                 return True
-            if it.get("fid") in (None, "") and not it.get("path"):
+            if source == LIBRARY_SOURCE_OPENLIST:
+                if not str(it.get("name") or "").strip():
+                    self._send_json({"error": "entries 每项必须包含 name"}, 400)
+                    return True
+            elif it.get("fid") in (None, "") and not it.get("path"):
                 self._send_json({"error": "entries 每项必须包含 fid 或 path"}, 400)
                 return True
             cleaned.append(it)
 
         sync_history = body.get("sync_history", True)
-        res = delete_entries(cleaned, sync_history=bool(sync_history))
+        res = media_library.delete_entries_by_source(
+            cleaned, sync_history=bool(sync_history), source=source)
         self._send_json(res, 200 if res.get("success") else 502)
         return True
 
@@ -84,6 +145,6 @@ class LibraryRouteMixin:
             if not has_index and not it.get("taskname"):
                 self._send_json({"error": "tasks 每项必须包含 taskname 或 index"}, 400)
                 return True
-        res = delete_tasks(tasks)
+        res = media_library.delete_tasks(tasks)
         self._send_json(res, 200 if res.get("success") else 502)
         return True

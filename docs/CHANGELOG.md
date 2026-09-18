@@ -2,6 +2,86 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
+## [当前] 媒体库接入 OpenList 数据源 + QAS 任务对账（issue #27 追问）
+
+> 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户追加诉求：
+> 「可以通过调用 openlist 进行管理吗，但我同时需要管理夸克自动转存的自动任务
+> 条目的需求。当前通过夸克自动转存的媒体库访问速度太慢了」。
+
+**两件事要分开处理，不能混成一个「换个目录接口」**
+
+1. **「慢」** —— 链路是「浏览器 → DBAuto → QAS → 夸克开放接口」，逐层实时往返，
+   且 QAS 的 `/get_savepath_detail` 没有目录缓存。目录一大就要等好几秒，
+   前端只能停在「加载中」。这是**等待**问题，不是渲染问题。
+2. **「同时管理任务条目」** —— 任务条目的增删仍在 QAS 侧（自部署）。
+   用户真正缺的是「这条任务在网盘上还有没有对应内容」这个**反查能力**：
+   没有它，任务失效了也看不出来，只会每天空跑一次。
+
+**做法：目录改由 OpenList 回答，用文件侧真相去核对任务侧**
+
+- 目录浏览走 OpenList 的 `/api/fs/list`（它对夸克驱动有列表缓存），
+  登录 token 在进程内复用（401 自动静默重登一次），省掉每请求一轮登录往返。
+  未配置 / 不可达时**自动回落** QAS 直连，并把 `source` / `fallback` 如实带到前端
+  —— 媒体库不会因为「没配 OpenList」而打不开。
+- 删除**与浏览同源**：OpenList 列出来的用条目名删（`/api/fs/remove`），
+  QAS 列出来的用 fid 删。刻意不做跨源路径拼接 —— 那需要猜父目录，猜错就是误删。
+- 新增「任务对账」（只读）：QAS 任务 ↔ 网盘实际内容，列出「任务失效」与
+  「有内容但无人管」两类。**不给任何自动清理入口** ——
+  「暂时没扫到」不等于「这条任务没用了」，自动清理会误删有效任务。
+
+**三个在自测中被抓出来的真 bug（都已修，并落成用例）**
+
+1. **把成功当失败**：OpenList 的成功响应也是 `{"code":200,...}`，
+   最初用 `payload.get("code")` 的真假判错，导致**每一次列目录都报「错误 200」**。
+2. **对账恒判有效**：核对时拿 savepath 末段（`/影视/电影` 的 `电影`）去比父目录
+   `/影视` 的条目，撞上同名的目录名 → 任何任务都算命中，**失效任务一条也报不出来**。
+   修法：目录型 savepath 只看它**自己**的条目。
+3. **折叠 `<details>` 的几何读数**：折叠后内部元素的 `getBoundingClientRect` 仍是
+   展开后的值，让设置页走查算出 `-193px` 的无意义「负数空白」。已让走查跳过折叠区，
+   并顺手加了「折叠不能变成藏起来」的断言（未配置时默认展开、展开后字段可点）。
+
+**改了哪些文件**
+
+- `app_modules/openlist.py`（新增）：OpenList 客户端 —— 登录/token 复用、目录归一化、
+  删除、任务对账。
+- `app_modules/media_library.py`：新增 `library_source()` / `list_library_entries()` /
+  `delete_entries_by_source()` / `reconcile_tasks()`；QAS 语义不变。
+- `app_modules/routes_library.py`：`/api/qas/library` 按数据源分发（新增 `refresh`），
+  新增 `/api/library/source`（自检）与 `/api/openlist/tasks/audit`（对账）；
+  `/api/qas/delete` 按 `source` 校验必需字段。
+- `app_modules/config.py` / `routes_config.py`：新增 `openlist` / `openlist_user` /
+  `openlist_pass`，密码进 `_SENSITIVE_FIELDS`（加密落盘 + 脱敏回传 + `***` 不修改）。
+- `static/src/scripts/library.js`：数据源徽标（含回落标注）、删除按源构造条目、
+  任务对账面板。
+- `static/src/scripts/settings.js`：OpenList 配置、地址格式校验、连接自检、
+  子分区默认态。
+- `static/src/body.html` / `styles/main.css`：转存服务卡内的**可折叠** OpenList 子分区、
+  媒体库数据源徽标、任务对账面板与其样式。
+- `scripts/check_library_dom.py`：新增数据源徽标断言、对账面板断言
+  （含「未核对 ≠ 失效」「对账面板不得出现删除按钮」）、缓存命中后徽标不丢。
+- `scripts/check_settings_dom.py`：新增折叠子分区断言（可用性 + 默认态），
+  修正折叠区几何读数，新增「未配置 → 默认展开」一组走查。
+- `tests/test_openlist.py`（新增 47 条）：客户端契约、错误可读性、数据源回落、
+  按源删除、对账语义、路由校验、配置脱敏与往返。
+- `tests/test_build.py`：新增 5 条防复发门禁。
+
+**验证证据**
+
+- `python3 -m pytest tests/ -q` → **360 passed**；`python3 -m ruff check .` 通过
+  （顺手清掉了实现里两处死代码：未使用的 `scanned_roots` 与 `utils.log` 导入）。
+- `python3 scripts/check_library_dom.py --serve` → **0 处问题**（2 组视口 + 列表视图
+  + 慢接口 + TMDB 不可用 + 缓存复用 + 任务删除 + 新增对账面板）。
+- `python3 scripts/check_settings_dom.py --serve` → **10 组视口 0 处问题**，
+  超宽视口页高回到 1500px 门禁内。
+- 概览页 / 日志栏 DOM 走查 0 问题；`check_contrast.py` 18 组受检 0 组未达标。
+- **反向验证（证明新断言不是摆设）**：
+  - 把产物里「未核对」标题改成「失效」→ 走查报出「未展示「未核对」分类」；
+  - 让缓存命中时丢弃 `source` → 报出「徽标回退成 QAS」；
+  - 把折叠子分区改成默认展开 → 报出「超宽视口页高 1566px 超 1500px」。
+- OpenList 客户端另用**桩服务端到端**跑过：登录（含错误密码的可读报错）、
+  目录归一化（RFC3339 → 秒级时间戳）、删除成功/失败、对账 7 种任务形态。
+- 前端产物已重建，连续两次构建 md5 一致（无漂移）。
+
 ## [当前] 「最近转存」标题列独占剩余宽度 + 面板加宽（issue #39 追问）
 
 > 对应 [issue #39](https://cnb.cool/ciweicc/DBAuto/-/issues/39) 用户追加诉求：

@@ -1873,6 +1873,151 @@ def test_library_modified_time_audit_is_committed():
         assert key in src, "走查脚本缺少「修改时间」断言 {}".format(key)
 
 
+# ---------------------------------------------------------------- OpenList 数据源（issue #27 追问）
+def test_openlist_source_is_wired_end_to_end(dist):
+    """回归（issue #27 追问）：OpenList 作为媒体库数据源必须前后端完整接线。
+
+    用户原话：「可以通过调用 openlist 进行管理吗，但我同时需要管理夸克自动转存的
+    自动任务条目的需求。当前通过夸克自动转存的媒体库访问速度太慢了」。
+
+    本用例锁四件事，缺任何一环功能都会「看起来做了其实没通」：
+      1. 后端客户端存在且走 OpenList 真实接口（/api/fs/list、/api/fs/remove、
+         /api/auth/login）—— 不能只是加了个配置项；
+      2. 目录浏览能按数据源分发，且**未配置时不炸**（回落到 QAS）；
+      3. 前端把「谁在回答」显示出来（否则用户无从归因快慢）、删除按源回传；
+      4. 产物已重建。
+    """
+    ol = _read(os.path.join(_ROOT, "app_modules", "openlist.py"))
+    for path in ("/api/fs/list", "/api/fs/remove", "/api/auth/login"):
+        assert path in ol, "openlist.py 未调用 {}".format(path)
+    assert "def list_dir(" in ol and "def remove(" in ol, "缺少目录浏览 / 删除实现"
+    assert "def reconcile_tasks(" in ol, "缺少任务对账实现"
+
+    lib = _read(os.path.join(_ROOT, "app_modules", "media_library.py"))
+    assert "def library_source(" in lib, "缺少数据源选择函数"
+    assert "def list_library_entries(" in lib, "缺少统一目录入口"
+    assert "def delete_entries_by_source(" in lib, "缺少按源删除"
+    assert "def reconcile_tasks(" in lib, "media_library 未暴露任务对账"
+
+    routes = _read(os.path.join(_ROOT, "app_modules", "routes_library.py"))
+    assert "/api/library/source" in routes, "缺少数据源自检路由"
+    assert "/api/openlist/tasks/audit" in routes, "缺少任务对账路由"
+
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert 'id="libSourceBadge"' in body, "媒体库缺少数据源徽标"
+    assert 'id="auditResult"' in body, "缺少任务对账结果容器"
+    assert 'id="cfg_openlist"' in body, "设置页缺少 OpenList 地址输入"
+    assert 'id="cfg_openlist_user"' in body and 'id="cfg_openlist_pass"' in body, \
+        "设置页缺少 OpenList 凭据输入"
+
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    assert "function _renderLibSourceBadge(" in js, "缺少数据源徽标渲染"
+    assert "function runTaskAudit(" in js, "缺少任务对账前端逻辑"
+    assert "source: libSource" in js, "删除未按数据源回传（跨源会误删）"
+    assert "function _libDeleteEntry(" in js, "删除条目未按数据源构造"
+
+    st = _read(os.path.join(_JS_DIR, "settings.js"))
+    assert "function checkOpenList(" in st, "缺少 OpenList 连接自检"
+    assert "openlist_pass" in st, "保存配置未带上 OpenList 密码"
+
+    assert "lib-src-badge" in dist and "runTaskAudit" in dist, \
+        "产物未包含 OpenList 数据源改动（需重跑 build.sh）"
+
+
+def test_openlist_pass_is_never_echoed_to_frontend():
+    """回归：OpenList 密码必须按敏感字段处理（加密落盘 + 脱敏回传）。
+
+    与 qas_token 同口径，任何一条漏掉都会把凭据写进明文配置或直接回给浏览器。
+    """
+    cfg = _read(os.path.join(_ROOT, "app_modules", "config.py"))
+    assert "openlist_pass" in cfg.split("_SENSITIVE_FIELDS = ")[1].split("\n")[0], \
+        "openlist_pass 未进 _SENSITIVE_FIELDS（会明文落盘）"
+    routes_cfg = _read(os.path.join(_ROOT, "app_modules", "routes_config.py"))
+    mask_block = routes_cfg[routes_cfg.index("def build_config_payload"):]
+    mask_block = mask_block[:mask_block.index("return masked")]
+    assert "openlist_pass" in mask_block, "openlist_pass 未脱敏（会把密码回传给前端）"
+    assert "elif k in (\"pansou\", \"qas\", \"openlist\")" in routes_cfg, \
+        "openlist 地址未走 URL 校验（与 pansou/qas 同口径）"
+
+
+def test_openlist_delete_requires_same_source():
+    """回归：删除必须与浏览同源。
+
+    OpenList 侧删除用条目名、QAS 侧用 fid。跨源需要猜父目录才能转换，
+    猜错就删掉别的东西 —— 后端必须按 source 校验必需字段，不能「尽力而为」。
+    """
+    routes = _read(os.path.join(_ROOT, "app_modules", "routes_library.py"))
+    assert "LIBRARY_SOURCE_OPENLIST" in routes and "必须包含 name" in routes, \
+        "OpenList 侧删除未校验 name"
+    lib = _read(os.path.join(_ROOT, "app_modules", "media_library.py"))
+    assert "谁列出来的谁删" in lib, "缺少「同源删除」的说明（这条约束必须写下来防回退）"
+
+
+def test_task_audit_distinguishes_unverified_from_missing():
+    """回归：任务对账必须区分「未核对」与「失效」。
+
+    这是这类功能最大的误报来源：任务 savepath 落在扫描范围外时，
+    结论只能是「未核对」。混进 missing 会让用户去删掉本来有效的任务配置。
+    """
+    ol = _read(os.path.join(_ROOT, "app_modules", "openlist.py"))
+    assert '"unverified"' in ol, "对账结果缺少 unverified 分类"
+    assert "没扫到" in ol, "缺少「没扫到 ≠ 不存在」的判据说明"
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    assert "unverified" in js, "前端未展示「未核对」分类"
+    assert "不代表失效" in js, "前端未说明「未核对」的语义"
+    # 只读：前端不得给对账配删除入口
+    audit_fn = js[js.index("async function runTaskAudit("):]
+    audit_fn = audit_fn[:audit_fn.index("\nvar AUDIT_HINT")]
+    for banned in ("doDelete", "deleteOne", "/api/qas/delete"):
+        assert banned not in audit_fn, "对账路径出现破坏性操作（应为只读巡检）"
+
+
+def test_openlist_settings_subsection_is_collapsible(dist):
+    """回归：OpenList 配置必须是可折叠子分区，且默认态随「是否配过」变化。
+
+    为什么要折叠而不是简单加一张卡：设置页有硬性高度门禁（issue #15，
+    超宽视口 ≤1500px）。加一张 4 字段的卡实测把整页从 1490px 顶到 1531px，
+    直接顶破门禁 —— 而门禁本身是有价值的（它拦的正是「卡片占位过多、大片空白」）。
+    折叠是唯一同时满足两边的做法。
+
+    代价是必须防「折叠 = 藏起来」：未配置时默认展开，否则用户只会看到
+    媒体库慢，却找不到在哪儿改。本用例把这两个方向都锁住。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert 'id="openlistSubGroup"' in body, "OpenList 配置未做成可折叠子分区"
+    assert "details" in body[body.index('id="openlistSubGroup"') - 80:
+                            body.index('id="openlistSubGroup"') + 40], \
+        "子分区容器不是 <details>（无法折叠）"
+    # 同一张卡里（不新增设置卡），因此不能在 数据源 组里
+    src_group = body[body.index('id="setGroupSource"'):body.index('id="setGroupTransfer"')]
+    assert 'id="cfg_openlist"' not in src_group, \
+        "OpenList 又变回「数据源」组的独立卡片：会新增一行网格，顶破设置页高度门禁"
+
+    st = _read(os.path.join(_JS_DIR, "settings.js"))
+    assert "function _applyOpenListSubState(" in st, "缺少子分区默认态逻辑"
+    call = st[st.index("function _applyOpenListSubState("):]
+    call = call[:call.index("\n}")]
+    assert "d.open=!openlist" in call.replace(" ", ""), \
+        "默认态必须由「是否配过」决定（未配置→展开，已配置→收起）"
+    assert "_applyOpenListSubState(cfg.openlist)" in st, "加载配置后未应用默认态"
+
+    # 走查脚本必须同时覆盖两种态（已配置→收起，够矮；未配置→展开，够用）
+    chk = _read(os.path.join(_ROOT, "scripts", "check_settings_dom.py"))
+    assert "inCollapsedDetails" in chk, \
+        "走查脚本未跳过折叠区内的元素：会给折叠区算出负数「空白」"
+    assert "collapsedSub" in chk, "走查脚本未断言折叠子分区可用性"
+    assert "OpenList 未配置" in chk, "走查脚本未覆盖「未配置→默认展开」这一态"
+
+    assert "openlistSubGroup" in dist, "产物未包含 OpenList 折叠子分区（需重跑 build.sh）"
+
+
+def test_openlist_dom_audit_is_committed():
+    """走查脚本必须覆盖数据源徽标与对账面板（渲染后才能验证的部分）。"""
+    src = _read(os.path.join(_ROOT, "scripts", "check_library_dom.py"))
+    assert "libSourceBadge" in src, "走查脚本未断言数据源徽标"
+    assert "auditMissingRows" in src or "audit" in src, "走查脚本未断言对账面板"
+
+
 # ============================================================
 # 登录页视觉一致性（issue #27：登录页显示效果与主页不一致）
 # ============================================================
