@@ -167,6 +167,24 @@ MEASURE = r"""
     tableOverflowX: (() => { const w = q('.ov-table-wrap'); return w ? w.scrollWidth - w.clientWidth : 0; })(),
     scrollers,
     recentRows: recRows.length,
+    // issue #39：恒常列折叠。桩数据里 status 恒非空（→「库内」恒为「是」），
+    // shareurl 每 4 条留一条为空（→「链接」列仍有区分度）。
+    // 因此期望：库内列折叠（表头 hidden 且 tbody 无该 td），链接列保留。
+    // 同时断言表头与表体的列数一致 —— 折叠只改可见性不改结构，
+    // 若两边判据漂移，这里会直接暴露列错位。
+    recentCols: {
+      headTotal: document.querySelectorAll('.ov-table thead th').length,
+      headVisible: [...document.querySelectorAll('.ov-table thead th')]
+        .filter(e => !e.hasAttribute('hidden')).length,
+      bodyCells: recRows.length ? recRows[0].querySelectorAll('td').length : 0,
+      libHidden: (() => { const t = q('.ov-table thead th[data-ov-col="lib"]');
+        return t ? t.hasAttribute('hidden') : null; })(),
+      linkHidden: (() => { const t = q('.ov-table thead th[data-ov-col="link"]');
+        return t ? t.hasAttribute('hidden') : null; })(),
+      libCell: !!q('#ovRecentBody td.ov-table-lib'),
+      linkCell: !!q('#ovRecentBody td.ov-table-actions'),
+      sub: (() => { const e = q('#ovRecentSub'); return e ? e.textContent : null; })(),
+    },
     statuses: [...new Set([...document.querySelectorAll('#ovRecentBody .ov-badge')].map(e => e.textContent))],
     firstDate: (() => { const e = q('#ovRecentBody .ov-table-date'); return e ? e.textContent : null; })(),
     lastDate: (() => { const all = document.querySelectorAll('#ovRecentBody .ov-table-date');
@@ -348,6 +366,25 @@ def main():
                     fail("指标行高不一致：{}".format(m["statRowH"]))
                 if m["tableOverflowX"] > 0:
                     fail("最近转存表出现横向滚动条 {}px".format(m["tableOverflowX"]))
+                # issue #39：恒常列折叠（桩数据下 status 恒非空 → 库内列应折叠）
+                c = m["recentCols"]
+                if c["libHidden"] is not True or c["libCell"]:
+                    fail("「库内」列是常量列（全为「是」）却未被折叠："
+                         "hidden={} cell={}".format(c["libHidden"], c["libCell"]))
+                if c["linkHidden"] is not False or not c["linkCell"]:
+                    fail("「链接」列仍有区分度（部分行无链接）却被折叠："
+                         "hidden={} cell={}".format(c["linkHidden"], c["linkCell"]))
+                if c["headVisible"] != c["bodyCells"] + 0 and m["recentRows"]:
+                    fail("表头可见列数 {} 与表体单元格数 {} 不一致（折叠后列错位）"
+                         .format(c["headVisible"], c["bodyCells"]))
+                if c["sub"] is None or "均在库内" not in (c["sub"] or ""):
+                    fail("折叠掉「库内」列后，结论未并进面板副标题：{}".format(c["sub"]))
+                # 概览页内不得再有指向历史页的入口（issue #39）
+                if page.evaluate(
+                        "() => [...document.querySelectorAll('#pageOverview *')]"
+                        ".filter(e => (e.getAttribute('onclick') || '').includes(\"switchTab('history')\")).length"
+                ):
+                    fail("概览页内仍有指向历史页的入口")
                 if m["quickPanel"]:
                     fail("「发现快捷」横滑条仍存在（与下方发现区内容重复）")
                 # 首屏工作区（概览指标 + 最近转存 + 服务状态/待办）必须落在一屏内。

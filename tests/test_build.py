@@ -542,14 +542,17 @@ def test_overview_marks_skipped_items_distinctly():
 
 
 def test_overview_recent_list_has_no_triple_cap(dist):
-    """回归：最近转存列表不得再「硬编码 8 条 + 查看全部 + 面板内滚动」三重截断。"""
+    """回归：最近转存列表不得再「硬编码 8 条 + 面板内滚动」双重截断。
+
+    注：issue #39 之后概览页已无「查看全部」出口，截断层数只剩「固定行数」一层。
+    """
     js = _overview_js()
     assert "OV_RECENT_LIMIT" in js, "渲染上限未抽成常量"
     m = re.search(r"OV_RECENT_LIMIT\s*=\s*(\d+)", js)
     assert m and int(m.group(1)) >= 10, "最近转存渲染上限过小（应为面板容量，而非 8 条）"
     assert "slice(0, 8)" not in js, "仍残留硬编码 8 条截断"
     assert "item.title.length > 30" not in js, "仍对标题做硬截断（应交给 CSS 省略）"
-    # 面板内滚动应取消：列表交给「查看全部」出口
+    # 面板内滚动应取消：列表随内容等高（出口已收敛到左侧导航的「历史」）
     css, _ = _extract(dist)
     compact = re.sub(r"\s+", "", css)
     assert ".ov-panel-recent.ov-table-wrap{flex:1;min-height:0;overflow:auto}" in compact, (
@@ -560,23 +563,30 @@ def test_overview_recent_list_has_no_triple_cap(dist):
         "最近转存面板仍被限制在 320px 内滚动"
 
 
-def test_overview_recent_has_single_history_entry():
-    """回归：概览「最近转存」面板只能有一个指向历史页的入口。
+def test_overview_has_no_history_entry_at_all():
+    """回归（issue #39）：概览页不得再有任何指向历史页的入口。
 
-    面板头「查看全部 →」+ 面板底「打开历史 →」曾是两个去向相同的链接，
-    同屏重复导航（用户反馈：「这 4 个箭头指向的跳转同时指向历史页，我只需要保留一个」）。
-    保留面板头的「查看全部 →」作为唯一出口。
+    历史沿革：面板头的「查看全部 →」与面板底的「打开历史 →」一度是两个去向相同的链接，
+    上一轮只删了面板底那个；用户随即指出**面板头这个同样冗余**——
+    左侧导航栏本来就有「历史」项，而概览页左侧「转存概览」面板头还挂着
+    「历史记录 →」，同屏 3 个入口去向完全相同。
+    按「同去向入口只留一个」的既有判据，概览页内收敛到 0 个，走左侧导航。
     """
     html = _read(os.path.join(_SRC, "body.html"))
-    # 源文件：最近转存面板（ov-panel-recent）内 switchTab('history') 只允许出现 1 次
-    start = html.index("ov-panel-recent")
-    end = html.index("ov-panel-discovery")
-    panel = html[start:end]
-    assert panel.count("switchTab('history')") == 1, (
-        "最近转存面板内出现了多个历史入口（应只保留面板头的「查看全部」）"
+    start = html.index('id="pageOverview"')
+    end = html.index('id="tabManual"')
+    # 去掉 HTML 注释再断言：注释里说明本次沿革时会提到「查看全部」等字样，
+    # 那不是入口。只看真实 DOM 与事件绑定。
+    overview = re.sub(r"<!--.*?-->", "", html[start:end], flags=re.S)
+    assert overview.count("switchTab('history')") == 0, (
+        "概览页内仍保留指向历史页的入口（同屏与左侧导航重复）"
     )
-    assert "查看全部" in panel, "唯一出口「查看全部」被误删"
-    # 底部重复入口及其样式不得回归
+    for dead in ("查看全部", "历史记录 →", "打开历史"):
+        assert dead not in overview, "概览页内的历史入口残留：{}".format(dead)
+    # 左侧导航的「历史」必须仍在 —— 收敛的前提是唯一出口仍在
+    assert 'data-tab="history"' in html and ">历史</button>" in html, \
+        "左侧导航的「历史」被误删，历史页将没有入口"
+    # 上一轮已删除的底部重复入口及其样式不得回归
     for dead in ("打开历史", "ov-recent-foot", "ov-recent-note"):
         assert dead not in html, "重复的历史入口残留：{}".format(dead)
     css = _read(MAIN_CSS)
@@ -585,9 +595,45 @@ def test_overview_recent_has_single_history_entry():
 
 
 def test_product_dist_has_no_duplicate_history_link(dist):
-    """产物层面复核：整份产物中指向历史页的链接不超过 1 个（概览面板头）。"""
-    assert dist.count(">查看全部 →</button>") == 1, "产物里「查看全部」入口数量不为 1"
+    """产物层面复核：整份产物中不再有「查看全部 / 打开历史」入口（收敛到左侧导航）。"""
+    assert dist.count(">查看全部 →</button>") == 0, "产物里仍残留「查看全部」入口"
     assert "打开历史" not in dist, "产物里仍残留「打开历史」入口"
+    # 唯一出口：左侧导航的「历史」项
+    assert dist.count('data-tab="history"') == 1, "产物里左侧导航的「历史」项数量不为 1"
+
+
+def test_overview_recent_constant_columns_are_folded():
+    """回归（issue #39）：恒等于常量 / 恒为空的列不得继续占宽度。
+
+    用户截图里「库内」列 4 行全是「是」、「链接」列 4 行全是「—」，
+    两列在当前数据下都是纯占位（一列常量、一列空）。
+    判据：列只有在**本屏渲染出的行**里携带区分度时才渲染，
+    折叠后的结论并进面板副标题（「均在库内」/「暂无分享链接」）。
+    """
+    js = _overview_js()
+    assert "setOvRecentCol" in js, "缺少按需列的可见性切换函数"
+    assert "showLib" in js and "showLink" in js, "缺少按需列的判据变量"
+    # 判据必须看「本屏渲染出的行」，不是全量 items，也不是无条件显示
+    assert "rows.some(function(it){ return !ovInLibrary(it); })" in js, \
+        "「库内」列未按「是否有行不在库内」判定"
+    assert "rows.some(function(it){ return !!it.shareurl; })" in js, \
+        "「链接」列未按「是否有行带分享链接」判定"
+    # 常量列的结论必须并进副标题，否则信息直接丢失
+    assert "均在库内" in js and "暂无分享链接" in js, "折叠掉的列没有把结论并进副标题"
+    # colspan 必须跟着可见列数走，否则空态/加载态会错位
+    assert "var colCount = 3 + (showLib ? 1 : 0) + (showLink ? 1 : 0)" in js, \
+        "空态 colspan 未按可见列数计算"
+
+    # 表头用 data-ov-col 标记，td 同名 —— 两处判据同源
+    html = _read(os.path.join(_SRC, "body.html"))
+    assert 'data-ov-col="lib"' in html and 'data-ov-col="link"' in html, \
+        "「库内 / 链接」表头缺少 data-ov-col 标记"
+    assert '<td colspan="3" class="ov-table-empty">加载中...' in html, \
+        "首载占位行的 colspan 未与最小列数（3 列）对齐"
+    # 折叠后不得残留列宽
+    css = re.sub(r"\s+", "", _read(MAIN_CSS))
+    assert ".ov-tabletheadth[hidden]{display:none}" in css, \
+        "缺少按需列的隐藏规则，折叠后仍会占列宽"
 
 
 def test_overview_date_sorting_and_format():
