@@ -468,7 +468,11 @@
         <!-- 网盘文件浏览（issue #27 优化：置顶，用户最常用；先于 QAS 任务加载） -->
         <div class="card">
           <div class="card-title" style="justify-content:space-between">
-            <span>网盘文件 <span id="libCount" style="color:var(--text3);font-weight:400"></span></span>
+            <span>网盘文件 <span id="libCount" style="color:var(--text3);font-weight:400"></span>
+              <!-- 数据源徽标（issue #27 追问）：告诉用户目录是 OpenList 回答的还是 QAS 直连的，
+                   以及是否发生了回落。不标的话「变快了 / 变慢了」无从归因。 -->
+              <span id="libSourceBadge" class="lib-src-badge" style="display:none"></span>
+            </span>
             <span>
               <button class="btn btn-sm btn-outline" id="libViewBtn" onclick="toggleLibView()" aria-label="切换为列表视图">列表视图</button>
               <button class="btn btn-sm btn-outline" id="libUpBtn" onclick="libGoUp()" disabled>上一级</button>
@@ -484,7 +488,7 @@
             </label>
           </div>
           <div id="libList"><div class="empty-state" style="padding:24px 20px"><div class="empty-title">加载中...</div></div></div>
-          <div id="libTip" class="lib-tip">文件夹与文件以等高卡片展示（不显示封面图），每张卡都标出文件大小与修改时间；删除会同步清理本地转存历史。</div>
+          <div id="libTip" class="lib-tip">文件夹与文件以等高卡片展示（不显示封面图），每张卡都标出文件大小与修改时间；删除会同步清理本地转存历史。目录由「设置 → 数据源」里的 OpenList 回答（未配置时回落 QAS 直连）。</div>
           <!-- 批量删除操作条 -->
           <div id="libActionBar" class="lib-actionbar" style="display:none">
             <label class="toggle" title="删除网盘文件的同时，清理 DBAuto 中对应的转存历史"><input type="checkbox" id="syncHistoryChk" checked><span class="slider"></span></label>
@@ -516,6 +520,24 @@
             <span id="qasSelCount" style="color:var(--text2);font-size:13px"></span>
             <button class="btn btn-sm btn-danger" id="qasDelBtn" onclick="deleteSelectedQasTasks()" disabled>删除所选任务</button>
           </div>
+        </div>
+
+        <!-- 任务对账（issue #27 追问：「我同时需要管理夸克自动转存的自动任务条目的需求」）
+             引入 OpenList 后拿到的能力：拿文件侧的真相去核对任务侧 —— 哪些任务在网盘上
+             已经找不到对应内容（每天空转），哪些目录有内容却没人管。
+             **只报不改**：删除仍走上面两条既有链路，这里不给任何破坏性入口。 -->
+        <div class="card">
+          <div class="card-title" style="justify-content:space-between">
+            <span>任务对账 <span id="auditCount" style="color:var(--text3);font-weight:400"></span></span>
+            <span>
+              <button class="btn btn-sm btn-outline" id="auditBtn" onclick="runTaskAudit()">开始对账</button>
+            </span>
+          </div>
+          <div style="color:var(--text2);font-size:12px;margin-bottom:8px">
+            拿网盘上<strong>实际存在的内容</strong>去核对 QAS 任务：列出「任务失效」（任务找不到对应内容）与「有内容但无人管」两类。
+            只读巡检，不会自动删任何东西；要清理请用上面的任务 / 文件删除入口。
+          </div>
+          <div id="auditResult"><div class="empty-state" style="padding:20px"><div class="empty-title">尚未对账</div><div class="empty-desc">点右上角「开始对账」</div></div></div>
         </div>
       </section>
 
@@ -580,6 +602,33 @@
                 <div class="set-fields">
                   <div class="form-group"><label for="cfg_qas">QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"><div class="form-hint">接收转存指令的 QAS 服务地址</div></div>
                   <div class="form-group"><label for="cfg_qas_token">QAS Token</label><div class="pwd-wrap"><input type="password" id="cfg_qas_token" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div><div class="form-hint">用于鉴权，留空表示保持现有 Token 不变</div></div>
+                  <!-- OpenList（issue #27 追问）：与 QAS 同卡展示，不新增一张设置卡 ——
+                       设置页高度有硬门禁（超宽视口 ≤1500px），多一张卡会在部分视口
+                       多出一行，把整页顶过上限（本轮实测 1490→1526px）。
+                       与「媒体库文件从哪来」直接相关，放在转存服务下面语义也顺。 -->
+                  <!-- OpenList 子分区做成 <details>：默认收起（已配置时平时不用看），
+                       未配置时由 loadConfig 自动展开（那时用户正是来配它的）。
+                       理由：设置页高度有硬门禁（超宽视口 ≤1500px，issue #15），
+                       一个 4 字段的低频子分区长期占位会把整页顶过上限
+                       —— 本轮实测 1490→1531px。折叠后既保住门禁，也不牺牲可配置性。 -->
+                  <details class="set-sub" id="openlistSubGroup">
+                    <summary>
+                      <svg class="ic" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg>
+                      <span>媒体库文件源（OpenList）</span>
+                      <span class="set-sub-badge" id="openlistSubBadge">未配置</span>
+                    </summary>
+                    <div class="set-fields">
+                      <div class="form-group"><label for="cfg_openlist">OpenList 地址</label><input type="text" id="cfg_openlist" placeholder="http://192.168.1.1:5244"></div>
+                      <div class="form-group form-group-inline">
+                        <label for="cfg_openlist_user">账号</label><input type="text" id="cfg_openlist_user" placeholder="admin">
+                        <label for="cfg_openlist_pass">密码</label><div class="pwd-wrap"><input type="password" id="cfg_openlist_pass" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div>
+                      </div>
+                      <div class="form-hint" id="openlistSelfCheckHint">填地址后媒体库目录改由 OpenList 回答（比经 QAS 实时拉取快）；留空回落 QAS 直连，账号密码留空按游客模式。</div>
+                      <div class="set-card-actions">
+                        <button class="btn btn-outline btn-sm" id="openlistCheckBtn" onclick="checkOpenList()">连接自检</button>
+                      </div>
+                    </div>
+                  </details>
                 </div>
               </div>
             </div>

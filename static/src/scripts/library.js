@@ -3,11 +3,21 @@
 // 联动清理 DBAuto 的转存历史——否则网盘删了、本地仍判为「已转存」，重新转存会被跳过。
 //
 // 后端接口：
-//   GET  /api/qas/tasks          QAS tasklist
-//   GET  /api/qas/library?path=  网盘目录
-//   POST /api/qas/delete         {entries:[{fid,name,title?}], sync_history:true}
-//   POST /api/qas/delete_tasks   {tasks:[{taskname,savepath}]} 删除 QAS 任务配置
-//                                （QAS 为自部署服务，改动只影响自己的任务表）
+//   GET  /api/qas/tasks           QAS tasklist
+//   GET  /api/qas/library?path=   网盘目录（数据源见下）
+//   GET  /api/library/source      数据源自检（OpenList 是否可用）
+//   GET  /api/openlist/tasks/audit QAS 任务 ↔ 网盘内容 对账（只读）
+//   POST /api/qas/delete          {entries:[...], sync_history, source} 删文件
+//   POST /api/qas/delete_tasks    {tasks:[{taskname,savepath}]} 删除 QAS 任务配置
+//                                 （QAS 为自部署服务，改动只影响自己的任务表）
+//
+// ---- 目录数据源（issue #27 追问） ----
+// 用户问「可以通过调用 openlist 进行管理吗…当前通过夸克自动转存的媒体库访问速度太慢了」。
+// 「慢」的链路是：浏览器 → DBAuto → QAS → 夸克开放接口，每层都实时往返且 QAS
+// 没有目录缓存。现在目录可改由 OpenList 回答（它对夸克驱动有列表缓存）。
+// 前端只做三件事：把 source / fallback 显示出来（用户要能归因快慢）、
+// 删除时按**条目来源**回传 source（跨源拼路径会误删，后端也拦）、
+// 以及提供「任务对账」这个只读巡检（拿文件侧真相核对任务侧）。
 //
 // ---- 为什么不显示图片（issue #27 反馈「有一些有图，有一些没图，太丑了」） ----
 // 上一版卡片会拿文件名去 TMDB 匹配海报。问题是网盘目录名/文件名与 TMDB 的命中率
@@ -138,6 +148,43 @@ function jsArg(v){
     .replace(/&/g, '\\u0026')
     .replace(/"/g, '\\u0022');
   return "'" + t + "'";
+}
+
+// 当前目录回答者：'openlist' | 'qas'，由后端在目录响应里如实给出。
+// 它同时决定删除走哪条链路 —— 谁列出来的条目，就删谁那边的（见 doDelete）。
+var libSource = 'qas';
+var libFallback = false;
+
+// 数据源徽标：让「变快了 / 变慢了」能被归因。
+// 不显示徽标的代价是：用户只能看到「快了点」，不知道是因为 OpenList 生效、
+// 还是因为这次运气好（缓存命中）。回落时必须明确标出来 ——
+// 否则 OpenList 挂掉后用户会以为自己在用 OpenList，实际走的是慢链路。
+function _renderLibSourceBadge(){
+  var el = document.getElementById('libSourceBadge');
+  if(!el) return;
+  if(!libEntries.length && !libCountText()){
+    el.style.display = 'none';
+    return;
+  }
+  var label, title;
+  if(libSource === 'openlist'){
+    label = 'OpenList';
+    title = '目录由 OpenList 回答（对夸克驱动有列表缓存，通常更快）';
+  }else{
+    label = libFallback ? 'QAS（OpenList 回落）' : 'QAS 直连';
+    title = libFallback
+      ? 'OpenList 不可用，已回落到 QAS 直连（较慢）。请到「设置 → 数据源」检查 OpenList 配置'
+      : '目录由 QAS 直连回答（未配置 OpenList）。配置 OpenList 可显著加快目录浏览';
+  }
+  el.textContent = label;
+  el.title = title;
+  el.className = 'lib-src-badge lib-src-' + (libSource === 'openlist' ? 'ol' : 'qas');
+  el.style.display = '';
+}
+
+function libCountText(){
+  var el = document.getElementById('libCount');
+  return el ? el.textContent : '';
 }
 
 function loadLibraryPage(){
@@ -404,11 +451,11 @@ async function loadLibrary(path, opts){
   var hit = libCache[target];
   var fresh = hit && !force && (Date.now() - hit.ts) < LIB_CACHE_TTL;
   if(fresh){
-    _renderLibrary(target, hit.entries, true);
+    _renderLibrary(target, hit.entries, true, null, hit.meta);
     return;
   }
   if(hit && !force){
-    _renderLibrary(target, hit.entries, true);   // 陈旧数据先顶上，避免白屏
+    _renderLibrary(target, hit.entries, true, null, hit.meta);   // 陈旧数据先顶上，避免白屏
   }else{
     box.innerHTML = _libLoadingHtml(t0);
   }
@@ -440,8 +487,9 @@ async function loadLibrary(path, opts){
       return;
     }
     var entries = res.entries || [];
-    libCache[target] = { ts: Date.now(), entries: entries };
-    _renderLibrary(target, entries, false, r.ms);
+    var meta = {source: res.source, fallback: res.fallback};
+    libCache[target] = { ts: Date.now(), entries: entries, meta: meta };
+    _renderLibrary(target, entries, false, r.ms, meta);
   }catch(e){
     clearInterval(hintTimer);
     if(!hit) _renderLibError(target, e.message, Date.now() - t0);
@@ -466,11 +514,13 @@ function _renderLibError(path, message, ms){
 }
 
 // 渲染一次目录（缓存命中与网络返回走同一条路径，避免两份 DOM 逻辑漂移）
-function _renderLibrary(path, entries, fromCache, ms){
+function _renderLibrary(path, entries, fromCache, ms, source){
   var box = document.getElementById('libList');
   if(!box) return;
   libPath = path;
   libEntries = entries || [];
+  if(source && source.source) libSource = source.source;
+  if(source && typeof source.fallback === 'boolean') libFallback = source.fallback;
   libSelected = {};
   libEntries.forEach(function(it, i){
     it._key = it.fid != null ? String(it.fid) : ('p' + i);
@@ -486,6 +536,7 @@ function _renderLibrary(path, entries, fromCache, ms){
     if(fromCache) parts.push('缓存');
     cnt.textContent = parts.join(' · ');
   }
+  _renderLibSourceBadge();
   if(!libEntries.length){
     box.innerHTML = '<div class="empty-state" style="padding:24px 20px"><div class="empty-title">空目录</div></div>';
     updateLibActionBar();
@@ -740,7 +791,10 @@ async function doDelete(entries, label){
   try{
     var res = await apiPost('/api/qas/delete', {
       entries: entries,
-      sync_history: syncHistory
+      sync_history: syncHistory,
+      // 谁列出来的条目就交给谁删：OpenList 认条目名、QAS 认 fid。
+      // 跨源转换需要猜父目录，猜错就是删掉别的东西（后端也会按 source 校验字段）。
+      source: libSource
     });
     if(res.success){
       showToast('已删除 ' + res.deleted + ' 项' + (res.history_synced ? '，同步清理历史 ' + res.history_synced + ' 条' : ''), true);
@@ -762,15 +816,147 @@ async function doDelete(entries, label){
 function deleteOne(key){
   var it = findEntry(key);
   if(!it) return;
-  doDelete([{fid: it.fid, name: it.name, title: guessTitle(it.name)}], it.name);
+  doDelete([_libDeleteEntry(it)], it.name);
+}
+
+// 删除请求里的条目形态取决于数据源：
+//   QAS 侧 → fid（QAS 用它反查夸克 fid），并带上 path 以便作品目录场景；
+//   OpenList 侧 → 条目名 + 所在目录（OpenList 的 /fs/remove 认这一对）。
+function _libDeleteEntry(it){
+  var e = {name: it.name, title: guessTitle(it.name)};
+  if(libSource === 'openlist'){
+    e.dir = libPath;
+  }else{
+    e.fid = it.fid;
+    e.path = (libPath === '/' ? '' : libPath) + '/' + it.name;
+  }
+  return e;
 }
 
 function deleteSelected(){
   var keys = Object.keys(libSelected);
   if(!keys.length) return;
-  var entries = keys.map(function(k){
-    var it = libSelected[k];
-    return {fid: it.fid, name: it.name, title: guessTitle(it.name)};
-  });
+  var entries = keys.map(function(k){ return _libDeleteEntry(libSelected[k]); });
   doDelete(entries, '所选的 ' + entries.length + ' 项');
+}
+
+// ---------- 任务对账（issue #27 追问：「我同时需要管理夸克自动转存的自动任务条目的需求」） ----------
+//
+// 引入 OpenList 之后才有的能力：以前只能看到「QAS 里有哪些任务」，
+// 看不到「这些任务在网盘上还有没有对应内容」，于是任务失效了也发现不了
+// （每天空跑一次，或者在日志里报失效链接，但用户看不出是哪条任务的问题）。
+//
+// 三条设计取向：
+//   1. **只读**：这里不给任何删除入口。巡检结论容易让人顺手点「清理」，
+//      而「网盘上暂时没扫到」不等于「这条任务没用了」—— 自动清理会误删有效任务。
+//      真要清理，用上面两条既有链路（都有确认弹窗）。
+//   2. **区分「未核对」与「失效」**：savepath 落在扫描范围外的任务单独列，
+//      不混进「失效」。否则用户会以为任务坏了，去删掉本来有效的配置。
+//   3. **说清扫描范围**：目录数 / 层数超限时明确标注「未覆盖全部目录」，
+//      不能让用户以为「没报出来 = 全都正常」。
+async function runTaskAudit(){
+  var box = document.getElementById('auditResult');
+  var btn = document.getElementById('auditBtn');
+  if(!box) return;
+  if(btn){ btn.disabled = true; btn.classList.add('loading'); }
+  box.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-title">对账中...</div>' +
+    '<div class="empty-desc">正在读取网盘目录并与 QAS 任务逐条核对（最多下钻 ' + AUDIT_HINT + '，不会修改任何东西）</div></div>';
+  try{
+    var r = await libFetch('/api/openlist/tasks/audit?path=' + encodeURIComponent(libRoot()));
+    if(!r.ok){
+      _renderAuditError(r.message);
+      return;
+    }
+    var d = r.data || {};
+    if(!d.success){
+      _renderAuditError(d.message || '对账失败');
+      return;
+    }
+    _renderAuditResult(d);
+  }catch(e){
+    _renderAuditError(e.message);
+  }finally{
+    if(btn){ btn.disabled = false; btn.classList.remove('loading'); }
+  }
+}
+
+var AUDIT_HINT = '2 层目录';
+
+function _renderAuditError(message){
+  var box = document.getElementById('auditResult');
+  var cnt = document.getElementById('auditCount');
+  if(cnt) cnt.textContent = '';
+  if(!box) return;
+  box.innerHTML = '<div class="empty-state" style="padding:20px">' +
+    '<div class="empty-title">对账失败</div>' +
+    '<div class="empty-desc">' + esc(message || '请检查 OpenList 与 QAS 配置') + '</div>' +
+    '<div class="empty-desc"><button class="btn btn-sm btn-outline" onclick="runTaskAudit()">重试</button></div>' +
+    '</div>';
+}
+
+function _renderAuditResult(d){
+  var box = document.getElementById('auditResult');
+  var cnt = document.getElementById('auditCount');
+  if(!box) return;
+  var missing = d.missing || [];
+  var unverified = d.unverified || [];
+  var orphans = d.orphans || [];
+  if(cnt){
+    var bits = ['已核对 ' + (d.checked || 0) + ' 条任务', '扫描 ' + (d.scanned_dirs || 0) + ' 个目录'];
+    if(missing.length) bits.push('失效 ' + missing.length);
+    cnt.textContent = bits.join(' · ');
+  }
+  var html = '';
+  // 扫描范围不完整时必须在最显眼处说明，否则「0 处问题」会被误读成「全都正常」
+  if(d.truncated){
+    html += '<div class="lib-tip" style="border-color:var(--orange);color:var(--text2)">' +
+      '目录数超过巡检上限，本次**未覆盖全部目录**：不在结果里 ≠ 没有问题。' +
+      '可在「设置 → 数据源」把媒体库根目录指向更具体的路径后再对账。</div>';
+  }
+
+  if(!missing.length && !unverified.length && !orphans.length){
+    html += '<div class="empty-state" style="padding:20px"><div class="empty-title">未发现问题</div>' +
+      '<div class="empty-desc">已核对的 ' + (d.checked || 0) + ' 条任务在网盘上都能找到对应内容。</div></div>';
+    box.innerHTML = html;
+    return;
+  }
+
+  if(missing.length){
+    html += '<div class="audit-group audit-bad">' +
+      '<div class="audit-group-title">任务失效 ' + missing.length + ' 条' +
+      '<span class="audit-group-note">任务在网盘上找不到对应内容，可能每天空转</span></div>' +
+      '<div class="lib-table lib-table-audit">' +
+      '<div class="lib-row lib-head"><span>任务名</span><span>保存路径</span><span>结论</span></div>';
+    missing.forEach(function(m){
+      html += '<div class="lib-row">' +
+        '<span class="lib-name" title="' + esc(m.taskname) + '">' + esc(m.taskname || '—') + '</span>' +
+        '<span class="lib-sub" title="' + esc(m.savepath) + '">' + esc(m.savepath || '—') + '</span>' +
+        '<span class="lib-sub" title="' + esc(m.reason) + '">' + esc(m.reason || '') + '</span>' +
+        '</div>';
+    });
+    html += '</div></div>';
+  }
+
+  if(orphans.length){
+    html += '<div class="audit-group">' +
+      '<div class="audit-group-title">有内容但无任务指向 ' + orphans.length + ' 个目录' +
+      '<span class="audit-group-note">网盘上有内容，但没有任何 QAS 任务指向它 —— 只提示，不会自动删</span></div>' +
+      '<div class="audit-group-list">';
+    orphans.forEach(function(o){
+      html += '<span class="audit-chip" title="' + esc(o.dir) + '">' + esc(o.name || o.dir) + '</span>';
+    });
+    html += '</div></div>';
+  }
+
+  if(unverified.length){
+    html += '<div class="audit-group">' +
+      '<div class="audit-group-title">未核对 ' + unverified.length + ' 条' +
+      '<span class="audit-group-note">保存路径不在本次扫描范围内，**不代表失效**（没扫到 ≠ 不存在）</span></div>' +
+      '<div class="audit-group-list">';
+    unverified.forEach(function(u){
+      html += '<span class="audit-chip" title="' + esc(u.savepath) + '">' + esc(u.taskname || u.savepath) + '</span>';
+    });
+    html += '</div></div>';
+  }
+  box.innerHTML = html;
 }

@@ -17,6 +17,7 @@
 #   - 所有 QAS 调用都复用 QASClient（token 注入 / 超时策略与其它链路一致）；
 #   - 删除是破坏性操作，默认「先删网盘、再同步历史」，任一步失败都要如实回报，
 #     不做静默降级，避免用户以为同步成功而实际只删了一半。
+import openlist
 from api_client import QASClient
 from config import ConfigManager
 from storage import delete_history_item
@@ -361,3 +362,126 @@ def delete_tasks(items):
         len(drop), [tasks[i].get("taskname") for i in sorted(drop)]))
     return {"success": True, "deleted": len(drop), "failed": 0,
             "results": results, "tasks": new_tasks, "message": ""}
+
+
+# ---------- 媒体库数据源（issue #27 追问：用 OpenList 回答目录浏览） ----------
+#
+# 用户原话：「可以通过调用 openlist 进行管理吗，但我同时需要管理夸克自动转存的
+# 自动任务条目的需求。当前通过夸克自动转存的媒体库访问速度太慢了」。
+#
+# 「慢」的链路是：浏览器 → DBAuto → QAS → 夸克开放接口，每一层都是实时往返，
+# 且 QAS 的 /get_savepath_detail 没有目录缓存 —— 目录一大就要等好几秒。
+# 引入 OpenList 后，目录浏览改由 OpenList 的文件系统视图回答
+# （它对夸克驱动有列表缓存），token 也在进程内复用，因此首屏明显更快。
+#
+# 三条设计底线：
+#   1. **不破坏可用性**：OpenList 未配置 / 不可达时自动回落到 QAS 直连，
+#      媒体库不会因为「没配 OpenList」而打不开；
+#   2. **不猜**：由谁回答必须如实告诉前端（source 字段），用户才知道
+#      自己看到的是 OpenList 的缓存视图还是 QAS 的实时视图；
+#   3. **删除仍走真实数据源**：OpenList 浏览出来的条目在 OpenList 侧删，
+#      QAS 浏览出来的条目在 QAS 侧删；两边都不是「猜路径」，而是用真实条目名。
+
+LIBRARY_SOURCE_QAS = "qas"
+LIBRARY_SOURCE_OPENLIST = "openlist"
+
+
+def library_source():
+    """当前媒体库目录浏览使用的数据源。
+
+    优先 OpenList（更快，且是本项目的「媒体库视图」需求），未配置时回落 QAS。
+    """
+    return LIBRARY_SOURCE_OPENLIST if openlist.is_configured() else LIBRARY_SOURCE_QAS
+
+
+def list_library_entries(path=None, refresh=False):
+    """按当前数据源列出网盘目录（统一入口，前端只认这一个）。
+
+    返回在 list_library 的基础上增加：
+      - source: 'openlist' | 'qas'（谁回答的）
+      - fallback: 是否发生了回落（OpenList 配了但不可用 → 用了 QAS）
+    失败时若 OpenList 已配置，会自动再试一次 QAS —— 但只在
+    OpenList 侧**完全没拿到数据**时回落，避免「一半来自 A、一半来自 B」。
+    """
+    target = path or get_library_root()
+    if openlist.is_configured():
+        res = openlist.list_dir(target, refresh=refresh)
+        if res.get("success"):
+            return {"success": True, "path": res.get("path", target),
+                    "entries": res.get("entries", []), "message": "",
+                    "source": LIBRARY_SOURCE_OPENLIST, "fallback": False}
+        ol_msg = res.get("message") or "OpenList 读取失败"
+        # 记一条日志：否则用户只会看到「读取失败」，无从知道是 OpenList 的问题
+        log("媒体库改用 QAS 兜底（OpenList 不可用）: {}".format(ol_msg))
+        qas = list_library(path=target)
+        qas["source"] = LIBRARY_SOURCE_QAS
+        qas["fallback"] = True
+        if qas.get("success"):
+            qas["message"] = ""
+            return qas
+        # 两个源都失败：如实说明是哪个源、失败原因各自是什么
+        return {"success": False, "path": target, "entries": [],
+                "source": LIBRARY_SOURCE_QAS, "fallback": True,
+                "message": "OpenList: {}；QAS: {}".format(ol_msg, qas.get("message", ""))}
+    res = list_library(path=target)
+    res["source"] = LIBRARY_SOURCE_QAS
+    res["fallback"] = False
+    return res
+
+
+def delete_entries_by_source(entries, sync_history=True, source=None):
+    """按数据源删除网盘条目（OpenList 侧用条目名删，QAS 侧用 fid 删）。
+
+    为什么不在两种源之间互相转换（把 OpenList 的条目名当成 QAS 的 path 用）：
+    QAS 的 /delete_file 需要 fid 或**完整 path**，而 OpenList 的条目名不含
+    父目录，转换需要猜父目录 —— 猜错就是删掉别的东西。宁可要求
+    「谁列出来的谁删」，也不做可能误删的路径拼接。
+    """
+    src = source or LIBRARY_SOURCE_OPENLIST
+    if src == LIBRARY_SOURCE_OPENLIST:
+        if not openlist.is_configured():
+            return {"success": False, "deleted": 0, "failed": 0, "history_synced": 0,
+                    "results": [], "source": src,
+                    "message": "未配置 OpenList 地址，无法在 OpenList 侧删除"}
+        dir_path = (entries[0].get("dir") if entries and isinstance(entries[0], dict)
+                    else None) or get_library_root()
+        names = [e.get("name") for e in entries if isinstance(e, dict) and e.get("name")]
+        res = openlist.remove(names, dir_path=dir_path)
+        if not res.get("success"):
+            return {"success": False, "deleted": 0, "failed": res.get("failed", 0),
+                    "history_synced": 0, "results": res.get("results", []),
+                    "source": src, "message": res.get("message", "删除失败")}
+        # 历史同步与 QAS 侧同一口径：精确匹配，宁可不删也不误删
+        synced = 0
+        results = []
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            name = e.get("name") or ""
+            title = e.get("title") or name
+            if _sync_history_for(title, sync_history):
+                synced += 1
+            results.append({"name": name, "ok": True, "message": "已删除",
+                            "history": "已同步清理" if sync_history else "未同步"})
+        return {"success": True, "deleted": res.get("deleted", 0), "failed": 0,
+                "history_synced": synced, "results": results, "source": src,
+                "message": ""}
+    res = delete_entries(entries, sync_history=sync_history)
+    res["source"] = LIBRARY_SOURCE_QAS
+    return res
+
+
+def reconcile_tasks(root=None):
+    """QAS 任务 ↔ 网盘实际内容 对账（issue #27 追问的「同时管理任务条目」）。
+
+    这是「引入 OpenList 之后顺手能拿到」的能力：任务条目仍在 QAS 侧管理
+    （增删都是 QAS 的 tasklist），但「这条任务在网盘上还有没有对应内容」
+    只有文件侧说得清 —— 之前没有反查能力，所以任务失效了也看不出来。
+    """
+    res = list_tasks()
+    if not res.get("success"):
+        return {"success": False, "checked": 0, "missing": [], "unverified": [],
+                "orphans": [], "scanned_dirs": 0, "truncated": False,
+                "message": res.get("message", "读取 QAS 任务失败")}
+    return openlist.reconcile_tasks(res.get("tasks", []),
+                                    root=root or get_library_root())

@@ -21,7 +21,7 @@ _TZ_OFFSETS = {
 _TZ_OFFSET = _TZ_OFFSETS.get(_TZ_NAME, 8)
 LOCAL_TZ = timezone(timedelta(hours=_TZ_OFFSET))
 
-_SENSITIVE_FIELDS = {"qas_token", "auth_pass", "douban_cookie"}
+_SENSITIVE_FIELDS = {"qas_token", "auth_pass", "douban_cookie", "openlist_pass"}
 
 
 def _is_encrypted(val):
@@ -65,6 +65,12 @@ DEFAULT_CONFIG = {
     "tmdb_api_key": os.environ.get("TMDB_API_KEY", ""),
     "tmdb_base_url": os.environ.get("TMDB_BASE_URL", ""),
     "tmdb_proxy": os.environ.get("TMDB_PROXY", ""),
+    # OpenList 媒体库数据源（issue #27 追问）：配置后媒体库目录浏览
+    # 改由 OpenList 回答（对夸克驱动有列表缓存），解决「访问太慢」；
+    # 留空则回落到 QAS 直连，媒体库照常可用。
+    "openlist": os.environ.get("OPENLIST", ""),
+    "openlist_user": os.environ.get("OPENLIST_USER", "admin"),
+    "openlist_pass": os.environ.get("OPENLIST_PASS", ""),
 }
 
 DEFAULT_SETTINGS = {
