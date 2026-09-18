@@ -166,13 +166,23 @@ MEASURE = r"""
     const rootEl = document.getElementById('cfg_openlist_root');
     const rootH = rootEl ? Math.round(rootEl.getBoundingClientRect().height) : 0;
     let rootHit = false;
-    if (rootEl && inViewport(rootEl)) {
-      const [rx, ry] = centerOf(rootEl);
-      rootHit = document.elementFromPoint(rx, ry) === rootEl;
+    let rootInVp = false;
+    if (rootEl) {
+      // 与上面的输入框同理：elementFromPoint 只对**视口内**的点有效。
+      // 移动端视口比子分区还矮，scrollIntoView({block:'center'}) 无法把
+      // 最后一个字段推进视口 —— 此时 rootHit=false 只说明「滚不进来」，
+      // 不能据此判「点不到」（那是假阳性）。先显式滚进视口，再用 inViewport
+      // 作为判定前置条件，与 openInVp 完全同口径。
+      rootEl.scrollIntoView({block: 'center'});
+      rootInVp = inViewport(rootEl);
+      if (rootInVp) {
+        const [rx, ry] = centerOf(rootEl);
+        rootHit = document.elementFromPoint(rx, ry) === rootEl;
+      }
     }
     d.open = wasOpen;
     return {closedH, openH, openInputH, openInVp, openHit: hit,
-            closedInVp, closedHit, rootH, rootHit};
+            closedInVp, closedHit, rootH, rootHit, rootInVp};
   })();
   const cards = [...document.querySelectorAll('#tabSettings .settings-grid > .card')]
     .map((c, i) => {
@@ -339,6 +349,9 @@ def main():
                         fail("折叠子分区内缺少「路径前缀」输入框（cfg_openlist_root）："
                              "OpenList 挂载点与网盘路径不一致时用户无处可配，"
                              "只能看着「已回落」")
+                    elif not cs.get("rootInVp"):
+                        fail("「路径前缀」输入框滚不进视口（探针前置条件不成立，"
+                             "不能据此判定可点）")
                     elif not cs.get("rootHit"):
                         fail("「路径前缀」输入框展开后点不到，用户无法修复回落问题")
 
@@ -388,10 +401,22 @@ def main():
               const b = document.getElementById('openlistSubBadge');
               const i = document.getElementById('cfg_openlist');
               const rc = i ? i.getBoundingClientRect() : null;
+              // 令牌输入（issue #27 追问）：必须比「账号」更靠前 —— 顺序即优先级，
+              // 用户一眼能看出「填了令牌就不走登录」。这是纯视觉/顺序问题，
+              // 静态扫描只能证明元素存在，证明不了它排在账号前面。
+              const tk = document.getElementById('cfg_openlist_token');
+              const usr = document.getElementById('cfg_openlist_user');
+              const tkc = tk ? tk.getBoundingClientRect() : null;
+              const usc = usr ? usr.getBoundingClientRect() : null;
+              const hint = document.getElementById('openlistAuthHint');
               return {
                 open: !!(d && d.open),
                 badge: b ? b.textContent.trim() : '',
                 inputH: rc ? Math.round(rc.height) : 0,
+                tokenH: tkc ? Math.round(tkc.height) : 0,
+                tokenBeforeUser: !!(tkc && usc && tkc.top < usc.top),
+                tokenType: tk ? tk.type : '',
+                hintMentionsPerm: !!(hint && hint.textContent.indexOf('权限') >= 0),
               };
             }""")
             report.append({"label": "OpenList 未配置(1440x900)", **ol})
@@ -403,6 +428,18 @@ def main():
                     ol["badge"]))
             if ol["inputH"] <= 0:
                 problems.append("[OpenList 未配置] 地址输入框不可见，无法配置")
+            if ol["tokenH"] <= 0:
+                problems.append("[OpenList 未配置] 令牌输入框不可见，无法配置令牌鉴权")
+            if ol["tokenType"] != "password":
+                problems.append("[OpenList 未配置] 令牌输入框不是 password 类型"
+                                "（令牌是可直接冒充该用户的全权凭据，不应明文显示，"
+                                "当前 {}）".format(ol["tokenType"]))
+            if not ol["tokenBeforeUser"]:
+                problems.append("[OpenList 未配置] 令牌输入未排在账号之前："
+                                "顺序即优先级，排在账号后面会出现「两个都填了到底用哪个」的困惑")
+            if not ol["hintMentionsPerm"]:
+                problems.append("[OpenList 未配置] 令牌说明未提到「权限」："
+                                "用户会以为令牌能获得更大权限")
             page.close()
 
             browser.close()
@@ -420,9 +457,10 @@ def main():
                 print("{:<26} 页高 {:<6} 卡片底部空白 [{}]".format(
                     m["label"], m["tabH"], blanks))
             else:
-                print("{:<26} 折叠态 {:<4} 徽标 {!r} 输入框高 {}".format(
-                    m["label"], "展开" if m.get("open") else "收起",
-                    m.get("badge", ""), m.get("inputH", "")))
+                print("{:<26} 折叠态 {:<4} 徽标 {!r} 输入框高 {} 令牌框高 {} 令牌先于账号 {}"
+                      .format(m["label"], "展开" if m.get("open") else "收起",
+                              m.get("badge", ""), m.get("inputH", ""),
+                              m.get("tokenH", ""), m.get("tokenBeforeUser", "")))
         print()
         if problems:
             print("发现 {} 处问题：".format(len(problems)))

@@ -72,6 +72,15 @@ class LibraryRouteMixin:
             src = media_library.library_source()
             info = {"source": src, "openlist": openlist.is_configured()}
             if info["openlist"]:
+                # 鉴权方式（令牌 / 账号密码 / 游客）来自配置，不依赖可达性 ——
+                # 用户问「我现在到底在用哪种鉴权」时不该因为网络不通就答不上来。
+                # 与「真的列一次目录」的自检是**互补**的两件事：前者答「凭据是什么」，
+                # 后者答「这套凭据 + 这个路径前缀能不能真的读到目录」。
+                info["openlist_auth"] = openlist.auth_status()
+                info["openlist_auth_mode"] = info["openlist_auth"].get("mode", "")
+                # 路径前缀也要带回：前缀填错时「登录通过但列目录失败」，
+                # 前端要靠它把用户引到「路径前缀」而不是「地址写错了」。
+                info["openlist_root_prefix"] = openlist._root_prefix()
                 params = self._get_query_params()
                 probe = str(params.get("path") or "").strip() or media_library.get_library_root()
                 if ".." in probe:
@@ -84,7 +93,10 @@ class LibraryRouteMixin:
                 info["openlist_path"] = chk.get("openlist_path", "")
                 info["openlist_browse_path"] = chk.get("browse_path", "")
                 info["openlist_count"] = chk.get("count", 0)
-                info["openlist_root_prefix"] = openlist._root_prefix()
+                # 「配置里写的」与「服务端实际接受的」可能不同（例如令牌写错、
+                # 账号密码被 OpenList 侧改过），两者都带给前端，让提示能落地。
+                info["openlist_auth_source"] = openlist.ping().get("mode", "")
+                info["openlist_auth_label"] = info["openlist_auth"].get("mode_label", "")
                 if not chk.get("success"):
                     # 自检失败时，「谁在回答」会回落成 qas；让 source 如实反映，
                     # 前端文案才不会和徽标自相矛盾。

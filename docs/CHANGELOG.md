@@ -2,7 +2,112 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
-## [当前] 修复「配了 OpenList 却仍回落」（issue #27 追问）
+## [当前] OpenList 改为「令牌优先」鉴权，并与路径前缀联立（issue #27 追问）
+
+> 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户追问：
+> 「可以把 OpenList 的验证方式变成 OpenList 令牌验证吗，是不是令牌验证的权限更大一点？」
+
+**先回答那个「是不是权限更大」：不是。** 这一点必须写在最前面，因为按
+「令牌权限更大」去理解，后面的设计就全错了。OpenList 的 `Authorization`
+就是 `/api/auth/login` 换来的那个 JWT，`/api/me` 自省时收的也是它
+（Bearer 前缀可有可无）—— 它只回答「你是谁」。能列什么、能不能删，
+取决于该用户的**角色与目录权限**：管理员令牌 = 管理员权限（与用管理员
+账号密码登录完全等价），普通用户令牌 = 普通用户权限，游客令牌 = 游客。
+所以「令牌 → 权限变大」是个误解；令牌真正的收益是**少一轮登录往返**，
+以及**不受 OpenList 侧改密影响**。
+
+不过有一条真实的关联值得单独说：**游客模式下令牌是唯一能提权的办法**。
+如果 OpenList 关闭了匿名访问（`GuestLogin=false`，该覆盖项含 WebDAV），
+不填凭据会被 401；填了任何一个账号的令牌，就获得该账号的权限。
+
+**实现：鉴权优先级 = 令牌 → 账号密码 → 游客**
+
+- 配了令牌就把它原样放进 `Authorization` **直发**，完全不发登录请求
+  —— 这才叫「令牌验证」；若实现成「先登录、再拿令牌请求」，省下的那轮根本没省。
+- 未配令牌才用 `openlist_user` + `openlist_pass` 登录（结果进进程内缓存）。
+- 都不填仍是游客模式（不带 `Authorization`），保持既有行为不变。
+- 只填密码（账号留空）依旧走登录 —— 历史上这是有效的登录组合，
+  当成游客会让用户拿到莫名的 401。
+
+**两个在实现时特意处理掉的坑**
+
+1. **令牌失效不能走 401 自动重登。** 账号密码路径重登是对的（登录 token
+   会因重启/过期失效），但手填令牌无从「重新登录」—— 重发同一个令牌
+   只是白等一轮，最后用户还是只看到「读取失败」。现在令牌路径直接如实
+   报错，并在消息里点明「令牌无效或已过期」，用户才知道改哪个字段。
+2. **改令牌必须立刻生效。** 鉴权缓存若只按 `base` 失效，用户从账号密码
+   改成令牌后 base 没变，会继续吃着旧的登录 token —— 现象是「保存了，
+   但没生效」，且完全看不出来。缓存键改成凭据指纹（密钥+令牌+账号+密码
+   的哈希），任一改动自然失效；指纹只用于比对，不进任何响应。
+
+**改动**
+
+- `app_modules/openlist.py`：`_token()` → `_resolve_auth()` + `_login()`，
+  新增 `auth_status()`（不联网，只回答「配置里有什么」）与
+  `AUTH_TOKEN/PASSWORD/GUEST/MIXED` 常量；`ping()` 返回值补 `mode`/`mode_label`。
+- `app_modules/config.py` / `routes_config.py` / `routes_library.py`：
+  新增 `openlist_token`（进 `_SENSITIVE_FIELDS`，加密落盘 + `***` 脱敏回传 +
+  留空表示不修改）；`/api/library/source` 自检带回 `openlist_auth` /
+  `openlist_auth_mode` / `openlist_auth_source`。
+- `static/src/body.html` / `scripts/settings.js`：令牌输入放在**账号之前**
+  （顺序即优先级），并写明「令牌不会获得额外权限」；自检提示会显示
+  「令牌鉴权 / 账号密码登录 / 游客模式 + 身份」。
+- 文案与文档：README 环境变量表、`.env.example`、设置页提示三处口径统一。
+
+**验证证据**
+
+- `tests/test_openlist.py` 新增 12 条：令牌直发（断言**没有任何登录请求**）、
+  令牌优先于账号密码、401 不重登且消息含「令牌」、换令牌立刻生效、
+  只填密码不退化成游客、`auth_status` 四态、`ping` 带回鉴权方式、
+  令牌的脱敏/加密/`***` 不修改。
+- `tests/test_build.py` 新增 2 条门禁：令牌鉴权端到端接线（含「令牌未优先于
+  登录」与「401 重登未与令牌路径区分」两条防回退断言）、UI 不得暗示
+  「令牌权限更大」。
+- `scripts/check_settings_dom.py` 新增 4 条度量断言（渲染后才能验的部分）：
+  令牌框可见、类型为 `password`、**排在账号输入框之前**、说明文案提到「权限」。
+- 全量 `pytest` → **393 passed**；`ruff check .` 通过；
+  `check_settings_dom.py --serve` → 0 问题（10 组视口，超宽屏页高 1194px 仍低于
+  1500px 门禁）；媒体库 / 概览页 / 日志栏 / 对比度四套走查 0 问题；
+  前端产物已重建。
+
+**与「路径前缀（配了却仍回落）」那一轮的合并**
+
+两轮改的是**同一段自检链路**，语义必须联立，不能取一边丢一边：
+
+- **`/api/library/source` 同时回答三件事** ——「配置里是什么凭据」（`auth_status`，
+  不联网）、「服务端实际接受了什么身份」、「真的列一次目录的结果」（`self_check`）。
+  合并前的两侧各答一半：只看 `ping` 会把「前缀填错」误判成可用，只看 `self_check`
+  又答不出「我到底在用令牌还是账号密码」。`openlist_root_prefix` / `openlist_stage`
+  / `openlist_path` / `openlist_count` 与 `openlist_auth*` 一并回传。
+- **自检文案分档**：`stage=list`（登录已通过、列目录失败）优先提示「路径前缀没填对」，
+  而不是让用户去翻令牌；只有「没有可用凭据」时才提示去填令牌。
+  令牌路径再补一句「令牌不会获得额外权限」——用户问的就是这个。
+- **配置校验按字段各管各的**：`openlist_token`（敏感字段，留空/`***` 不修改）与
+  `openlist_root`（绝对路径、禁 `..`）是两个独立维度 —— 前者决定「以谁的身份请求」，
+  后者决定「路径怎么拼」，缺任一个都表现为回落 QAS。
+- **设置页顺序即优先级**：令牌 → 账号密码 → 路径前缀，说明文案两轮的说法合并成一条。
+- 反向验证仍成立：把令牌框挪到账号之后、或去掉「登录已通过…路径前缀」分档提示，
+  `check_settings_dom.py` / `tests/test_build.py` 对应断言会失败。
+- 新增 `tests/test_build.py::test_openlist_selfcheck_keeps_auth_and_path_semantics`：
+  把「鉴权侧字段」与「路径自检侧字段」**同时存在**钉死，任一侧被合并掉即失败。
+- 合并后实测：`pytest` → **403 passed**；`ruff check .` 通过；
+  `check_settings_dom.py --serve` 10 组视口 0 问题；`check_library_dom.py` 0 问题；
+  概览页 9 组、日志栏 10 组、登录页 10 组、对比度 18 组全部 0 问题；
+  产物连续两次构建 md5 一致（`9deb85f2…`）。
+
+**合并中顺手修掉的走查假阳性**
+
+`check_settings_dom.py` 的「路径前缀输入框可点」探针在 390px 移动端报「点不到」。
+实为探针缺陷而非布局缺陷：移动端视口比 OpenList 子分区还矮，
+`scrollIntoView({block:'center'})` 无法把**最后一个**字段推进视口，
+于是 `elementFromPoint` 根本没执行、`rootHit` 恒为 false。
+与同文件里账号输入框的写法对齐——先显式滚进视口，再用 `inViewport`
+作为判定前置条件（滚不进来时报「前置条件不成立」，而不是误判「点不到」）。
+修后 10 组视口 0 问题。
+
+---
+
+## [此前] 修复「配了 OpenList 却仍回落」（issue #27 追问）
 
 > 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户追问：
 > 「为什么我配置了 OpenList，但还是 OpenList 回落了」（附媒体库截图，
@@ -55,6 +160,7 @@ OpenList 的 `/api/fs/list` 会稳定返回 500（`storage not found` / `failed 
 - `scripts/check_library_dom.py` / `check_settings_dom.py` / `check_overview_dom.py` /
   `check_log_panel_dom.py` / `check_contrast.py` 全部 0 处问题；
   前端产物重建三次 md5 一致（无漂移）。
+
 
 ## [当前] 媒体库接入 OpenList 数据源 + QAS 任务对账（issue #27 追问）
 
