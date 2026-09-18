@@ -625,3 +625,51 @@ def test_route_library_refresh_param_bypasses_cache():
         h2 = _make_handler(params={"path": "/媒体库"})
         h2._handle_library_get("/api/qas/library")
         assert media_library._lib_cache_get("path:/媒体库") is not None
+
+
+# ---------------------------------------------------------------- 合并 OpenList 数据源后的缓存语义
+# 背景：「媒体库打开慢」(#42) 与「接入 OpenList 数据源」(#43) 两轮改动在同一个
+# 目录读取链路上交汇 —— 前者引入后端 30s 目录缓存与 refresh 绕过，后者把目录
+# 读取改为「OpenList 优先、失败回落 QAS」。合并后必须保证两件事不互相抵消：
+#   1. refresh=1（前端刷新）在 OpenList 与 QAS 两级上都要生效；
+#   2. 回落 QAS 时同样遵守 refresh 语义，不能「装了 OpenList 之后 QAS 缓存就不受控」。
+
+
+def test_list_library_entries_refresh_bypasses_qas_cache_on_fallback():
+    """OpenList 未配置 → 回落 QAS；此时 refresh 仍必须能绕过 QAS 目录缓存。"""
+    media_library.invalidate_library_cache()
+    fake = _FakeClient(savepath_resp=_resp([]))
+    with patch.object(media_library, "_client", return_value=fake), \
+         patch.object(media_library.openlist, "is_configured", return_value=False):
+        media_library.list_library_entries(path="/媒体库")             # 普通打开 → 写缓存
+        assert media_library._lib_cache_get("path:/媒体库") is not None
+        media_library.invalidate_library_cache()
+        res = media_library.list_library_entries(path="/媒体库", refresh=True)
+        assert res["source"] == "qas" and res["fallback"] is False
+        assert media_library._lib_cache_get("path:/媒体库") is None, \
+            "refresh=True 时 QAS 侧不应写回缓存（否则下次普通打开会拿到强制刷新的旧数据）"
+
+
+def test_list_library_entries_qas_fallback_uses_cache_without_refresh():
+    """回落 QAS 时的普通打开仍应命中缓存（缓存不是被 OpenList 的引入废掉的）。"""
+    media_library.invalidate_library_cache()
+    fake = _FakeClient(savepath_resp=_resp([]))
+    with patch.object(media_library, "_client", return_value=fake), \
+         patch.object(media_library.openlist, "is_configured", return_value=False):
+        media_library.list_library_entries(path="/媒体库")
+        res = media_library.list_library_entries(path="/媒体库")
+    assert res["success"] and res["source"] == "qas"
+    assert media_library._lib_cache_get("path:/媒体库") is not None
+
+
+def test_list_library_entries_openlist_failure_falls_back_and_labels_source():
+    """OpenList 配了但不可用 → 回落 QAS，并如实标注 fallback=True（用户要能归因）。"""
+    media_library.invalidate_library_cache()
+    fake = _FakeClient(savepath_resp=_resp([]))
+    with patch.object(media_library, "_client", return_value=fake), \
+         patch.object(media_library.openlist, "is_configured", return_value=True), \
+         patch.object(media_library.openlist, "list_dir",
+                      return_value={"success": False, "message": "OpenList 不可达"}):
+        res = media_library.list_library_entries(path="/媒体库", refresh=True)
+    assert res["success"] is True
+    assert res["source"] == "qas" and res["fallback"] is True

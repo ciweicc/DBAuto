@@ -1038,6 +1038,29 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .settings-group:not([open])>summary::after{transform:rotate(-45deg)}
 .settings-group>.settings-grid{margin:0;padding:16px 16px 4px}
 
+/* 设置卡内的可折叠子分区（如「转存服务」卡里的「媒体库文件源（OpenList）」）：
+   用细分隔线 + 标题把两组字段分开；默认收起以遵守设置页高度门禁（issue #15）。 */
+.set-sub{margin-top:14px;padding-top:12px;border-top:1px solid var(--border)}
+.set-sub>summary{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;
+  color:var(--text1);cursor:pointer;list-style:none}
+.set-sub>summary::-webkit-details-marker{display:none}
+.set-sub>summary::after{content:"▾";margin-left:6px;color:var(--text3);font-size:11px;
+  transition:transform var(--transition-fast)}
+.set-sub[open]>summary::after{transform:rotate(180deg)}
+.set-sub>summary:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:var(--radius-xs)}
+.set-sub-badge{margin-left:auto;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:600;
+  border:1px solid var(--border);background-color:var(--field-bg);color:var(--text3)}
+.set-sub-badge.on{color:var(--green);border-color:var(--green-border);background-color:var(--green-wash)}
+.set-sub .set-fields{margin-top:10px}
+
+/* 同一行两字段（设置页高度有硬门禁：字段各占一行会把整页顶过上限）。
+   用网格而不是 flex：两列表格标签 + 输入框能各自对齐，不会因标签长短而错位。 */
+.form-group-inline{display:grid;grid-template-columns:auto minmax(0,1fr) auto minmax(0,1fr);
+  gap:8px;align-items:center}
+.form-group-inline label{margin:0}
+.form-group-inline .pwd-wrap{min-width:0}
+@media (max-width:560px){.form-group-inline{grid-template-columns:1fr;gap:6px}}
+
 /* ===== 设置页：字段提示与卡片动作位 ===== */
 .form-hint{font-size:var(--fs-sm);color:var(--text3);line-height:1.5;margin-top:6px}
 .form-hint a{color:var(--accent);text-decoration:none}
@@ -1833,6 +1856,35 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   cursor:pointer;flex:0 0 auto}
 .lib-selectall input{cursor:pointer}
 .lib-tip{color:var(--text3);font-size:12px;margin-top:8px;line-height:1.5}
+/* 数据源徽标（issue #27 追问）：用实色底 + 边框，避免与卡片半透明底「融」在一起，
+   否则「OpenList / QAS」这种只差几个字的信息一眼扫不到。 */
+.lib-src-badge{display:inline-flex;align-items:center;margin-left:8px;padding:1px 7px;
+  border-radius:999px;font-size:11px;font-weight:600;letter-spacing:.02em;
+  border:1px solid var(--border);background-color:var(--field-bg);color:var(--text2);
+  vertical-align:1px}
+.lib-src-badge.lib-src-ol{color:var(--green);border-color:var(--green-border);
+  background-color:var(--green-wash)}
+.lib-src-badge.lib-src-qas{color:var(--orange);border-color:var(--orange-border);
+  background-color:var(--orange-wash)}
+/* 任务对账（issue #27 追问）：只读巡检结果。两组之间用分隔线 + 标题层级区分，
+   「失效」用警示色，「未核对/孤立」保持中性 —— 三类结论的危险程度不同，
+   配色相同会让人以为它们一样需要处理。 */
+.audit-group{margin-top:12px}
+.audit-group-title{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;
+  font-size:13px;font-weight:600;color:var(--text1);margin-bottom:6px}
+.audit-group-note{font-size:12px;font-weight:400;color:var(--text3)}
+.audit-bad .audit-group-title{color:var(--red)}
+.audit-bad .lib-table{border-color:var(--red-border)}
+.audit-group-list{display:flex;flex-wrap:wrap;gap:6px}
+.audit-chip{padding:3px 9px;border-radius:var(--radius-xs);font-size:12px;
+  color:var(--text2);border:1px solid var(--border);background-color:var(--field-bg);
+  max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lib-table-audit .lib-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr) minmax(0,1.4fr)}
+@media (max-width:760px){
+  /* 窄屏：对账表把「结论」收成整行，避免三列都被压成省略号 */
+  .lib-table-audit .lib-row{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}
+  .lib-table-audit .lib-row > .lib-sub:last-child{display:none}
+}
 @media (max-width:760px){
   .lib-row{padding:8px 6px;gap:8px}
   /* 触屏下勾选框再放大一档，避免 18px 目标点不准（视觉尺寸不变，只放热区） */

@@ -49,6 +49,11 @@ STUBS = {
             "auth_user": "root",
             "tmdb_base_url": "",
             "tmdb_proxy": "",
+            # OpenList「已配置」：子分区默认收起，这才是日常使用时的形态
+            # —— 高度门禁量的必须是常态，而不是「第一次来配置」的临时展开态。
+            # （未配置时自动展开由 check_library_dom / 设置页本身的行为覆盖。）
+            "openlist": "http://192.168.1.1:5244",
+            "openlist_user": "admin",
         },
         "schedule": {
             "_next_runs": {},
@@ -90,12 +95,24 @@ MEASURE = r"""
   const content = q('.content');
   // 卡片底部纯空白 = 卡片底边 - 卡片内「最后一个可见内容」的底边。
   // 只取有文本、或是输入控件/密码眼睛按钮的元素，避免把布局占位算成内容。
+  // 折叠 <details> 内部的元素：必须整体跳过。
+  // 踩坑（本轮实测）：`<details>` 收起时，其**内容**的 getBoundingClientRect 仍是
+  // 展开后的几何（浏览器只为渲染隐藏，不为布局清空），于是「内容底边」会算到
+  // 卡片外面，量出 -193px 这种无意义的「负数空白」。不跳过的话，
+  // 既读不出真实留白，也会把后续真正超高的卡片掩盖掉。
+  const inCollapsedDetails = (e) => {
+    for (let p = e; p; p = p.parentElement) {
+      if (p.tagName === 'DETAILS' && !p.open) return true;
+    }
+    return false;
+  };
   const blankOf = (card) => {
     const r = card.getBoundingClientRect();
     let bottom = r.top;
     card.querySelectorAll('*').forEach(e => {
       const cs = getComputedStyle(e);
       if (cs.display === 'none' || cs.visibility === 'hidden') return;
+      if (inCollapsedDetails(e)) return;
       const isInput = e.tagName === 'INPUT' || e.tagName === 'TEXTAREA' || e.tagName === 'BUTTON';
       if (!e.textContent.trim() && !isInput) return;
       const b = e.getBoundingClientRect().bottom;
@@ -103,6 +120,49 @@ MEASURE = r"""
     });
     return Math.round(r.bottom - bottom);
   };
+  // 折叠子分区（如「媒体库文件源（OpenList）」）的完整性：字段必须在展开后可见、
+  // 收起后真的点不到 —— 否则「折叠」只是视觉假象，用户根本无法配置。
+  const collapsedSub = (() => {
+    const d = document.querySelector('#tabSettings details.set-sub');
+    if (!d) return null;
+    const input = d.querySelector('input, select, textarea');
+    if (!input) return null;
+    const wasOpen = d.open;
+    // 注意：elementFromPoint 只对**视口内**的点有效，设置页在 900px 高的视口里
+    // 必然有一半在折叠线以下。因此命中测试前先把子分区滚进视口，
+    // 否则会把「在页面下方」误判成「点不到」（本轮实测 7 组视口全中这个假阳性）。
+    const centerOf = (el) => {
+      const rc = el.getBoundingClientRect();
+      return [rc.left + rc.width / 2, rc.top + rc.height / 2];
+    };
+    const inViewport = (el) => {
+      const rc = el.getBoundingClientRect();
+      return rc.top >= 0 && rc.bottom <= window.innerHeight && rc.height > 0 && rc.width > 0;
+    };
+    d.open = true;
+    d.scrollIntoView({block: 'center'});
+    d.open = true;
+    const openH = Math.round(d.getBoundingClientRect().height);
+    const openInputH = Math.round(input.getBoundingClientRect().height);
+    const openInVp = inViewport(input);
+    let hit = false;
+    if (openInVp) {
+      const [x, y] = centerOf(input);
+      hit = document.elementFromPoint(x, y) === input;
+    }
+    d.open = false;
+    d.scrollIntoView({block: 'center'});
+    const closedInVp = inViewport(input);
+    let closedHit = false;
+    if (closedInVp) {
+      const [x, y] = centerOf(input);
+      closedHit = document.elementFromPoint(x, y) === input;
+    }
+    const closedH = Math.round(d.getBoundingClientRect().height);
+    d.open = wasOpen;
+    return {closedH, openH, openInputH, openInVp, openHit: hit,
+            closedInVp, closedHit};
+  })();
   const cards = [...document.querySelectorAll('#tabSettings .settings-grid > .card')]
     .map((c, i) => {
       const r = c.getBoundingClientRect();
@@ -128,6 +188,7 @@ MEASURE = r"""
     viewportH: window.innerHeight,
     docOverflowX: document.documentElement.scrollWidth - window.innerWidth,
     contentOverflowX: content ? content.scrollWidth - content.clientWidth : 0,
+    collapsedSub,
   };
 }
 """
@@ -242,6 +303,28 @@ def main():
                         worst["title"].strip() or "#{}".format(worst["i"]),
                         worst["blank"], MAX_CARD_BLANK))
 
+                # 折叠子分区（如「媒体库文件源（OpenList）」）：
+                # 折叠是为了守住设置页高度门禁（issue #15），但绝不能变成「配不了」。
+                # 因此必须：① 收起时明显矮于展开；② 展开后存在可点的输入框；
+                # ③ 收起后该输入框点不到（否则折叠只是视觉假象，Tab 仍会走进去）。
+                cs = m.get("collapsedSub")
+                if cs is None:
+                    fail("设置页缺少可折叠子分区（details.set-sub）："
+                         "低频子分区必须折叠以守住高度门禁")
+                else:
+                    if cs["openH"] <= cs["closedH"]:
+                        fail("折叠子分区展开后高度未增加（收起 {}px / 展开 {}px）："
+                             "折叠形同虚设".format(cs["closedH"], cs["openH"]))
+                    if cs["openInputH"] <= 0:
+                        fail("折叠子分区展开后输入框不可见（高 {}px）".format(cs["openInputH"]))
+                    if not cs["openInVp"]:
+                        fail("折叠子分区展开后输入框仍滚不进视口（探针前置条件不成立，"
+                             "不能据此判定可点）")
+                    elif not cs["openHit"]:
+                        fail("折叠子分区展开后输入框点不到：用户无法配置")
+                    if cs["closedInVp"] and cs["closedHit"]:
+                        fail("折叠子分区收起后输入框仍可点：折叠只是视觉假象")
+
                 # 超宽视口必须把设置页压到 MAX_WIDE_TAB_H 以内：
                 # 这是 issue #15 的核心指标（修复前 2560px 下 1756px 高）。
                 if width >= 1600 and m["tabH"] > MAX_WIDE_TAB_H:
@@ -256,6 +339,55 @@ def main():
                             c["title"].strip() or "#{}".format(c["i"]), c["fieldW"], MIN_FIELD_W))
 
                 page.close()
+
+            # --- OpenList 子分区「未配置」态：必须默认展开 ---
+            # 折叠是为了省高度，但「没配过」的用户正是来配它的，
+            # 收起等于把入口藏起来（用户只会看到媒体库慢，找不到在哪儿改）。
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")
+
+            def handler_no_ol(route):
+                url = route.request.url
+                if "/api/" in url:
+                    path = url.split(str(PORT), 1)[-1].split("?")[0]
+                    if path.rstrip("/").endswith("/api/sse"):
+                        return route.fulfill(status=200, content_type="text/event-stream",
+                                             body=b"")
+                    if path == "/api/settings/all":
+                        stub = json.loads(json.dumps(STUBS["/api/settings/all"]))
+                        stub["config"]["openlist"] = ""
+                        return route.fulfill(status=200, content_type="application/json",
+                                             body=json.dumps(stub).encode())
+                    return route.fulfill(status=200, content_type="application/json",
+                                         body=json.dumps(STUBS.get(path, {})).encode())
+                return route.fallback()
+
+            page.route("**/*", handler_no_ol)
+            page.goto(URL, wait_until="load", timeout=20000)
+            page.evaluate("()=>switchTab('settings')")
+            page.wait_for_timeout(800)
+            ol = page.evaluate(r"""() => {
+              const d = document.getElementById('openlistSubGroup');
+              const b = document.getElementById('openlistSubBadge');
+              const i = document.getElementById('cfg_openlist');
+              const rc = i ? i.getBoundingClientRect() : null;
+              return {
+                open: !!(d && d.open),
+                badge: b ? b.textContent.trim() : '',
+                inputH: rc ? Math.round(rc.height) : 0,
+              };
+            }""")
+            report.append({"label": "OpenList 未配置(1440x900)", **ol})
+            if not ol["open"]:
+                problems.append("[OpenList 未配置] 子分区默认收起："
+                                "用户正是来配置它的，收起等于把入口藏起来")
+            if "未配置" not in ol["badge"]:
+                problems.append("[OpenList 未配置] 状态徽标未显示「未配置」（{!r}）".format(
+                    ol["badge"]))
+            if ol["inputH"] <= 0:
+                problems.append("[OpenList 未配置] 地址输入框不可见，无法配置")
+            page.close()
+
             browser.close()
     finally:
         if httpd is not None:
@@ -266,9 +398,14 @@ def main():
                          ensure_ascii=False, indent=2))
     else:
         for m in report:
-            blanks = ", ".join(str(c["blank"]) for c in m["cards"])
-            print("{:<26} 页高 {:<6} 卡片底部空白 [{}]".format(
-                m["label"], m["tabH"], blanks))
+            if "cards" in m:
+                blanks = ", ".join(str(c["blank"]) for c in m["cards"])
+                print("{:<26} 页高 {:<6} 卡片底部空白 [{}]".format(
+                    m["label"], m["tabH"], blanks))
+            else:
+                print("{:<26} 折叠态 {:<4} 徽标 {!r} 输入框高 {}".format(
+                    m["label"], "展开" if m.get("open") else "收起",
+                    m.get("badge", ""), m.get("inputH", "")))
         print()
         if problems:
             print("发现 {} 处问题：".format(len(problems)))
