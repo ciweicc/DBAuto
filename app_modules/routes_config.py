@@ -25,7 +25,7 @@ def build_config_payload():
     masked = {}
     for k, v in cfg.items():
         if k in ("qas_token", "auth_pass", "douban_cookie", "tmdb_api_key",
-                 "openlist_pass"):
+                 "openlist_pass", "openlist_token"):
             masked[k] = "***" if v else ""
         else:
             masked[k] = v
@@ -108,9 +108,20 @@ class ConfigRouteMixin:
                             self._send_json({"success": False, "message": "{}: {}".format(k, msg)}, 400)
                             return True
                         cfg[k] = v
+                elif k == "openlist_token":
+                    # OpenList 令牌（issue #27 追问）：与 qas_token 同口径 ——
+                    # 留空 / `***` 表示不修改，避免用户每次保存设置都要重贴一遍令牌。
+                    if v and v != "***":
+                        ok, msg = validate_string(v, min_len=1, max_len=2048)
+                        if not ok:
+                            self._send_json({"success": False, "message": "openlist_token: {}".format(msg)}, 400)
+                            return True
+                        cfg[k] = v
                 elif k == "openlist_root":
                     # OpenList 侧的挂载前缀（issue #27 追问「配了却回落」）。
                     # 留空 = 两边路径同构；填了必须是绝对路径且不含 `..`。
+                    # 与令牌是**两个独立维度**：root 决定「路径怎么拼」，令牌决定
+                    # 「以谁的身份请求」，两者互不替代，缺任一个都会表现为回落 QAS。
                     if v:
                         v = str(v).strip()
                         if not v.startswith("/") or ".." in v.split("/"):

@@ -110,7 +110,14 @@ STUBS = {
     # 数据源自检（issue #27 追问）：桩里 OpenList 视为已配置且可用
     "/api/library/source": {"success": True, "source": "openlist", "openlist": True,
                             "openlist_ok": True, "openlist_user": "admin",
-                            "openlist_message": ""},
+                            "openlist_message": "",
+                            # 鉴权方式（issue #27 追问）：令牌鉴权下自检仍须报「身份」。
+                            "openlist_auth": {"mode": "token", "mode_label": "OpenList 令牌",
+                                              "token_set": True, "user_set": False,
+                                              "password_set": False},
+                            "openlist_auth_mode": "token",
+                            "openlist_auth_source": "token",
+                            "openlist_auth_label": "OpenList 令牌"},
     "/api/dashboard/all": {"stats": {}, "schedule_status": {}, "version": "1.2.0"},
     "/api/history": {"total": 0, "items": {}},
     "/api/tmdb/list": {"items": []},
