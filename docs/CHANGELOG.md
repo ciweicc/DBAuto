@@ -1,7 +1,3 @@
-# 更新日志 (Changelog)
-
-本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
-
 ## [当前] OpenList 只保留令牌鉴权，移除用户名/密码登录（issue #47）
 
 > 对应 [issue #47](https://cnb.cool/ciweicc/DBAuto/-/issues/47) 用户要求：
@@ -41,6 +37,18 @@
 2. 账号密码那条链路要传**明文**密码，多一条凭据就多一份落盘密文与一次
    明文传输；令牌本就是可撤销的授权凭据，没有这个问题。
 
+**与「经常回落」（上一节）的合并说明**
+
+两轮改动落在同一个 `list_dir` 上：鉴权收敛只动了「凭据从哪来」，
+目录成功缓存 / 失败退避只动了「结果要不要复用」。合并后两者**同时生效**：
+
+- 令牌仍是每请求直发的常量（没有任何进程内凭据缓存），
+  `reset_token_cache()` 保留为无操作，只为兼容既有调用方；
+- 目录缓存按「前缀映射后的 OpenList 路径」为键，与凭据无关 ——
+  改令牌不会串数据，改路径前缀会自然换键；
+- 退避窗口内如实回报上次失败的真实 `kind`，
+  前端因此仍能拿到 `fallback_backoff`（「正在自动重试，不必改配置」）。
+
 **验证证据**
 
 - `tests/test_openlist.py` 重写鉴权段（68 条全绿）：`_login` / `AUTH_PASSWORD` /
@@ -57,6 +65,75 @@
 - `python3 scripts/check_settings_dom.py --serve` → 11 组视口 0 问题，
   且新增断言「账号 / 密码入口在实际渲染 DOM 中不存在」（`removedEls`）。
 - `python3 scripts/check_contrast.py` → 18 组全达标。
+
+## [当前] 修复「OpenList 经常回落」（issue #47 追评）
+
+> 对应 [issue #47](https://cnb.cool/ciweicc/DBAuto/-/issues/47) 用户反馈：
+> 「OpenList 经常回落是什么问题？」（附媒体库截图，徽标显示
+> 「QAS（OpenList 回落）」，且缓存 87 项）。
+
+**根因：浏览路径既没有成功缓存、也没有失败退避 —— 「一次慢」被放大成「经常回落」**
+
+前一轮（PR #48）修的是「把慢误判成配错」。这一轮是同一用户紧接着追问的
+**频率**问题：配置确实是对的，OpenList 也确实在工作，但浏览时**经常**落到 QAS。
+
+翻代码后是两个缺机制（不是配置问题）：
+
+1. **OpenList 成功结果不缓存，QAS 回落结果反而进了 30s 缓存**
+   QAS 侧目录有 `LIBRARY_CACHE_TTL = 30s` 短命缓存；OpenList 侧却**每次浏览都实打实
+   打一次网络**（`list_dir` 无本地缓存）。夸克驱动的目录列表在冷启动 / 命中不到
+   OpenList 自身缓存时会超过交互预算（8s）→ 超时 → 回落 QAS，而回落结果又被
+   QAS 缓存 30s。于是用户看到的是「明明配好了却经常回落」，且回落会被粘住。
+2. **失败不退避：刚超时，下一次立刻又捅同一个慢接口**
+   连续三次浏览 = 连续三轮干等 + 三次回落，体感就是「OpenList 老是回落」。
+
+**修了什么**
+
+- `app_modules/openlist.py`
+  - 新增目录级 `OPENLIST_CACHE_TTL = 30`（成功结果短命缓存，键为**前缀映射后**
+    的 OpenList 路径）、`OPENLIST_CACHE_MAX = 64`、
+    `OPENLIST_FAIL_BACKOFF = 20`（失败后的短退避窗口）。
+  - `list_dir` 接入两者：命中成功缓存直接返回（``cached=True``，不打网络）；
+    处于退避窗口则**快速、如实**返回上次的失败（带真实 ``kind``），不再干等。
+  - 退避的「记录」与「使用」分开：交互浏览与刷新都会**记录**失败
+    （refresh 刚超时，紧接着的普通打开不该再等一轮）；但只有交互浏览
+    **使用**退避 —— `refresh=True` 与显式 `timeout`（自检）一律穿透，
+    保证「验证」永远是实时的。
+  - 路径不存在（`KIND_PATH_MISSING`）**不进退避**：用户可能马上就去改前缀，
+    退避反而会让他改完还看不到效果。
+  - 新增 `invalidate_dir_cache()`；`remove()` 成功后作废缓存（与 QAS 侧删除
+    同口径，避免删完再进同一目录还看到已删条目）。
+- `app_modules/media_library.py`：回落时新增透出 `fallback_backoff`
+  （是否处于自动恢复期），供前端给出「正在自动重试，不必改配置」。
+- `app_modules/routes_config.py`：保存配置后同时 `reset_token_cache()` +
+  `invalidate_dir_cache()` —— 改完前缀/凭据立刻生效，不再吃 30s 内的旧回落结果
+  （否则会被误判成「改了也没用」）。
+- `static/src/scripts/library.js`：新增 `libFallbackBackoff`；退避窗口内
+  徽标/提示明确写「系统正在自动重试（约 20 秒内会自动回到 OpenList），
+  **不需要改任何配置**」。
+- `tests/conftest.py`：新增 autouse fixture，在每个用例前后清空
+  `openlist` 与 `media_library` 的进程级缓存 —— 否则新增的目录缓存会跨用例串
+  （实测 `test_missing_path_error_*` 会因缓存命中而假通过）。
+
+**验证证据**
+
+- `python3 -m pytest tests/ -q` → 417 passed。
+  新增 7 条用例：成功结果被缓存（重复打开网络次数 = 1）、缓存键为前缀映射后的
+  路径、超时后进短退避（退避窗内网络次数不再增加且保留真实 `kind`）、
+  `refresh`/自检穿透缓存与退避、删除后作废缓存、回落透传
+  `fallback_kind`/`fallback_backoff`、OpenList 成功时如实标 `source=openlist`。
+- 用例做了**反向验证**：把 `cacheable`/`remember` 强行置 False（等价修复前
+  「不缓存不退避」）后重跑，两条核心用例准确报错
+  （`assert 2 == 1`：网络被重复打），证明不是空断言。
+- `python3 scripts/check_library_dom.py --serve` → 0 问题。
+  新增「回落归因·退避中」一节：退避窗口内徽标必须含「自动重试」且排除
+  「配置错误」。**反向验证**：去掉该分支后脚本准确报出
+  「退避窗口中未告知『正在自动重试』」，确认是真守卫。
+- `python3 -m ruff check .` → All checks passed。
+- `python3 scripts/check_contrast.py` → 18 组 0 组未达标。
+- `python3 -m pytest tests/test_build.py -q` → 98 passed。
+- `static/index_new.html` 已用 `bash static/src/build.sh` 重建（含新增逻辑，
+  `libFallbackBackoff` 出现 4 处）并一并提交。
 
 ## [当前] 修复「OpenList 不可用」把「慢」误报成「配错」（issue #47）
 

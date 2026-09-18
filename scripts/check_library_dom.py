@@ -931,6 +931,58 @@ def main():
                                 .format(badge_title[:80]))
             page.close()
 
+            # --- 6.7 回落归因·退避中（issue #47：「OpenList 经常回落」） ---
+            # 用户反馈「经常回落」：不是每次，但频率高。原因是浏览路径
+            # 既没有成功缓存、也没有失败退避 —— 一次慢查询就回落一次，
+            # 且下一次立刻又捅同一个慢接口，回落被放大成「连续」。
+            # 修复后：OpenList 超时 → 进入约 20 秒自动退避窗口，窗口内的回落
+            # 必须**明确告诉用户「正在自动重试、无需改配置」**。
+            # 这一节锁死这句文案 —— 缺了它，用户会在 20 秒的自动恢复期里
+            # 跑去翻设置、把本来正确的配置改坏。
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")
+
+            def route_backoff(r):
+                url = r.request.url
+                if "/api/" not in url:
+                    return r.fallback()
+                path = url.split(str(PORT), 1)[-1].split("?", 1)[0]
+                if path.rstrip("/").endswith("/api/sse"):
+                    return r.fulfill(status=200, content_type="text/event-stream", body=b"")
+                if path == "/api/qas/library":
+                    qp = url.split("path=", 1)[1].split("&")[0] if "path=" in url else "/"
+                    import urllib.parse
+                    return r.fulfill(status=200, content_type="application/json",
+                                     body=json.dumps({
+                                         "success": True, "path": urllib.parse.unquote(qp),
+                                         "entries": _entries(urllib.parse.unquote(qp)),
+                                         "source": "qas", "fallback": True,
+                                         "fallback_reason": "OpenList 请求失败: 请求超时（timed out）",
+                                         "fallback_kind": "timeout",
+                                         "fallback_backoff": True,
+                                         "message": "",
+                                     }, ensure_ascii=False).encode())
+                if path == "/api/qas/tasks":
+                    return r.fulfill(status=200, content_type="application/json",
+                                     body=json.dumps(dict(_QAS_TASKS), ensure_ascii=False).encode())
+                return r.fallback()
+
+            page.route("**/*", route_backoff)
+            page.goto(URL, wait_until="load", timeout=20000)
+            page.evaluate("()=>switchTab('library')")
+            page.wait_for_timeout(1200)
+            backoff_title = page.evaluate(
+                "()=>{var b=document.getElementById('libSourceBadge');"
+                "return b?(b.getAttribute('title')||''):''}")
+            report.append({"label": "回落归因·退避中(1440x900)"})
+            if "自动重试" not in backoff_title:
+                problems.append("[回落·退避] 退避窗口中未告知「正在自动重试」（title={!r}）："
+                                "用户会在自动恢复期里就跑去改配置".format(backoff_title[:80]))
+            if "不是配置错误" not in backoff_title:
+                problems.append("[回落·退避] 退避窗口未排除「配置错误」（title={!r}）"
+                                .format(backoff_title[:80]))
+            page.close()
+
             # --- 7. QAS 任务删除链路（issue #27 跟进） ---
             # 用户诉求：夸克自动转存为自部署服务，任务条目也要能在 DBAuto 里删。
             log4 = []

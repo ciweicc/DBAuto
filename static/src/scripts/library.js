@@ -163,6 +163,9 @@ var libFallbackReason = '';
 var libFallbackHint = '';
 // 回落归类（issue #47）：只给一句「不可用」，用户无从判断该改哪儿。
 var libFallbackKind = '';
+// 是否处于「OpenList 刚失败」的自动退避窗口（issue #47：「经常回落」）。
+// 退避是短暂且自动的 —— 这类回落不该被描述成「配置坏了」。
+var libFallbackBackoff = false;
 
 // 数据源徽标：让「变快了 / 变慢了」能被归因。
 // 不显示徽标的代价是：用户只能看到「快了点」，不知道是因为 OpenList 生效、
@@ -179,8 +182,10 @@ function _showFallbackHelp(){
     // 地址/令牌/前缀全部重填一遍（issue #47 正是如此）。
     tips = 'OpenList 有响应但太慢（本次等待超时）—— 这**通常不是配置错误**，'
          + '多半是它正在等网盘（如夸克）返回列表。\n'
-         + '建议：稍后重试；若每次都超时，说明该目录在网盘侧确实很慢，'
-         + '可先用 OpenList 自己的网页界面确认目录能不能列出来。';
+         + (libFallbackBackoff
+            ? '系统正在自动重试（约 20 秒内会自动回到 OpenList），**不需要改任何配置**。'
+            : '建议：稍后重试；若每次都超时，说明该目录在网盘侧确实很慢，'
+              + '可先用 OpenList 自己的网页界面确认目录能不能列出来。');
   }else if(libFallbackHint === 'path_prefix'){
     tips = 'OpenList 上找不到这个目录 —— 多半是「路径前缀」没填对。\n'
          + '打开「设置 → 数据源 → 媒体库文件源（OpenList）」，在「路径前缀」里填 OpenList'
@@ -212,7 +217,9 @@ function _renderLibSourceBadge(){
       // 「已回落」本身不是信息，用户需要知道是地址错了还是路径前缀不对。
       // 所以 title 直接给结论 + 修复方向，点开是更完整的步骤。
       var fix = libFallbackKind === 'timeout'
-        ? 'OpenList 响应超时（多半是网盘侧目录拉取慢，不是配置错误）：稍后重试即可。'
+        ? (libFallbackBackoff
+           ? 'OpenList 响应超时（不是配置错误），系统正在自动重试，约 20 秒内会自动回到 OpenList。'
+           : 'OpenList 响应超时（多半是网盘侧目录拉取慢，不是配置错误）：稍后重试即可。')
         : (libFallbackHint === 'path_prefix'
           ? '多半是「路径前缀」没填对：设置 → 数据源 → OpenList 里填 OpenList 挂载夸克网盘的目录。'
           : '到「设置 → 数据源 → OpenList」点「连接自检」看具体原因。');
@@ -591,7 +598,8 @@ async function loadLibrary(path, opts){
     var entries = res.entries || [];
     var meta = {source: res.source, fallback: res.fallback,
                 fallback_reason: res.fallback_reason, fallback_hint: res.fallback_hint,
-                fallback_kind: res.fallback_kind};
+                fallback_kind: res.fallback_kind,
+                fallback_backoff: res.fallback_backoff};
     libCache[target] = { ts: Date.now(), entries: entries, meta: meta };
     _libRememberRows(entries.length);   // 下次首帧骨架按真实条数占位，减少高度跳动
     _renderLibrary(target, entries, false, r.ms, meta);
@@ -629,6 +637,7 @@ function _renderLibrary(path, entries, fromCache, ms, source){
   libFallbackReason = (source && source.fallback_reason) || '';
   libFallbackHint = (source && source.fallback_hint) || '';
   libFallbackKind = (source && source.fallback_kind) || '';
+  libFallbackBackoff = !!(source && source.fallback_backoff);
   libSelected = {};
   libEntries.forEach(function(it, i){
     it._key = it.fid != null ? String(it.fid) : ('p' + i);

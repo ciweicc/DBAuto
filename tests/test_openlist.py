@@ -1106,3 +1106,121 @@ def test_route_library_source_reports_fail_kind_and_budget():
     assert h.sent["openlist_fail_kind"] == openlist.KIND_TIMEOUT
     assert h.sent["openlist_timeout_seconds"] == openlist.OPENLIST_PROBE_TIMEOUT
     assert h.sent["openlist_stage"] == "timeout"
+
+
+# --------------------------------------------- 目录缓存 / 失败退避（issue #47）
+# 背景：用户反馈「OpenList 经常回落」。根因不是配置，而是浏览路径缺了两块：
+#   1. 成功结果不缓存 → 每次打开都实打实打一次网络，网盘侧慢就每次超时；
+#   2. 失败不退避 → 上一次刚超时，下一次立刻又捅一次，回落被放大成「连续」。
+# 下面四条分别锁死「成功缓存」「失败退避」「refresh/自检穿透」「删除后作废」。
+
+def _fake_api_ok(content=None):
+    """返回一个总会成功的 _api 替身，并记录收到的 path（用于数网络次数）。"""
+    seen = {"list": 0, "paths": []}
+
+    def _api(path, data=None, method=None, timeout=None, retry_auth=True):
+        if path.endswith("/fs/list"):
+            seen["list"] += 1
+            seen["paths"].append((data or {}).get("path"))
+        return {"content": content if content is not None else [], "write": True}
+    return seen, _api
+
+
+def test_dir_success_is_cached_so_repeat_open_skips_network():
+    """成功结果进 30s 缓存：重复打开 / 切标签 / 返回父目录不再打网络。
+
+    这是「不再经常回落」的关键 —— 不缓存时，每次打开都要重新面对一次
+    慢查询；慢的那个目录（夸克冷启动）就会「经常」超时。
+    """
+    seen, api = _fake_api_ok([{"name": "电影", "is_dir": True, "size": 0, "modified": ""}])
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "tok")), \
+         patch.object(openlist, "_api", side_effect=api):
+        openlist.invalidate_dir_cache()
+        r1 = openlist.list_dir("/影视/电影")
+        r2 = openlist.list_dir("/影视/电影")
+    assert r1["success"] and r2["success"]
+    assert seen["list"] == 1, "第二次打开必须命中缓存（不再打网络）"
+    assert r2.get("cached") is True
+    # 缓存必须返回条目数据本身，而不是空壳
+    assert [e["name"] for e in r2["entries"]] == ["电影"]
+
+
+def test_dir_cache_is_keyed_by_openlist_path_after_prefix_mapping():
+    """缓存键用**前缀映射后**的 OpenList 路径：不同网盘路径不会串数据。"""
+    seen, api = _fake_api_ok([])
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "tok")), \
+         patch.object(openlist, "_root_prefix", return_value="/夸克"), \
+         patch.object(openlist, "_api", side_effect=api):
+        openlist.invalidate_dir_cache()
+        openlist.list_dir("/影视")
+        openlist.list_dir("/影视/电影")
+    assert seen["paths"] == ["/夸克/影视", "/夸克/影视/电影"], \
+        "缓存键与请求路径都必须是映射后的 OpenList 路径"
+
+
+def test_dir_failure_arms_short_backoff_without_hammering_again():
+    """首次超时 → 短退避：紧接着的打开**不再**实打网络，直接如实返回原因。
+
+    否则连续几次浏览 = 连续几次 8 秒干等，用户体感就是「OpenList 老是回落」。
+    """
+    seen, _api_ok = _fake_api_ok()
+    calls = {"n": 0}
+
+    def flaky(path, data=None, method=None, timeout=None, retry_auth=True):
+        calls["n"] += 1
+        raise openlist.OpenListError("OpenList 请求失败: timed out",
+                                     kind=openlist.KIND_TIMEOUT)
+
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "tok")), \
+         patch.object(openlist, "_api", side_effect=flaky):
+        openlist.invalidate_dir_cache()
+        r1 = openlist.list_dir("/影视/电影")
+        r2 = openlist.list_dir("/影视/电影")
+    assert r1["success"] is False and r1["kind"] == openlist.KIND_TIMEOUT
+    assert r2["success"] is False
+    assert calls["n"] == 1, "退避窗内不得再次实打网络（否则等待被放大）"
+    assert r2.get("backoff") is True
+    assert r2["kind"] == openlist.KIND_TIMEOUT, "退避期间必须保留真实失败归类"
+
+
+def test_refresh_and_selfcheck_bypass_cache_and_backoff():
+    """refresh=True / 显式 timeout（自检）必须穿透缓存与退避。
+
+    自检的职责是回答「现在到底通不通」——吃缓存或吃退避都会给出**假的结论**
+    （明明好了却说不可用，或明明挂了却说可用），这是最不该省的一步。
+    """
+    calls = {"n": 0}
+
+    def api(path, data=None, method=None, timeout=None, retry_auth=True):
+        if path.endswith("/fs/list"):
+            calls["n"] += 1
+            return {"content": [], "write": True}
+        return {"username": "admin"}
+
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "tok")), \
+         patch.object(openlist, "_api", side_effect=api):
+        openlist.invalidate_dir_cache()
+        openlist.list_dir("/影视/电影")                 # 写缓存
+        openlist.list_dir("/影视/电影", refresh=True)   # 穿透 → 再打一次
+        openlist.list_dir("/影视/电影", timeout=openlist.OPENLIST_PROBE_TIMEOUT)  # 穿透
+    assert calls["n"] == 3, "refresh 与自检都必须绕过缓存"
+
+
+def test_remove_invalidates_dir_cache():
+    """删除后必须作废缓存：否则 30s 内再进同一目录还会看到已删条目。"""
+    calls = {"n": 0}
+
+    def api(path, data=None, method=None, timeout=None, retry_auth=True):
+        calls["n"] += 1
+        if path.endswith("/fs/list"):
+            return {"content": [], "write": True}
+        return {}
+
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "tok")), \
+         patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "_api", side_effect=api):
+        openlist.invalidate_dir_cache()
+        openlist.list_dir("/影视/电影")      # 写缓存（第 1 次网络）
+        openlist.remove(["影片.mkv"], dir_path="/影视/电影")  # 删除（第 2 次）+ 作废缓存
+        openlist.list_dir("/影视/电影")      # 缓存已作废 → 必须再打一次（第 3 次）
+    assert calls["n"] == 3, "删除后必须作废目录缓存，使下一次浏览重新拉取"
