@@ -1787,10 +1787,17 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   border-radius:var(--radius);overflow:hidden;
   transition:border-color var(--transition-fast),background var(--transition-fast)}
 .lib-card:hover{border-color:rgba(10,132,255,.4);background:var(--hover-wash)}
-/* 类型图标：文件夹 / 影片各一枚，纯文本观感，不再有任何图片位 */
-.lib-card-icon{display:flex;align-items:center;justify-content:center;width:22px;height:22px;
+/* 类型图标（issue #47「文件缩略图图标异常」）：
+   1. 尺寸对齐同一行的控件 —— 图标占 20px 盒（图形 20×20，不再有 18/22 的错位感），
+      与 18px 勾选框、14px 删除图标形成「主图形 > 勾选 > 操作」的层级；
+   2. 图形由 JS 内联（见 _libCardIconSvg），不依赖文档里的 sprite `<defs>`：
+      用 `<use href>` 时 sprite 缺失/改名会静默画不出东西，就是「图标异常」的成因；
+   3. 文件夹用主题色 + 半透明填充，文件用中性色，缩到 20px 也能一眼分清类型。 */
+.lib-card-icon{display:flex;align-items:center;justify-content:center;width:20px;height:20px;
   flex:0 0 auto;color:var(--text3)}
+.lib-card-icon svg{display:block;width:20px;height:20px}
 .lib-card-dir .lib-card-icon{color:var(--accent)}
+.lib-card-icon-fill{fill:currentColor;fill-opacity:.22}
 .lib-card-cb{display:flex;align-items:center;justify-content:center;width:24px;height:24px;
   flex:0 0 auto;cursor:pointer;border-radius:var(--radius-xs)}
 .lib-card-cb:hover{background:var(--hover-wash)}
@@ -1842,7 +1849,7 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .lib-card-skeleton{background:var(--hover-wash);border-style:dashed}
 .lib-sk{display:block;background:var(--border);border-radius:var(--radius-xs);opacity:.75}
 .lib-sk-cb{width:24px;height:24px;flex:0 0 auto}
-.lib-sk-icon{width:22px;height:22px;flex:0 0 auto}
+.lib-sk-icon{width:20px;height:20px;flex:0 0 auto}
 .lib-sk-line{height:12px;margin:2px 0}
 .lib-sk-line-sub{height:10px;width:70%}
 .lib-sk-btn{width:24px;height:24px;flex:0 0 auto}
@@ -1895,8 +1902,13 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   /* 触屏下勾选框再放大一档，避免 18px 目标点不准（视觉尺寸不变，只放热区） */
   .lib-cb{width:28px;height:28px}
   .lib-card-cb{width:28px;height:28px}
+  /* 图标同步放大一档（issue #47）：窄屏勾选框热区到 28px、删除按钮仍 24px，
+     图标若停在 20px 就会变成「一行里最小的那个」＝ 看起来像没渲染好。
+     20 → 24，保持「主图形 ≥ 勾选框 - 6px」的比例（走查脚本按这条断言）。 */
+  .lib-card-icon,.lib-card-icon svg{width:24px;height:24px}
   .lib-card,.lib-card-skeleton{padding:6px 7px;gap:6px}
   .lib-sk-cb{width:28px;height:28px}
+  .lib-sk-icon{width:24px;height:24px}
   /* 窄屏收起「修改时间」，文件表只保留 选择/名称/大小/操作 */
   #libList .lib-row{grid-template-columns:30px minmax(0,1fr) 62px auto}
   #libList .lib-row > .lib-sub:nth-of-type(3){display:none}
