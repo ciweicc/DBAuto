@@ -690,8 +690,9 @@ function _libTableHtml(){
 //      行内高矮参差、大片空白；
 //   2. 第二版：缩略块改成固定 16:9 想压平高度，但「有些卡有图、有些卡没图」本身
 //      就是观感噪音 —— 灰块与海报混排，越大的目录越花；
-//   3. 现在（本轮）：**整块缩略图去掉**。卡片 = 「一行图标 + 名称 + 元信息」，
-//      文件夹用文件夹图标、文件用影片图标，所有卡天然等高、无空框、无占位块。
+//   3. 现在：**整块缩略图去掉**。卡片 = 「一行图标 + 名称 + 元信息」，
+//      文件夹用文件夹图标、文件用文档图标，所有卡天然等高、无空框、无占位块
+//      （图标本身的形状与尺寸见 _libCardIconSvg，issue #47 修了「图标异常」）。
 //
 // 卡片内所有元素都在底部信息行里：
 //   [勾选框] [图标 + 名称 / 元信息] [删除图标]
@@ -709,9 +710,38 @@ function _libCardHtml(){
   return html;
 }
 
+// 卡片类型图标（issue #47「文件缩略图图标异常」）。
+//
+// 原来这里画的是 `viewBox="0 0 24 24"` 的图标，与旁边的勾选框 / 删除按钮相比显得
+// 「小得离谱」—— 同类控件一行里尺寸不齐，观感就是「渲染错了」。本轮做两件事：
+//   1. 尺寸按内联像素给足（18 → 20），与 18px 勾选框、14px 删除图标形成层级；
+//   2. 图标内联在卡片模板里，**不再走 `<use href="#icon-…">`**：`<use>` 依赖
+//      文档里的 sprite `<defs>`，一旦宿主页面没有（或 id 被改名），图标会静默消失，
+//      表现正是「图标异常」。
+//
+// 两个图形都画在 `0 0 20 20` 视口里（`24` 视口配 16px 内联尺寸会让笔画发虚）：
+//   - 文件夹：一个实心「夹子」轮廓 + 浅色（.lib-card-icon-fill）填充，缩到 20px
+//     仍能一眼看出是文件夹；
+//   - 文件：一页纸 + 折角，**不是毛片** —— 「文件」不等于「影片」，网盘目录里
+//     也有字幕、图片、压缩包，用胶片图标会让用户误判类型（issue #47 的截图上
+//     两个 9.5 KB / 21.4 GB 的动画文件被画成电影胶片，就是这个问题）。
+function _libCardIconSvg(kind){
+  var common = 'width="20" height="20" viewBox="0 0 20 20" fill="none" '
+    + 'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"';
+  if(kind === 'dir'){
+    return '<svg ' + common + '>'
+      + '<path class="lib-card-icon-fill" d="M2 6a2 2 0 0 1 2-2h3.2a2 2 0 0 1 1.6.8l.9 1.2H16a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2Z"/>'
+      + '</svg>';
+  }
+  return '<svg ' + common + '>'
+    + '<path d="M11.5 2.5H6A2 2 0 0 0 4 4.5v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V7Z"/>'
+    + '<path d="M11.5 2.5V7H16"/>'
+    + '<path d="M7.5 11.5h5"/><path d="M7.5 14h3"/>'
+    + '</svg>';
+}
+
 // 卡片外壳：勾选框 / 删除按钮 / 标题分别渲染。
-// 图标（文件夹 / 影片）由调用方通过 icon 参数给出 SVG use id。
-function _libCardShell(it, kind, icon){
+function _libCardShell(it, kind){
   var nameHtml = it.dir
     ? '<a class="lib-card-title lib-card-dirlink" href="javascript:void(0)" onclick="enterDir(' + jsArg(it.name) + ')" title="进入 ' + esc(it.name) + '">' + esc(it.name) + '</a>'
     : '<span class="lib-card-title" title="' + esc(it.name) + '">' + esc(it.name) + '</span>';
@@ -720,7 +750,7 @@ function _libCardShell(it, kind, icon){
       '<input type="checkbox" aria-label="选择 ' + esc(it.name) + '" onchange="toggleLibSelect(' + jsArg(it._key) + ', this.checked)">' +
     '</label>' +
     '<span class="lib-card-icon" aria-hidden="true">' +
-      '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#' + icon + '"/></svg>' +
+      _libCardIconSvg(kind) +
     '</span>' +
     '<span class="lib-card-name-col">' +
       nameHtml +
@@ -768,11 +798,11 @@ function _libMetaText(it){
 }
 
 function _libDirCardHtml(it){
-  return _libCardShell(it, 'dir', 'icon-folder');
+  return _libCardShell(it, 'dir');
 }
 
 function _libFileCardHtml(it){
-  return _libCardShell(it, 'file', 'icon-movie');
+  return _libCardShell(it, 'file');
 }
 
 function invalidateLibCache(path){

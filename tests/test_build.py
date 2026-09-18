@@ -1716,12 +1716,14 @@ def test_library_cards_have_no_images(dist):
     card_fn = src[src.index("function _libCardShell("):]
     card_fn = card_fn[:card_fn.index("function _libMetaText(")]
     assert "<img" not in card_fn, "卡片结构里仍有 <img>"
-    # 保留类型图标（文件夹 / 影片），否则「这是文件还是目录」要靠字形猜
+    # 保留类型图标（文件夹 / 文件），否则「这是文件还是目录」要靠字形猜
     assert "lib-card-icon" in card_fn, "卡片结构里没有类型图标位"
     dir_fn = src[src.index("function _libDirCardHtml("):src.index("function _libFileCardHtml(")]
-    assert "icon-folder" in dir_fn, "文件夹卡未使用文件夹图标"
+    assert "'dir'" in dir_fn, "文件夹卡未声明文件夹图标类型"
     file_fn = src[src.index("function _libFileCardHtml("):src.index("function invalidateLibCache(")]
-    assert "icon-movie" in file_fn, "文件卡未使用影片图标"
+    assert "'file'" in file_fn, "文件卡未声明文件图标类型"
+    # 图标图形本身在 issue #47 后由 _libCardIconSvg 内联（不再走 sprite <use>），
+    # 形状/尺寸的回归断言见 test_library_card_icons_are_rendered_inline
 
     # 2. 样式：缩略块 / 占位块 / 评分角标全部移除
     css = _read(_CSS_MAIN)
@@ -1746,6 +1748,77 @@ def test_library_cards_have_no_images(dist):
     # 4. 产物已重建（防「改了源码忘了重建」）
     assert "function _libCardShell(" in dist, "产物未包含新的卡片结构（需重跑 build.sh）"
     assert "libPosterBroken" not in dist, "产物仍含旧的海报兜底逻辑（需重跑 build.sh）"
+
+
+# ============================================================
+# 媒体库卡片类型图标（issue #47：文件缩略图图标异常）
+# ============================================================
+def test_library_card_icons_are_rendered_inline(dist):
+    """回归（issue #47「文件缩略图图标异常」）：卡片类型图标必须自包含地渲染出来。
+
+    用户只给了一张截图：媒体库卡片上「图标看起来不对」。看代码就明白为什么 ——
+    卡片图标走的是 `<use href="#icon-movie">`，即**依赖文档里的 sprite `<defs>`**：
+
+      * sprite 缺失 / id 改名 / 被 CSP 拦掉时，`<use>` 不会报错，只是**什么都画不出来**，
+        表现就是「图标异常」，而且静态检查（HTML 合法、JS 合法）全都不报警；
+      * 用 `viewBox="0 0 24 24"` 却把内联尺寸写成 18px，与同一行的 18px 勾选框、
+        14px 删除图标比例不齐，视觉上也像「渲染错了」；
+      * 语义也错：文件卡一律画**电影胶片**（icon-movie），而「文件」不都是影片
+        （截图里正是一堆 9.5 KB / 21.4 GB 的非影片文件）。
+
+    因此本用例钉死四件事：
+      1. 图形由 `_libCardIconSvg` 内联产出（不经过 sprite `<use>`）；
+      2. 两种类型都有图形，并且**文件不是胶片**；
+      3. 尺寸/填充有对应样式，且与勾选框同量级；
+      4. 产物已重建。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    css = _read(_CSS_MAIN)
+
+    assert "function _libCardIconSvg(" in js, "卡片图标未内联产出（仍依赖 sprite <use>）"
+    icon_fn = js[js.index("function _libCardIconSvg("):js.index("function _libCardShell(")]
+    # 1. 自包含：图形是 <svg> + <path>，不含 <use>（<use> 正是「静默画不出」的来源）
+    assert "<svg " in icon_fn, "图标未内联 svg"
+    assert "<path " in icon_fn, "图标未内联 path 图形"
+    assert "<use" not in icon_fn, "卡片图标仍走 sprite <use>（sprite 缺失时图标会静默消失）"
+    assert "icon-movie" not in icon_fn and "icon-folder" not in icon_fn, \
+        "卡片图标仍引用 sprite id，未内联图形"
+    # 2. 两种类型都有图形，且互不相同（不能两种情况画同一个形状）
+    assert "kind === 'dir'" in icon_fn or 'kind === "dir"' in icon_fn, \
+        "未按「文件夹 / 文件」分岔图形"
+    paths = re.findall(r'd="([^"]+)"', icon_fn)
+    assert len(paths) >= 3, "图标图形过少，疑似只画了一种类型：{}".format(paths)
+    # 文件卡不得再用胶片语义（图标名/路径都不该出现胶片）
+    file_fn = js[js.index("function _libFileCardHtml("):js.index("function invalidateLibCache(")]
+    assert "icon-movie" not in file_fn, "文件卡仍使用影片（胶片）图标，会误导文件类型"
+    # 3. 卡片模板必须真的调用它（写了函数不调用 = 图标位是空的）
+    card_fn = js[js.index("function _libCardShell("):js.index("function _libMetaHtml(")]
+    assert "_libCardIconSvg(kind)" in card_fn, "卡片模板未调用 _libCardIconSvg，图标位为空"
+
+    # 4. 样式：图标盒与图形同尺寸，且与外层视口一致（避免「小得离谱」）
+    assert ".lib-card-icon{" in css, "缺少卡片图标样式"
+    block = css[css.index(".lib-card-icon{"):]
+    block = block[:block.index("}")]
+    assert "width:20px" in block and "height:20px" in block, \
+        "图标盒不是 20px（与勾选框/删除图标比例不齐）"
+    assert ".lib-card-icon svg{" in css, "缺少图标图形尺寸约束（内联 svg 会按外层尺寸跑）"
+    svg_block = css[css.index(".lib-card-icon svg{"):]
+    svg_block = svg_block[:svg_block.index("}")]
+    assert "width:20px" in svg_block and "height:20px" in svg_block, \
+        "图标图形未钉死 20px"
+    assert ".lib-card-icon-fill{" in css, "缺少文件夹的填充样式（实心感）"
+    # 视图口径：图形视口必须与内联尺寸一致，否则笔画会发虚/被裁
+    assert 'viewBox="0 0 20 20"' in icon_fn, "图标 viewBox 与 20px 内联尺寸不匹配"
+    # 骨架卡占位块与真实图标同宽，否则首帧→真实卡片仍会有轻微横向跳动
+    sk_block = css[css.index(".lib-sk-icon{"):]
+    sk_block = sk_block[:sk_block.index("}")]
+    assert "width:20px" in sk_block and "height:20px" in sk_block, \
+        "骨架图标占位块与真实图标尺寸不一致（首帧会跳动）"
+
+    # 5. 产物已重建（防「改了源码忘了重建」）
+    assert "function _libCardIconSvg(" in dist, "产物未包含内联图标实现（需重跑 build.sh）"
+    assert 'viewBox="0 0 20 20"' in dist, "产物未包含新的图标视口（需重跑 build.sh）"
+    assert "lib-card-icon-fill" in dist, "产物未包含图标填充样式（需重跑 build.sh）"
 
 
 def test_library_backend_match_api_kept():
