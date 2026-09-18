@@ -108,6 +108,7 @@
   --mono: "SF Mono", "Cascadia Code", "Fira Code", Consolas, monospace;
 
   /* Font sizes (denser base) */
+  --fs-2xs: 10px;
   --fs-xs: 11px;
   --fs-base: 13px;
   --fs-sm: 12px;

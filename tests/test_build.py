@@ -1695,6 +1695,93 @@ def test_library_grid_layout_audit_is_committed():
     assert "imgsInList" in src, "走查脚本没断言媒体库列表里不存在图片"
 
 
+def test_library_cards_show_modified_time(dist):
+    """回归（issue #27 跟进）：媒体库必须**显式显示修改时间**。
+
+    用户诉求原文：「添加显示修改时间」。这里的坑不是「有没有调用 fmtTs」——
+    列表视图早就渲染了时间，但卡片视图把「大小 · 修改时间」挤在同一行，
+    两段都是数字，扫视时区分不出哪一段是时间（用户会以为「没显示」）。
+
+    因此本用例钉死三件事，缺一条都会让用户再次觉得「没显示」：
+      1. 卡片视图的文件卡：大小与修改时间**各占一行**，时间行带时钟图标与「修改」前缀；
+      2. 两种视图共用同一套时间格式（fmtTs）与同一套语义（列表视图表头有「修改时间」）；
+      3. 产物已重建。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    css = _read(_CSS_MAIN)
+    body = _read(os.path.join(_SRC, "body.html"))
+
+    # 1. 文件卡有独立的修改时间行（不是拼在「大小 · 时间」一行里）
+    assert "function _libMetaHtml(" in js, "卡片元信息未拆成「大小 / 修改时间」两行"
+    meta_fn = js[js.index("function _libMetaHtml("):js.index("function _libMetaText(")]
+    assert "lib-card-time" in meta_fn, "修改时间行缺少专用容器 lib-card-time"
+    assert "icon-clock" in meta_fn, "修改时间行缺少时钟图标（无法与大小区分）"
+    assert "修改 " in meta_fn, "修改时间行缺少「修改」前缀"
+    assert "fmtTs(it.updated_at)" in meta_fn, "修改时间未走统一格式化函数 fmtTs"
+    assert "fmtTsShort(it.updated_at)" in meta_fn, \
+        "窄卡缺少紧凑时间格式（完整格式在 180~240px 卡上必被截断）"
+    assert "title=\"修改时间 " in meta_fn, "修改时间未提供完整值（悬停/复制）"
+    # 两行结构：大小行（lib-card-meta）+ 时间行（lib-card-time）
+    assert "lib-card-meta" in meta_fn and "lib-card-time" in meta_fn, \
+        "卡片元信息应为「大小」与「修改时间」两行"
+    # 目录没有「修改时间」语义，不应显示时间行（避免看着像文件）
+    assert "it.dir" in meta_fn and "文件夹" in meta_fn, "文件夹卡仍应显示「文件夹」而不是时间"
+
+    # 2. 样式：时间行单行省略 + 比标题淡（层级）+ 等宽数字（行间对齐）
+    block = css[css.index(".lib-card-time{"):]
+    block = block[:block.index("}")]
+    assert "font-variant-numeric:tabular-nums" not in block  # 数字在 .lib-time-text 上
+    text_block = css[css.index(".lib-time-text{"):]
+    text_block = text_block[:text_block.index("}")]
+    assert "white-space:nowrap" in text_block and "text-overflow:ellipsis" in text_block, \
+        "时间文本未单行省略（长格式会把卡片撑高）"
+    assert "tabular-nums" in text_block, "时间数字未等宽，行间无法对齐"
+    # 紧凑/完整两种格式必须有按容器宽度的取舍规则（本轮实测的坑：
+    # 单一完整格式会在 1440/2560 这类窄卡上被省略号截成「修改 2025-0…」）
+    assert ".lib-time-short{" in css and ".lib-time-full{" in css, \
+        "缺少「完整 / 紧凑」两种时间格式的样式开关"
+    assert "@container libname" in css, "两种时间格式未按卡片实际宽度取舍（应使用容器查询）"
+    assert "container-name:libname" in css, "缺少供时间行判断的命名容器"
+    for gone in (".lib-time-full{display:none}", ):
+        assert gone in css, "未在窄卡下隐藏完整格式" 
+
+    # 3. 列表视图：表头与数据列都要有时间语义
+    table_fn = js[js.index("function _libTableHtml("):js.index("// ---------- 卡片视图")]
+    assert "修改时间</span>" in table_fn, "列表视图表头缺少「修改时间」列"
+    assert "fmtTs(it.updated_at)" in table_fn, "列表视图未渲染修改时间"
+    assert "lib-sub-time" in table_fn, "列表视图时间列未使用专用样式"
+    assert ".lib-sub-time{" in css, "缺少列表视图时间列样式"
+
+    # 4. 页面说明文案同步（不承诺没有的能力，也不遗漏已显示的信息）
+    assert "修改时间" in body[body.index('id="libTip"'):body.index("libActionBar")], \
+        "媒体库说明文案未提到修改时间"
+
+    # 5. 产物已重建
+    assert "lib-card-time" in dist, "产物未包含修改时间行（需重跑 build.sh）"
+    assert "lib-sub-time" in dist, "产物未包含列表视图时间列（需重跑 build.sh）"
+    assert "lib-time-short" in dist, "产物未包含紧凑时间格式（需重跑 build.sh）"
+    assert "fmtTsShort" in dist, "产物未包含紧凑时间格式化函数（需重跑 build.sh）"
+
+
+def test_library_modified_time_audit_is_committed():
+    """回归（issue #27 跟进）：「修改时间是否真的显示出来」必须由走查脚本用渲染后数值守住。
+
+    静态扫描只能证明「写了 lib-card-time」，证明不了渲染后每张文件卡真的有时间、
+    格式可读、不折行、与标题有层级差。本轮实测该脚本能抓出这几种回退：
+      - 文件卡漏渲染时间行 → fileTimeRows != fileCards；
+      - 时间格式退回「—」或裸时间戳 → timeBadFormat > 0；
+      - 时间行与标题同色 → timeColor == titleColor；
+      - 列表视图丢了时间列 → rowsWithTime < 3。
+    """
+    src = _read(os.path.join(_ROOT, "scripts", "check_library_dom.py"))
+    for key in ("fileTimeRows", "fileCardsWithTime", "timeBadFormat", "timeWrapped",
+                "timeIcons", "timeColor", "rowsWithTime",
+                # 关键：必须断言「时间没有被省略号截断」——本轮实测回退（单一完整格式）
+                # 会被它抓出 8 条截断；只断言「有时间行」是抓不到的。
+                "timeTruncated", "timeTitleMissing"):
+        assert key in src, "走查脚本缺少「修改时间」断言 {}".format(key)
+
+
 # ============================================================
 # 登录页视觉一致性（issue #27：登录页显示效果与主页不一致）
 # ============================================================
