@@ -673,3 +673,35 @@ def test_list_library_entries_openlist_failure_falls_back_and_labels_source():
         res = media_library.list_library_entries(path="/媒体库", refresh=True)
     assert res["success"] is True
     assert res["source"] == "qas" and res["fallback"] is True
+
+
+def test_fallback_forwards_timeout_kind_and_backoff_flag():
+    """回落时必须把「失败归类」与「是否在自动退避」一起带给前端（issue #47）。
+
+    只有一句「已回落」，前端无从区分「慢（等一会自动恢复）」与「配错（去改设置）」；
+    而退避窗口是**自动恢复期**，前端必须据此告诉用户「不用改配置」——
+    否则用户会在 20 秒的自动恢复期里跑去翻设置，把本来正确的配置改坏。
+    """
+    media_library.invalidate_library_cache()
+    fake = _FakeClient(savepath_resp=_resp([]))
+    with patch.object(media_library, "_client", return_value=fake), \
+         patch.object(media_library.openlist, "is_configured", return_value=True), \
+         patch.object(media_library.openlist, "list_dir",
+                      return_value={"success": False, "message": "OpenList 请求失败: timed out",
+                                    "kind": "timeout", "backoff": True}):
+        res = media_library.list_library_entries(path="/媒体库", refresh=True)
+    assert res["fallback"] is True
+    assert res["fallback_kind"] == "timeout", "必须透传失败归类（超时 ≠ 配错）"
+    assert res["fallback_backoff"] is True, "必须透传退避标记（自动恢复 ≠ 需要改配置）"
+
+
+def test_openlist_success_still_reports_openlist_source():
+    """OpenList 成功时必须如实标 source=openlist 且 fallback=False（不能被缓存改写）。"""
+    media_library.invalidate_library_cache()
+    with patch.object(media_library.openlist, "is_configured", return_value=True), \
+         patch.object(media_library.openlist, "list_dir",
+                      return_value={"success": True, "path": "/媒体库",
+                                    "entries": [{"name": "电影", "dir": True}]}):
+        res = media_library.list_library_entries(path="/媒体库", refresh=True)
+    assert res["source"] == "openlist" and res["fallback"] is False
+    assert res["entries"] == [{"name": "电影", "dir": True}]
