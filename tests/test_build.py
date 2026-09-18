@@ -1873,6 +1873,101 @@ def test_library_modified_time_audit_is_committed():
         assert key in src, "走查脚本缺少「修改时间」断言 {}".format(key)
 
 
+def test_library_first_paint_skeleton_is_geometric_stable(dist):
+    """回归（issue #27：「每次打开都要等几秒」）：媒体库首帧必须占住位置。
+
+    上一版首帧只有一个空态文字块（约 60px），数据一到换成 12 张卡的网格
+    （数百 px）—— **页面整体下移**，用户刚点下的「刷新 / 上一级 / 视图切换」
+    被推到别处，第二次点击落到空白处。观感上就是「这个页面很慢、很难用」。
+
+    对策：首帧用与卡片视图**完全相同的网格几何**渲染骨架卡，数据到达时
+    在同一高度内替换内容，页面不位移。本用例钉死三件事：
+      1. 骨架用同一套 .lib-grid / .lib-card 结构（几何一致，不是另画一套）；
+      2. 骨架由 CSS 给高度（占位有效），且不含 <img>（媒体库不显示封面图）；
+      3. 走查脚本必须把「首帧位移」量出来（视觉问题只能靠渲染后数值守住）。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    css = _read(_CSS_MAIN)
+
+    assert "function _libLoadingHtml(" in js, "缺少首帧加载态渲染"
+    assert "function _libSkeletonCardHtml(" in js, "缺少骨架卡渲染（首帧占位）"
+    loading = js[js.index("function _libLoadingHtml("):js.index("function _libSkeletonCardHtml(")]
+    skel = js[js.index("function _libSkeletonCardHtml("):]
+    skel = skel[:skel.index("async function loadLibrary(")] if "async function loadLibrary(" in skel else skel
+    # 1. 同一套网格几何
+    assert "lib-grid lib-grid-skeleton" in loading, \
+        "骨架必须复用 .lib-grid 网格（另画一套会让高度对不上，位移照旧）"
+    assert "lib-card lib-card-skeleton" in skel, "骨架卡必须复用 .lib-card 结构"
+    assert "lib-card-name-col" in skel, \
+        "骨架卡必须包含名称列（否则高度只有真实卡的一半，位移仍会发生）"
+    # 2. 无图片 + CSS 给高度
+    assert "<img" not in skel, "骨架卡里不应有 <img>（媒体库已不显示封面图）"
+    assert ".lib-card-skeleton{" in css, "缺少骨架卡样式"
+    assert ".lib-sk{" in css, "缺少骨架灰块样式（高度必须由 CSS 给出，否则占位无效）"
+    for sel in (".lib-sk-cb{", ".lib-sk-icon{", ".lib-sk-line{", ".lib-sk-btn{"):
+        assert sel in css, "缺少骨架元素尺寸 {}".format(sel)
+    # 灰块本体可以只给颜色，但**每种骨架元素都必须有显式高度**——
+    # 高度缺失时骨架会塌成 0，首帧又变成「一条细线」，位移照旧
+    for sel in (".lib-sk-cb{", ".lib-sk-icon{", ".lib-sk-line{", ".lib-sk-btn{"):
+        b = css[css.index(sel):]
+        b = b[:b.index("}")]
+        assert "height:" in b, "骨架元素 {} 未给高度：占位会塌掉".format(sel)
+    assert ".lib-sk-line-sub{" in css, "缺少次要行骨架（高度必须与真实元信息行对应）"
+    # 3. 骨架行数可被历史真实条数校准（避免「首帧 8 行 → 真实 30 行」又跳一次）
+    assert "LIB_SKELETON_KEY" in js and "_libRememberRows(" in js, \
+        "缺少「按上次真实条数校准骨架行数」的逻辑"
+    # 4. 产物已重建
+    assert "lib-card-skeleton" in dist, "产物未包含骨架卡（需重跑 build.sh）"
+
+
+def test_library_open_speed_audit_is_committed():
+    """回归（issue #27：「每次打开都要等几秒」）：打开速度必须由落库脚本计时守住。
+
+    静态扫描证明不了「等了多久」，所以本轮新增 `scripts/check_library_speed.py`：
+    在真实浏览器里跑构建产物，把假上游的延迟显式设定（默认 0.8s），
+    分段量「首帧反馈 / 目录可见 / 任务表可见 / 再次打开」，
+    并断言首帧位移不超过上限。本用例防止这套度量被删或放宽。
+    """
+    script = os.path.join(_ROOT, "scripts", "check_library_speed.py")
+    assert os.path.isfile(script), "缺少媒体库打开速度走查脚本"
+    src = _read(script)
+    for key in ("first_paint", "directory_ready", "qas_ready",
+                "reopen_directory_ready", "firstH", "afterH"):
+        assert key in src, "走查脚本缺少计时项 {}".format(key)
+    assert "max-shift-px" in src, "走查脚本缺少「首帧位移」上限参数"
+    # 上限必须真的被用于断言（不能只是加了个参数）
+    assert "abs(shift) > args.max_shift_px" in src, "首帧位移断言丢失"
+    assert "* 1000 + 1500" in src or "budget_ms" in src, "缺少按上游延迟推导的耗时上限"
+
+
+def test_library_open_speed_backend_budget():
+    """回归：读接口必须「总预算 + 禁用底层重试」，否则等待会被重试翻倍。
+
+    上一轮把单次尝试从 15s 收到 6s，但重试仍是 utils 默认的 3 次
+    （HTTP_RETRY_TOTAL=12s），实测最坏 ≈ 12.5s 全部压给用户。
+    """
+    lib = _read(os.path.join(_ROOT, "app_modules", "media_library.py"))
+    assert "LIBRARY_READ_BUDGET" in lib, "缺少读接口总预算常量"
+    assert "retries=1" in lib, "读接口必须禁用底层重试（重试的是同一个卡住的上游）"
+    assert "LIBRARY_CACHE_TTL" in lib and "invalidate_library_cache" in lib, \
+        "缺少目录短命缓存 / 作废入口"
+    # 缓存必须在删除后被作废（否则删完再看同一目录还显示已删条目）
+    assert "invalidate_library_cache()" in lib, "删除后未作废目录缓存"
+    api = _read(os.path.join(_ROOT, "app_modules", "api_client.py"))
+    assert "def _http_kwargs(" in api, "APIClient 未提供 timeout/retries 统一下传"
+    assert 'kwargs["retries"] = self.retries' in api, "retries 未透传到底层 http_*"
+    routes = _read(os.path.join(_ROOT, "app_modules", "routes_library.py"))
+    assert "use_cache=" in routes, "路由未把「是否用缓存」下传"
+
+
+def test_library_refresh_bypasses_server_cache():
+    """前端「刷新」按钮必须带 refresh=1：否则后端 30s 缓存会让刷新点了没反应。"""
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    assert "refresh=1" in js, "前端刷新未带 refresh=1，后端缓存会让「刷新」失效"
+    load = js[js.index("async function loadLibrary("):js.index("function _renderLibError(")]
+    assert "force ? '&refresh=1' : ''" in load, "refresh=1 必须只由 force 触发"
+
+
 # ============================================================
 # 登录页视觉一致性（issue #27：登录页显示效果与主页不一致）
 # ============================================================

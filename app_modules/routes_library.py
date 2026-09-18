@@ -5,12 +5,23 @@
 #   GET  /api/qas/library?path=/   —— 夸克网盘目录浏览（媒体库）
 #   POST /api/qas/delete           —— 删除网盘条目 + 可选同步清理 DBAuto 历史
 #   POST /api/qas/delete_tasks     —— 删除 QAS 条目任务配置（整表写回）
-from media_library import list_tasks, list_library, delete_entries, delete_tasks, get_library_root
+from media_library import (list_tasks, list_library, delete_entries, delete_tasks,
+                           get_library_root)
 from validator import validate_string, validate_list
 
 
 class LibraryRouteMixin:
     """QAS 任务与网盘媒体库管理路由"""
+
+    # 读接口的缓存开关：前端「刷新」按钮带 ?refresh=1 显式绕过缓存
+    # （普通打开媒体库页 / 切标签命中缓存，重复打开不再等网络）。
+    _NO_CACHE_VALUES = ("1", "true", "yes", "on")
+
+    def _cache_disabled(self, params):
+        raw = params.get("refresh")
+        if isinstance(raw, (list, tuple)):
+            raw = raw[0] if raw else None
+        return str(raw).strip().lower() in self._NO_CACHE_VALUES
 
     def _handle_library_get(self, route):
         if route == "/api/qas/tasks":
@@ -34,7 +45,7 @@ class LibraryRouteMixin:
             if ".." in path:
                 self._send_json({"error": "path 不允许包含 .."}, 400)
                 return True
-            res = list_library(path=path)
+            res = list_library(path=path, use_cache=not self._cache_disabled(params))
             self._send_json(res, 200 if res.get("success") else 502)
             return True
 

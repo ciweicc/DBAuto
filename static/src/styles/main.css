@@ -1802,6 +1802,23 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   .lib-time-full{display:none}
   .lib-time-short{display:block}
 }
+/* ---------- 首帧骨架（issue #27 反馈：「每次打开都要等几秒」） ----------
+   与 .lib-grid / .lib-card 完全相同的几何（同网格、同内边距、同三行内容），
+   所以「骨架 → 真实卡片」的替换不会让页面高度跳动：
+   用户点下按钮的位置不会被推走，观感上就是「已经在加载、马上就出」。
+   骨架刻意用静态灰块（无动画）：动画会在慢接口下变成持续的视觉噪音，
+   这里只需要「占位 + 说明现在在等」，进度由上方文案的「已用 Xs」承担。 */
+.lib-loading{display:flex;flex-direction:column}
+.lib-loading-hint{color:var(--text2);font-size:12.5px;margin-top:10px}
+.lib-grid-skeleton{pointer-events:none}
+.lib-card-skeleton{background:var(--hover-wash);border-style:dashed}
+.lib-sk{display:block;background:var(--border);border-radius:var(--radius-xs);opacity:.75}
+.lib-sk-cb{width:24px;height:24px;flex:0 0 auto}
+.lib-sk-icon{width:22px;height:22px;flex:0 0 auto}
+.lib-sk-line{height:12px;margin:2px 0}
+.lib-sk-line-sub{height:10px;width:70%}
+.lib-sk-btn{width:24px;height:24px;flex:0 0 auto}
+
 /* 删除按钮：收成图标按钮，常态低调、悬停/键盘聚焦才显形（不抢标题的宽度） */
 .lib-icon-btn{display:flex;align-items:center;justify-content:center;width:24px;height:24px;
   flex:0 0 auto;padding:0;border:1px solid transparent;border-radius:var(--radius-xs);
@@ -1821,7 +1838,8 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   /* 触屏下勾选框再放大一档，避免 18px 目标点不准（视觉尺寸不变，只放热区） */
   .lib-cb{width:28px;height:28px}
   .lib-card-cb{width:28px;height:28px}
-  .lib-card{padding:6px 7px;gap:6px}
+  .lib-card,.lib-card-skeleton{padding:6px 7px;gap:6px}
+  .lib-sk-cb{width:28px;height:28px}
   /* 窄屏收起「修改时间」，文件表只保留 选择/名称/大小/操作 */
   #libList .lib-row{grid-template-columns:30px minmax(0,1fr) 62px auto}
   #libList .lib-row > .lib-sub:nth-of-type(3){display:none}

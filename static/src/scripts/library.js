@@ -382,13 +382,54 @@ function deleteSelectedQasTasks(){
 
 // ---------- 网盘文件 ----------
 
-// 加载态文案随时间推进：让用户能区分「在等」和「卡死」。
-// 由调用方传入 t0，避免额外状态泄漏到全局。
+// ---------- 首帧反馈（issue #27 反馈：「每次打开都要等几秒」） ----------
+//
+// 上一版首帧只有一个空态文字块（约 60px 高）。目录响应一到就换成
+// 12 张卡片的网格（几百 px 高），**页面整体向下跳一大截**。
+// 跳动的代价不只是「难看」：用户刚点下的「刷新 / 上一级 / 视图切换」按钮
+// 会被推到别处，第二次点击落到空白处 —— 观感上就是「这个页面很慢/很难用」。
+//
+// 所以首帧提前把高度占住：用与卡片视图完全相同的网格几何渲染 N 张骨架卡，
+// 数据到达时在同一高度内替换内容，页面不位移。
+// 键名与 .lib-skeleton 样式里的 --lib-sk-h 一一对应（骨架高度由 CSS 给）。
+var LIB_SKELETON_ROWS = 8;                 // 首帧占位卡行数
+var LIB_SKELETON_KEY = 'lib_sk_rows';      // 用上次真实条数校准骨架数量（避免又跳一次）
+
+function _libSkeletonRows(){
+  try{
+    var n = parseInt(localStorage.getItem(LIB_SKELETON_KEY), 10);
+    if(n >= 3 && n <= 24) return n;
+  }catch(e){}
+  return LIB_SKELETON_ROWS;
+}
+
+function _libRememberRows(n){
+  try{ localStorage.setItem(LIB_SKELETON_KEY, String(n)); }catch(e){}
+}
+
+// 加载态：进度文案（可读、带已用时长）+ 与卡片网格同几何的骨架卡
 function _libLoadingHtml(t0){
   var s = ((Date.now() - t0) / 1000).toFixed(1);
-  return '<div class="empty-state" style="padding:24px 20px">' +
-    '<div class="empty-title">加载中...</div>' +
-    '<div class="empty-desc" id="libLoadingHint">已用 ' + s + 's，正在等 QAS 响应…（超过 ' + (LIB_REQ_TIMEOUT/1000) + 's 会自动失败可重试）</div>' +
+  var html = '<div class="lib-loading">' +
+    '<div class="lib-loading-hint" id="libLoadingHint">已用 ' + s + 's，正在等 QAS 响应…' +
+    '（超过 ' + (LIB_REQ_TIMEOUT/1000) + 's 会自动失败可重试）</div>' +
+    '<div class="lib-grid lib-grid-skeleton" aria-hidden="true">';
+  var n = _libSkeletonRows();
+  for(var i = 0; i < n; i++) html += _libSkeletonCardHtml();
+  html += '</div></div>';
+  return html;
+}
+
+function _libSkeletonCardHtml(){
+  return '<div class="lib-card lib-card-skeleton">' +
+    '<span class="lib-sk lib-sk-cb"></span>' +
+    '<span class="lib-sk lib-sk-icon"></span>' +
+    '<span class="lib-card-name-col">' +
+      '<span class="lib-sk lib-sk-line"></span>' +
+      '<span class="lib-sk lib-sk-line lib-sk-line-sub"></span>' +
+      '<span class="lib-sk lib-sk-line lib-sk-line-sub"></span>' +
+    '</span>' +
+    '<span class="lib-sk lib-sk-btn"></span>' +
     '</div>';
 }
 
@@ -416,13 +457,15 @@ async function loadLibrary(path, opts){
     var el = document.getElementById('libLoadingHint');
     if(!el){ clearInterval(hintTimer); return; }
     el.textContent = '已用 ' + ((Date.now() - t0) / 1000).toFixed(1) + 's，正在等 QAS 响应…（超过 ' + (LIB_REQ_TIMEOUT/1000) + 's 会自动失败可重试）';
-  }, 1000);
+  }, 250);
 
   try{
     // 2. 同一目录并发请求合并为一次（例如连点「刷新」）
     var key = target;
     if(!libInflight[key]){
-      libInflight[key] = libFetch('/api/qas/library?path=' + encodeURIComponent(target))
+      // refresh=1：绕过后端目录缓存（后端默认 30s 内复用上次结果，见 media_library.py）
+      var url = '/api/qas/library?path=' + encodeURIComponent(target) + (force ? '&refresh=1' : '');
+      libInflight[key] = libFetch(url)
         .then(function(r){ delete libInflight[key]; return r; });
     }
     var r = await libInflight[key];
@@ -441,6 +484,7 @@ async function loadLibrary(path, opts){
     }
     var entries = res.entries || [];
     libCache[target] = { ts: Date.now(), entries: entries };
+    _libRememberRows(entries.length);   // 下次首帧骨架按真实条数占位，减少高度跳动
     _renderLibrary(target, entries, false, r.ms);
   }catch(e){
     clearInterval(hintTimer);

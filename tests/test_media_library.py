@@ -99,7 +99,7 @@ def test_list_library_normalizes_fields():
 def test_list_library_error_returns_empty():
     fake = _FakeClient(savepath_resp={"success": False, "message": "未登录"})
     with patch.object(media_library, "_client", return_value=fake):
-        res = list_library(path="/媒体库")
+        res = list_library(path="/媒体库", use_cache=False)
     assert res["success"] is False
     assert res["entries"] == []
 
@@ -264,18 +264,20 @@ def test_read_paths_use_short_timeout():
     """
     seen = []
 
-    def fake_client(timeout=15):
-        seen.append(timeout)
+    def fake_client(timeout=15, retries=None):
+        seen.append((timeout, retries))
         return _FakeClient()
 
+    media_library.invalidate_library_cache()
     with patch.object(media_library, "_client", side_effect=fake_client), \
          patch.object(media_library, "delete_history_item", return_value=False):
         list_tasks()
-        assert seen[-1] == media_library.LIBRARY_READ_TIMEOUT
+        assert seen[-1] == (media_library.LIBRARY_READ_TIMEOUT, 1), \
+            "读接口必须用收窄超时且不做底层重试（重试只会把等待翻倍）"
         list_library(path="/")
-        assert seen[-1] == media_library.LIBRARY_READ_TIMEOUT
+        assert seen[-1] == (media_library.LIBRARY_READ_TIMEOUT, 1)
         delete_entries([{"fid": "1", "name": "A"}])
-        assert seen[-1] == 15, "删除是破坏性操作，不应被收窄超时"
+        assert seen[-1][0] == 15, "删除是破坏性操作，不应被收窄超时"
 
 
 def test_read_timeout_is_smaller_than_default():
@@ -496,3 +498,130 @@ def test_route_library_explicit_path_wins_over_root():
          _settings_with_root("/媒体库"):
         assert h._handle_library_get("/api/qas/library") is True
     assert fake.detail_path == "/其它", "显式 path 必须优先于配置根目录"
+
+
+# ---------- 打开速度（issue #27：「每次打开都要等几秒」） ----------
+#
+# 上一轮只把「单次尝试超时」从 15s 收到 6s，但**重试次数没变**：
+# utils.http_get 默认 retries=3、HTTP_RETRY_TOTAL=12s，于是单次目录请求最坏
+# 6s + 退避 + 6s ≈ 12.5s（预算耗尽），全部压给用户。这里锁死三项对策：
+#   1. 读接口不做底层重试（retries=1），失败快速返回；
+#   2. 读预算必须大于单次尝试超时，否则「服务慢」会被误报成「不可达」；
+#   3. 目录响应进短命缓存，重复打开不再打网络（但失败不缓存、删除后作废）。
+
+def test_read_client_disables_inner_retry():
+    """读接口不得让「内部重试 × 外层重试」相乘放大等待。"""
+    from api_client import QASClient
+    cfg = type("Cfg", (), {"qas": "http://127.0.0.1:1", "qas_token": "t"})()
+    with patch.object(media_library.ConfigManager, "get_instance",
+                      staticmethod(lambda: cfg)):
+        c = media_library._read_client()
+        assert isinstance(c, QASClient)
+        assert c.retries == 1, "读接口必须只尝试一次（重试的是同一个卡住的上游）"
+        assert media_library._client().retries is None, \
+            "删除等破坏性操作应保留 utils 默认重试（需要更完整的等待）"
+
+
+def test_read_budget_outlasts_single_attempt():
+    """总预算必须 > 单次尝试超时，否则真实「服务慢」会被误报成「不可达」。"""
+    assert media_library.LIBRARY_READ_BUDGET > media_library.LIBRARY_READ_TIMEOUT
+    assert media_library.LIBRARY_READ_BUDGET <= 15, "总预算不应超过默认单次超时"
+
+
+def test_qasclient_forwards_retries_to_http():
+    """QASClient 必须把 retries 真正透传到底层 http_get/http_post。"""
+    from unittest.mock import MagicMock
+    import api_client
+    client = media_library.QASClient("http://127.0.0.1:1", "t", timeout=3)
+    client.retries = 1
+    with patch.object(api_client, "http_get", MagicMock(return_value={})) as g:
+        client.get("/data")
+    assert g.call_args.kwargs.get("retries") == 1
+    assert g.call_args.kwargs.get("timeout") == 3
+    with patch.object(api_client, "http_post", MagicMock(return_value={})) as p:
+        client.post("/update", {})
+    assert p.call_args.kwargs.get("retries") == 1
+    # 默认（未指定 retries）时不得给底层传 retries，保持原有 3 次重试语义
+    plain = media_library.QASClient("http://127.0.0.1:1", "t", timeout=3)
+    with patch.object(api_client, "http_get", MagicMock(return_value={})) as g2:
+        plain.get("/data")
+    assert "retries" not in g2.call_args.kwargs
+
+
+def _resp(entries):
+    return {"success": True, "data": {"fid": 0, "list": entries}}
+
+
+def test_library_cache_hit_avoids_network():
+    """重复打开同一目录必须命中缓存，不再打网络。"""
+    media_library.invalidate_library_cache()
+    fake = _FakeClient(savepath_resp=_resp([{"fid": "1", "file_name": "A.mkv"}]))
+    with patch.object(media_library, "_client", return_value=fake):
+        r1 = list_library(path="/媒体库")
+        r2 = list_library(path="/媒体库")
+    assert r1["success"] is True and r2["entries"] == r1["entries"]
+    assert r2["path"] == r1["path"], "缓存返回的结构必须与实时请求一致"
+    calls = [c for c in [fake.detail_path] if c is not None]
+    assert len(calls) == 1, "第二次调用不应再打网络（实测调用次数 {}）".format(len(calls))
+
+
+def test_library_cache_can_be_bypassed():
+    media_library.invalidate_library_cache()
+    fake = _FakeClient(savepath_resp=_resp([]))
+    with patch.object(media_library, "_client", return_value=fake):
+        list_library(path="/x", use_cache=False)
+        list_library(path="/x", use_cache=False)
+    assert fake.detail_path == "/x"
+
+
+def test_library_cache_not_written_on_failure():
+    """只缓存成功结果：失败要能真的重试。"""
+    media_library.invalidate_library_cache()
+    fake = _FakeClient(savepath_resp={"success": False, "message": "未登录"})
+    with patch.object(media_library, "_client", return_value=fake):
+        r1 = list_library(path="/媒体库", use_cache=False)
+    assert r1["success"] is False
+    fake.savepath_resp = _resp([{"fid": "1", "file_name": "A.mkv"}])
+    with patch.object(media_library, "_client", return_value=fake):
+        r2 = list_library(path="/媒体库")
+    assert r2["success"] is True and len(r2["entries"]) == 1, "失败不得进缓存"
+
+
+def test_library_cache_invalidated_after_delete():
+    """删除后必须作废缓存，否则用户删完再看同一目录还会看到已删条目。"""
+    media_library.invalidate_library_cache()
+    fake = _FakeClient(savepath_resp=_resp([{"fid": "1", "file_name": "A.mkv"}]),
+                       delete_resp={"success": True, "code": 0})
+    with patch.object(media_library, "_client", return_value=fake), \
+         patch.object(media_library, "delete_history_item", return_value=False):
+        list_library(path="/媒体库")           # 写入缓存
+        delete_entries([{"fid": "1", "name": "A"}])
+    assert media_library._lib_cache_get("path:/媒体库") is None, "删除后缓存未作废"
+
+
+def test_library_cache_expires(monkeypatch):
+    """TTL 到期后必须重新打网络（缓存只是「短命」，不能变成长期陈旧视图）。"""
+    media_library.invalidate_library_cache()
+    fake = _FakeClient(savepath_resp=_resp([]))
+    with patch.object(media_library, "_client", return_value=fake):
+        list_library(path="/媒体库")
+        assert media_library._lib_cache_get("path:/媒体库") is not None
+        # 直接把缓存时间戳往回拨，模拟 TTL 到期
+        media_library._lib_cache["path:/媒体库"]["ts"] -= media_library.LIBRARY_CACHE_TTL + 1
+        assert media_library._lib_cache_get("path:/媒体库") is None
+
+
+def test_route_library_refresh_param_bypasses_cache():
+    """前端「刷新」按钮带 refresh=1，必须绕过后端缓存。"""
+    media_library.invalidate_library_cache()
+    fake = _FakeClient(savepath_resp=_resp([]))
+    h = _make_handler(params={"path": "/媒体库", "refresh": "1"})
+    with patch.object(media_library, "_client", return_value=fake):
+        h._handle_library_get("/api/qas/library")
+        assert h.status == 200
+        assert media_library._lib_cache_get("path:/媒体库") is None, \
+            "refresh=1 的响应不应写回缓存（否则普通打开会拿到「刚强制刷新过」的旧数据）"
+        # 普通打开（不带 refresh）仍应写入缓存
+        h2 = _make_handler(params={"path": "/媒体库"})
+        h2._handle_library_get("/api/qas/library")
+        assert media_library._lib_cache_get("path:/媒体库") is not None

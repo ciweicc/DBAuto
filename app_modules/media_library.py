@@ -17,6 +17,9 @@
 #   - 所有 QAS 调用都复用 QASClient（token 注入 / 超时策略与其它链路一致）；
 #   - 删除是破坏性操作，默认「先删网盘、再同步历史」，任一步失败都要如实回报，
 #     不做静默降级，避免用户以为同步成功而实际只删了一半。
+import threading
+import time
+
 from api_client import QASClient
 from config import ConfigManager
 from storage import delete_history_item
@@ -53,7 +56,7 @@ MAX_DELETE_BATCH = 50
 # （shareurl / pattern / replace 全靠手工配），上限取更保守的值。
 MAX_TASK_DELETE_BATCH = 20
 
-# 读取类接口（任务列表 / 目录浏览）的超时预算。
+# 读取类接口（任务列表 / 目录浏览）的单次尝试超时预算。
 #
 # 为什么单独给读接口收窄超时（issue #27「网盘文件模块访问有点慢」）：
 #   QASClient 默认 timeout=15，而 utils.http_get 对网络层错误会重试 3 次，
@@ -63,29 +66,127 @@ MAX_TASK_DELETE_BATCH = 20
 # 删除是破坏性且需要确认结果的操作，保持原有 15s 预算不变。
 LIBRARY_READ_TIMEOUT = 6
 
+# ---- 读取总预算（issue #27 反馈「每次打开都要等几秒」） ----
+#
+# 上一轮只把「单次尝试」从 15s 收到 6s，但**重试次数没变**：
+# utils.http_get 默认 retries=3、HTTP_RETRY_TOTAL=12s，于是单次请求最坏
+#   attempt1 卡满 6s + 退避 ~0.5s + attempt2 卡满 6s > 12s 预算 → 放弃
+# ≈ 12.5s 全部压给用户。打开媒体库时目录与任务**并发**发起，
+# 而 requests 的 Session 连接池是线程安全的，两条链路互不拖累（实测并发≈串行），
+# 所以「打开要等几秒」正是这两条 12s 预算的链路在同时空转。
+#
+# 对策：
+#   1. 读接口的**总预算**由调用方显式给出（read_budget），超过就放弃重试、
+#      如实抛出超时，让前端立刻进「读取失败 + 重试」；
+#   2. 总预算必须 > 单次尝试超时，否则第一次尝试就被掐断、
+#      真实是「服务慢」的场景会被误报成「QAS 不可达」。
+LIBRARY_READ_BUDGET = 7.0
 
-def _client(timeout=15):
+# 目录浏览的**短命缓存**（issue #27）。
+#
+# 目的不是「少一次网络」，而是让**重复打开**媒体库页（切标签 / 刷新页面 / 从子目录
+# 退回来）不走网络：QAS 侧每次 /get_savepath_detail 都要拿 Cookie 向夸克实查目录，
+# 单次 0.5~3s 是常态，缓存直接把这部分等待抹掉。
+#
+# 语义（宁可慢也不要错）：
+#   - 只缓存**成功**结果，失败不缓存（失败要能真的重试）；
+#   - TTL 取 30s：媒体库是「看一眼 → 决定删哪个」的交互，
+#     在这个尺度上数据不会显著过期，而删除后由 delete_entries/delete_tasks
+#     显式 invalidate（delete 路径本身也走 force 刷新，双保险）；
+#   - 缓存的是**已经归一化**的响应字典，调用方拿到的结构与实时请求完全一致，
+#     因此「缓存命中的渲染路径」与「网络返回的渲染路径」不会产生第二套语义。
+LIBRARY_CACHE_TTL = 30.0
+LIBRARY_CACHE_MAX = 64
+
+
+def _client(timeout=15, retries=None):
+    """构造 QAS 客户端。
+
+    retries 显式下传到底层 http_get/http_post（见 utils.http_get 的 retries 参数）：
+    读接口用 1 次尝试，不让「内部重试 × 外层重试」相乘放大等待。
+    """
     cfg = ConfigManager.get_instance()
-    return QASClient(cfg.qas, cfg.qas_token, timeout=timeout)
+    client = QASClient(cfg.qas, cfg.qas_token, timeout=timeout)
+    if retries is not None:
+        client.retries = retries
+    return client
 
 
-def _read_client():
-    return _client(LIBRARY_READ_TIMEOUT)
+def _cache_key(path, fid=None):
+    """目录缓存的键：优先 fid（重命名/移动后仍稳定），否则用规范化的 path。"""
+    if fid not in (None, ""):
+        return "fid:{}".format(fid)
+    p = path if path not in (None, "") else DEFAULT_LIBRARY_ROOT
+    p = str(p).strip() or DEFAULT_LIBRARY_ROOT
+    if len(p) > 1:
+        p = p.rstrip("/") or "/"
+    return "path:{}".format(p)
+
+
+def _read_client(budget=None):
+    """读接口客户端：单次尝试 LIBRARY_READ_TIMEOUT，**不做**底层重试。
+
+    底层 http_get 的重试对「QAS 卡住/不可达」毫无帮助（重试的仍是同一个卡住的
+    服务），只会把等待翻倍。失败快速返回给前端，由用户点「重试」决定是否再来一次。
+    """
+    budget = LIBRARY_READ_BUDGET if budget is None else budget
+    return _client(min(LIBRARY_READ_TIMEOUT, max(1.0, float(budget))), retries=1)
+
+
+# ---------- 目录短命缓存 ----------
+
+_lib_cache = {}            # path -> {"ts": float, "data": dict}
+_lib_cache_lock = threading.Lock()
+
+
+def _lib_cache_get(path):
+    """取缓存（顺带惰性清理过期项）。返回响应字典的**浅拷贝**，避免调用方改写缓存。"""
+    now = time.time()
+    with _lib_cache_lock:
+        item = _lib_cache.get(path)
+        if not item:
+            return None
+        if now - item["ts"] >= LIBRARY_CACHE_TTL:
+            _lib_cache.pop(path, None)
+            return None
+        return dict(item["data"])
+
+
+def _lib_cache_put(path, data):
+    with _lib_cache_lock:
+        if len(_lib_cache) >= LIBRARY_CACHE_MAX:
+            # 简单淘汰：丢掉最旧的一条（目录浏览的访问局部性很强，这足够）
+            oldest = min(_lib_cache.items(), key=lambda kv: kv[1]["ts"])[0]
+            _lib_cache.pop(oldest, None)
+        _lib_cache[path] = {"ts": time.time(), "data": dict(data)}
+
+
+def invalidate_library_cache(path=None):
+    """作废目录缓存。
+
+    path 为 None 时清空全部（删除操作可能同时影响父目录与当前目录，
+    而父目录条目数/大小也会变，所以删除后走全清更稳）。
+    """
+    with _lib_cache_lock:
+        if path is None:
+            _lib_cache.clear()
+        else:
+            _lib_cache.pop(path, None)
 
 
 def _resp_ok(res):
     return isinstance(res, dict) and bool(res.get("success"))
 
 
-def list_tasks():
+def list_tasks(budget=None):
     """读取 QAS 的 tasklist（只读）。
 
     返回 {"success": bool, "tasks": [...], "message": str}。
-    每个 task 原样透传 QAS 字段（taskname / shareurl / savepath / pattern 等），
-    额外补一个 `exists_in_history` 标记，便于前端区分「QAS 有任务但本地无记录」。
+    每个 task 原样透传 QAS 字段（taskname / shareurl / savepath / pattern 等）。
+    预算/重试口径见模块头部「读取总预算」：不做底层重试，失败快速返回。
     """
     try:
-        res = _read_client().get_data()
+        res = _read_client(budget).get_data()
     except Exception as e:
         log("读取 QAS 任务失败: {}".format(e))
         return {"success": False, "tasks": [], "message": "读取 QAS 任务失败: {}".format(e)}
@@ -97,14 +198,23 @@ def list_tasks():
     return {"success": True, "tasks": tasks, "message": ""}
 
 
-def list_library(path=None, fid=None):
+def list_library(path=None, fid=None, budget=None, use_cache=True):
     """列出夸克网盘指定目录下的真实文件（媒体库视图）。
 
     返回 {"success": bool, "path": str, "fid": ..., "entries": [...], "message": str}。
     entries 由 QAS 原样返回，含 fid / file_name / dir / size / updated_at。
+
+    use_cache=True 时命中目录短命缓存（LIBRARY_CACHE_TTL）直接返回，不再打网络；
+    缓存只存成功结果，删除/写回后由 invalidate_library_cache() 显式作废
+    （见文件头「目录短命缓存」）。
     """
+    key = _cache_key(path, fid)
+    if use_cache:
+        cached = _lib_cache_get(key)
+        if cached is not None:
+            return cached
     try:
-        res = _read_client().get_savepath_detail(path=path, fid=fid)
+        res = _read_client(budget).get_savepath_detail(path=path, fid=fid)
     except Exception as e:
         log("读取网盘目录失败: {}".format(e))
         return {"success": False, "path": path or DEFAULT_LIBRARY_ROOT,
@@ -126,7 +236,7 @@ def list_library(path=None, fid=None):
             "size": it.get("size", 0),
             "updated_at": it.get("updated_at"),
         })
-    return {
+    payload = {
         "success": True,
         "path": data.get("paths") and path or (path or DEFAULT_LIBRARY_ROOT),
         "fid": data.get("fid"),
@@ -134,6 +244,9 @@ def list_library(path=None, fid=None):
         "entries": normalized,
         "message": "",
     }
+    if use_cache:
+        _lib_cache_put(key, payload)
+    return payload
 
 
 def _sync_history_for(name, sync_history):
@@ -204,6 +317,10 @@ def delete_entries(entries, sync_history=True):
             results.append({"name": name, "ok": False,
                             "message": (res or {}).get("message", "删除失败")})
 
+    if deleted:
+        # 目录内容已变（条目数 / 大小 / 修改时间都会变），全量作废缓存，
+        # 否则用户删完再进同一目录还会看到已删的条目（issue #27「双向管理」的底线）。
+        invalidate_library_cache()
     return {
         "success": deleted > 0 and failed == 0,
         "deleted": deleted,
@@ -359,5 +476,8 @@ def delete_tasks(items):
 
     log("已删除 QAS 任务 {} 条: {}".format(
         len(drop), [tasks[i].get("taskname") for i in sorted(drop)]))
+    # 任务写回本身不改网盘目录，但用户随后往往会去删对应文件；
+    # 这里只作废缓存不额外打网络，避免陈旧视图（代价是一次重查）。
+    invalidate_library_cache()
     return {"success": True, "deleted": len(drop), "failed": 0,
             "results": results, "tasks": new_tasks, "message": ""}
