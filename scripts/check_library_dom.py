@@ -864,17 +864,30 @@ def main():
                     m0["qasDelBtn"]))
 
             # 单条删除 → 必须弹确认（不可逆操作）
-            page.evaluate("()=>deleteQasTask(qasKey(qasTasks[0]))")
+            #
+            # 关键：这里必须**真的点页面上的按钮**，不能用
+            # `page.evaluate("deleteQasTask(qasKey(qasTasks[0]))")` 在 JS 里
+            # 现造 key —— 那样绕过了内联 onclick 属性的拼装与 HTML 解析，
+            # 正是 issue #27「删除按钮点了没反应」漏网的原因：
+            # qasKey 曾用 NUL 作分隔符，内联属性里的裸 NUL 被 HTML 解析器
+            # 改写成 U+FFFD，回传 key 与 qasKey() 不再相等，findQasTask 落空。
+            page.locator("#qasTaskList .lib-row:not(.lib-head) .lib-ops button").first.click(
+                timeout=4000)
             page.wait_for_timeout(300)
             shown = page.evaluate(
                 "()=>document.getElementById('confirmOverlay').classList.contains('show')")
             desc = page.evaluate("()=>document.getElementById('confirmDesc').textContent")
             if not shown:
-                problems.append("[任务删除] 单条删除没有弹确认框")
-            if "网盘里已转存的文件不受影响" not in desc:
-                problems.append("[任务删除] 确认文案未说明「只删任务配置、不动网盘文件」")
-            page.click("#confirmOk")
-            page.wait_for_timeout(600)
+                # 点真实按钮却没弹确认 = 删除入口彻底失效（issue #27）。
+                # 直接判失败并给出定位提示，不要继续往下点（会一直等 overlay）。
+                problems.append("[任务删除] 点击行内「删除」按钮后没有弹确认框"
+                                "（内联参数可能被 HTML 改写，按钮成了空操作）")
+            else:
+                if "网盘里已转存的文件不受影响" not in desc:
+                    problems.append("[任务删除] 确认文案未说明「只删任务配置、不动网盘文件」")
+            if shown:
+                page.click("#confirmOk", timeout=4000)
+                page.wait_for_timeout(600)
             m1 = qas_state()
             if not deleted:
                 problems.append("[任务删除] 确认后未调用 /api/qas/delete_tasks")
@@ -883,8 +896,8 @@ def main():
             if m1["qasRows"] != 7:
                 problems.append("[任务删除] 单条删除后行数未减少（{} 行）".format(m1["qasRows"]))
 
-            # 全选 → 批量删除
-            page.evaluate("()=>toggleQasSelectAll(true)")
+            # 全选 → 批量删除（走页面上真实的全选框，而非直接调函数）
+            page.check("#qasSelAll")
             page.wait_for_timeout(200)
             cnt = page.evaluate("()=>document.getElementById('qasSelCount').textContent")
             if "已选 7 条" not in cnt:
@@ -895,8 +908,11 @@ def main():
                 problems.append("[任务删除] 批量操作条在勾选后仍不可见")
             page.evaluate("()=>deleteSelectedQasTasks()")
             page.wait_for_timeout(300)
-            page.click("#confirmOk")
-            page.wait_for_timeout(600)
+            if page.evaluate("()=>document.getElementById('confirmOverlay').classList.contains('show')"):
+                page.click("#confirmOk", timeout=4000)
+                page.wait_for_timeout(600)
+            else:
+                problems.append("[任务删除] 批量删除未弹确认框")
             m2 = qas_state()
             if m2["qasRows"] != 0:
                 problems.append("[任务删除] 批量删除后仍有 {} 行任务".format(m2["qasRows"]))

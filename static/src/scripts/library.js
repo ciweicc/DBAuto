@@ -146,7 +146,12 @@ function jsArg(v){
     .replace(/'/g, "\\'")
     .replace(/</g, '\\u003c')
     .replace(/&/g, '\\u0026')
-    .replace(/"/g, '\\u0022');
+    .replace(/"/g, '\\u0022')
+    // 控制字符（含 NUL）必须转义成 \uXXXX 再拼进内联属性：裸控制字符会被
+    // HTML 解析器改写成 U+FFFD，参数回传时已与原文不符（issue #27 删除按钮失效）。
+    .replace(/[\u0000-\u001f\u007f]/g, function(c){
+      return '\\u' + ('000' + c.charCodeAt(0).toString(16)).slice(-4);
+    });
   return "'" + t + "'";
 }
 
@@ -320,8 +325,16 @@ async function loadQasTasks(){
 
 // QAS 任务的定位键：QAS 不保证 taskname 唯一，故用 taskname + savepath。
 // 刷新后若任务被改名/移动，键会自然失配（勾选清空），不会误删别的任务。
+//
+// 分隔符原来用的是 NUL（\u0000），这会导致**删除按钮彻底失效**（issue #27）：
+// 该 key 会经 jsArg 拼进内联 onclick 属性，而 HTML 解析器把属性里的裸 NUL
+// 替换成 U+FFFD，于是回传的 key ≠ qasKey() 生成的 key，findQasTask 落空、
+// 删除静默 return。改用可打印的「单位分隔符符号」\u241f：HTML 里是普通字符，
+// 不会被改写，也几乎不可能出现在任务名/路径里。
+var QAS_KEY_SEP = '\u241f';
+
 function qasKey(t){
-  return String(t.taskname == null ? '' : t.taskname) + '\u0000' + String(t.savepath == null ? '' : t.savepath);
+  return String(t.taskname == null ? '' : t.taskname) + QAS_KEY_SEP + String(t.savepath == null ? '' : t.savepath);
 }
 
 function _renderQasTasksError(message){
