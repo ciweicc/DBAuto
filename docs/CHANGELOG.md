@@ -2,6 +2,69 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
+## [当前] 「最近转存」标题列独占剩余宽度 + 面板加宽（issue #39 追问）
+
+> 对应 [issue #39](https://cnb.cool/ciweicc/DBAuto/-/issues/39) 用户追加诉求：
+> 「能不能让这个模块的横向面积更大一点显示完整内容？」
+
+**先复现，不猜**
+
+用 `scripts/check_overview_dom.py` 的同一套桩数据在 9 组视口量了标题列的
+`clientWidth / scrollWidth`：
+
+- 2560px：标题列 **83px**，最长标题需 **157px** → 4 行全部截断
+- 1440px：标题列 **71px** → 4 行全部截断
+- 1280px：标题列 **62px** → 4 行全部截断
+
+**根因不是「面板不够宽」一件事，是「宽度分配错了」**
+
+`table-layout:fixed` 下，**未声明宽度**的列会平分剩余宽度。原来只有
+「链接」列声明了 48px，于是「标题 / 时间 / 状态」各拿 1/4：
+2560px 视口下面板 300px，三列各 83px —— 而「时间」(`09/15 10:00`)、
+「状态」(`已转存`) 实测只需 93 / 89px，「标题」却要 157px。
+短列被过度分配，长列拿不够，这才是截断的直接原因。
+
+**两处一起改，缺一不可**
+
+1. **按内容分配列宽**（`static/src/styles/main.css` +
+   `static/src/body.html`）：时间/状态/链接按实测所需钉死宽度
+   （90 / 88 / 44px，含 12px 左右内边距），「标题」不声明宽度成为
+   **唯一的 auto 列** —— 独占全部剩余宽度，不再与两列短内容平分。
+2. **面板加宽**（`static/src/styles/tokens.css`）：`--ov-rec-w` 300 → **390px**。
+   只改列宽分配会**让事情更糟**（短列吃掉固定宽度后标题被挤到 0）：
+   实测 1280px 下标题列从 62px 掉到 **0px**。必须同时给出足够的剩余宽度。
+
+加宽后的实测（9 组视口）：「标题」列 **166px**，**0 行截断**，
+标题列宽度较修复前 62~83px 提升约 2 倍；表格无横向滚动条；
+1440×900 下左列「今日转存」副信息仍完整（`--ov-rec-w:400` 会挤断它，
+所以最终值定在 390px 而不是 400px）。
+
+**改了哪些文件**
+
+- `static/src/styles/main.css`：新增 `.ov-col-date` / `.ov-col-state` 定宽规则，
+  `.ov-table-date` / `.ov-table-actions` 宽度按实测微调（96→90 / 48→44）；
+  各断点 `--ov-rec-w` 统一为 390px。
+- `static/src/styles/tokens.css`：`--ov-rec-w` 300 → 390px，附推导注释。
+- `static/src/body.html`：「时间」「状态」表头加定宽类名；「标题」表头刻意
+  不加宽度类（否则它不再是 auto 列）。
+- `scripts/check_overview_dom.py`：新增 `recentTitle` 度量（标题列宽 / 定宽列
+  合计 / 每行 `scrollWidth > clientWidth`）与 3 条断言：标题不得截断、
+  标题列宽 ≥150px、定宽列合计 ≤240px；≤640px 卡片化布局下自动跳过列宽断言。
+- `tests/test_build.py`：新增 `test_overview_recent_columns_are_content_sized`
+  （定宽类名存在 / 标题表头无宽度声明 / 定宽数值 / `--ov-rec-w` ≥380px /
+  走查门禁与阈值未被删或放宽）。
+
+**验证证据**
+
+- `python3 -m pytest tests/ -q` → **307 passed**；`python3 -m ruff check .` 通过；
+  `python3 scripts/check_contrast.py` → 18 组受检 0 组未达标。
+- `python3 scripts/check_overview_dom.py --serve` → **9 组视口 0 处问题**，
+  标题列宽 166px（760px 视口 496px，390px 走卡片化布局）。
+- `python3 scripts/check_library_dom.py --serve` → 0 处问题（确认无连带回归）。
+- **反向验证**（证明新断言不是摆设）：把产物里 `--ov-rec-w` 改回 300px 重跑，
+  9 组视口全部报出「「最近转存」标题列过窄，4 行被截断（列宽 76px，最长需 157px）」
+  +「标题列宽 76px < 150px」；还原后恢复 0 问题。
+
 ## [当前] 概览页收敛历史入口 + 折叠恒常列（issue #39）
 
 > 对应 [issue #39](https://cnb.cool/ciweicc/DBAuto/-/issues/39) 用户诉求：

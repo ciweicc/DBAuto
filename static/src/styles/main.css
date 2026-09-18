@@ -1213,7 +1213,7 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .ov-top{
   display:grid;
   /* 右列固定宽度：右列承载「服务状态 + 待办」，宽度按内容稳定 */
-  grid-template-columns:minmax(0,1fr) var(--ov-rec-w,300px);
+  grid-template-columns:minmax(0,1fr) var(--ov-rec-w,400px);
   gap:14px;
   margin-bottom:14px;
   /* 首屏两列高度**由内容上限统一决定**（issue #15 第 4 轮）。
@@ -1395,8 +1395,19 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
    会被 `.ov-table thead th` 的 padding/white-space 规则"弱化"掉风险，
    这里写死一条同选择器族的规则，保证折叠后的列不残留列宽。 */
 .ov-table thead th[hidden]{display:none}
-.ov-table .ov-col-lib,.ov-table .ov-table-lib{width:52px}
-.ov-table .ov-col-link,.ov-table .ov-table-actions{width:48px;text-align:center}
+/* 列宽分配（issue #39 追问：「让模块横向更大、显示完整内容」）：
+   `table-layout:fixed` 下**未声明宽度**的列平分剩余宽度，于是 4 列各拿 1/4，
+   2560px 视口下标题列也只有 83px，而一条「剧集 + 9 字标题 + 序号」实测需要 147px
+   —— 标题列恒定被省略号截断（issue 截图中的现象）。
+   这里改成**按内容分配**：时间/状态/链接三列的格式与词表都是确定的
+   （`MM/DD HH:MM`、`已转存|已存在跳过|失败|进行中|已入库`、24px 图标），
+   把它们钉死到实测所需宽度，标题列成为唯一的 auto 列 → 独占全部剩余宽度，
+   不再与两列短内容平分。新增列宽只影响标题列收益。
+   实测所需（含左右 12px 内边距）：时间 93px、状态 89px、链接 48px、库内 52px。 */
+.ov-table .ov-col-date,.ov-table .ov-table-date{width:90px}
+.ov-table .ov-col-state{width:88px}
+.ov-table .ov-col-lib,.ov-table .ov-table-lib{width:52px;text-align:center}
+.ov-table .ov-col-link,.ov-table .ov-table-actions{width:44px;text-align:center}
 .ov-table .ov-table-actions a{display:inline-flex}
 .ov-table-empty{text-align:center;color:var(--text3);padding:24px !important}
 .ov-table-nolink{color:var(--text3)}
@@ -1516,19 +1527,19 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
    侧栏与日志栏的展开状态也会改变主列宽度，media query 判定会在中间宽度误判。 */
 @media(max-width:1500px){
   /* 主列变窄：右列海报改小一档，避免挤压左侧面板 */
-  .ov-top{--ov-rec-w:262px}
+  .ov-top{--ov-rec-w:390px}
   .ov-stat-row{padding:9px 14px}
 }
 @media(max-width:1350px){
-  .ov-top{--ov-rec-w:236px}
+  .ov-top{--ov-rec-w:390px}
 }
 /* 当右侧日志栏退出桌面常驻布局（≤1200px）时主列反而变宽：右列宽度回调 */
 @media(max-width:1200px){
-  .ov-top{--ov-rec-w:280px}
+  .ov-top{--ov-rec-w:390px}
 }
 @media(max-width:1024px){
   /* 侧栏收起后主列最宽，右侧推荐列恢复满宽海报 */
-  .ov-top{--ov-rec-w:300px}
+  .ov-top{--ov-rec-w:390px}
 }
 @media(max-width:900px){
   /* 首屏两列改上下堆叠 */

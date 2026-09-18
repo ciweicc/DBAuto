@@ -18,6 +18,8 @@
   7. 移动端表格卡片化后，分类前缀不得被压成竖排单字；
   8. 横向溢出（文档 + 内容区）必须为 0；
   9. 待办里的「去 TMDB 发现」必须真的把发现区带到眼前（issue #24）。
+  10.「最近转存」标题列必须够宽，「常规标题」不得被省略号截断
+     （issue #39 追问：「让这个模块的横向面积更大一点显示完整内容」）。
 
 依赖：playwright + chromium（仓库 E2E 测试同依赖），
   pip install playwright && python -m playwright install chromium
@@ -184,6 +186,27 @@ MEASURE = r"""
       libCell: !!q('#ovRecentBody td.ov-table-lib'),
       linkCell: !!q('#ovRecentBody td.ov-table-actions'),
       sub: (() => { const e = q('#ovRecentSub'); return e ? e.textContent : null; })(),
+    },
+    // issue #39 追问：标题列必须拿到足够宽度，「显示完整内容」不能被省略号截断。
+    // 判据用 scrollWidth > clientWidth（而不是"看有没有 …"）：
+    // 省略号是 CSS 渲染的，DOM 里读不到，只有溢出量是确定性的文本证据。
+    recentTitle: {
+      // 表头里带 width 声明的列（时间/状态/链接）与标题列各自的实测宽度
+      fixedColW: [...q('.ov-panel-recent .ov-table').querySelectorAll('thead th')]
+        .filter(th => !th.hasAttribute('hidden') && th.textContent.trim() !== '标题')
+        .reduce((sum, th) => sum + Math.round(th.getBoundingClientRect().width), 0),
+      titleColW: (() => { const th = [...q('.ov-panel-recent .ov-table').querySelectorAll('thead th')]
+        .find(t => t.textContent.trim() === '标题');
+        return th ? Math.round(th.getBoundingClientRect().width) : 0; })(),
+      // ≤640px 时表格转「每行一张卡」（thead display:none、td display:flex），
+      // 此时表头宽度无意义（恒 0），列宽断言不适用。
+      cardLayout: getComputedStyle(q('.ov-panel-recent .ov-table thead')).display === 'none',
+      rows: [...document.querySelectorAll('#ovRecentBody .ov-table-title')].map(td => ({
+        clipped: td.scrollWidth > td.clientWidth + 1,
+        need: td.scrollWidth,
+        got: td.clientWidth,
+        text: td.textContent.trim(),
+      })),
     },
     statuses: [...new Set([...document.querySelectorAll('#ovRecentBody .ov-badge')].map(e => e.textContent))],
     firstDate: (() => { const e = q('#ovRecentBody .ov-table-date'); return e ? e.textContent : null; })(),
@@ -366,6 +389,22 @@ def main():
                     fail("指标行高不一致：{}".format(m["statRowH"]))
                 if m["tableOverflowX"] > 0:
                     fail("最近转存表出现横向滚动条 {}px".format(m["tableOverflowX"]))
+                # issue #39 追问：标题列必须够宽，常规标题不得被省略号截断。
+                # 桩数据最长标题为「剧集示例作品标题-00」（含分类前缀约 157px），
+                # 这就是「常规标题」的下限口径：连它都截断，说明列宽分配又退化了。
+                t = m["recentTitle"]
+                clipped = [r for r in t["rows"] if r["clipped"]]
+                if clipped:
+                    fail("「最近转存」标题列过窄，{} 行被截断（列宽 {}px，最长需 {}px）：{}"
+                         .format(len(clipped), t["titleColW"], max(r["need"] for r in t["rows"]),
+                                 clipped[0]["text"]))
+                if not t["cardLayout"] and m["recentRows"] and t["titleColW"] < 150:
+                    fail("「最近转存」标题列宽 {}px < 150px（列宽被定宽列挤占）"
+                         .format(t["titleColW"]))
+                # 定宽列不得反向膨胀（时间/状态/链接是按内容钉死的，不该抢标题列）
+                if not t["cardLayout"] and m["recentRows"] and t["fixedColW"] > 240:
+                    fail("「最近转存」定宽列合计 {}px > 240px（挤占标题列宽度）"
+                         .format(t["fixedColW"]))
                 # issue #39：恒常列折叠（桩数据下 status 恒非空 → 库内列应折叠）
                 c = m["recentCols"]
                 if c["libHidden"] is not True or c["libCell"]:
@@ -442,8 +481,9 @@ def main():
         print(json.dumps({"problems": problems, "report": report}, ensure_ascii=False, indent=2))
     else:
         for m in report:
-            print("{:<26} 指标行高 {:<16} 表格溢出 {:<3} 首屏底边 {:<6} 发现区 {} 状态 {}".format(
+            print("{:<26} 指标行高 {:<16} 表格溢出 {:<3} 首屏底边 {:<6} 标题列 {:<4} 发现区 {} 状态 {}".format(
                 m["label"], str(m["statRowH"]), m["tableOverflowX"], m["screenBottom"],
+                "{}px".format(m["recentTitle"]["titleColW"]),
                 "页内" if m["discoveryInOverview"] else "缺失",
                 "/".join(m["statuses"])))
         print()
