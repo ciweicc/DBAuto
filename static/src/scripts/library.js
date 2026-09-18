@@ -154,11 +154,32 @@ function jsArg(v){
 // 它同时决定删除走哪条链路 —— 谁列出来的条目，就删谁那边的（见 doDelete）。
 var libSource = 'qas';
 var libFallback = false;
+var libFallbackReason = '';
+var libFallbackHint = '';
 
 // 数据源徽标：让「变快了 / 变慢了」能被归因。
 // 不显示徽标的代价是：用户只能看到「快了点」，不知道是因为 OpenList 生效、
 // 还是因为这次运气好（缓存命中）。回落时必须明确标出来 ——
 // 否则 OpenList 挂掉后用户会以为自己在用 OpenList，实际走的是慢链路。
+// 回落排查弹窗：把「该去改哪个设置」直接讲清楚。
+// 实测下来「配了 OpenList 却仍回落」几乎都是路径前缀问题（OpenList 的挂载点
+// 不是网盘根），但表现和「OpenList 挂了」完全一样，所以这里按原因分流。
+function _showFallbackHelp(){
+  var reason = libFallbackReason || '未知原因';
+  var tips;
+  if(libFallbackHint === 'path_prefix'){
+    tips = 'OpenList 上找不到这个目录 —— 多半是「路径前缀」没填对。\n'
+         + '打开「设置 → 数据源 → 媒体库文件源（OpenList）」，在「路径前缀」里填 OpenList'
+         + '上挂载夸克网盘的那个目录（例如 /夸克），然后点「连接自检」。';
+  }else{
+    tips = '请到「设置 → 数据源 → 媒体库文件源（OpenList）」点「连接自检」：\n'
+         + '· 登录失败 → 检查地址 / 账号 / 密码\n'
+         + '· 登录通过但列目录失败 → 检查「路径前缀」';
+  }
+  // 用应用内 toast（原生 alert 会阻塞渲染，也无法在走查脚本里断言）
+  showToast('已回落到 QAS 直连：' + reason + ' ' + tips.replace(/\n+/g, ' '), false, 12000);
+}
+
 function _renderLibSourceBadge(){
   var el = document.getElementById('libSourceBadge');
   if(!el) return;
@@ -172,10 +193,24 @@ function _renderLibSourceBadge(){
     title = '目录由 OpenList 回答（对夸克驱动有列表缓存，通常更快）';
   }else{
     label = libFallback ? 'QAS（OpenList 回落）' : 'QAS 直连';
-    title = libFallback
-      ? 'OpenList 不可用，已回落到 QAS 直连（较慢）。请到「设置 → 数据源」检查 OpenList 配置'
-      : '目录由 QAS 直连回答（未配置 OpenList）。配置 OpenList 可显著加快目录浏览';
+    if(libFallback){
+      // 回落原因必须能看见、能点开（issue #27 追问「配了 OpenList 却仍回落」）：
+      // 「已回落」本身不是信息，用户需要知道是地址错了还是路径前缀不对。
+      // 所以 title 直接给结论 + 修复方向，点开是更完整的步骤。
+      var fix = libFallbackHint === 'path_prefix'
+        ? '多半是「路径前缀」没填对：设置 → 数据源 → OpenList 里填 OpenList 挂载夸克网盘的目录。'
+        : '到「设置 → 数据源 → OpenList」点「连接自检」看具体原因。';
+      title = 'OpenList 不可用，已回落到 QAS 直连（较慢）。原因：'
+        + (libFallbackReason || '未知') + fix + '（点此查看完整排查步骤）';
+      el.onclick = function(){ _showFallbackHelp(); };
+      el.style.cursor = 'pointer';
+    }else{
+      title = '目录由 QAS 直连回答（未配置 OpenList）。配置 OpenList 可显著加快目录浏览';
+      el.onclick = null;
+      el.style.cursor = '';
+    }
   }
+  if(libSource === 'openlist'){ el.onclick = null; el.style.cursor = ''; }
   el.textContent = label;
   el.title = title;
   el.className = 'lib-src-badge lib-src-' + (libSource === 'openlist' ? 'ol' : 'qas');
@@ -530,7 +565,8 @@ async function loadLibrary(path, opts){
       return;
     }
     var entries = res.entries || [];
-    var meta = {source: res.source, fallback: res.fallback};
+    var meta = {source: res.source, fallback: res.fallback,
+                fallback_reason: res.fallback_reason, fallback_hint: res.fallback_hint};
     libCache[target] = { ts: Date.now(), entries: entries, meta: meta };
     _libRememberRows(entries.length);   // 下次首帧骨架按真实条数占位，减少高度跳动
     _renderLibrary(target, entries, false, r.ms, meta);
@@ -565,6 +601,8 @@ function _renderLibrary(path, entries, fromCache, ms, source){
   libEntries = entries || [];
   if(source && source.source) libSource = source.source;
   if(source && typeof source.fallback === 'boolean') libFallback = source.fallback;
+  libFallbackReason = (source && source.fallback_reason) || '';
+  libFallbackHint = (source && source.fallback_hint) || '';
   libSelected = {};
   libEntries.forEach(function(it, i){
     it._key = it.fid != null ? String(it.fid) : ('p' + i);

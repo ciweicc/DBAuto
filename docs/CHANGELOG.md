@@ -2,6 +2,60 @@
 
 本文件记录 DBAuto 的重要变更。按合并 / 发布倒序排列。
 
+## [当前] 修复「配了 OpenList 却仍回落」（issue #27 追问）
+
+> 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户追问：
+> 「为什么我配置了 OpenList，但还是 OpenList 回落了」（附媒体库截图，
+> 徽标显示「QAS（OpenList 回落）」）。
+
+**根因不是 OpenList 挂了，而是路径对不上**
+
+DBAuto 的媒体库路径来自 QAS 的 `savepath`（如 `/影视/电影`），而 OpenList 只认
+**自己的挂载点**（Quark 驱动常挂在 `/夸克` 之类的目录下）。两者不一致时
+OpenList 的 `/api/fs/list` 会稳定返回 500（`storage not found` / `failed to list objs`），
+于是**每一次浏览都回落 QAS**。
+
+这个失败形态极具误导性：登录（`/api/me`）是通的，所以设置页的「连接自检」
+一路报「OpenList 可用，目录将由其回答」，而用户实际每翻一次目录都在走慢链路 ——
+「自检说正常」与「实际一直回落」同时成立，线索完全断掉。
+
+**修了什么**
+
+- `app_modules/openlist.py`：新增 `openlist_root`（OpenList 侧挂载前缀）与
+  `to_openlist_path` / `from_openlist_path` 双向翻译；`list_dir` / `remove`
+  都先翻译再请求，不再把网盘路径原样发给 OpenList。前缀留空时行为不变（两边同构）。
+- `app_modules/openlist.py`：新增 `self_check()` —— 自检从「只 ping `/api/me`」
+  改成「登录 + **真的列一次目录**」。只验证登录是无法发现路径不匹配的。
+- `app_modules/openlist.py`：目录不存在时不再含糊地报「OpenList 错误 500」，
+  而是明确说明「OpenList 上找不到目录 X，请检查路径前缀」，并置
+  `path_missing` / `fallback_hint` 标记；**只对「目录不存在」类报错这样提示**，
+  真正的超时/连接故障仍如实报原始原因（避免把用户带偏）。
+- `app_modules/media_library.py`：回落时把 `fallback_reason` / `fallback_hint`
+  一起带给前端 —— 只显示「已回落」等于没有信息。
+- `app_modules/routes_library.py`：`/api/library/source` 改为调用完整自检，
+  并回报实测列到的条目数、失败发生在哪一步（`login` / `list`）、实际请求的
+  OpenList 路径；自检失败时 `source` 如实回落为 `qas`，不与徽标自相矛盾。
+- `app_modules/routes_config.py`：`openlist_root` 校验（必须绝对路径、禁止 `..`）。
+- 前端：设置页新增「路径前缀」输入框；「连接自检」文案区分
+  「登录失败」与「登录通过但列目录失败（多半是路径前缀没填对）」；
+  媒体库徽标把回落原因与修复方向写进 title，点开给出完整排查步骤。
+
+**验证证据**
+
+- `python -m pytest tests/ -q` → **387 passed**；`ruff check .` 通过。
+- 新增 `tests/test_openlist.py` 8 条，把因果链锁死：前缀生效后请求路径必须是
+  `/夸克/影视/电影`；目录不存在时必须报「路径前缀」而不是含糊失败；
+  真正超时**不得**被误报成路径问题；自检必须真的列目录。
+- 反向验证：移除「路径前缀」输入框 → `check_settings_dom.py` 报
+  「用户无处可配，只能看着已回落」；把回落原因从徽标 title 里去掉 →
+  `check_library_dom.py` 报「用户只知道回落了，不知道该去改哪儿」。
+- 桩 OpenList 端到端：`/api/me` 通、`/api/fs/list` 对未挂载路径返回 500，
+  复现「自检说可用 + 浏览全回落」；配上前缀 `/夸克` 后 `self_check` 转为
+  `stage=ok`，浏览不再回落。
+- `scripts/check_library_dom.py` / `check_settings_dom.py` / `check_overview_dom.py` /
+  `check_log_panel_dom.py` / `check_contrast.py` 全部 0 处问题；
+  前端产物重建三次 md5 一致（无漂移）。
+
 ## [当前] 媒体库接入 OpenList 数据源 + QAS 任务对账（issue #27 追问）
 
 > 对应 [issue #27](https://cnb.cool/ciweicc/DBAuto/-/issues/27) 用户追加诉求：
