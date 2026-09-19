@@ -486,6 +486,15 @@
             <label class="lib-selectall" id="libSelAllWrap" style="display:none" title="选择本目录全部条目">
               <input type="checkbox" id="libSelAll" onchange="toggleLibSelectAll(this.checked)"><span>全选</span>
             </label>
+            <!-- 键盘选择提示（issue #53）：快捷键不写出来就没人知道。
+                 窄屏隐藏（触屏没有这些键），见 main.css 的 .lib-keyhint。 -->
+            <span class="lib-keyhint" id="libKeyHint" title="Ctrl 在 macOS 上为 ⌘">
+              <kbd>Ctrl/⌘</kbd>+<kbd>A</kbd> 全选
+              <kbd>Shift</kbd>+<kbd>↑↓</kbd> 连选
+              <kbd>↑↓</kbd> 移动
+              <kbd>空格</kbd> 勾选
+              <kbd>Esc</kbd> 取消
+            </span>
           </div>
           <div id="libList"><div class="empty-state" style="padding:24px 20px"><div class="empty-title">加载中...</div></div></div>
           <div id="libTip" class="lib-tip">文件夹与文件以等高卡片展示（不显示封面图），每张卡都标出文件大小与修改时间；删除会同步清理本地转存历史。目录由「设置 → 数据源」里的 OpenList 回答（未配置时回落 QAS 直连）。</div>

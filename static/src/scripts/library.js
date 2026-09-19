@@ -41,6 +41,13 @@
 //    → 显式 loading 状态 + 时间轴提示（「已用 3.2s，正在等 QAS 响应…」）。
 // 4. 渲染保持增量不变：加载中/错误/空态用静态 HTML 一次性赋值，不走多次重排。
 
+// 5. 选择操作要能用键盘完成（issue #53：「选中效率太低了，没有批量全选和小部分
+//    范围选择的快捷键」）。列表里的勾选框原本只能靠鼠标一个一个点，
+//    键盘（Tab/空格）只能在**渲染顺序**里逐个走 —— 既选不中「前 5 个」，
+//    也选不全 70 多个条目，更看不见自己当前在哪一行。
+//    → Ctrl/⌘+A 全选、Shift+点击 / Shift+↑↓ 选范围、↑↓ 移焦点、
+//      Ctrl/⌘+↕ 移动焦点但不改变选择、Space 切换、Esc 清空。见 _libKeydown。
+
 // 媒体库根目录（issue #27）：把「资源根目录」设置项当作浏览下界。
 // 默认 '/'（网盘根）；用户可在设置里指定 /影视、/媒体库 等，媒体库页即以此为起点。
 function libRoot(){
@@ -56,6 +63,15 @@ function libAtRoot(path){
 var libPath = libRoot();
 var libEntries = [];
 var libSelected = {};
+// 键盘选择的两个状态（issue #53）：
+//   libFocusKey    —— 当前行（虚线框），Shift+Range 的焦点端；
+//   libSelectAnchor —— 范围选择的锚点（不动的那一端）。
+// 两者都存「key」而不是下标：列表刷新/换视口后下标会变，key 不会。
+var libFocusKey = null;
+var libSelectAnchor = null;
+// 上一次「范围选择」的基线（起点/终点 + 那次范围之前的选择）。没有它，
+// Shift 只能扩不能缩（见 _libSelectRange 的推导）。
+var libRangeBase = null;
 var qasTasks = [];
 var qasSelected = {};      // QAS 任务的勾选状态：key -> task
 
@@ -671,6 +687,9 @@ function _renderLibError(path, message, ms){
   var box = document.getElementById('libList');
   if(!box) return;
   libPath = path; libEntries = []; libSelected = {};
+  // 换目录 / 失败重渲染：键盘状态一起重置。否则「在一个目录按 Shift 选了 30 项，
+  // 进子目录再按 Shift+↓」会拿旧锚点去算新列表的下标 —— 选出来的范围莫名其妙。
+  libFocusKey = null; libSelectAnchor = null; libRangeBase = null;
   renderBreadcrumb(path);
   var cnt = document.getElementById('libCount');
   if(cnt) cnt.textContent = '';
@@ -723,6 +742,8 @@ function _renderLibrary(path, entries, fromCache, ms, source){
     libFallbackBackoffLeft = Number(source.fallback_backoff_left || 0) || 0;
   }
   libSelected = {};
+  // 键盘状态同理：DOM 每次重渲染都是全新的节点，focus/anchor 的 key 必须重新建立
+  libFocusKey = null; libSelectAnchor = null; libRangeBase = null;
   libEntries.forEach(function(it, i){
     it._key = it.fid != null ? String(it.fid) : ('p' + i);
     // 条目「所属目录」在**渲染时就固定下来**（= 它真实被列出来的那个目录）。
@@ -767,7 +788,14 @@ function _libTableHtml(){
   // 列表视图的表头与卡片视图保持同一套语义：名称 / 大小 / 修改时间（issue #27 跟进）。
   html += '<div class="lib-row lib-head"><span class="lib-cb"></span><span>名称</span><span>大小</span><span>修改时间</span><span></span></div>';
   libEntries.forEach(function(it){
-    html += '<div class="lib-row">' +
+    // data-key 必须带上：键盘逻辑全靠它把 DOM 行与 libEntries 里的条目对上，
+    // 缺了它 findEntry 找不到条目、勾选静默失效（本轮实测：列表视图里
+    // 按空格「看起来有反应但什么都没选」就是这个原因）。
+    html += '<div class="lib-row" data-key="' + esc(it._key) + '" tabindex="0"' +
+      ' onclick="libCardClick(' + jsArg(it._key) + ', event)"' +
+      ' onkeydown="libRowKeydown(' + jsArg(it._key) + ', event)">' +
+      // 行本身就带 tabindex/onclick：键盘用户不必逐个 Tab 进勾选框，
+      // Shift/Ctrl+点击的范围与增选语义也与卡片视图完全一致。
       '<span class="lib-cb"><input type="checkbox" aria-label="选择 ' + esc(it.name) + '" onchange="toggleLibSelect(' + jsArg(it._key) + ', this.checked)"></span>' +
       '<span class="lib-name">' +
         (it.dir
@@ -846,7 +874,11 @@ function _libCardShell(it, kind){
   var nameHtml = it.dir
     ? '<a class="lib-card-title lib-card-dirlink" href="javascript:void(0)" onclick="enterDir(' + jsArg(it.name) + ')" title="进入 ' + esc(it.name) + '">' + esc(it.name) + '</a>'
     : '<span class="lib-card-title" title="' + esc(it.name) + '">' + esc(it.name) + '</span>';
-  return '<div class="lib-card lib-card-' + kind + '" data-key="' + esc(it._key) + '" data-name="' + esc(it.name) + '">' +
+  // tabindex="0"：让每一行都能被 Tab 到达（只读屏幕阅读器/纯键盘用户），
+  // 也是「方向键移动当前行」的前提；点击快捷键走 onclick（见 libCardClick），
+  // 勾选框自己不再绑点击键，避免「点一下触发两次」。
+  return '<div class="lib-card lib-card-' + kind + '" data-key="' + esc(it._key) + '" data-name="' + esc(it.name) + '"' +
+      ' tabindex="0" onclick="libCardClick(' + jsArg(it._key) + ', event)" onkeydown="libRowKeydown(' + jsArg(it._key) + ', event)">' +
     '<label class="lib-card-cb" title="选择该' + (it.dir ? '文件夹' : '文件') + '">' +
       '<input type="checkbox" aria-label="选择 ' + esc(it.name) + '" onchange="toggleLibSelect(' + jsArg(it._key) + ', this.checked)">' +
     '</label>' +
@@ -986,6 +1018,327 @@ function updateLibActionBar(){
   if(all){
     all.checked = n > 0 && n === libEntries.length;
     all.indeterminate = n > 0 && n < libEntries.length;
+  }
+}
+
+// ---------- 键盘选择（issue #53） ----------
+//
+// 用户的原话：「我希望在使用电脑进行选中时，可以使用电脑的快捷键进行选择。
+// 当前的选中效率太低了。没有批量全选和小部分范围的选择快捷键」。
+//
+// 这里按「文件管理器」的通行约定实现，而不是另发明一套：
+//   * 列表获得焦点后 ↑/↓ 移动当前行，并用**虚线框**标出来 —— 没有「锚点」
+//     就谈不上「范围选择」，这也正是原来「不知道选到第几个」的成因；
+//   * Ctrl/⌘+A 全选、Esc 清空、Space 切换当前行；
+//   * Shift+↑/↓ 从锚点连选一段（「小部分范围选择」）；
+//   * Shift+点击 / Ctrl+点击 与桌面端一致（锚点 + 范围 / 逐个增减）。
+//
+// 刻意不做的事：
+//   1. 不做「框选（marquee）」：网格会被拖拽手势与文本选择干扰，收益却有限；
+//   2. Ctrl/⌘+Shift+A 这类「取消全选」不做 —— Ctrl+A + Esc 已经够用，
+//      多一个组合键就多一处没人记得住的行为。
+//   3. 方向键**不**跨列跳行（网格是 auto-fill，列数随视口变，跨列跳会跳错），
+//      只按 DOM 顺序（= 展现顺序）上下移动。
+
+function libGridEl(){
+  return document.getElementById('libGrid');
+}
+// 当前视图的行元素（卡片视图 = #libGrid 里的 .lib-card；列表视图 = .lib-table 里的
+// 数据行）。**两种视图必须走同一套键盘逻辑** —— 否则「我切成列表视图后快捷键就
+// 不好使了」是必然的。列表视图没有 #libGrid，所以要回落到 .lib-table。
+function libRowEls(){
+  var g = libGridEl();
+  var scope = g || document.querySelector('#libList .lib-table');
+  if(!scope) return [];
+  var rows = scope.querySelectorAll('.lib-card, .lib-row:not(.lib-head)');
+  return Array.prototype.slice.call(rows);
+}
+
+// 当前聚焦行在**展现顺序**里的下标；没聚焦过时回落到 -1。
+// 网格里行被渲染的顺序已由 _renderLibrary 排好（目录在前、名称升序），
+// 所以这里直接用 DOM 顺序，不再自己算一遍排序（两份排序必然漂移）。
+function _libFocusIdx(rows){
+  var k = libFocusKey;
+  if(k == null) return -1;
+  for(var i = 0; i < rows.length; i++){
+    if(rows[i].getAttribute('data-key') === k) return i;
+  }
+  return -1;
+}
+
+function libFocusRow(i, opts){
+  opts = opts || {};
+  var rows = libRowEls();
+  if(!rows.length) return;
+  if(i < 0) i = 0;
+  if(i > rows.length - 1) i = rows.length - 1;
+  libFocusKey = rows[i].getAttribute('data-key');
+  // 「当前行」必须**看得见**：只把下标记在变量里，用户就还是「不知道选到第几个」
+  // —— 这正是 issue #53 说「效率太低」的根因之一。样式见 .lib-current（虚线框）。
+  // 每次移动都全量重刷（n 很小，且不用 querySelector 逐个比）：上一次的标记必须
+  // 被清掉，否则会留下一条「幽灵当前行」，Shift 连选时看起来像选了两段。
+  for(var j = 0; j < rows.length; j++){
+    if(j === i) rows[j].classList.add('lib-current');
+    else rows[j].classList.remove('lib-current');
+  }
+  if(opts.scroll !== false){
+    // 卡片网格是内部滚动容器（max-height:560px），滚动到「最近」而不是居中：
+    // 居中会让列表在按方向键时频繁整屏跳动。
+    try{ rows[i].scrollIntoView({block:'nearest'}); }catch(e){ rows[i].scrollIntoView(false); }
+  }
+}
+
+// 把 libSelected 的状态**回写到渲染层**（勾选框 DOM 属性）。
+//
+// 踩坑（本轮实测）：原来这里只改 libSelected，不打勾选框 —— 因为「鼠标点」时
+// 浏览器会自己翻转 checkbox（所以不需要写）。但**键盘来的范围选择不会经过
+// 浏览器**：内部状态说「选了 3 项」、操作条也显示「已选 3 项」，
+// 而屏幕上 12 个勾选框全是空的。用户看到的就是「按了 Shift+↓ 什么都没发生」
+// —— 比没实现还糟。所有「非浏览器触发」的选择变更都必须经过这里。
+function _libSyncCheckboxes(rows){
+  (rows || libRowEls()).forEach(function(r){
+    var box = r.querySelector('input[type=checkbox]');
+    if(box) box.checked = !!libSelected[r.getAttribute('data-key')];
+  });
+}
+
+function _libSelectRow(i, rows, keys){
+  var r = rows[i];
+  if(!r) return;
+  libSelected[r.getAttribute('data-key')] = findEntry(r.getAttribute('data-key'));
+  if(keys) keys[String(i)] = 1;
+}
+
+// 选中从 anchor 到 focus 的闭区间（「小部分范围选择」）。
+//
+// 范围选择必须**可增可减**，但「已经选好的东西」也不能因为一次 Shift 就丢掉。
+// 这两件事靠一个量同时表达，就是 libRangeBase（上一次范围选择的状态）：
+//
+//   本次选区 = ( 基线选择里那些**落在本次范围之外**的项 ) ∪ 本次范围
+//
+// 「基线选择」= 上一次范围选择时记录的「范围之外的选择」= 用户自己攒下的那部分。
+// 由此得到与文件管理器一致的行为：
+//   * 全新 Shift（没有 libRangeBase）→ 直接「既有选择 ∪ 本次范围」，
+//     先 Ctrl+点击点出来的几项不会被吞掉；
+//   * Shift+↓ 一次次往下 → 范围右端不断外扩，左边那几项仍在；
+//   * Shift+↑ 往回收 → 范围右端缩回，只有「外扩出来的」部分被移除，
+//     自己的选择与锚点端**都留着**（不会像纯并集那样只能扩不能缩）。
+//
+// 踩坑（本轮实测两轮）：
+//   1. 纯并集 → Shift+↓ 之后 Shift+↑ 什么都不发生，用户只能重来；
+//   2. 快照写成「本次 libSelected - 本次范围」→ 把上一次范围的残留留下来，
+//      Shift+↓ ×2 只选出 2 项（应为 3）。正确顺序是**先算 next，再取
+//      next - 本次范围**，否则减掉的是旧范围、留下来的却是旧选区。
+function _libSelectRange(anchor, focus, rows){
+  var a = Math.min(anchor, focus), b = Math.max(anchor, focus);
+  var next = {};
+  // 1. 生成态：本次范围里的行一律选上
+  for(var j = a; j <= b; j++){
+    var k1 = rows[j].getAttribute('data-key');
+    next[k1] = findEntry(k1);
+  }
+  // 2. 保留态：上一轮基线里、**落在本次范围之外**的选择。
+  //
+  //    这里刻意不是「保留 libRangeBase.base 的全部」：base 里可能包含
+  //    「上一轮范围扩出去的行」，那些正是 Shift+↑ 要收回去的部分。
+  //    判据用「行下标是否落在本次 [a,b] 之外」——
+  //    「范围外」是由**位置**决定的，不是由「来自哪一次快照」决定的。
+  //    （踩坑：曾经只遍历 base.prevRange 去筛，结果用户 Ctrl+点击攒下的选择
+  //    既不在 prevRange 里、也没被保留，静默丢掉。）
+  var keep = libRangeBase ? libRangeBase.base : {};
+  var prevRange = libRangeBase ? libRangeBase.prevRange : {};
+  var next2 = {};
+  Object.keys(keep).forEach(function(key){
+    var i = _libRowIdxOfKey(key, rows);
+    if(i >= 0 && i >= a && i <= b) return;         // 落在本次范围里，由范围决定
+    if(prevRange[key]) return;                     // 属于上一轮范围：本次不再保留
+    next2[key] = findEntry(key) || keep[key];
+  });
+  // 3. 第一次 Shift（无基线）：保留当前所有既有选择（可能是 Ctrl+点击攒出来的）
+  if(!libRangeBase){
+    for(var k = 0; k < rows.length; k++){
+      var key = rows[k].getAttribute('data-key');
+      if(next[key]) continue;
+      if(libSelected[key]) next2[key] = findEntry(key) || libSelected[key];
+    }
+  }
+  Object.keys(next2).forEach(function(key){
+    if(!next[key]) next[key] = next2[key];
+  });
+  // 4. 记下基线：本次范围 + 「本次范围之外、仍需保留的选择」（下次扩/缩的基数）
+  var snapRange = {};
+  for(var j2 = a; j2 <= b; j2++) snapRange[rows[j2].getAttribute('data-key')] = 1;
+  var baseSnap = {};
+  Object.keys(next).forEach(function(key){
+    if(!snapRange[key]) baseSnap[key] = next[key];
+  });
+  libRangeBase = { start:a, end:b, prevRange:snapRange, base:baseSnap };
+  libSelected = next;
+  _libSyncCheckboxes(rows);
+  updateLibActionBar();
+}
+
+// 行 key → 行下标（-1 = 不在当前列表里）
+function _libRowIdxOfKey(key, rows){
+  for(var i = 0; i < (rows || []).length; i++){
+    if(rows[i].getAttribute('data-key') === String(key)) return i;
+  }
+  return -1;
+}
+
+function libSelectAll(){
+  var rows = libRowEls();
+  if(!rows.length) return;
+  // 复用既有入口：它负责「就地同步每行勾选框」与操作条计数
+  toggleLibSelectAll(true);
+  var all = document.getElementById('libSelAll');
+  if(all) all.checked = true;
+  libSelectAnchor = rows.length ? 0 : null;
+  showToast('已全选本目录 ' + rows.length + ' 项（Esc 取消选择）', true);
+}
+
+function libClearSelection(){
+  toggleLibSelectAll(false);
+  var all = document.getElementById('libSelAll');
+  if(all) all.checked = false;
+  // 锚点必须一起清掉，否则再按 Shift+↑ 会从「上一次的位置」重新选出一段，
+  // 而用户刚看到的是「已清空」。范围基线同理（它记的是「上一次选区」）。
+  libSelectAnchor = null; libRangeBase = null;
+}
+
+// 鼠标：Shift+点击 = 从锚点连选到该行；Ctrl/⌘+点击 = 逐个增减。
+// 普通点击沿用原行为（点一下勾一个），锚点随之移动。
+function libCardClick(key, ev){
+  ev = ev || {};
+  var rows = libRowEls();
+  var idx = -1;
+  for(var i = 0; i < rows.length; i++){
+    if(rows[i].getAttribute('data-key') === String(key)){ idx = i; break; }
+  }
+  if(idx < 0) return;
+  var shift = !!ev.shiftKey;
+  var multi = !!(ev.ctrlKey || ev.metaKey);
+  libFocusKey = String(key);
+  if(shift && libSelectAnchor != null){
+    // 范围选择时不改锚点：连续多次 Shift+点击可以反复调整选区的下界
+    // （这就是文件管理器里「点了不准，再点一下」的交互）。
+    libFocusRow(idx, {scroll:false});
+    _libSelectRange(libSelectAnchor, idx, rows);
+    return;
+  }
+  // 单选 / 多选切换：浏览器在被标记为「普通点击」时会自行翻转 checkbox，
+  // 所以这里只同步状态，不再手动改 checked（否则会翻两次）。
+  var it = findEntry(key);
+  var on = multi ? !libSelected[key] : true;
+  if(on && it) libSelected[key] = it; else delete libSelected[key];
+  // 新锚点意味着「新的一段范围」：旧基线必须作废，否则下一次 Shift 会拿
+  // 上一次的范围去减，减出谁也预料不到的结果。
+  libRangeBase = null;
+  // Ctrl/⌘+点击走的是 libListMouseDown 的 preventDefault 分支（不触发原生翻转），
+  // 所以这里同样得自己回写勾选框；普通点击则「浏览器已经翻好了」，回写是幂等的。
+  _libSyncCheckboxes(rows);
+  updateLibActionBar();
+  libSelectAnchor = idx;
+}
+
+// 行上的 keydown：Shift+↑↓ / Ctrl+↑↓ 属于「范围选择」，必须在这里拦下来：
+// 卡片里的 checkbox 一旦拿到焦点，浏览器的 Space 会自己翻转它，
+// 而我们在 document 上再处理一次就会翻两次（勾了又取消）。
+// （列表视图的 <a> 同样会吞掉空格键，所以两种视图都拦。）
+function libRowKeydown(key, ev){
+  if(!ev) return;
+  if(ev.key === 'ArrowUp' || ev.key === 'ArrowDown'){ _libKeydown(ev); return; }
+  if(ev.key === ' ' || ev.key === 'Spacebar'){ _libKeydown(ev); }
+}
+
+// 返回 true = 这个键已经被媒体库的选择逻辑吃掉了（init.js 据此提前 return）。
+// 注意：**不能**只靠「有没有副作用」来判断，否则 Ctrl+A 会连带触发后面的
+// 全局快捷键分支（历史上这类「两个处理器都吭声」的问题很难查）。
+function _libKeydown(e){
+  if(currentTab !== 'library') return false;
+  var rows = libRowEls();
+  if(!rows.length) return false;
+  var t = e.target || {};
+  var tag = t.tagName || '';
+  var isCb = tag === 'INPUT' && t.type === 'checkbox';   // 勾选行上的原生框
+  var idx = _libFocusIdx(rows);
+  var focus = idx < 0 ? 0 : idx;
+  var anchor = (libSelectAnchor == null || libSelectAnchor < 0 || libSelectAnchor >= rows.length)
+    ? focus : libSelectAnchor;
+  var k = e.key, lower = String(k || '').toLowerCase();
+  var mod = !!(e.ctrlKey || e.metaKey);
+
+  // Ctrl/⌘+A：全选（必须抢在浏览器「选中页面文字」之前 preventDefault）
+  if(mod && lower === 'a'){
+    e.preventDefault();
+    libSelectAll();
+    return true;
+  }
+  // Esc：清空选择。确认弹窗的 Esc 由 confirm.js 处理，且它的遮罩此时在最上层，
+  // 这里只在「有选择」时动手，避免与弹窗抢键。
+  if(k === 'Escape' && Object.keys(libSelected).length){
+    e.preventDefault();
+    libClearSelection();
+    return true;
+  }
+  // Ctrl/⌘+↑↓：移动当前行但不改变选择（文件管理器里用来「看看但不选」）
+  if(mod && (k === 'ArrowUp' || k === 'ArrowDown')){
+    e.preventDefault();
+    var step = (k === 'ArrowDown') ? 1 : -1;
+    libFocusRow(focus + step);
+    libSelectAnchor = libFocusRowIdx(rows);
+    libRangeBase = null;      // 移动了当前行 = 开始新一段范围
+    return true;
+  }
+  if(k === 'ArrowUp' || k === 'ArrowDown'){
+    e.preventDefault();
+    var ns = (k === 'ArrowDown') ? focus + 1 : focus - 1;
+    if(ns < 0 || ns > rows.length - 1) return true;   // 到边界就停住（不回绕）
+    libFocusRow(ns);
+    var ni = _libFocusIdx(rows);
+    // Shift+↑↓：从锚点连选一段 —— 「小部分范围选择」的主入口。
+    // 注意：**Shift 连选期间锚点不能跟着焦点跑**，否则每按一次 Shift+↓
+    // 范围起点都往后挪一格，按住 5 次只选出 2 行（本轮实测就是这个现象）。
+    // 锚点只在「非 Shift 的移动/点击」时更新。
+    if(e.shiftKey){
+      _libSelectRange(anchor, ni, rows);
+    }else{
+      libSelectAnchor = ni;
+    }
+    return true;
+  }
+  // Space：切换当前行。Ctrl/⌘+Space 与 Space 有区别才不会有意外：
+  // 前者永不取消已勾选项（用于「先把范围的起点建立起来」），后者是真切换。
+  if(k === ' ' || k === 'Spacebar'){
+    // 焦点落在原生 checkbox 上时，浏览器自己会翻，这里跳过（否则翻两次）
+    if(isCb && !mod) return false;   // 交给浏览器的原生行为，别翻两次
+    e.preventDefault();
+    var cur = rows[focus];
+    var key = cur.getAttribute('data-key');
+    toggleLibSelect(key, !libSelected[key]);
+    _libSyncCheckboxes(rows);
+    libSelectAnchor = focus;
+    return true;
+  }
+  return false;
+}
+
+// 焦点行下标（渲染后重新查一遍，避免拿着过期下标）
+function libFocusRowIdx(rows){
+  return _libFocusIdx(rows || libRowEls());
+}
+
+// 列表容器上的 mousedown：把「Ctrl/⌘+点击、Shift+点击」标成非拖动，
+// 否则 <label> 会因为「可能是在拖动文字」而只给焦点、不翻转勾选框。
+function libListMouseDown(e){
+  if(!e || !(e.ctrlKey || e.metaKey) || e.shiftKey || e.button !== 0) return;
+  var t = e.target;
+  while(t && t !== document){
+    if(t.classList && (t.classList.contains('lib-card') || t.classList.contains('lib-row'))){
+      e.preventDefault();
+      return;
+    }
+    t = t.parentNode;
   }
 }
 

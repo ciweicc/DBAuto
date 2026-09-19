@@ -1751,6 +1751,18 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   text-transform:none;border-bottom:1px solid var(--border2)}
 .lib-row:last-child{border-bottom:none}
 .lib-row:hover:not(.lib-head){background:var(--bg-hover, rgba(255,255,255,.04))}
+/* 键盘当前行（issue #53）：虚线框标出「↑↓ 会从哪一行开始」。
+   用虚线而不是实线，是为了和 :focus-visible 的实线聚焦环区分开 ——
+   前者是「列表内部的光标」（列表自己记住的位置），后者是「这个控件被键盘聚焦了」。
+   两种视图的**标记形态必须一致**（虚线框 + 淡底），否则「卡片视图看得见、
+   列表视图看不见」会被当成 bug 报回来。表格行本身有下边框，所以虚线用
+   `border-top-style:dashed` 表达（底边保留原本的分隔线）。
+   走查断言的是 computed `border-top-style === 'dashed'`（见
+   scripts/check_library_keys_dom.py），改这里要同步改断言。 */
+.lib-row.lib-current,.lib-card.lib-current{background:var(--accent-wash, rgba(10,132,255,.10));
+  border-top:1px dashed var(--accent);border-bottom-color:transparent}
+.lib-row.lib-current:has(input:focus),
+.lib-card.lib-current:has(input:focus){border-top-style:solid}
 .lib-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text1)}
 .lib-name a{color:var(--accent);text-decoration:none;display:inline-flex;align-items:center;max-width:100%}
 .lib-name a:hover{text-decoration:underline}
@@ -1770,6 +1782,14 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .lib-sep{color:var(--text3);margin:0 2px}
 .lib-actionbar{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;
   border-top:1px solid var(--border)}
+/* 键盘选择提示（issue #53）：快捷键必须「看得见」才有人用。
+   放在目录栏右端，窄屏收起（触屏没有这些键）。 */
+.lib-keyhint{display:flex;align-items:center;gap:6px;margin-left:auto;
+  font-size:12px;color:var(--text3);white-space:nowrap}
+.lib-keyhint kbd{font-family:inherit;font-size:11px;line-height:1;padding:2px 5px;
+  border:1px solid var(--border2);border-radius:var(--radius-xs);
+  background:var(--field-bg);color:var(--text2)}
+@media(max-width:900px){.lib-keyhint{display:none}}
 
 /* ---------- 卡片视图（等高紧凑卡，issue #27 观感重做） ----------
    用户先反馈「排版太丑、很乱」，改完又反馈「有一些有图，有一些没图，干脆不要图了」。
@@ -1787,6 +1807,7 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   border-radius:var(--radius);overflow:hidden;
   transition:border-color var(--transition-fast),background var(--transition-fast)}
 .lib-card:hover{border-color:rgba(10,132,255,.4);background:var(--hover-wash)}
+
 /* 类型图标（issue #47「文件缩略图图标异常」）：
    1. 尺寸对齐同一行的控件 —— 图标占 20px 盒（图形 20×20，不再有 18/22 的错位感），
       与 18px 勾选框、14px 删除图标形成「主图形 > 勾选 > 操作」的层级；
@@ -1802,6 +1823,11 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   flex:0 0 auto;cursor:pointer;border-radius:var(--radius-xs)}
 .lib-card-cb:hover{background:var(--hover-wash)}
 .lib-card-cb input{cursor:pointer}
+/* 已选中行的底色（issue #53）：Ctrl+A 全选后要能一眼看出「哪些行被选上了」。
+   纯 CSS 实现（:has + checkbox:checked），不额外加 JS 类，也就不会和
+   libSelected 的状态不同步。不支持 :has() 时退化为「只有勾选框变蓝」。 */
+.lib-card:has(input:checked),
+.lib-row:has(input:checked){background:var(--accent-wash, rgba(10,132,255,.10))}
 .lib-card-name-col{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1}
 .lib-card-title{display:block;font-size:var(--fs-sm);font-weight:600;color:var(--text);
   line-height:1.35;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}

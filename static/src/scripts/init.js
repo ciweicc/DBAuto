@@ -113,8 +113,18 @@ function initSSE(){
   };
 }
 // 全局快捷键：Ctrl/⌘+K 聚焦搜索、Ctrl/⌘+Enter 开始转存、Esc 关闭弹窗
+//            媒体库页另有选择类快捷键（issue #53），见 _libKeydown
 function initShortcuts(){
   document.addEventListener('keydown', function(e){
+    // 媒体库的键盘选择（issue #53）：Ctrl/⌘+A 全选、Shift+↑↓ 范围、↑↓ 移当前行、
+    // Space 勾选、Esc 清空选择。
+    //
+    // 位置很关键：必须排在下面的 Esc 分支**之前**。原来的 Esc 分支对任何
+    // Escape 都 `return`（只处理确认框/Sheet，没有就什么都不做），
+    // 排在它后面的处理器永远拿不到 Escape —— 实测「Ctrl+A 全选后按 Esc 没反应」
+    // 就是这个顺序造成的。而媒体库自己的 Esc 只在「确有选择」时消费该键，
+    // 此时不存在同时要关的弹窗（弹窗打开时焦点在遮罩里，列表不会响应）。
+    if(_libKeydown(e)) return;
     // Esc：关闭确认框 / Sheet
     if(e.key === 'Escape'){
       if(document.querySelector('.confirm-overlay.show')){ resolveConfirm(false); e.preventDefault(); return; }
