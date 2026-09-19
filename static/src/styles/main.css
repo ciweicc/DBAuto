@@ -1836,6 +1836,40 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   margin-top:10px;align-items:start;max-height:560px;overflow:auto;padding:2px}
 @media(max-width:900px){.lib-grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}}
 @media(max-width:600px){.lib-grid{grid-template-columns:1fr;gap:8px;max-height:520px}}
+/* 紧凑视图（issue #53 追问：「切换显示密度的功能当前只能列表显示，实在是信息密度太低了」）：
+   「显示密度」是**网格密度**，不是「卡片 / 表格」这两种布局。
+   用户要的是「同一屏塞下更多条目」，所以紧凑视图保持卡片形态，只把每列宽度收到 122px：
+   1440 宽下 4 列 → 7 列（走查实测），首屏可见条目多出 3~4 成。
+   为什么不再加一档「贴边的迷你列表」：三种布局 × 每种 3 行的样式分叉会让
+   「现在到底是哪种视图」变成猜谜；两档密度已经覆盖「够用 / 看得更多」。
+   卡片内部仍复用 .lib-card 的全部层级（勾选 / 图标 / 名称 / 元信息 / 删除），
+   只是把次要信息让位给密度（隐藏图标、时间压成时间戳），见下面两条规则。 */
+.lib-grid.lib-grid-compact{grid-template-columns:repeat(auto-fill,minmax(122px,1fr));gap:6px;
+  max-height:760px}
+@media(max-width:900px){.lib-grid.lib-grid-compact{grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:6px}}
+@media(max-width:600px){.lib-grid.lib-grid-compact{grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:6px;max-height:520px}}
+.lib-grid.lib-grid-compact .lib-card{padding:5px 6px;gap:6px}
+/* 图标在 138px 卡里会挤掉标题宽度（密集视图里标题才是要扫的东西） */
+.lib-grid.lib-grid-compact .lib-card-icon{display:none}
+.lib-grid.lib-grid-compact .lib-card-name-col{gap:0}
+.lib-grid.lib-grid-compact .lib-card-title{font-size:var(--fs-xs)}
+/* 时间在密集视图里让位：只留「日期 时间」（日期与时刻仍然完整），
+   原样式（.lib-time-full/.lib-time-short）一行不改，也不影响 560px 的宽度门禁 */
+.lib-grid.lib-grid-compact .lib-card-time svg{display:none}
+/* 时间让位：只留「日期 时间」（mm-dd hh:mm），日期与时刻都完整。
+   注意选择器要带上 .lib-time-text —— `.lib-grid-compact .lib-time-short`
+   的特异性低于 `.lib-time-short{display:none}` 之后被 `@container libname`
+   里的 `.lib-time-full{display:none}`…… 实测就是「切了档、DOM 里仍是完整格式、
+   被省略号截断」。用 `.lib-time-text.lib-time-full` 这种两段式选择器一次写清楚，
+   不要再靠源序去赌。 */
+.lib-grid.lib-grid-compact .lib-time-text.lib-time-full{display:none}
+/* 时间降级到 7.5px：这是**量出来的**，不是拍的。
+   紧凑卡里名称列只有 ~63px，而「修改 09-16 13:21」在 10px 下要 76px
+   （用 canvas 量过：10px→76 / 9px→69 / 8px→61 / 7px→53），
+   8px 还差一档，7.5px 才塞得下。10px 停在任何一档窄卡上都会被省略号截成
+   「修改 09-16 1…」——那和「没显示修改时间」是一回事（issue #27 的原始诉求）。
+   代价是字号偏小：这是密度开关**用户主动选的**取舍，默认的舒适档不受影响。 */
+.lib-grid.lib-grid-compact .lib-time-text.lib-time-short{display:block;font-size:7.5px}
 .lib-card{position:relative;display:flex;align-items:center;gap:8px;min-width:0;
   padding:7px 8px;background:var(--card);border:1px solid var(--border);
   border-radius:var(--radius);overflow:hidden;

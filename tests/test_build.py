@@ -1797,7 +1797,10 @@ def test_library_card_icons_are_rendered_inline(dist):
 
     # 4. 样式：图标盒与图形同尺寸，且与外层视口一致（避免「小得离谱」）
     assert ".lib-card-icon{" in css, "缺少卡片图标样式"
-    block = css[css.index(".lib-card-icon{"):]
+    # 用「选择器 + {」精确定位：`.lib-card-icon{` 的裸字符串也会命中
+    # `.lib-grid-compact .lib-card-icon{display:none}`（本轮实测踩到），
+    # 按它切块就切到了紧凑密度那条规则上。
+    block = css[css.index("\n.lib-card-icon{"):]
     block = block[:block.index("}")]
     assert "width:20px" in block and "height:20px" in block, \
         "图标盒不是 20px（与勾选框/删除图标比例不齐）"
@@ -1848,14 +1851,16 @@ def test_library_grid_layout_is_aligned(dist):
     js = _read(os.path.join(_JS_DIR, "library.js"))
 
     # 1. 卡片是单行 flex：图标 / 勾选 / 名称 / 删除在同一行，天然等高
-    card = css[css.index(".lib-card{"):]
+    # 同图标那条：必须用「行首选择器 + {」定位，`.lib-grid-compact .lib-card{` 里
+    # 也含 `.lib-card{` 这串字符（本轮实测踩到），裸字符串定位会切错规则。
+    card = css[css.index("\n.lib-card{"):]
     card = card[:card.index("}")]
     assert "display:flex" in card and "align-items:center" in card, \
         "卡片不是「单行居中」布局，会出现内部高低不齐"
     assert "flex-direction:column" not in card, "卡片又变回多行堆叠（旧版参差的根源）"
 
     # 2. 标题 / 元信息单行省略（长中文名不得折行撑高卡片）
-    for sel in (".lib-card-title{", ".lib-card-meta{"):
+    for sel in ("\n.lib-card-title{", "\n.lib-card-meta{"):
         block = css[css.index(sel):]
         block = block[:block.index("}")]
         assert "white-space:nowrap" in block, "{} 未单行省略，长文件名会把卡片撑高".format(sel)
@@ -2915,6 +2920,107 @@ def test_library_keyboard_row_has_visible_cursor(dist):
         "「当前行」没有虚线标记（用户看不出 ↑↓ 会从哪一行开始）"
     assert ":has(input:checked)" in flat, \
         "缺少「已选中行」的底色标记（全选 70 项时只能靠 18px 勾选框辨认）"
+
+
+# ---------------------------------------------------------------------------
+# 媒体库显示密度（issue #53 追问：「信息密度太低了」）
+# ---------------------------------------------------------------------------
+
+def test_library_density_toggle_exists(dist):
+    """媒体库必须能单独切换「显示密度」（issue #53 追问）。
+
+    用户原话：「新增切换显示密度的功能当前只能列表显示，实在是信息密度太低了」。
+
+    读法有两种，本轮按**字面**取第一种，并把第二种一并做掉：
+      ① 只有一个「密度」开关，但它只会切到列表视图 → 那就要一个真正的密度维度；
+      ② 想要的是「卡片视图下也有一屏塞更多条目的档位」→ 就是紧凑密度。
+    两种读法都需要同一件事：**密度与布局解耦**，各自一个按钮。
+    另外旧版本把展示形态存成**一个** `lib_view` 枚举，这里锁死它被读懂、不被重置。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    css = _read(_CSS_MAIN)
+    body = _read(os.path.join(_SRC, "body.html"))
+
+    # 1. 两个独立的偏好键，且旧值 'card' / 'list' 仍被认作布局
+    assert "LIB_DENSITY_KEY" in js and "LIB_VIEW_KEY" in js, \
+        "密度必须是独立偏好键（合并成一个枚举以后再扩展就要二次迁移）"
+    assert "'comfortable'" in js and "'compact'" in js, "缺少两档密度的取值"
+    assert "function libDensityMode(" in js, "缺少密度偏好读取"
+    assert "function toggleLibDensity(" in js, "缺少密度切换入口"
+    assert "function _updateLibDensityBtn(" in js, "缺少密度按钮文案更新"
+    # 2. 布局与密度共用同一条渲染出口（否则会出现「密度切了、键盘逻辑失灵」）
+    assert "function _applyLibView(" in js, "布局/密度未收敛到同一条渲染出口"
+    apply_fn = js[js.index("function _applyLibView("):js.index("function toggleLibView(")]
+    assert "toggleLibView" not in apply_fn.replace("function toggleLibView", ""), \
+        "_applyLibView 里混入了布局切换自身"
+    for name in ("_updateLibViewBtn()", "_updateLibDensityBtn()", "_renderLibrary("):
+        assert name in apply_fn, "切换展示形态时未调用 {}".format(name)
+    assert "localStorage.setItem(LIB_DENSITY_KEY" in apply_fn, "密度切换未持久化"
+
+    # 3. 密度落在网格类名上 + 紧凑列宽必须比舒适更窄（否则「密度」没有实感）
+    assert "lib-grid-compact" in js, "密度未落到网格类名（CSS 无从生效）"
+    assert ".lib-grid.lib-grid-compact{" in css, "缺少紧凑密度的网格样式"
+    dense = css[css.index(".lib-grid.lib-grid-compact{"):]
+    dense = dense[:dense.index("}")]
+    assert "minmax(190px" not in dense, "紧凑密度没有收窄列宽（等于没做）"
+    assert "列宽" in css or "密度" in css, "紧凑密度缺少说明性注释"
+
+    # 4. 页面入口 + 产物已重建
+    section = body[body.index('id="tabLibrary"'):body.index("<!-- ===== 设置 ===== -->")]
+    assert 'id="libDensityBtn"' in section, "媒体库页缺少密度切换按钮"
+    assert "toggleLibDensity()" in section, "密度按钮未接线"
+    for token in ("libDensityBtn", "lib-grid-compact", "toggleLibDensity"):
+        assert token in dist, "产物未包含{}（需重跑 build.sh）".format(token)
+
+
+def test_library_density_keeps_keyboard_and_time(dist):
+    """紧凑密度是**卡片形态**的加密，不得把键盘选择与修改时间搞丢。
+
+    两个必然的分叉点，写在这里挡回归：
+      1. 键盘选择靠 `data-key` + `#libGrid` / `.lib-table` 定位行。紧凑视图仍是
+         `.lib-card`（只是网格更密），所以 Ctrl+A / Shift+连选必须照旧 ——
+         如果哪一轮为了「再密一点」另起一套 DOM（比如换成假的 div 列表），
+         快捷键会**静默失效**，和第 53 期「切列表视图后快捷键全失灵」是同一类坑；
+      2. 修改时间是 issue #27 起用户明确要的信息，密度开关只能压缩它的**呈现**
+         （字号/图标），不能把它整条去掉。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    css = _read(_CSS_MAIN)
+
+    # 1. 紧凑密度不改行结构：行元素查询与卡片模板都不因密度分岔
+    els = js[js.index("function libRowEls("):js.index("function _libFocusIdx(")]
+    assert "libDensity" not in els, \
+        "行元素查询按密度分岔：另一档密度下键盘选择会失灵"
+    # 密度**只允许**出现在网格容器类名这一处；单张卡的模板（shell / meta）里
+    # 不得出现 libDensity —— 一旦每张卡各自判断密度，行的结构就开始分叉。
+    shell_fn = js[js.index("function _libCardShell("):js.index("function _libMetaHtml(")]
+    meta_fn = js[js.index("function _libMetaHtml("):js.index("function _libMetaText(")]
+    for fn, name in ((shell_fn, "_libCardShell"), (meta_fn, "_libMetaHtml")):
+        assert "libDensity" not in fn, \
+            "{} 按密度分岔：另一档密度下的行结构/选择语义会走丢".format(name)
+
+    # 2. 修改时间仍在：紧凑密度只允许压字号/隐藏图标，不允许 display:none 整行
+    # 取紧凑密度这一整段（从第一条紧凑规则到「首帧骨架」注释为止）。
+    # 固定窗口会随注释增删而切错位置（本轮实测）：直接按结束标记切。
+    dense_start = css.index(".lib-grid.lib-grid-compact{")
+    dense = css[dense_start:]
+    end_mark = "/* ---------- 首帧骨架"
+    compact_rules = dense[:dense.index(end_mark)] if end_mark in dense else dense
+    assert ".lib-card-time{display:none}" not in compact_rules.replace(" ", ""), \
+        "紧凑密度把修改时间整行去掉了（用户明确要过「显示修改时间」）"
+    flat_rules = compact_rules.replace(" ", "")
+    assert ".lib-time-text.lib-time-full{display:none}" in flat_rules, \
+        "紧凑密度下完整时间格式未被隐藏（窄卡会被省略号截成「修改 09-16 1…」）"
+    assert ".lib-time-text.lib-time-short{display:block;font-size" in flat_rules, \
+        "紧凑密度没有对时间做任何降级处理（说明这条规则没生效）"
+    # 降级必须真的塞得下：7.5px 是量出来的（63px 名称列，「修改 09-16 13:21」
+    # 在 10px 下要 76px）。写死上限，避免后人「顺手调大一档」又把时间截断。
+    px = float(flat_rules.split(
+        "lib-time-short{display:block;font-size:", 1)[1].split("px", 1)[0])
+    assert px <= 8, \
+        "紧凑密度的时间字号 {}px 过大：「修改 09-16 13:21」在 63px 名称列里会被截断".format(px)
+    # 3. 快捷键提示与操作条不受密度影响（不然「切密后不知道能不能多选」）
+    assert "lib-keyhint" not in compact_rules, "紧凑密度规则误伤了快捷键提示条"
 
 
 # ---------------------------------------------------------------------------
