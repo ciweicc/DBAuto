@@ -166,11 +166,27 @@ var libFallbackKind = '';
 // 是否处于「OpenList 刚失败」的自动退避窗口（issue #47：「经常回落」）。
 // 退避是短暂且自动的 —— 这类回落不该被描述成「配置坏了」。
 var libFallbackBackoff = false;
+// 退避窗口还剩多少秒（后端给的实测值：窗口长度 - 已过时间）。
+// 0 = 不知道剩多久，此时文案退化为「稍后自动重试」，**不编造**倒计时。
+var libFallbackBackoffLeft = 0;
+// 本轮响应里被丢弃的「无名条目」数量（渲染不出来，但要如实告诉用户）。
+var libHiddenNoName = 0;
 
 // 数据源徽标：让「变快了 / 变慢了」能被归因。
 // 不显示徽标的代价是：用户只能看到「快了点」，不知道是因为 OpenList 生效、
 // 还是因为这次运气好（缓存命中）。回落时必须明确标出来 ——
 // 否则 OpenList 挂掉后用户会以为自己在用 OpenList，实际走的是慢链路。
+// 退避倒计时的文案片段。
+// 后端把「窗口长度 + 记录时刻」一起给了（openlist.list_dir → backoff_seconds /
+// backoff_since），这里只负责把它翻译成一句话 —— 两边分离的意义是：
+// 窗口长度改了不用同步改前端文案，前端也不会凭空造出一个「约 20 秒」。
+// 拿不到真实剩余时**宁可不说数字**：一个编造的倒计时会让用户在不该重试的
+// 时刻重试，然后又一次看到回落，反而更像「坏了」。
+function _backoffLeftText(){
+  if(!libFallbackBackoffLeft) return '稍后（约 20 秒内）';
+  return '约 ' + libFallbackBackoffLeft + ' 秒内';
+}
+
 // 回落排查弹窗：把「该去改哪个设置」直接讲清楚。
 // 实测下来「配了 OpenList 却仍回落」几乎都是路径前缀问题（OpenList 的挂载点
 // 不是网盘根），但表现和「OpenList 挂了」完全一样，所以这里按原因分流。
@@ -183,7 +199,7 @@ function _showFallbackHelp(){
     tips = 'OpenList 有响应但太慢（本次等待超时）—— 这**通常不是配置错误**，'
          + '多半是它正在等网盘（如夸克）返回列表。\n'
          + (libFallbackBackoff
-            ? '系统正在自动重试（约 20 秒内会自动回到 OpenList），**不需要改任何配置**。'
+            ? '系统正在自动重试（' + _backoffLeftText() + '自动回到 OpenList），**不需要改任何配置**。'
             : '建议：稍后重试；若每次都超时，说明该目录在网盘侧确实很慢，'
               + '可先用 OpenList 自己的网页界面确认目录能不能列出来。');
   }else if(libFallbackHint === 'path_prefix'){
@@ -191,9 +207,15 @@ function _showFallbackHelp(){
          + '打开「设置 → 数据源 → 媒体库文件源（OpenList）」，在「路径前缀」里填 OpenList'
          + '上挂载夸克网盘的那个目录（例如 /夸克），然后点「连接自检」。';
   }else{
-    tips = '请到「设置 → 数据源 → 媒体库文件源（OpenList）」点「连接自检」：\n'
-         + '· 登录失败 → 检查地址 / 账号 / 密码\n'
-         + '· 登录通过但列目录失败 → 检查「路径前缀」';
+    // 兜底文案指的是「我还没法归类」的失败，**不能**凭空点名某个字段：
+    // 让用户去翻一个与实际原因无关的设置，比不给建议更糟（他会把本来对的
+    // 配置改坏）。这里只说「去自检看归类」，并把鉴权口径写成现状
+    // （令牌 / 游客），不再提已被移除的账号密码。
+    tips = '请到「设置 → 数据源 → 媒体库文件源（OpenList）」点「连接自检」，'
+         + '它会给出具体归类与原因：\n'
+         + '· 连不上 → 核对地址与端口\n'
+         + '· 鉴权失败 → 重新取一个访问令牌填进去（OpenList 只支持令牌鉴权）\n'
+         + '· 找不到该目录 → 检查「路径前缀」';
   }
   // 用应用内 toast（原生 alert 会阻塞渲染，也无法在走查脚本里断言）
   showToast('已回落到 QAS 直连：' + reason + ' ' + tips.replace(/\n+/g, ' '), false, 12000);
@@ -204,6 +226,16 @@ function _renderLibSourceBadge(){
   if(!el) return;
   if(!libEntries.length && !libCountText()){
     el.style.display = 'none';
+    // 隐藏时**必须把上一轮的结论一起清掉**。
+    //
+    // 踩坑（本轮走查实测）：只把元素藏起来、留着旧的 textContent 与 title，
+    // 下一次（失败态）虽然不显示，但 title 仍带着「OpenList 超时…已回落到 QAS」
+    // 这类结论 —— 只要有任何路径让它重新可见（或用户/脚本去读 title），
+    // 页面就在说一件早已不成立的事。徽标是**断言**，隐藏不等于撤销断言。
+    el.textContent = '';
+    el.removeAttribute('title');
+    el.onclick = null;
+    el.style.cursor = '';
     return;
   }
   var label, title;
@@ -218,7 +250,7 @@ function _renderLibSourceBadge(){
       // 所以 title 直接给结论 + 修复方向，点开是更完整的步骤。
       var fix = libFallbackKind === 'timeout'
         ? (libFallbackBackoff
-           ? 'OpenList 响应超时（不是配置错误），系统正在自动重试，约 20 秒内会自动回到 OpenList。'
+           ? 'OpenList 响应超时（不是配置错误），系统正在自动重试，' + _backoffLeftText() + '自动回到 OpenList。'
            : 'OpenList 响应超时（多半是网盘侧目录拉取慢，不是配置错误）：稍后重试即可。')
         : (libFallbackHint === 'path_prefix'
           ? '多半是「路径前缀」没填对：设置 → 数据源 → OpenList 里填 OpenList 挂载夸克网盘的目录。'
@@ -554,15 +586,34 @@ async function loadLibrary(path, opts){
   var force = !!opts.force;
   var t0 = Date.now();
 
-  // 1. 命中缓存：先渲染旧数据（瞬间出内容），再按需后台刷新
+  // ---- 缓存策略（issue #47 追问「上一级 OpenList 自动回落」的真因） ----
+  //
+  // 这里有一个**必须守住的不变式**：`meta`（数据源 / 是否回落 / 回落原因）
+  // 是**时间敏感**的，而 `entries`（目录内容）不是。
+  //
+  //   目录内容 60s 内复用完全合理（文件不会每秒变一次）；
+  //   但「这份数据是 OpenList 给的还是 QAS 兜底给的」60 秒就太久了 ——
+  //   30s 内 OpenList 可能已经被修好/被改坏。
+  //
+  // 踩坑（本轮实测）：原来两条缓存分支都把缓存里的 meta 当作**当前**状态
+  // 直接渲染，于是「根目录第一次回落 → 进子目录走 OpenList → 返回根目录」
+  // 时徽标一直停在「QAS（OpenList 回落）」、提示说「OpenList 不可用」，
+  // 而它其实完全正常。用户看到的现象就是「一返回上一级就回落」。
+  //
+  // 现在的口径：
+  //   - 渲染缓存内容时**不对数据源下结论**（传 null = 只画内容、不动状态），
+  //     也就是先让用户看到内容，徽标保持上一次已知的真实结论；
+  //   - 只有在**真的打了一次网络并拿到当前响应**之后，才更新徽标。
+  // 也就是说：徽标永远来自最近一次真实响应，绝不来自缓存里的旧断言。
   var hit = libCache[target];
   var fresh = hit && !force && (Date.now() - hit.ts) < LIB_CACHE_TTL;
   if(fresh){
-    _renderLibrary(target, hit.entries, true, null, hit.meta);
+    _renderLibrary(target, hit.entries, true, null, null);
     return;
   }
   if(hit && !force){
-    _renderLibrary(target, hit.entries, true, null, hit.meta);   // 陈旧数据先顶上，避免白屏
+    // 陈旧数据先顶上，避免白屏；同样不对数据源下结论（见上）。
+    _renderLibrary(target, hit.entries, true, null, null);
   }else{
     box.innerHTML = _libLoadingHtml(t0);
   }
@@ -595,11 +646,18 @@ async function loadLibrary(path, opts){
       else showToast('刷新失败：' + (res.message || 'QAS 返回异常') + '（显示的是缓存数据）', false);
       return;
     }
-    var entries = res.entries || [];
+    // 丢弃「无名条目」：name 为空的条目既渲染不出有意义的卡片（标题/aria-label 全空），
+    // 也无法按条目名删除（OpenList 侧 /fs/remove 认的就是条目名，空名会被后端拒绝）。
+    // 与其渲染一张点了删不掉的空壳卡，不如不显示 —— 并且在下方的计数里说清楚
+    // 「有 N 条无法显示」，避免用户以为数据少了。
+    var rawEntries = res.entries || [];
+    var entries = rawEntries.filter(function(it){ return it && String(it.name || '').trim(); });
+    libHiddenNoName = rawEntries.length - entries.length;
     var meta = {source: res.source, fallback: res.fallback,
                 fallback_reason: res.fallback_reason, fallback_hint: res.fallback_hint,
                 fallback_kind: res.fallback_kind,
-                fallback_backoff: res.fallback_backoff};
+                fallback_backoff: res.fallback_backoff,
+                fallback_backoff_left: res.fallback_backoff_left};
     libCache[target] = { ts: Date.now(), entries: entries, meta: meta };
     _libRememberRows(entries.length);   // 下次首帧骨架按真实条数占位，减少高度跳动
     _renderLibrary(target, entries, false, r.ms, meta);
@@ -616,6 +674,21 @@ function _renderLibError(path, message, ms){
   renderBreadcrumb(path);
   var cnt = document.getElementById('libCount');
   if(cnt) cnt.textContent = '';
+  // 失败态必须让**上一轮的回落结论一起消失**。
+  //
+  // 踩坑（实测）：徽标是挂在卡片标题行上的独立元素，渲染失败态时并没有清掉它。
+  // 于是「先在某目录看到回落 → 再打开另一个目录、这次连 QAS 都失败了」的场景里，
+  // 页面会同时显示「读取失败」和「QAS（OpenList 回落）· OpenList 请求超时…」，
+  // 用户据此去改 OpenList 配置 —— 而真正挂了的是 QAS。失败态就应该只讲这一件事。
+  libSource = 'qas';
+  libFallback = false;
+  libFallbackReason = '';
+  libFallbackHint = '';
+  libFallbackKind = '';
+  libFallbackBackoff = false;
+  libFallbackBackoffLeft = 0;
+  libHiddenNoName = 0;
+  _renderLibSourceBadge();
   box.innerHTML = '<div class="empty-state" style="padding:24px 20px">' +
     '<div class="empty-title">读取失败</div>' +
     '<div class="empty-desc">' + esc(message || '请检查 QAS 配置') + '</div>' +
@@ -632,15 +705,32 @@ function _renderLibrary(path, entries, fromCache, ms, source){
   if(!box) return;
   libPath = path;
   libEntries = entries || [];
-  if(source && source.source) libSource = source.source;
-  if(source && typeof source.fallback === 'boolean') libFallback = source.fallback;
-  libFallbackReason = (source && source.fallback_reason) || '';
-  libFallbackHint = (source && source.fallback_hint) || '';
-  libFallbackKind = (source && source.fallback_kind) || '';
-  libFallbackBackoff = !!(source && source.fallback_backoff);
+  // source === null 表示「只画内容，对数据源不做断言」（陈旧缓存先顶上的那一帧）。
+  // 这种情况必须**原样保留**当前数据源状态，一个字都不改。
+  //
+  // 踩坑（本轮实测）：最初这里写成「无条件用 source 的值覆盖」，
+  // 于是传 null 时把 libFallbackReason / Kind / Backoff 全清空了，
+  // 而 libSource 因为 `if(source && source.source)` 的短判断反而留着旧值 ——
+  // 结果得到一个自相矛盾的状态（source=qas 但 reason 为空），
+  // 徽标既不是 OpenList 也不是「回落」，用户看到的就是一个没有来源的 QAS。
+  if(source){
+    if(source.source) libSource = source.source;
+    if(typeof source.fallback === 'boolean') libFallback = source.fallback;
+    libFallbackReason = source.fallback_reason || '';
+    libFallbackHint = source.fallback_hint || '';
+    libFallbackKind = source.fallback_kind || '';
+    libFallbackBackoff = !!source.fallback_backoff;
+    libFallbackBackoffLeft = Number(source.fallback_backoff_left || 0) || 0;
+  }
   libSelected = {};
   libEntries.forEach(function(it, i){
     it._key = it.fid != null ? String(it.fid) : ('p' + i);
+    // 条目「所属目录」在**渲染时就固定下来**（= 它真实被列出来的那个目录）。
+    // 删除时若用当时的 libPath，就等于假设「渲染用的目录」与「删除时的目录」
+    // 一直是同一个 —— 一旦中间发生过目录切换（比如用户开了第二个页面/标签，
+    // 或者某条路径把 libPath 改了却没重渲染），这个假设就不成立，
+    // 而删除是不可逆的：宁可在数据里记死这个目录。
+    it._dir = path;
   });
   renderBreadcrumb(libPath);
   var upBtn = document.getElementById('libUpBtn');
@@ -651,6 +741,8 @@ function _renderLibrary(path, entries, fromCache, ms, source){
     if(libEntries.length) parts.push('共 ' + libEntries.length + ' 项');
     if(typeof ms === 'number' && ms >= 0) parts.push('耗时 ' + (ms/1000).toFixed(1) + 's');
     if(fromCache) parts.push('缓存');
+    // 有条目因为「没有名字」被丢弃时明说，否则「怎么少了几项」无从解释。
+    if(libHiddenNoName > 0) parts.push('另有 ' + libHiddenNoName + ' 项无名称未显示');
     cnt.textContent = parts.join(' · ');
   }
   _renderLibSourceBadge();
@@ -926,6 +1018,17 @@ function guessTitle(name){
 
 async function doDelete(entries, label){
   if(!entries.length) return;
+  // 删除前的一致性校验：OpenList 侧按「目录 + 条目名」删，两者的组合必须
+  // 唯一指向用户看到的那一条。这里挡的是「条目拿到的目录与当前浏览目录不一致」
+  // 的拼接串味 —— 它不会报错，只会静静删掉别的东西。
+  var badDir = entries.filter(function(e){
+    return e && e.dir != null && e.dir !== libPath;
+  });
+  if(badDir.length){
+    showToast('删除已取消：选中条目来自 ' + badDir[0].dir +
+      '，与当前目录 ' + libPath + ' 不一致，请重新进入该目录后再删除', false);
+    return;
+  }
   var sync = document.getElementById('syncHistoryChk');
   var syncHistory = !sync || sync.checked;
   var extra = syncHistory ? '\n同时会清理 DBAuto 中对应的转存历史（匹配不到则跳过）。' : '';
@@ -972,7 +1075,11 @@ function deleteOne(key){
 function _libDeleteEntry(it){
   var e = {name: it.name, title: guessTitle(it.name)};
   if(libSource === 'openlist'){
-    e.dir = libPath;
+    // OpenList 侧的 /fs/remove 要的是「目录 + 条目名」这一对。目录必须与
+    // **列目录时用的那个路径**严格一致：后端拿它作为删除目标目录，
+    // 与列表数据来源不符时会删错对象。所以这里显式带上当前目录，
+    // 并且顺序要紧 —— 见 doDelete 里对 `dir` 的一致性校验。
+    e.dir = it._dir || libPath;
   }else{
     e.fid = it.fid;
     e.path = (libPath === '/' ? '' : libPath) + '/' + it.name;

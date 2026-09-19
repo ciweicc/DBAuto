@@ -71,6 +71,25 @@ STUBS = {
                   "daily": []},
         "schedule_status": {}, "version": "1.1.0",
     },
+    # 自检返回「目录不存在」（path_missing）：这才是**确定**的配置问题。
+    # 与超时相反，这一类必须明确把用户引到「路径前缀」—— 两者混在一起时
+    # 用户会在「改配置」和「等一会」之间反复横跳（issue #47 的成因之一）。
+    "/api/library/source_path_missing": {
+        "success": True, "source": "qas", "openlist": True,
+        "openlist_ok": False,
+        "openlist_path_missing": True,
+        "openlist_message": "OpenList 错误 500: storage not found",
+        "openlist_stage": "list",
+        "openlist_fail_kind": "path_missing",
+        "openlist_timeout_seconds": 30,
+        "openlist_auth": {"mode": "token", "mode_label": "OpenList 令牌",
+                          "token_set": True, "user_set": False, "password_set": False},
+        "openlist_auth_mode": "token",
+        "openlist_auth_source": "token",
+        "openlist_user": "admin",
+        "openlist_root_prefix": "", "openlist_path": "/影视",
+        "openlist_browse_path": "/影视", "openlist_count": 0,
+    },
     # 自检返回「超时」（issue #47）：OpenList 有响应但慢，**不是配置错误**。
     # 这里刻意不在 message 里出现「路径前缀」——真实超时的报错也不含它，
     # 若页面把用户往「路径前缀」引，正是本题要抓的误导。
@@ -547,6 +566,41 @@ def main():
             if not to["failClass"]:
                 problems.append("[OpenList 超时] 失败结论没有状态样式，"
                                 "与普通说明文字无从区分")
+            page.close()
+
+            # ------------------------------------------------------------
+            # 自检「目录不存在」必须点名「路径前缀」（issue #47）。
+            # 这是唯一一类**确定**的配置问题：把它和超时混成一句「不可用」，
+            # 用户就会在该等的时候去改配置、在该改配置的时候去等。
+            page = browser.new_page(viewport={"width": 1440, "height": 900})
+            page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")
+            pm_router = _make_router(STUBS)
+            page.route("**/*", lambda route: pm_router(
+                route, "/api/library/source", STUBS["/api/library/source_path_missing"]))
+            page.goto(URL, wait_until="load", timeout=20000)
+            page.evaluate("()=>switchTab('settings')")
+            page.wait_for_timeout(500)
+            page.evaluate("()=>checkOpenList()")
+            page.wait_for_timeout(600)
+            pm = page.evaluate(r"""() => {
+              const h = document.getElementById('openlistSelfCheckHint');
+              const rc = h ? h.getBoundingClientRect() : null;
+              return {
+                text: h ? h.textContent : '',
+                kind: h && h.dataset ? (h.dataset.olKind || '') : '',
+                visibleH: rc ? Math.round(rc.height) : 0,
+              };
+            }""")
+            report.append({"label": "OpenList 目录不存在自检(1440x900)", **pm})
+            if pm["kind"] != "path_missing":
+                problems.append("[OpenList 目录不存在] 结论未按失败归类标注（kind={!r}）"
+                                .format(pm["kind"]))
+            if "路径前缀" not in pm["text"]:
+                problems.append("[OpenList 目录不存在] 未把用户引到「路径前缀」："
+                                "这是唯一一类确定的配置问题，不说等于让用户乱试")
+            if pm["visibleH"] <= 0:
+                problems.append("[OpenList 目录不存在] 自检结论不可见（高 {}px）".format(
+                    pm["visibleH"]))
             page.close()
 
             browser.close()

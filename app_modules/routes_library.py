@@ -97,6 +97,10 @@ class LibraryRouteMixin:
                 info["openlist_path"] = chk.get("openlist_path", "")
                 info["openlist_browse_path"] = chk.get("browse_path", "")
                 info["openlist_count"] = chk.get("count", 0)
+                # 「没扫到 ≠ 不存在」的分支也要如实透出：目录真的不存在时
+                # openlist_fail_kind 是 path_missing，前端据此才敢说
+                # 「多半是路径前缀没填对」；否则只能笼统提示，用户又会乱试。
+                info["openlist_path_missing"] = bool(chk.get("path_missing"))
                 # 「配置里写的」与「服务端实际接受的」可能不同（例如令牌写错、
                 # 或令牌在 OpenList 侧已被撤销），两者都带给前端，让提示能落地。
                 info["openlist_auth_source"] = openlist.ping().get("mode", "")

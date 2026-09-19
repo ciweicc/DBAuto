@@ -49,6 +49,7 @@ import urllib.parse
 import urllib.request
 
 from config import ConfigManager
+from utils import log
 
 # 读接口超时：目录浏览是「点一下就该出结果」的交互，宁可快速失败让用户重试。
 OPENLIST_READ_TIMEOUT = 8
@@ -508,7 +509,7 @@ def self_check(browse_path="/"):
 
     info = {"success": False, "message": "", "user": "", "count": 0,
             "browse_path": str(browse_path or "/"), "openlist_path": "",
-            "stage": "config", "kind": ""}
+            "stage": "config", "kind": "", "path_missing": False}
     info["timeout_seconds"] = OPENLIST_PROBE_TIMEOUT
     if not is_configured():
         info["message"] = "未配置 OpenList 地址"
@@ -680,6 +681,11 @@ def list_dir(path="/", refresh=False, timeout=None):
         hit = _dir_cache_get(api_path)
         if hit is not None:
             # 命中缓存 = 这次**没有**回落。source 由 media_library 侧照常标 openlist。
+            #
+            # 顺带清掉失败记录：缓存里既然存着成功结果，就说明该路径**已经被证明是好的**；
+            # 留着旧的 (kind, message) 只会在下一次真正失败时复用一条陈旧原因。
+            with _dir_cache_lock:
+                _dir_fail.pop(api_path, None)
             hit["cached"] = True
             return hit
         # 刚失败过：短窗口内直接如实返回上次的失败原因，不再干等一轮。
@@ -690,7 +696,11 @@ def list_dir(path="/", refresh=False, timeout=None):
             out = {"success": False, "path": p, "entries": [],
                    "message": backoff.get("message") or "OpenList 读取失败",
                    "unconfigured": False, "kind": backoff.get("kind", ""),
-                   "backoff": True}
+                   "backoff": True,
+                   # 记录时刻 + 窗口长度：前端要写「约 N 秒内自动回到 OpenList」，
+                   # 就得知道**还剩多久**，否则只能硬编码一个可能与后端脱节的数字。
+                   "backoff_since": backoff.get("ts", 0),
+                   "backoff_seconds": OPENLIST_FAIL_BACKOFF}
             if backoff.get("hint"):
                 out["fallback_hint"] = backoff["hint"]
             return out
@@ -736,12 +746,16 @@ def list_dir(path="/", refresh=False, timeout=None):
         })
     out = {"success": True, "path": p, "entries": entries, "message": "",
            "write": bool((data or {}).get("write")), "unconfigured": False,
-           "kind": ""}
+           "kind": "", "backoff": False}
     if cacheable:
-        # 成功 → 进短命缓存，并清掉该路径的失败记录（已经好了）。
+        # 成功 → 进短命缓存。
         _dir_cache_put(api_path, out)
-        with _dir_cache_lock:
-            _dir_fail.pop(api_path, None)
+    # 无论是否走缓存，只要这次**真的拿到了目录**，就说明这条路径现在是好的 ——
+    # 失败退避记录必须随之清除。不这么做的话，「先超时一次、后恢复正常」会
+    # 让成功结果与失败原因**同时存在**，下一次真正失败时就会复用一条陈旧原因
+    # （用户看到的原因与自己这次的操作对不上，于是往错的方向排查）。
+    with _dir_cache_lock:
+        _dir_fail.pop(api_path, None)
     return out
 
 
@@ -809,12 +823,41 @@ def remove(names, dir_path="/"):
         # 无法区分「删了几条」，因此拒绝宣称任何成功（与 QAS 删除同口径）。
         return {"success": False, "deleted": 0, "failed": len(clean), "results": [],
                 "message": str(e)}
-    # 目录内容已变：作废缓存，否则用户删完再进同一目录（30s 内）还会看到
-    # 已删条目 —— 与 QAS 侧「删除后 invalidate_library_cache」同口径。
+    # 目录内容已变：作废缓存并**立刻重新列一次这个目录**，否则用户删完再进同一目录
+    # （30s 内）还会看到已删条目 —— 与 QAS 侧「删除后 invalidate_library_cache」同口径。
+    #
+    # 为什么还要「立刻重新列一次」（预热）：
+    #   删除会把该目录在 OpenList 侧的列表缓存一并作废，于是下一次打开目录
+    #   变成一次**冷查询**（夸克侧要重新拉列表），很可能超过 8s 浏览预算 →
+    #   报超时 → 回落 QAS。结果就是「删掉一个文件」看起来像「把 OpenList 弄坏了」。
+    #   这里用诊断预算（慢 ≠ 错）顺手预热，把那次冷查询挪出用户的交互路径。
+    # 预热失败不影响删除结论（删除已经成功），所以吞掉异常只记日志。
     invalidate_dir_cache()
+    _warm_dir_after_remove(base_dir)
     results = [{"name": n, "ok": True, "message": "已删除（移入回收站）"} for n in clean]
     return {"success": True, "deleted": len(clean), "failed": 0,
             "results": results, "message": ""}
+
+
+def _warm_dir_after_remove(dir_path):
+    """删除成功后顺手把该目录的列表**用诊断预算**重新拉一次（预热）。
+
+    为什么需要它（issue #47 追问「上一级就回落」的一个真实放大器）：
+      /api/fs/remove 会作废该目录在 OpenList 侧的列表缓存，于是**下一次打开**
+      这个目录变成一次冷查询（夸克侧要重新拉全量列表），很可能超过 8s 浏览预算
+      → 报超时 → 回落 QAS。用户的操作是「删掉一个文件」，观感却像
+      「把 OpenList 弄坏了」。预热把这次冷查询从交互路径上挪走。
+
+    两个必须守住的点：
+      1. 用 OPENLIST_PROBE_TIMEOUT（诊断预算）。拿 8s 交互预算去撞一个**已知偏慢**
+         的冷查询，等于故意让它失败（这正是「慢被当成错」的老问题）。
+      2. 预热是**优化**，不是删除结论的一部分。删除已经成功落地，预热失败时
+         只记日志、绝不上抛 —— 否则用户会以为没删掉而重复操作。
+    """
+    try:
+        list_dir(dir_path, refresh=True, timeout=OPENLIST_PROBE_TIMEOUT)
+    except Exception as e:
+        log("删除后目录预热失败（不影响删除结果）: {}".format(e))
 
 
 def _entry_names(entries):

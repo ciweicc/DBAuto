@@ -268,12 +268,23 @@ async function checkOpenList(){
       // 标题按「用户该做什么」分岔，而不是一律「不可用」（issue #47）：
       // 超时的英文/中文原样透出时，用户会把它当作「OpenList 坏了」去改配置，
       // 而实际上唯一该做的是「等一会重试」。
-      var title=kind==='timeout'?'OpenList 响应超时':'OpenList 不可用';
+      // 标题按「用户该做什么」分岔，而不是一律「不可用」（issue #47）。
+      // 这里的归类必须与后端的 openlist_fail_kind 一一对应 ——
+      // 尤其是「目录不存在」（path_missing）：它才是真的该去改「路径前缀」，
+      // 而其它失败（网络不通 / OpenList 自身报错）提路径前缀只会把人带偏。
+      var title=kind==='timeout'?'OpenList 响应超时'
+        :(kind==='path_missing'?'OpenList 上找不到该目录'
+        :(kind==='auth'?'OpenList 鉴权失败'
+        :(kind==='network'?'OpenList 连不上':'OpenList 不可用')));
       msg=title+'：'+(d.openlist_message||'未知原因')+'。媒体库已回落到 QAS 直连。';
-      // 提示必须与「失败归类」一一对应，否则会把用户引向错误的修改动作。
-      if(d.openlist_stage==='list'&&kind!=='timeout'){
-        // 登录已通过 → 不是凭据问题，别再让用户去翻令牌/密码。
-        msg+='（登录已通过，问题出在列目录 —— 多半是「路径前缀」没填对）';
+      if(kind==='path_missing'||d.openlist_path_missing){
+        // 只有这一类是**确定**的配置问题，可以放心点名「路径前缀」。
+        msg+='（目录在 OpenList 上不存在 —— 请检查「路径前缀」是否指向 OpenList 挂载夸克网盘的那个目录）';
+      }else if(d.openlist_stage==='list'&&kind!=='timeout'&&kind!=='network'){
+        // 走到这里说明请求发出去了、但 OpenList 报了别的错：这类（如它自己的
+        // 存储挂了）既不是凭据问题、也未必是路径问题，如实说「看原始报错」，
+        // 不要编一个「多半是路径前缀」的结论。
+        msg+='（地址与令牌都通了，问题出在列目录；具体原因见上面的原始报错）';
       }
       if(kind==='timeout'){
         msg+='（OpenList 有响应但太慢：这通常**不是配置错误**，而是它正在等网盘返回目录。'
