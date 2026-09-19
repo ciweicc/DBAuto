@@ -465,8 +465,9 @@
           <p style="color:var(--text2);font-size:13px;margin-top:4px">浏览夸克网盘真实文件与 QAS 转存任务；在此删除会同步清理本地转存历史，避免「网盘已删、本地仍判为已转存」。</p>
         </div>
 
-        <!-- 网盘文件浏览（issue #27 优化：置顶，用户最常用；先于 QAS 任务加载） -->
-        <div class="card">
+        <!-- 网盘文件浏览（issue #27 优化：置顶，用户最常用；先于 QAS 任务加载）。
+             id="libCard" 与 #qasCard 对称：键盘归属按「用户点的是哪张卡」判定。 -->
+        <div class="card" id="libCard">
           <div class="card-title" style="justify-content:space-between">
             <span>网盘文件 <span id="libCount" style="color:var(--text3);font-weight:400"></span>
               <!-- 数据源徽标（issue #27 追问）：告诉用户目录是 OpenList 回答的还是 QAS 直连的，
@@ -519,8 +520,11 @@
           </div>
         </div>
 
-        <!-- QAS 转存任务（可删除任务配置，排在网盘文件之后） -->
-        <div class="card">
+        <!-- QAS 转存任务（可删除任务配置，排在网盘文件之后）。
+             id="qasCard"（issue #53 追问）：键盘归属判定要能认出「用户点的是这张卡」。
+             只看行/勾选框是不够的 —— 翻页按钮、筛选栏、卡片标题都在行的外面，
+             点它们之后按 Ctrl+A 就会错误地作用到媒体库文件表上。 -->
+        <div class="card" id="qasCard">
           <div class="card-title" style="justify-content:space-between">
             <span>QAS 转存任务 <span id="qasTaskCount" style="color:var(--text3);font-weight:400"></span></span>
             <span>
@@ -565,6 +569,17 @@
                 <button class="btn btn-sm btn-outline" id="qasNext" onclick="qasPage(1)" disabled>下一页</button>
               </div>
             </div>
+          </div>
+          <!-- 键盘选择提示（issue #53 追问：「这里也需要快捷」）。
+               与媒体库同一套按键，所以提示条复用 .lib-keyhint 的样式 ——
+               走查脚本会断言两处提示条的 display/字号/窄屏收起口径一致，
+               避免出现「一个看得见、一个看不见」。 -->
+          <div class="lib-keyhint qas-keyhint" id="qasKeyHint" title="Ctrl 在 macOS 上为 ⌘">
+            <kbd>Ctrl/⌘</kbd>+<kbd>A</kbd> 全选本页
+            <kbd>Shift</kbd>+<kbd>↑↓</kbd> 连选
+            <kbd>↑↓</kbd> 移动（页末接着翻页）
+            <kbd>空格</kbd> 勾选
+            <kbd>Esc</kbd> 取消
           </div>
           <div id="qasTaskList"><div class="empty-state" style="padding:24px 20px"><div class="empty-title">加载中...</div></div></div>
           <!-- 批量删除操作条 -->

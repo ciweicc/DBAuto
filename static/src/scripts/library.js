@@ -75,6 +75,16 @@ var libRangeBase = null;
 var qasTasks = [];
 var qasSelected = {};      // QAS 任务的勾选状态：key -> task
 
+// QAS 任务表的键盘选择状态（issue #53 追问：「这里也需要快捷」）。
+//
+// 与媒体库的三件套**同名同语义**（qasFocus/taskFocusKey、qasSelectAnchor、
+// qasRangeBase），只是前缀不同 —— 两套列表各有各的焦点，互不干扰。
+// 为什么必须各存一份而不是共用：两张表是页面上**同时存在**的两个列表，
+// 共用焦点会出现「在任务表按 ↑，媒体库的虚线框跟着动」。
+var qasFocusKey = null;      // 当前行（虚线框）
+var qasSelectAnchor = null;  // 范围选择的锚点（不动的那一端）
+var qasRangeBase = null;     // 上一次范围选择的基线，见 _qasSelectRange
+
 // ---------- 任务筛选状态（issue #53 追问：「转存任务的管理可以加入路径筛选」） ----------
 // 为什么需要：任务数常见 200+（实测 291 条），一屏只看得到十几行。想找「电视剧里
 // 有哪些没配好」只能靠人眼翻 6 屏 —— 这是纯粹的体力活。
@@ -474,6 +484,8 @@ async function loadQasTasks(){
   var box = document.getElementById('qasTaskList');
   if(!box) return;
   qasSelected = {};
+  // 换了一批数据 = 旧的行 key 全部失效：焦点/锚点/范围基线必须一起清
+  qasFocusKey = null; qasSelectAnchor = null; qasRangeBase = null;
   box.innerHTML = '<div class="empty-state" style="padding:24px 20px"><div class="empty-title">加载中...</div></div>';
   var r = await libFetch('/api/qas/tasks');
   if(!r.ok){
@@ -528,6 +540,320 @@ function _qasVisibleTasks(){
 
 function _qasVisibleKeys(){
   return _qasVisibleTasks().map(qasKey);
+}
+
+// ---------- 任务表键盘选择（issue #53 追问：「这里也需要快捷」） ----------
+//
+// 用户在媒体库做完全套快捷键之后，指着 QAS 任务清单的截图说「这里也需要快捷」。
+// 同一套语义搬到任务表，按键与媒体库**逐字一致**（Ctrl+A / Esc / ↑↓ / Shift+↑↓ /
+// 空格 / Shift+点击 / Ctrl+点击）—— 两张表挨在一起，语义有一处不同就是坑。
+//
+// 与媒体库的唯一实质差异是**作用范围**：任务表有筛选 + 分页，
+// 全选与范围选择都只能作用于**可见行**（见 _qasVisibleTasks 的注释：
+// 「看着 19 行、点一下全选、实际勾上 291 条」是这条链路上最危险的失败模式）。
+
+// 「行要不要加 tabindex」的判定。断点（max-width:900px）与 CSS 里 .lib-keyhint
+// 收起提示条的那条保持一致：**提示条藏了，就不该再让 Tab 键在几十行里空走**。
+//
+// 它只控制 tabindex，**不控制按键是否生效** —— 窄视口 ≠ 没有键盘
+// （缩窄的窗口、带键盘的平板都很常见），把两件事绑在一起会让
+// 「看不见提示条的人反而用不了快捷键」（本轮被既有的密度走查挡下）。
+function _qasKeyboardEnabled(){
+  try{ return !window.matchMedia || !window.matchMedia('(max-width:900px)').matches; }
+  catch(e){ return true; }
+}
+
+// 当前渲染出来的任务行。**必须走 DOM**：行是 _renderQasTasks 重建的，
+// 只有 DOM 才知道此刻屏幕上究竟是哪几行（筛选/分页/每页条数都会改它）。
+function qasRowEls(){
+  return Array.prototype.slice.call(
+    document.querySelectorAll('#qasTaskList .lib-row:not(.lib-head)'));
+}
+
+function _qasFocusIdx(rows){
+  var k = qasFocusKey;
+  if(k == null) return -1;
+  for(var i = 0; i < (rows || []).length; i++){
+    if(rows[i].getAttribute('data-key') === k) return i;
+  }
+  return -1;
+}
+
+function _qasRowIdxOfKey(key, rows){
+  for(var i = 0; i < (rows || []).length; i++){
+    if(rows[i].getAttribute('data-key') === String(key)) return i;
+  }
+  return -1;
+}
+
+// 「当前行」必须看得见（虚线框，与媒体库同一套 .lib-current 样式）。
+// 每次移动全量重刷：上一次的标记要清掉，否则会留下幽灵当前行，
+// Shift 连选时看起来像选了两段。
+function qasFocusRow(i, opts){
+  opts = opts || {};
+  var rows = qasRowEls();
+  if(!rows.length) return;
+  if(i < 0) i = 0;
+  if(i > rows.length - 1) i = rows.length - 1;
+  qasFocusKey = rows[i].getAttribute('data-key');
+  for(var j = 0; j < rows.length; j++){
+    if(j === i) rows[j].classList.add('lib-current');
+    else rows[j].classList.remove('lib-current');
+  }
+  if(opts.scroll !== false){
+    try{ rows[i].scrollIntoView({block:'nearest'}); }catch(e){ rows[i].scrollIntoView(false); }
+  }
+}
+
+// 把 qasSelected 回写到勾选框 DOM。键盘来的选择不经过浏览器
+// （鼠标点击时浏览器会自己翻转 checkbox），不回写就会「操作条说已选 3 条、
+// 屏幕上勾选框全空」—— 媒体库那边踩过，这里一次到位。
+function _qasSyncCheckboxes(rows){
+  (rows || qasRowEls()).forEach(function(r){
+    var box = r.querySelector('input[type=checkbox]');
+    if(box) box.checked = !!qasSelected[r.getAttribute('data-key')];
+  });
+}
+
+// 范围选择（从 anchor 到 focus 的闭区间），可增可减，且不吞掉用户攒下的选择。
+// 推导过程与 _libSelectRange 完全一致（那边有完整的踩坑记录），
+// 这里只重复一句最关键的：**先算 next，再取 next - 本次范围**做基线，
+// 顺序反了就会「Shift+↓ 扩出去之后 Shift+↑ 缩不回来」。
+function _qasSelectRange(anchor, focus, rows){
+  var a = Math.min(anchor, focus), b = Math.max(anchor, focus);
+  var next = {};
+  for(var j = a; j <= b; j++){
+    var k1 = rows[j].getAttribute('data-key');
+    next[k1] = findQasTask(k1);
+  }
+  var keep = qasRangeBase ? qasRangeBase.base : {};
+  var prevRange = qasRangeBase ? qasRangeBase.prevRange : {};
+  var next2 = {};
+  Object.keys(keep).forEach(function(key){
+    var i = _qasRowIdxOfKey(key, rows);
+    if(i >= 0 && i >= a && i <= b) return;
+    if(prevRange[key]) return;
+    next2[key] = findQasTask(key) || keep[key];
+  });
+  if(!qasRangeBase){
+    for(var k = 0; k < rows.length; k++){
+      var key = rows[k].getAttribute('data-key');
+      if(next[key]) continue;
+      if(qasSelected[key]) next2[key] = findQasTask(key) || qasSelected[key];
+    }
+  }
+  Object.keys(next2).forEach(function(key){
+    if(!next[key]) next[key] = next2[key];
+  });
+  var snapRange = {};
+  for(var j2 = a; j2 <= b; j2++) snapRange[rows[j2].getAttribute('data-key')] = 1;
+  var baseSnap = {};
+  Object.keys(next).forEach(function(key){
+    if(!snapRange[key]) baseSnap[key] = next[key];
+  });
+  qasRangeBase = { start:a, end:b, prevRange:snapRange, base:baseSnap };
+  qasSelected = next;
+  _qasSyncCheckboxes(rows);
+  updateQasActionBar();
+}
+
+// 全选：**只作用于当前可见行**（筛选结果 + 当前页），范围外的勾选保留。
+// qasSelected 的字段名必须留在函数体里 —— tests/test_build.py 的
+// test_qas_select_all_is_limited_to_visible_rows 靠它证明「没有改成全量勾选」。
+function qasSelectAll(){
+  var rows = qasRowEls();
+  if(!rows.length) return;
+  // 复用既有入口：它负责「只勾可见行」+ 同步表头全选态 + 重渲染勾选框
+  toggleQasSelectAll(true);
+  qasSelectAnchor = 0;
+  qasRangeBase = null;
+  qasFocusRow(0, {scroll:false});
+  showToast('已全选当前可见的 ' + rows.length + ' 条任务（Esc 取消选择）', true);
+}
+
+function qasClearSelection(){
+  toggleQasSelectAll(false);
+  // 锚点与范围基线必须一起清掉：否则再按 Shift+↑ 会从旧位置重新选出一段，
+  // 而用户刚看到的是「已清空」。
+  qasSelectAnchor = null;
+  qasRangeBase = null;
+  _qasSyncCheckboxes();
+}
+
+// ↑↓ 把当前行带出屏幕外就没法「边看边选」了：翻页时把光标放到本页的**对应端**。
+//
+// 方向决定落到哪一行，这跟「翻书」一致：
+//   * 下一页（在页末按 ↓）→ 落到新页第一行，继续按 ↓ 顺着往下走；
+//   * 上一页（在页首按 ↑）→ 落到新页**最后一行**，继续按 ↑ 顺着往上走。
+// 两处都写死 0 的话，「按 ↑ 回到上一页」会把光标甩到页首，
+// 用户再按 ↑ 就立刻又翻回下一页 —— 看起来像「翻页失灵」（本轮实测踩到）。
+function qasGotoPage(delta){
+  libKeyScope = 'qas';
+  var before = qasPageNo;
+  qasPage(delta);
+  if(qasPageNo === before) return;
+  qasRangeBase = null;      // 换页 = 新的一段范围（旧基线记的是上一页的行）
+  var rows = qasRowEls();
+  var at = (delta < 0) ? rows.length - 1 : 0;   // 上一页落末行、下一页落首行
+  if(at < 0) at = 0;
+  qasSelectAnchor = at;
+  qasFocusRow(at, {scroll:false});
+}
+
+// 行点击：与媒体库一致的「单选 / 逐个增减 / 范围连选」。
+//
+// 与媒体库的一处**必须存在的差异**：媒体库的卡片是 <label> 包着 checkbox，
+// 点卡片时浏览器会自己翻转勾选框，所以那边的 libCardClick 只负责同步状态。
+// 任务表的行里没有 <label>，点「行的空白处」不会触发任何原生行为 ——
+// 直接照抄媒体库的写法就会出现「点一下行，什么都没选中」，而且锚点也建不起来，
+// 连带 Shift+点击的范围选择整条链路失灵（本轮实测踩到，走查第 4b 条抓的）。
+//
+// 所以这里明确：**普通点击 = 选中该行（不改动其它行）**，与文件管理器一致。
+// 点击 checkbox 本身时浏览器会自己翻，随后我们按同样规则回写，结果是幂等的。
+function qasRowClick(key, ev){
+  ev = ev || {};
+  libKeyScope = 'qas';   // 点过任务表 = 之后的快捷键归任务表（见 libKeyScope）
+  var rows = qasRowEls();
+  var idx = _qasRowIdxOfKey(key, rows);
+  if(idx < 0) return;
+  var shift = !!ev.shiftKey;
+  var multi = !!(ev.ctrlKey || ev.metaKey);
+  var hadAnchor = (qasSelectAnchor != null && qasSelectAnchor >= 0 &&
+                   qasSelectAnchor < rows.length);
+  qasFocusKey = String(key);
+  qasFocusRow(idx, {scroll:false});
+  if(shift && hadAnchor){
+    // 范围选择时不改锚点：连续多次 Shift+点击可以反复调整选区下界
+    // （文件管理器里「点了不准，再点一下」的交互）。
+    _qasSelectRange(qasSelectAnchor, idx, rows);
+    return;
+  }
+  // 新锚点意味着「新的一段范围」：旧基线必须作废，否则下一次 Shift 会拿
+  // 上一次的范围去减，减出谁也预料不到的结果。
+  qasRangeBase = null;
+  if(multi){
+    // Ctrl/⌘+点击：逐个增减（点一下翻转一条）
+    var on = !qasSelected[key];
+    if(on) qasSelected[key] = findQasTask(key); else delete qasSelected[key];
+  }else{
+    // 普通点击：只选中这一行（点空白处也不该「什么都没发生」）
+    qasSelected = {};
+    qasSelected[key] = findQasTask(key);
+  }
+  _qasSyncCheckboxes(rows);
+  updateQasActionBar();
+  qasSelectAnchor = idx;
+}
+
+// 行上的 keydown：方向键/空格必须在这里拦下来（与 libRowKeydown 同理）——
+// 行被 tabindex 聚焦后，浏览器的空格会自己翻转行内的 checkbox，
+// 我们在 document 上再处理一次就会翻两次（勾了又取消）。两种视图都拦。
+function qasRowKeydown(key, ev){
+  if(!ev) return;
+  if(ev.key === 'ArrowUp' || ev.key === 'ArrowDown'){ _qasKeydown(ev); return; }
+  if(ev.key === ' ' || ev.key === 'Spacebar'){ _qasKeydown(ev); }
+}
+
+// 返回 true = 这个键已经被任务表的键盘逻辑吃掉了（init.js 据此提前 return）。
+// 语义与 _libKeydown 逐条对齐，差异只有「范围 = 可见行」。
+function _qasKeydown(e){
+  if(currentTab !== 'library') return false;
+  // 注意：这里**不按视口禁用**快捷键。曾经的写法是「窄屏 = 触屏 = 没有键盘，
+  // 干脆不响应」，但它把两件不同的事混为一谈：窄视口 ≠ 没有键盘
+  // （窗口缩窄、平板带键盘、外接键盘的触屏设备都很常见），拿不到提示条的人
+  // 反而更依赖快捷键。既有走查 check_library_density_dom.py 在 390px 视口
+  // 明确要求 Ctrl+A / Shift+↓ / 当前行标记照旧生效（本轮实测被它挡下）。
+  // 唯一保留的窄屏差异是**不给行加 tabindex**（见 _renderQasTasks）：
+  // 那纯粹是「别让 Tab 键在几十行里空走」，与按键是否生效无关。
+  if(!libKeysInScope('qas')) return false;
+  // 焦点在输入框/下拉里时一律放行：在「路径包含」里按空格、按 Escape 清输入，
+  // 都是输入框自己的事。媒体的 _libKeydown 没有这一层（它没有输入框），
+  // 这里不加就会「打字时按空格勾上一条任务」。
+  var tg = (e.target && e.target.tagName) || '';
+  if(tg === 'INPUT' || tg === 'TEXTAREA' || tg === 'SELECT') return false;
+  var rows = qasRowEls();
+  if(!rows.length) return false;
+  var isCb = tg === 'INPUT' && e.target.type === 'checkbox';
+  var idx = _qasFocusIdx(rows);
+  var focus = idx < 0 ? 0 : idx;
+  var anchor = (qasSelectAnchor == null || qasSelectAnchor < 0 ||
+                qasSelectAnchor >= rows.length) ? focus : qasSelectAnchor;
+  var k = e.key, lower = String(k || '').toLowerCase();
+  var mod = !!(e.ctrlKey || e.metaKey);
+
+  // Ctrl/⌘+A：全选（抢在浏览器「选中整页文字」之前 preventDefault）
+  if(mod && lower === 'a'){
+    e.preventDefault();
+    qasSelectAll();
+    return true;
+  }
+  // Esc：清空选择。只在「确有选择」时消费该键，避免与确认框/媒体库抢键。
+  if(k === 'Escape' && Object.keys(qasSelected).length){
+    e.preventDefault();
+    qasClearSelection();
+    return true;
+  }
+  // Ctrl/⌘+↑↓：移动当前行但不改变选择（「看看但不选」）
+  if(mod && (k === 'ArrowUp' || k === 'ArrowDown')){
+    e.preventDefault();
+    qasFocusRow(focus + ((k === 'ArrowDown') ? 1 : -1));
+    qasSelectAnchor = _qasFocusIdx(rows);
+    qasRangeBase = null;
+    return true;
+  }
+  if(k === 'ArrowUp' || k === 'ArrowDown'){
+    e.preventDefault();
+    var step = (k === 'ArrowDown') ? 1 : -1;
+    var ns = focus + step;
+    if(ns < 0 || ns > rows.length - 1){
+      // 到边界：停在原地（不回绕）。**但允许翻页**：分区/分页之后
+      // 「当前行在页末、还要接着选下一页」是最常见的连续操作，
+      // 不回绕只是为了让 Shift 连选不会「跳到另一头」。
+      if(kbPageAvailable(step)){
+        qasGotoPage(step);
+        return true;
+      }
+      return true;
+    }
+    qasFocusRow(ns);
+    var ni = _qasFocusIdx(rows);
+    // Shift+↑↓：从锚点连选一段。Shift 连选期间**锚点不跟着焦点跑**，
+    // 否则每按一次 Shift+↓ 起点都往后挪一格，按住 5 次只选出 2 行。
+    if(e.shiftKey){
+      _qasSelectRange(anchor, ni, rows);
+    }else{
+      qasSelectAnchor = ni;
+    }
+    return true;
+  }
+  // 空格：切换当前行（Ctrl/⌘+空格同语义，保持与媒体库一致）
+  if(k === ' ' || k === 'Spacebar'){
+    if(isCb && !mod) return false;   // 交给浏览器的原生行为，别翻两次
+    e.preventDefault();
+    var key = rows[focus].getAttribute('data-key');
+    toggleQasSelect(key, !qasSelected[key]);
+    _qasSyncCheckboxes(rows);
+    qasSelectAnchor = focus;
+    return true;
+  }
+  return false;
+}
+
+// 是否还有「可翻的下一页/上一页」（-1 = 上一页，+1 = 下一页）
+function kbPageAvailable(step){
+  if(step > 0) return qasPageNo < _qasPageCount();
+  return qasPageNo > 1;
+}
+
+// 当前行下标 / 全部可见行 key。走查脚本需要它们才能**从 DOM 之外**确认
+// 「Ctrl+A 勾的到底是哪 20 条」——只读 checkedKeys 无法区分「勾了本页 20 条」
+// 与「勾了别的 20 条」。它们是纯读取入口，不带任何副作用。
+function qasFocusRowIdx(){
+  return _qasFocusIdx(qasRowEls());
+}
+
+function qasFocusKeys(){
+  return qasRowEls().map(function(r){ return r.getAttribute('data-key'); });
 }
 
 // 筛选条件变化：回到第 1 页（理由见 qasPageNo 的注释），再重渲染。
@@ -590,6 +916,7 @@ function setQasPageSize(v){
   _renderQasTasks();
 }
 
+// 翻页。键盘（↑↓ 到页末/页首）与「上一页/下一页」按钮共用这一条出口。
 function qasPage(delta){
   var pages = _qasPageCount();
   var next = qasPageNo + delta;
@@ -684,6 +1011,7 @@ function qasKey(t){
 function _renderQasTasksError(message){
   var box = document.getElementById('qasTaskList');
   if(!box) return;
+  qasFocusKey = null; qasSelectAnchor = null; qasRangeBase = null;
   var cnt = document.getElementById('qasTaskCount');
   if(cnt) cnt.textContent = '';
   var bar = document.getElementById('qasFilterBar');
@@ -724,6 +1052,11 @@ function _renderQasTasks(){
   var pages = _qasPageCount();
   if(qasPageNo > pages) qasPageNo = pages;
 
+  // 桌面端才给行加 tabindex：焦点落在行上时浏览器会自己翻空格键的勾选框，
+  // 而我们在行上再处理一次就会翻两次（媒体库那边踩过，见 libRowKeydown）。
+  // 触屏没有键盘，加 tabindex 只会让 Tab 键多走几十次，所以窄屏不加。
+  var kb = _qasKeyboardEnabled();
+  var tabidx = kb ? ' tabindex="0"' : '';
   var rows = _qasVisibleTasks();
   if(!rows.length){
     box.innerHTML = '<div class="task-filter-empty">没有匹配的任务。' +
@@ -740,11 +1073,17 @@ function _renderQasTasks(){
       '<span>转存路径</span><span>分享链接</span>' +
       '<span class="lib-ops" style="color:var(--text3);font-weight:400">' + start + '–' + end + '</span></div>';
   }
-  var html = '<div class="lib-table lib-table-tasks">' + head;
+  var html = '<div class="lib-table lib-table-tasks"' + (tabidx ? ' tabindex="-1"' : '') +
+    ' aria-label="QAS 转存任务列表（Ctrl+A 全选 / Shift+↑↓ 连选 / 空格勾选 / Esc 取消）">' + head;
   rows.forEach(function(t){
     var key = qasKey(t);
-    // 行内只带 key（不把任务名拼进 onclick 字符串），避免引号/特殊字符破坏属性
-    html += '<div class="lib-row">' +
+    // 行内只带 key（不把任务名拼进 onclick 字符串），避免引号/特殊字符破坏属性。
+    // data-key / tabindex / onkeydown / onclick（issue #53 追问）：键盘选择靠
+    // data-key 定位行，缺了它「按空格有反应但什么都没选中」（媒体库那边实测过）。
+    html += '<div class="lib-row"' +
+        ' data-key="' + esc(key) + '"' + tabidx +
+        ' onkeydown="qasRowKeydown(' + jsArg(key) + ', event)"' +
+        ' onclick="qasRowClick(' + jsArg(key) + ', event)">' +
       '<span class="lib-cb"><input type="checkbox" aria-label="选择 ' + esc(t.taskname) + '"' +
         (qasSelected[key] ? ' checked' : '') +
         ' onchange="toggleQasSelect(' + jsArg(key) + ', this.checked)"></span>' +
@@ -756,6 +1095,9 @@ function _renderQasTasks(){
   });
   html += '</div>';
   box.innerHTML = html;
+  // 重渲染会把 .lib-current 一起丢掉（innerHTML 是整体替换）。
+  // 不补回来的话「翻页/筛选之后虚线框消失」—— 用户会认为当前行没了。
+  if(_qasFocusIdx(qasRowEls()) >= 0) qasFocusRow(_qasFocusIdx(qasRowEls()), {scroll:false});
   updateQasActionBar();
 }
 
@@ -775,6 +1117,11 @@ function toggleQasSelect(key, on){
 
 function updateQasActionBar(){
   var bar = document.getElementById('qasActionBar');
+  // 焦点已经落在任务表里（勾选框/行）= 用户正在操作任务表。
+  // 只在「焦点确实在任务表内」时改写 scope，避免 updateQasActionBar 被
+  // 媒体库的流程间接调用时把 scope 抢走。
+  var ae = document.activeElement;
+  if(ae && ae.closest && ae.closest('#qasTaskList')) libKeyScope = 'qas';
   var n = Object.keys(qasSelected).length;
   if(bar) bar.style.display = qasTasks.length ? 'flex' : 'none';
 
@@ -814,6 +1161,7 @@ function updateQasActionBar(){
 // 那等于「看着 20 行、点一下全选，实际勾上 291 条」。这里改成只动可见行，
 // 且**保留**范围外的已有勾选（用户可能先勾了几条再翻页）。
 function toggleQasSelectAll(on){
+  libKeyScope = 'qas';   // 表头全选被点 = 用户正在操作任务表
   _qasVisibleTasks().forEach(function(t){
     var key = qasKey(t);
     if(on) qasSelected[key] = t; else delete qasSelected[key];
@@ -1462,14 +1810,58 @@ function updateLibActionBar(){
 function libGridEl(){
   return document.getElementById('libGrid');
 }
+// 「键盘属于哪个列表」（issue #53 追问：「这里也需要快捷」）。
+//
+// 媒体库文件表与 QAS 任务表是**同一页上并存的两个列表**，各自都想要
+// Ctrl+A / ↑↓ / 空格 / Esc。于是「按键该给谁」必须有明确归属，否则：
+//   - 媒体库的处理器排在前面，Ctrl+A 永远先把文件表全选，任务表的快捷键
+//     写了也永远不会被触发（本轮实测就是这个现象）；
+//   - 反过来，给任务表也来一套「谁先声明谁先拿」，两张表就会各响一半。
+//
+// 归属规则用一次**点击/方向键**就能建立，而且是用户已经养成的心智模型：
+// 「我刚点过哪张表，快捷键就作用在哪张表」。默认给媒体库（页面主列表）。
+//
+// 为什么不能只看「有没有焦点行」：焦点是懒建立的（用户可能一进页面就按
+// Ctrl+A，此时两张表都还没有焦点行），那种情况下「最近交互过的表」才是答案。
+var libKeyScope = 'lib';
+
+function libKeyScopeOf(el){
+  return (el && el.closest && el.closest('#qasTaskList')) ? 'qas' : 'lib';
+}
+
+// 标记「最近交互过的列表」。挂在 document 上（事件委托）：行是重渲染重建的，
+// 逐行绑监听器会在每次翻页后丢失。
+function libScopeFromEvent(e){
+  var t = e && e.target;
+  if(!t || !t.closest) return;
+  // 判定单位是**整张卡片**（#qasCard / #libCard），不是行：用户点翻页按钮、
+  // 点筛选输入框、点卡片标题，也都是「正在操作这张表」。只看行会让这些点击
+  // 之后的 Ctrl+A 打到另一张表上（本轮实测就是这个现象）。
+  if(t.closest('#qasCard')){
+    libKeyScope = 'qas';
+  }else if(t.closest('#libCard')){
+    libKeyScope = 'lib';
+  }
+}
+// 受键范围（'qas' / 'lib' / 'all'）。按规范应该只有一张表能响；
+// 'all' 只留给「测试/宿主想同时驱动两张表」的场景。
+function libKeysInScope(scope){
+  if(scope === 'all') return true;
+  return libKeyScope === scope;
+}
+
 // 当前视图的行元素（卡片视图 = #libGrid 里的 .lib-card；列表视图 = .lib-table 里的
 // 数据行）。**两种视图必须走同一套键盘逻辑** —— 否则「我切成列表视图后快捷键就
 // 不好使了」是必然的。列表视图没有 #libGrid，所以要回落到 .lib-table。
 function libRowEls(){
-  var g = libGridEl();
-  var scope = g || document.querySelector('#libList .lib-table');
-  if(!scope) return [];
-  var rows = scope.querySelectorAll('.lib-card, .lib-row:not(.lib-head)');
+  // 选择范围严格收敛在 #libList 之内：任务表（#qasTaskList）用的是同一套
+  // `.lib-row` 标记，漏掉这个容器就会出现「媒体库的行列表里混进 20 条任务」
+  // —— 全选、Shift 连选、当前行全都会错位（本轮实测踩到）。
+  // 收敛在 #libList 也顺带覆盖了两种视图：卡片视图走 #libGrid，
+  // 列表视图的 .lib-table 就在同一个容器里，切视图后快捷键不会失灵。
+  var list = document.querySelector('#libList');
+  if(!list) return [];
+  var rows = list.querySelectorAll('.lib-card, .lib-row:not(.lib-head)');
   return Array.prototype.slice.call(rows);
 }
 
@@ -1617,7 +2009,9 @@ function libSelectAll(){
 }
 
 function libClearSelection(){
+  var keep = qasSelected;
   toggleLibSelectAll(false);
+  qasSelected = keep;   // toggleLibSelectAll 会重置 qasSelected，这里显式还原
   var all = document.getElementById('libSelAll');
   if(all) all.checked = false;
   // 锚点必须一起清掉，否则再按 Shift+↑ 会从「上一次的位置」重新选出一段，
@@ -1675,6 +2069,8 @@ function libRowKeydown(key, ev){
 // 全局快捷键分支（历史上这类「两个处理器都吭声」的问题很难查）。
 function _libKeydown(e){
   if(currentTab !== 'library') return false;
+  // 焦点/最近交互在任务表时，整个媒体库键盘逻辑让路（见 libKeyScope）。
+  if(!libKeysInScope('lib')) return false;
   var rows = libRowEls();
   if(!rows.length) return false;
   var t = e.target || {};

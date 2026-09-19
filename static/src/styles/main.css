@@ -1798,6 +1798,11 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .lib-keyhint kbd{font-family:inherit;font-size:11px;line-height:1;padding:2px 5px;
   border:1px solid var(--border2);border-radius:var(--radius-xs);
   background:var(--field-bg);color:var(--text2)}
+/* 任务表的提示条（issue #53 追问「这里也需要快捷」）：与媒体库同一套按键，
+   所以样式完全复用 .lib-keyhint，只改一个「靠哪儿」——
+   媒体库在目录栏右端（margin-left:auto 把它推到右边），任务表这里独占一行、
+   要贴左对齐，否则一行里只有一个右对齐的提示条。 */
+.qas-keyhint{margin:2px 0 4px;flex-wrap:wrap}
 @media(max-width:900px){.lib-keyhint{display:none}}
 @media(max-width:600px){
   .task-filter{padding:8px 10px}
