@@ -81,6 +81,8 @@ QAS_TASKS += [
 EXPECT_TV = len([t for t in QAS_TASKS if "/影视/电视剧" in t["savepath"]])
 
 _QAS = {"success": True, "tasks": QAS_TASKS}
+# 删除任务请求体的落盘（issue #57：开关值必须真的随请求发出）
+_last_del_bodies = []
 _ENTRIES = [{"fid": "d1", "name": "示例目录", "dir": True, "size": 0,
              "updated_at": 1758000000}]
 
@@ -123,6 +125,20 @@ def _route(route):
     if "/api/" not in url:
         return route.fallback()
     path = url.split(str(PORT), 1)[-1].split("?", 1)[0]
+    # 记录删除任务的请求体（issue #57）：开关到底有没有真的发给后端，
+    # 只能看「实际发出的请求」—— 读 DOM 只证明用户勾上了。
+    if path == "/api/qas/delete_tasks":
+        try:
+            _last_del_bodies.append(json.loads(route.request.post_data or "{}"))
+        except Exception:
+            _last_del_bodies.append({})
+    if path == "/api/qas/delete_tasks":
+        # 只记录请求体，**不改动**任务列表：走查还要继续跑分页 / chips / 全选等
+        # 断言，真删掉那批任务会让它们全部失效（而且走查不该有副作用）。
+        return route.fulfill(status=200, content_type="application/json",
+                             body=json.dumps({"success": True, "deleted": 0,
+                                              "tasks": QAS_TASKS},
+                                             ensure_ascii=False).encode())
     if path.rstrip("/").endswith("/api/sse"):
         return route.fulfill(status=200, content_type="text/event-stream", body=b"")
     if path == "/api/qas/library":
@@ -165,6 +181,9 @@ MEASURE = r"""
     nameValue: nameEl ? nameEl.value : null,
     clearDisabled: q('#qasFilterClear') ? q('#qasFilterClear').disabled : null,
     chips: chips.map(c => ({ text: c.textContent, on: c.classList.contains('on') })),
+    // 删除范围开关（issue #57）：默认必须关，且必须长在任务操作条里
+    syncTasksChecked: q('#syncQasTasksChk') ? !!q('#syncQasTasksChk').checked : null,
+    syncTasksInBar: !!document.querySelector('#qasActionBar #syncQasTasksChk'),
     pagerPos: q('#qasPagerPos') ? q('#qasPagerPos').textContent : '',
     prevDisabled: q('#qasPrev') ? q('#qasPrev').disabled : null,
     nextDisabled: q('#qasNext') ? q('#qasNext').disabled : null,
@@ -279,6 +298,76 @@ def main():
             if any(not p.startswith("/影视") for p in paths):
                 fail("AND 语义被破坏：出现了路径不匹配的行 {}".format(paths))
             report.append({"stage": "path=/影视 & name=奥特曼", "names": names})
+
+            # ---- 3.5 删除范围开关（issue #57）：网盘侧删文件时联动删同名任务 ----
+            # 用户诉求：「删除 OpenList 指定文件夹下的资源库文件时，同步删除同名
+            # 自动夸克转存任务」，并要一个开关（默认关 —— 删任务不可逆）。
+            # 关键不是「有没有这个开关」，而是三件事：
+            #   ① 开关默认必须是关的（不勾就不许动 QAS 任务表）；
+            #   ② 勾上之后，请求体里**真的带上了开关值与路径范围**（UI 勾了但没发给
+            #      后端 = 假功能；不带范围 = 越界删除筛选外的任务）；
+            #   ③ 关着的时候绝不能发这个字段（防止读错 DOM 默认值造成静默删任务）。
+            set_path("/影视/电视剧")
+            page.wait_for_timeout(150)
+            page.evaluate("()=>toggleQasSelectAll(true)")
+            page.wait_for_timeout(200)
+
+            s = st()
+            if s["syncTasksChecked"] is not False:
+                fail("同步删除任务开关必须默认关闭（实际 checked={!r}）"
+                     "—— 删任务不可逆，绝不能默认打开".format(s["syncTasksChecked"]))
+            if not s["syncTasksInBar"]:
+                fail("同步删除任务开关不在任务操作条里：用户勾选任务时看不到这个选项")
+
+            # ③ 默认关：删除提交的请求体里不应出现 sync_tasks
+            page.evaluate("()=>deleteSelectedQasTasks()")
+            page.wait_for_timeout(350)
+            shown = page.evaluate("()=>{var m=document.querySelector('#confirmOverlay');"
+                                  "return !!(m && getComputedStyle(m).display !== 'none')}")
+            if not shown:
+                fail("删除所选任务未弹确认框（后续开关断言不可信）")
+            # 必须**真的点确认**：Esc 只是关掉弹窗，请求根本不会发出，
+            # 断言就成了空转（读到的永远是「没有请求体」= 假通过）。
+            page.click("#confirmOk")
+            page.wait_for_timeout(500)
+            body0 = _last_del_bodies[-1] if _last_del_bodies else {}
+            if not _last_del_bodies:
+                fail("点确认后没有发出 /api/qas/delete_tasks 请求（断言会空转）")
+            if body0.get("sync_tasks"):
+                fail("开关默认关闭时仍提交了 sync_tasks={!r}".format(body0.get("sync_tasks")))
+            if body0.get("sync_tasks_path_filter") not in (None, ""):
+                fail("开关关闭时不应带上任务同步的路径范围（{!r}）".format(
+                    body0.get("sync_tasks_path_filter")))
+            report.append({"stage": "sync-tasks-default-off",
+                           "body": {k: body0.get(k)
+                                    for k in ("sync_tasks", "sync_tasks_path_filter")}})
+
+            # ② 勾上开关：删除提交的请求体必须带上 sync_tasks=true + 当前筛选条件
+            # 重新选一遍（上一步真的删掉了那批任务，勾选已被清空）
+            page.evaluate("()=>toggleQasSelectAll(true)")
+            page.wait_for_timeout(200)
+            page.check("#syncQasTasksChk")
+            page.wait_for_timeout(200)
+            page.evaluate("()=>deleteSelectedQasTasks()")
+            page.wait_for_timeout(350)
+            page.click("#confirmOk")
+            page.wait_for_timeout(500)
+            body1 = _last_del_bodies[-1] if _last_del_bodies else {}
+            if body1.get("sync_tasks") is not True:
+                fail("勾选「同步删除同名任务」后请求体未带上 sync_tasks=true（{!r}）".format(
+                    body1.get("sync_tasks")))
+            if body1.get("sync_tasks_path_filter") != "/影视/电视剧":
+                fail("同步删除必须带上当前路径筛选，否则会去删筛选范围外的同名任务"
+                     "（{!r}）".format(body1.get("sync_tasks_path_filter")))
+            report.append({"stage": "sync-tasks-on",
+                           "body": {k: body1.get(k)
+                                    for k in ("sync_tasks", "sync_tasks_path_filter")}})
+            page.uncheck("#syncQasTasksChk")
+            page.wait_for_timeout(150)
+            page.evaluate("()=>clearQasFilter()")
+            page.evaluate("()=>toggleQasSelectAll(false)")
+            page.wait_for_timeout(250)
+
 
             # 4. chips：数量与真实命中一致，点击即筛选、再点取消
             page.evaluate("()=>clearQasFilter()")

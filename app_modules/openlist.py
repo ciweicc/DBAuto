@@ -823,24 +823,58 @@ def remove(names, dir_path="/"):
         # 无法区分「删了几条」，因此拒绝宣称任何成功（与 QAS 删除同口径）。
         return {"success": False, "deleted": 0, "failed": len(clean), "results": [],
                 "message": str(e)}
-    # 目录内容已变：作废缓存并**立刻重新列一次这个目录**，否则用户删完再进同一目录
-    # （30s 内）还会看到已删条目 —— 与 QAS 侧「删除后 invalidate_library_cache」同口径。
-    #
-    # 为什么还要「立刻重新列一次」（预热）：
-    #   删除会把该目录在 OpenList 侧的列表缓存一并作废，于是下一次打开目录
-    #   变成一次**冷查询**（夸克侧要重新拉列表），很可能超过 8s 浏览预算 →
-    #   报超时 → 回落 QAS。结果就是「删掉一个文件」看起来像「把 OpenList 弄坏了」。
-    #   这里用诊断预算（慢 ≠ 错）顺手预热，把那次冷查询挪出用户的交互路径。
-    # 预热失败不影响删除结论（删除已经成功），所以吞掉异常只记日志。
-    invalidate_dir_cache()
-    _warm_dir_after_remove(base_dir)
+    # 目录内容已变：把**删掉的条目**从本地目录缓存摘掉，用户删完再进同一目录
+    # （30s 内）看不到已删条目 —— 与 QAS 侧「删除后 invalidate_library_cache」同口径，
+    # 但**不做整目录作废**（作废会把下一次浏览变成冷查询 → 超时 → 回落，
+    # 而每删一条就重新列一次目录 = 每删一条多一次全量网络往返）。
+    # 命中缓存时这条路径零网络；未命中时由缓存 TTL 自然兜住。
+    if not drop_dir_cache_entry(base_dir, clean):
+        # 本地没有这个目录的缓存：下一次浏览会是冷查询，按诊断预算预热一次。
+        # （命中缓存时走上面那条路，零网络，删除不会拖慢后续浏览。）
+        _warm_dir_after_remove(base_dir)
     results = [{"name": n, "ok": True, "message": "已删除（移入回收站）"} for n in clean]
     return {"success": True, "deleted": len(clean), "failed": 0,
             "results": results, "message": ""}
 
 
+def drop_dir_cache_entry(dir_path, names):
+    """删除之后，把**真的删掉的那些条目**从目录缓存里摘掉（不整目录作废）。
+
+    为什么不是「整目录作废 + 重新列一次」：
+      - 作废会让下一次打开该目录变成**冷查询**，很可能超过 8s 交互预算 →
+        报超时 → 回落 QAS。用户的操作是「删一个文件」，观感却像「把 OpenList
+        弄坏了」。旧实现用 `_warm_dir_after_remove` 立刻重新列一次来兜这件事，
+        代价是**每删一个条目就多一次全量目录网络往返**。
+      - 命中缓存时，缓存里的条目就是删之前那个目录的内容，删掉命中项即与真实
+        状态一致，且**零网络**。这才是「删除别拖慢页面」的做法。
+    未命中缓存时不做事（本来就没有陈旧数据），由缓存 TTL 自然兜住。
+    """
+    api = to_openlist_path(_norm_path(dir_path))
+    with _dir_cache_lock:
+        item = _dir_cache.get(api)
+        if not item:
+            return False
+        got = item["data"].get("entries")
+        if not isinstance(got, list):
+            _dir_cache.pop(api, None)
+            return False
+        gone = {str(n) for n in (names or [])}
+        data = dict(item["data"])
+        data["entries"] = [e for e in got
+                           if str((e or {}).get("name") or "") not in gone]
+        item["data"] = data
+        item["ts"] = time.time()
+    return True
+
+
 def _warm_dir_after_remove(dir_path):
-    """删除成功后顺手把该目录的列表**用诊断预算**重新拉一次（预热）。
+    """（仅在目录缓存已过期/未命中时使用的）删除后目录预热。
+
+    ⚠️ issue #57 起 `remove()` **不再每条都调用它**：命中本地目录缓存时，
+    只需要 `drop_dir_cache_entry()` 摘掉已删条目（零网络）；只有当本地缓存
+    也没有这个目录时，才需要重新列一次，否则下一次浏览会是冷查询。
+    保留此函数是因为「缓存里没有该目录」这条路径仍然存在（例如目录刚被
+    预热失败过），此时预热仍有价值。
 
     为什么需要它（issue #47 追问「上一级就回落」的一个真实放大器）：
       /api/fs/remove 会作废该目录在 OpenList 侧的列表缓存，于是**下一次打开**
@@ -911,6 +945,63 @@ def _task_savepath_dir(task):
     return sp, parent
 
 
+def match_task_names(tasks, names):
+    """从 tasklist 里挑出「与给定条目名同名」的任务（issue #57）。
+
+    返回 [{"taskname", "savepath"}]，与 media_library 的联动删除共用同一套
+    匹配语义：QAS 的 taskname 常见「[已完结]作品名」「作品名 全12集」，
+    而网盘条目名是作品名 / 作品名.2024.2160p.mkv，因此必须允许**包含关系**。
+    """
+    out = []
+    for t in (tasks or []):
+        if not isinstance(t, dict):
+            continue
+        name = t.get("taskname")
+        if not name:
+            continue
+        for n in (names or []):
+            if _match_task_dir({"taskname": name}, _entry_names([{"name": n}]))[0]:
+                out.append({"taskname": name, "savepath": t.get("savepath", "")})
+                break
+    return out
+
+
+def scan_dir_names(root="/", max_depth=RECONCILE_MAX_DEPTH,
+                   max_dirs=RECONCILE_MAX_DIRS):
+    """广度优先收集扫描范围内的 {目录: 条目名集合}（与对账同一套范围约束）。
+
+    抽出来是为了让对账与「同名任务联动删除」共用同一份目录视图 ——
+    两处若各扫一遍，磁盘/网络代价翻倍，而且两边的范围口径极易走偏
+    （一边 max_depth=2、一边写 3，结论就会不一致）。
+    """
+    base = _norm_path(root)
+    dirs = {base: _entry_names(list_dir(base).get("entries"))}
+    frontier = [base]
+    truncated = False
+    depth = 0
+    while frontier and depth < max(0, int(max_depth or 1)):
+        depth += 1
+        nxt = []
+        for p in frontier:
+            if len(dirs) >= max_dirs:
+                truncated = True
+                break
+            res = list_dir(p)
+            if not res.get("success"):
+                continue
+            for e in res.get("entries", []):
+                if not e.get("dir"):
+                    continue
+                sub = "{}/{}".format(p.rstrip("/"), e["name"])
+                if len(dirs) >= max_dirs:
+                    truncated = True
+                    break
+                nxt.append(sub)
+                dirs[sub] = _entry_names(list_dir(sub).get("entries"))
+        frontier = nxt
+    return dirs, truncated
+
+
 def reconcile_tasks(tasks, root="/", max_depth=RECONCILE_MAX_DEPTH,
                     max_dirs=RECONCILE_MAX_DIRS):
     """QAS 任务 ↔ 网盘实际内容 对账（issue #27 追问的「同时管理任务条目」）。
@@ -942,30 +1033,10 @@ def reconcile_tasks(tasks, root="/", max_depth=RECONCILE_MAX_DEPTH,
                 "orphans": [], "scanned_dirs": 0, "truncated": False,
                 "message": str(e)}
 
-    # 1. 收集扫描范围内的目录列表（广度优先，受层数与目录数双重约束）
-    dirs = [(base, _entry_names(list_dir(base).get("entries")))]
-    frontier = [base]
-    depth = 0
-    truncated = False
-    while frontier and depth < max(0, int(max_depth or 1)):
-        depth += 1
-        nxt = []
-        for p in frontier:
-            if len(dirs) >= max_dirs:
-                truncated = True
-                break
-            res = list_dir(p)
-            if not res.get("success"):
-                continue
-            sub = [("{}/{}".format(p.rstrip("/"), e["name"])) for e in res.get("entries", [])
-                   if e.get("dir")]
-            for s in sub:
-                if len(dirs) >= max_dirs:
-                    truncated = True
-                    break
-                nxt.append(s)
-                dirs.append((s, _entry_names(list_dir(s).get("entries"))))
-        frontier = nxt
+    # 1. 收集扫描范围内的目录列表（广度优先，受层数与目录数双重约束）。
+    #    与「同名任务联动删除」共用 scan_dir_names，保证两处范围口径一致。
+    scanned, truncated = scan_dir_names(base, max_depth=max_depth, max_dirs=max_dirs)
+    dirs = list(scanned.items())
 
     # 2. 逐条任务核对
     #

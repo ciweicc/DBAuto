@@ -2406,6 +2406,79 @@ def test_openlist_selfcheck_keeps_auth_and_path_semantics(dist):
         "产物未包含令牌 + 路径前缀两个输入框（需重跑 build.sh）"
 
 
+def test_delete_sync_switch_is_wired_end_to_end(dist):
+    """回归（issue #57）：删除范围开关必须前后端完整接线，且**默认关**。
+
+    用户诉求：「给 OpenList 模块增加一个开关用于删除 OpenList 指定文件夹下的
+    资源库文件时同步删除同名自动夸克转存任务」。
+
+    「加个开关」最容易做成三种半成品，每一种都比不加更危险：
+      1. 只有 UI 没有后端 —— 用户勾了、以为删了，任务照样明天把片子拉回来；
+      2. 只有后端没有 UI —— 字符串里搜得到 sync_tasks，用户却永远开不了；
+      3. 默认打开 —— 用户在「删文件」的弹窗里顺手删掉一批任务配置，不可逆。
+    因此这里把「UI + 传输 + 后端 + 默认值」四层一起锁死。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert 'id="syncQasTasksChk"' in body, "QAS 任务操作条缺少删除范围开关"
+    assert 'id="syncQasTasksFromLibChk"' in body, "网盘删除操作条缺少删除范围开关"
+    # 默认态必须是「不勾」：checkbox 不得带 checked 属性
+    for eid in ("syncQasTasksChk", "syncQasTasksFromLibChk"):
+        seg = body[body.index('id="{}"'.format(eid)) - 160:body.index('id="{}"'.format(eid)) + 40]
+        assert "checked" not in seg, \
+            "{} 默认是勾上的：用户在「删文件」的弹窗里会顺手删掉一批任务配置".format(eid)
+        # 位置必须在对应操作条里（勾选条目的同时才看得到，别处勾了也不该生效）
+        bar = "qasActionBar" if eid == "syncQasTasksChk" else "libActionBar"
+        bar_start = body.index('id="{}"'.format(bar))
+        assert 0 < body.index('id="{}"'.format(eid)) - bar_start < 1200, \
+            "{} 不在 {} 里（用户勾选条目时看不到这个选项）".format(eid, bar)
+
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    assert "function _syncTasksExtra(" in js, "缺少任务侧删除的联动参数构造"
+    assert "function _syncTasksFromLibExtra(" in js, "缺少网盘侧删除的联动参数构造"
+    # 关着时连字段都不发（写错默认值 = 静默删任务）
+    for fn in ("function _syncTasksExtra(", "function _syncTasksFromLibExtra("):
+        blk = js[js.index(fn):]
+        blk = blk[:blk.index("\n}")]
+        assert "syncTasks: false" in blk, "{} 在开关关闭时未短路".format(fn)
+    assert "payload.sync_tasks = true" in js, "开关值没有真的发给后端"
+    assert "sync_tasks_path_filter" in js, "联动范围没有带给后端（会撞到范围外的同名任务）"
+    # 确认框必须复述联动范围：删任务不可逆，不能藏在「确认删除文件」里
+    assert "同时会删除同名" in js, "确认文案未复述「会连带删任务」"
+    assert "function _tasksResultMsg(" in js, "缺少联动结果的如实回显"
+
+    routes = _read(os.path.join(_ROOT, "app_modules", "routes_library.py"))
+    assert 'body.get("sync_tasks")' in routes, "路由未读取删除范围开关"
+    assert "sync_tasks_path_filter" in routes, "路由未读取联动范围"
+    assert "不允许包含 .." in routes, "联动范围未做路径越界拦截"
+    lib = _read(os.path.join(_ROOT, "app_modules", "media_library.py"))
+    assert "def sync_tasks_by_names(" in lib, "缺少按任务名联动删除"
+    assert "def match_tasks_by_names(" in lib, "缺少同名匹配"
+    assert "def sync_library_entries_by_names(" in lib, "缺少反方向的网盘联动删除"
+    ol = _read(os.path.join(_ROOT, "app_modules", "openlist.py"))
+    assert "def match_task_names(" in ol, "openlist 未暴露同名匹配（与扫描共用一套语义）"
+    assert "def scan_dir_names(" in ol, "缺少目录扫描入口（对账与联动必须共用范围口径）"
+
+    assert "syncQasTasksChk" in dist and "sync_tasks" in dist, \
+        "产物未包含删除范围开关（需重跑 build.sh）"
+
+
+def test_delete_sync_switch_does_not_refetch_directory_per_entry():
+    """回归（issue #57）：删除不得「每删一条就重新列一次目录」。
+
+    旧实现每条删除都 `invalidate_dir_cache()` + `_warm_dir_after_remove()`，
+    批量删 N 条就是 N 次全量目录网络往返 —— 用户在媒体库里最常用的操作
+    反而成了最慢的。现在改为「命中缓存时只摘掉已删条目」。
+    """
+    ol = _read(os.path.join(_ROOT, "app_modules", "openlist.py"))
+    assert "def drop_dir_cache_entry(" in ol, "缺少「只摘掉已删条目」的缓存维护"
+    rem = ol[ol.index("def remove("):ol.index("def drop_dir_cache_entry(")]
+    assert "_warm_dir_after_remove" in rem, "缓存冷启动时仍需预热（否则下一次是冷查询）"
+    assert "if not drop_dir_cache_entry(" in rem, \
+        "未按「缓存是否命中」决定是否预热：会退回成「每条删除都打一次目录网络」"
+    assert "invalidate_dir_cache()" not in rem.replace("if not drop_dir_cache_entry", ""), \
+        "删除后又整目录作废缓存：下一次浏览会变冷查询（超时 → 回落 QAS）"
+
+
 def test_openlist_dom_audit_is_committed():
     """走查脚本必须覆盖数据源徽标与对账面板（渲染后才能验证的部分）。"""
     src = _read(os.path.join(_ROOT, "scripts", "check_library_dom.py"))

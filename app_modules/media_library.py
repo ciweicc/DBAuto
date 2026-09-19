@@ -370,6 +370,182 @@ def _parse_task_key(item):
     return (str(name), str(item.get("savepath", "")))
 
 
+# ---------- 同名任务联动删除（issue #57） ----------
+#
+# 用户诉求原文：「给 OpenList 模块增加一个开关用于删除 OpenList 指定文件夹下的
+# 资源库文件时同步删除同名自动夸克转存任务」。
+#
+# 为什么这条联动是必要的：网盘里删了文件，QAS 的订阅任务不会自己消失，
+# 它第二天照跑一次并把同一作品重新转存回来 —— 用户于是永远在做两步
+# （删文件、再删任务），而且经常漏掉第二步。把两步合成一步是可选项，
+# **默认关**（删任务不可逆）。
+#
+# 匹配规则刻意保守，且与前端提示一一对应：
+#   1. 任务名与所删条目名**互相包含**（≥2 字）才算同名 —— 这是 QAS 的实际形态
+#      决定的：taskname 常见「[已完结]作品名」「作品名 全12集」，而条目名是
+#      「作品名」「作品名.2024.2160p.mkv」。详见 openlist._match_task_dir。
+#   2. 绝不把「条目名去扩展名后去匹配 savepath」当成匹配依据：路径相似不代表
+#      是同一部作品（`/影视/电影` 下什么都对得上）。
+#   3. 范围必须收窄：调用方给了路径过滤（用户在界面里的筛选/当前目录）时，
+#      只动 savepath 命中该范围的任务。不给范围 = 拿一个文件名去撞整表。
+#
+# 删任务复用 delete_tasks()（整表写回 + 一致性校验），不自己拼 /update ——
+# QAS 的 /update 是整表替换语义，少发一条就等于删掉其余全部任务。
+TASK_SYNC_MIN_LEN = 2
+
+
+def _task_matches_entry(taskname, entry_name):
+    """任务名与条目名是否「同名」（互相包含，≥2 字）。"""
+    a = str(taskname or "").strip()
+    b = str(entry_name or "").strip()
+    if not a or not b:
+        return False
+    if a == b:
+        return True
+    if len(a) >= TASK_SYNC_MIN_LEN and len(b) >= TASK_SYNC_MIN_LEN:
+        return a in b or b in a
+    return False
+
+
+def match_tasks_by_names(tasks, names, path_filter=""):
+    """从 tasklist 里挑出「与给定条目名同名」的任务（供删除前的预览与断言）。
+
+    返回 [{"taskname", "savepath", "matched_name"}]，顺序与原 tasklist 一致。
+    """
+    out = []
+    scope = str(path_filter or "").strip()
+    for t in (tasks or []):
+        if not isinstance(t, dict):
+            continue
+        name = t.get("taskname")
+        if not name:
+            continue
+        if scope and scope not in str(t.get("savepath") or ""):
+            continue
+        for n in (names or []):
+            if _task_matches_entry(name, n):
+                out.append({"taskname": name, "savepath": t.get("savepath", ""),
+                            "matched_name": str(n)})
+                break
+    return out
+
+
+def sync_tasks_by_names(names, path_filter="", tasks=None, max_delete=None):
+    """按「同名」联动删除 QAS 任务（issue #57）。
+
+    返回 delete_tasks() 的结果字典，外加：
+      - "matched": 命中的任务数（0 表示网盘侧删了但没有任何任务与之同名，
+        这是**正常结果**，不是错误 —— 调用方要如实告诉用户）；
+      - "names"/"path_filter": 回显本次的匹配口径，便于前端与日志核对。
+    """
+    list_res = None
+    if tasks is None:
+        list_res = list_tasks()
+        if not list_res.get("success"):
+            return {"success": False, "deleted": 0, "failed": 0, "results": [],
+                    "matched": 0, "names": list(names or []),
+                    "path_filter": path_filter,
+                    "message": list_res.get("message", "读取 QAS 任务失败")}
+        tasks = list_res.get("tasks", [])
+    hits = match_tasks_by_names(tasks, names, path_filter)
+    if not hits:
+        # 一条都没撞上：**不去写 QAS 任务表**（一次多余的整表写回是纯粹的
+        # 不可逆风险），如实回报「未匹配到同名任务」。
+        return {"success": True, "deleted": 0, "failed": 0, "results": [],
+                "matched": 0, "names": list(names or []), "path_filter": path_filter,
+                "message": "未匹配到同名任务"}
+    if max_delete is not None and len(hits) > max_delete:
+        # 撞上的条数超过批量上限：宁可整批不删，也不做「删一半」的不可逆操作。
+        return {"success": False, "deleted": 0, "failed": 0, "results": [],
+                "matched": len(hits), "names": list(names or []),
+                "path_filter": path_filter,
+                "message": "同名任务 {} 条，超过单次上限 {}，未做任何改动".format(
+                    len(hits), max_delete)}
+    res = delete_tasks([{"taskname": h["taskname"], "savepath": h["savepath"]}
+                        for h in hits])
+    res["matched"] = len(hits)
+    res["names"] = list(names or [])
+    res["path_filter"] = path_filter
+    res["matched_tasks"] = hits
+    return res
+
+
+def sync_library_entries_by_names(names, path_filter="", max_delete=MAX_DELETE_BATCH):
+    """按「同名」联动删除网盘条目（issue #57 的反方向）。
+
+    场景与 sync_tasks_by_names 对称：用户在 QAS 侧删掉任务后，网盘里那份已转存的
+    内容就成了没人管的孤儿（任务对账里报的「orphans」）。这里把它一起清掉。
+
+    安全性来自三条与正向完全一致的约束：
+      1. **只匹配任务名/条目名互为包含**（≥2 字），不做模糊相似度；
+      2. 范围由调用方给的 path_filter 收窄（当前**浏览目录**），
+         未给范围时只扫媒体库根目录，绝不从网盘根开始全盘扫；
+      3. 只删**目录条目**（文件/文件夹），且最多 max_delete 条 —— 宁可不动，
+         也不做「删一半」的不可逆操作。
+    """
+    if not openlist.is_configured():
+        return {"success": False, "deleted": 0, "failed": 0, "results": [],
+                "matched_names": [], "message": "未配置 OpenList 地址"}
+    clean = [str(n).strip() for n in (names or []) if str(n or "").strip()]
+    if not clean:
+        return {"success": False, "deleted": 0, "failed": 0, "results": [],
+                "matched_names": [], "message": "未指定任务名"}
+    root = str(path_filter or "").strip() or get_library_root()
+    if ".." in root:
+        return {"success": False, "deleted": 0, "failed": 0, "results": [],
+                "matched_names": [], "message": "路径不允许包含 .."}
+    try:
+        scanned, _truncated = openlist.scan_dir_names(root)
+    except Exception as e:
+        log("扫描网盘目录失败: {}".format(e))
+        return {"success": False, "deleted": 0, "failed": 0, "results": [],
+                "matched_names": [], "message": "扫描网盘目录失败: {}".format(e)}
+
+    # 命中项：(所在目录, 条目名)。目录必须来自扫描结果 —— 猜父目录会删错东西。
+    hits = []
+    for d, names_in_dir in scanned.items():
+        for n in names_in_dir:
+            for want in clean:
+                if openlist._match_task_dir({"taskname": want},
+                                            {n})[0]:
+                    hits.append({"dir": d, "name": n, "taskname": want})
+                    break
+    if not hits:
+        return {"success": True, "deleted": 0, "failed": 0, "results": [],
+                "matched_names": [], "scanned_dirs": len(scanned),
+                "message": "网盘上未匹配到同名条目"}
+    if len(hits) > max_delete:
+        return {"success": False, "deleted": 0, "failed": 0, "results": [],
+                "matched_names": [h["name"] for h in hits],
+                "scanned_dirs": len(scanned),
+                "message": "同名条目 {} 条，超过单次上限 {}，未做任何改动".format(
+                    len(hits), max_delete)}
+
+    # 按目录分组调用 openlist.remove（它一次只接受一个目录 + 一批条目名）
+    by_dir = {}
+    for h in hits:
+        by_dir.setdefault(h["dir"], []).append(h["name"])
+    deleted = failed = 0
+    results = []
+    for d, ns in by_dir.items():
+        r = openlist.remove(ns, dir_path=d)
+        if r.get("success"):
+            deleted += len(ns)
+            for n in ns:
+                results.append({"name": n, "dir": d, "ok": True, "message": "已删除"})
+        else:
+            failed += len(ns)
+            for n in ns:
+                results.append({"name": n, "dir": d, "ok": False,
+                                "message": r.get("message", "删除失败")})
+    if deleted:
+        invalidate_library_cache()
+    return {"success": deleted > 0 and failed == 0, "deleted": deleted, "failed": failed,
+            "results": results, "matched_names": [h["name"] for h in hits],
+            "scanned_dirs": len(scanned),
+            "message": "" if deleted else "没有条目被删除"}
+
+
 def delete_tasks(items):
     """删除 QAS tasklist 中的条目任务配置。
 
@@ -592,13 +768,19 @@ def list_library_entries(path=None, refresh=False):
     return res
 
 
-def delete_entries_by_source(entries, sync_history=True, source=None):
+def delete_entries_by_source(entries, sync_history=True, source=None,
+                            sync_tasks=False, sync_tasks_path_filter=""):
     """按数据源删除网盘条目（OpenList 侧用条目名删，QAS 侧用 fid 删）。
 
     为什么不在两种源之间互相转换（把 OpenList 的条目名当成 QAS 的 path 用）：
     QAS 的 /delete_file 需要 fid 或**完整 path**，而 OpenList 的条目名不含
     父目录，转换需要猜父目录 —— 猜错就是删掉别的东西。宁可要求
     「谁列出来的谁删」，也不做可能误删的路径拼接。
+
+    sync_tasks（issue #57）：网盘侧删除成功后，是否**联动删除同名的 QAS 任务**。
+      默认 False —— 删任务不可逆（QAS 里没有回收站），只有调用方明确要求才做。
+    sync_tasks_path_filter：把联动范围收窄到 savepath 含该字符串的任务
+      （网盘侧就是「当前浏览目录」），避免拿一个文件名去撞整张任务表。
     """
     src = source or LIBRARY_SOURCE_OPENLIST
     if src == LIBRARY_SOURCE_OPENLIST:
@@ -626,11 +808,42 @@ def delete_entries_by_source(entries, sync_history=True, source=None):
                 synced += 1
             results.append({"name": name, "ok": True, "message": "已删除",
                             "history": "已同步清理" if sync_history else "未同步"})
-        return {"success": True, "deleted": res.get("deleted", 0), "failed": 0,
-                "history_synced": synced, "results": results, "source": src,
-                "message": ""}
+        out = {"success": True, "deleted": res.get("deleted", 0), "failed": 0,
+               "history_synced": synced, "results": results, "source": src,
+               "message": ""}
+        if sync_tasks:
+            # 联动失败**绝不能**把网盘侧已经删成功这个事实改写成失败：
+            # 文件确实已经删了，报 success=False 会让用户重复删除（第二次必然是
+            # 「文件不存在」的失败）。因此联动结果单独挂在 tasks_result 下，前端
+            # 分开复述（「已删除 N 项」+「任务同步未命中/失败原因」）。
+            try:
+                out["tasks_result"] = sync_tasks_by_names(
+                    names, path_filter=sync_tasks_path_filter,
+                    max_delete=MAX_TASK_DELETE_BATCH)
+            except Exception as e:
+                log("网盘删除后同步删除同名任务异常: {}".format(e))
+                out["tasks_result"] = {"success": False, "deleted": 0, "failed": 0,
+                                       "results": [], "matched": 0,
+                                       "names": list(names),
+                                       "path_filter": sync_tasks_path_filter,
+                                       "message": "同步删除同名任务异常: {}".format(e)}
+        return out
     res = delete_entries(entries, sync_history=sync_history)
     res["source"] = LIBRARY_SOURCE_QAS
+    if sync_tasks and res.get("deleted"):
+        # 与 OpenList 侧同口径：联动结果单独挂，不改变网盘删除的成败结论。
+        names = [e.get("name") or e.get("title") for e in entries
+                 if isinstance(e, dict) and (e.get("name") or e.get("title"))]
+        try:
+            res["tasks_result"] = sync_tasks_by_names(
+                names, path_filter=sync_tasks_path_filter,
+                max_delete=MAX_TASK_DELETE_BATCH)
+        except Exception as e:
+            log("网盘删除后同步删除同名任务异常: {}".format(e))
+            res["tasks_result"] = {"success": False, "deleted": 0, "failed": 0,
+                                   "results": [], "matched": 0, "names": names,
+                                   "path_filter": sync_tasks_path_filter,
+                                   "message": "同步删除同名任务异常: {}".format(e)}
     return res
 
 
