@@ -2781,3 +2781,137 @@ def test_openlist_prefers_diagnostic_budget_unknown_before_browsing(dist):
     routes = _read(os.path.join(_ROOT, "app_modules", "routes_library.py"))
     assert 'info["openlist_path_missing"]' in routes, \
         "自检未透传「目录不存在」标记（前端只能笼统提示，用户会乱试配置）"
+
+
+# ---------- 媒体库键盘选择（issue #53） ----------
+#
+# 本组是**静态**门禁（不依赖浏览器），与 scripts/check_library_keys_dom.py
+# 的渲染后走查互补：
+#   - 这里挡的是「实现被删掉/接线被拆掉」这类回归（改一次代码就触发）；
+#   - 走查挡的是「代码在、但行为不对」（需要浏览器，CI 里可能跳过）。
+# 两者都必要：静态扫描证明不了「Ctrl+A 之后真的勾上了」，而走查在
+# 无 playwright 的机器上不会跑。
+
+
+def test_library_keyboard_selection_is_implemented(dist):
+    """媒体库必须实现整套键盘选择（issue #53：「没有批量全选和范围选择的快捷键」）。"""
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    # 全选 / 清空 / 范围 / 当前行 / 勾选，缺一不可
+    for name in ("_libKeydown", "libSelectAll", "libClearSelection",
+                 "_libSelectRange", "libFocusRow", "libCardClick", "libRowKeydown"):
+        assert "function " + name in js, "媒体库缺少键盘选择实现 {}".format(name)
+
+    # Ctrl/⌘+A 与 Esc 必须在按键处理器里显式分支
+    kd = js[js.index("function _libKeydown("):]
+    assert "lower === 'a'" in kd and "preventDefault" in kd, \
+        "未实现 Ctrl/⌘+A 全选（或未阻止浏览器「选中整页文字」的默认行为）"
+    assert "'Escape'" in kd, "未实现 Esc 清空选择"
+    assert "ArrowUp" in kd and "ArrowDown" in kd, "未实现方向键移动当前行"
+    assert "e.shiftKey" in kd, "未实现 Shift 范围选择"
+
+
+def test_library_keyboard_wired_into_global_shortcuts(dist):
+    """键盘选择必须接在全局 keydown 上，且**排在 Esc 分支之前**。
+
+    踩坑（实测）：init.js 的 Esc 分支原来对任何 Escape 都 `return`
+    （只处理确认框/Sheet，没有就什么都不做）。把媒体库处理器排在它后面时，
+    「Ctrl+A 全选后按 Esc」永远收不到按键 —— 功能写了但完全不生效。
+    这条断言把这个顺序钉死。
+    """
+    init = _read(os.path.join(_JS_DIR, "init.js"))
+    assert "_libKeydown(e)" in init, "全局快捷键未接入媒体库的键盘选择"
+    # 顺序断言：_libKeydown 的调用必须出现在「Esc 分支」之前
+    idx_lib = init.index("_libKeydown(e)")
+    idx_esc = init.index("// Esc：关闭确认框 / Sheet")
+    assert idx_lib < idx_esc, \
+        "媒体库键盘处理排在 Esc 分支之后：Esc 会被提前 return 掉，清空选择永远不生效"
+
+
+def test_library_keyboard_syncs_rendered_checkboxes(dist):
+    """键盘选择必须把状态回写到勾选框 DOM。
+
+    踩坑（实测）：原来只改 libSelected（鼠标点击时浏览器自己会翻转勾选框），
+    于是键盘范围选择出现「操作条显示已选 3 项、屏幕上 12 个勾选框全空」——
+    用户看到的就是「按了 Shift+↓ 什么都没发生」。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    assert "function _libSyncCheckboxes" in js, \
+        "缺少「把选择状态写回勾选框」的统一出口"
+    rng = js[js.index("function _libSelectRange("):js.index("function libSelectAll(")]
+    assert "_libSyncCheckboxes(rows)" in rng, \
+        "范围选择没有同步勾选框 DOM（内部状态与屏幕会不一致）"
+    assert "updateLibActionBar()" in rng, \
+        "范围选择没有刷新操作条计数/删除按钮状态"
+
+
+def test_library_rows_carry_key_for_keyboard(dist):
+    """两种视图的行都必须带 data-key，否则键盘逻辑找不到对应条目。
+
+    踩坑（实测）：列表视图的行最初只有 tabindex/onclick，没有 data-key，
+    结果 findEntry 恒为空 —— 按空格「有反应但什么都没选中」（静默失效）。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    shell = js[js.index("function _libCardShell("):js.index("function _libMetaHtml(")]
+    assert "data-key=\"' + esc(it._key) + '\"" in shell, \
+        "卡片视图的行缺少 data-key"
+    table = js[js.index("function _libTableHtml("):js.index("function _libCardHtml(")]
+    assert "data-key=\"' + esc(it._key) + '\"" in table, \
+        "列表视图的行缺少 data-key（键盘选择会静默失效）"
+
+
+def test_library_keyboard_covers_both_views(dist):
+    """键盘逻辑必须同时覆盖卡片视图与列表视图。
+
+    列表视图**没有** #libGrid（它是 .lib-table），只查 #libGrid 会让
+    「切成列表视图后快捷键全部失效」—— 实测就是这样。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    els = js[js.index("function libRowEls("):js.index("function _libFocusIdx(")]
+    assert "lib-table" in els, \
+        "行元素查询未覆盖列表视图（.lib-table），切视图后快捷键会失效"
+
+
+def test_library_keyboard_resets_state_on_dir_change(dist):
+    """换目录 / 重渲染必须清空 focus、anchor 与范围基线。
+
+    否则「在 A 目录按 Shift 选了一段，进 B 目录再按 Shift+↓」会拿旧锚点
+    去算新列表的下标，选出来的范围莫名其妙。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    render = js[js.index("function _renderLibrary("):js.index("// ---------- 列表视图")]
+    for token in ("libFocusKey = null", "libSelectAnchor = null", "libRangeBase = null"):
+        assert token in render, \
+            "重渲染未重置键盘状态 {}（换目录后选择会串味）".format(token)
+    err = js[js.index("function _renderLibError("):js.index("function _renderLibrary(")]
+    for token in ("libFocusKey = null", "libSelectAnchor = null", "libRangeBase = null"):
+        assert token in err, "失败态未重置键盘状态 {}".format(token)
+
+
+def test_library_keyboard_hint_is_visible(dist):
+    """快捷键要「看得见」才有人用（issue #53 的诉求就是「不知道怎么选」）。"""
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert 'id="libKeyHint"' in body, "目录栏缺少键盘操作提示"
+    for token in ("Ctrl/⌘", "A", "Shift", "Esc"):
+        assert token in body[body.index('id="libKeyHint"'):body.index('id="libKeyHint"') + 500], \
+            "键盘提示缺少 {} 的说明".format(token)
+    css = _read(os.path.join(_SRC, "styles", "main.css"))
+    assert ".lib-keyhint{" in css.replace(" ", ""), "缺少键盘提示的样式"
+    # 窄屏（触屏）要收起提示，别占地方
+    assert ".lib-keyhint{display:none}" in css.replace("\n", "").replace(" ", "") or \
+        re.search(r"@media\(max-width:900px\)\{\.lib-keyhint\{display:none\}\}", css.replace("\n", "").replace(" ", "")), \
+        "窄屏未收起键盘提示"
+
+
+def test_library_keyboard_row_has_visible_cursor(dist):
+    """「当前行」必须有可见标记（虚线框）+ 选中行底色。
+
+    没有光标标记就谈不上范围选择 —— 这正是「选中效率太低」的根因。
+    """
+    css = _read(os.path.join(_SRC, "styles", "main.css"))
+    flat = css.replace("\n", "").replace(" ", "")
+    assert ".lib-row.lib-current,.lib-card.lib-current{" in flat, \
+        "两种视图的「当前行」标记未统一（卡片看得见、列表看不见 = 会被当 bug 报回来）"
+    assert "border-top:1pxdashedvar(--accent)" in flat, \
+        "「当前行」没有虚线标记（用户看不出 ↑↓ 会从哪一行开始）"
+    assert ":has(input:checked)" in flat, \
+        "缺少「已选中行」的底色标记（全选 70 项时只能靠 18px 勾选框辨认）"

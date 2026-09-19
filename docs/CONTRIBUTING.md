@@ -47,6 +47,7 @@
   python scripts/check_log_panel_dom.py --serve  # 日志栏可见性 / 定位最新 / 折行缩进
   python scripts/check_settings_dom.py --serve   # 设置页卡片底部空白 / 页高 / 横向溢出
   python scripts/check_library_dom.py --serve    # 媒体库顺序 / 加载反馈 / 快速失败 / 缓存
+  python scripts/check_library_keys_dom.py --serve  # 媒体库键盘选择（Ctrl+A / Shift 范围 / ↑↓）
   ```
 
   > 这几个脚本替代大部分截图走查：用 `getBoundingClientRect` / 计算样式取数值证据，

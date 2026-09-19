@@ -1,3 +1,63 @@
+## [当前] 媒体库键盘选择：Ctrl/⌘+A 全选、Shift 范围连选、↑↓ 移当前行（issue #53）
+
+> 对应 [issue #53](https://cnb.cool/ciweicc/DBAuto/-/issues/53)：
+> 「我希望在使用电脑进行选中时，可以使用电脑的快捷键进行选择。当前的选中效率
+> 太低了。没有批量全选和小部分范围的选择快捷键」。
+>
+> 现象：媒体库里只能靠鼠标一个个点 18px 的勾选框。键盘（Tab/空格）只能在
+> **渲染顺序**里逐个走 —— 选不全 70 多个条目，也选不出「前 5 个」，
+> 而且屏幕上没有任何「我现在在第几个」的反馈。
+
+**做了什么**
+
+按文件管理器的通行约定实现（不另发明一套），两种视图（卡片 / 列表）语义完全一致：
+
+| 操作 | 行为 |
+| --- | --- |
+| `Ctrl/⌘+A` | 全选本目录，提示「已全选 N 项（Esc 取消选择）」 |
+| `Esc` | 清空选择（含锚点与范围基线） |
+| `↑` / `↓` | 移动「当前行」，不改变选择 |
+| `Shift+↑/↓` | 从锚点连选一段，可扩可缩 |
+| `Ctrl/⌘+↑/↓` | 移动当前行但不改变选择 |
+| `Space` | 切换当前行 |
+| `Shift+点击` | 从锚点连选到该行 |
+| `Ctrl/⌘+点击` | 逐个增减 |
+
+另外补了两处「看得见」的东西：目录栏多了常驻的快捷键提示条（窄屏收起），
+以及「当前行」的虚线框 + 已选中行的底色 —— 没有光标反馈就谈不上范围选择。
+
+**踩到并修掉的坑（每条都是先复现、后修）**
+
+1. **处理器顺序**：`init.js` 的 `Esc` 分支对任何 Escape 都 `return`，
+   把媒体库处理器排在它后面时「Ctrl+A 后按 Esc」永远收不到按键。
+   → 媒体库处理器前移，并用 `_libKeydown` 返回布尔值来决定是否继续。
+   断言钉死在 `tests/test_build.py::test_library_keyboard_wired_into_global_shortcuts`。
+2. **只改状态不打勾选框**：原来鼠标点击靠浏览器自己翻转 checkbox，所以只改
+   `libSelected` 就够；键盘范围选择不经过浏览器，于是出现「操作条显示已选 3 项、
+   屏幕上 12 个勾选框全空」。→ 新增统一出口 `_libSyncCheckboxes`。
+3. **列表视图缺 `data-key`**：行上只加了 tabindex/onclick，`findEntry` 恒为空，
+   按空格「有反应但什么都没选中」（静默失效）。→ 行上补 `data-key`。
+4. **列表视图查不到行**：键盘逻辑只查 `#libGrid`，而列表视图是 `.lib-table`，
+   切成列表后快捷键全失效。→ `libRowEls` 两种容器都认。
+5. **范围选择只扩不缩**：最初写成纯并集，Shift+↓ 之后 Shift+↑ 什么都不发生。
+   → 引入范围基线 `libRangeBase`（`上次选区 - 上次范围` 作为基数）。
+6. **锚点跟着焦点跑**：Shift 连选时锚点每步后移一格，按住 5 次 Shift+↓ 只选出
+   2 行。→ Shift 分支不再更新锚点。
+7. **Ctrl+点击重复翻转**：`<label>` 的默认行为会把 Ctrl+点击当成「可能拖动文字」
+   而既不翻转也不选中，且会连带把整行文字选中。→ 在列表容器上
+   `mousedown` 时对 Ctrl/⌘+点击 `preventDefault`。
+
+**验证证据**
+
+- `python -m pytest tests/ -q` → **427 passed**（新增 8 条静态门禁，见
+  `tests/test_build.py` 末尾的「媒体库键盘选择」段）；
+- `python scripts/check_library_keys_dom.py --serve` → **0 处问题**
+  （卡片 / 列表两组视图各 14 条断言：按住真键盘、读渲染后的勾选框 DOM 属性、
+  操作条文案与虚线标记，而不是查内部变量）；
+- 连带回归：`python scripts/check_library_dom.py --serve` → 0 处问题；
+  `check_contrast.py` 18 组 0 组未达标；`ruff check .` 通过；
+- 产物重建幂等（`bash static/src/build.sh` 后 `git diff --quiet` 成立）。
+
 ## [当前] 媒体库全面排查：缓存不得断言数据源 / 失败退避与归因收口（issue #47）
 
 > 对应 [issue #47](https://cnb.cool/ciweicc/DBAuto/-/issues/47) 后续：
