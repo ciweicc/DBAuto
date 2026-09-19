@@ -2915,3 +2915,105 @@ def test_library_keyboard_row_has_visible_cursor(dist):
         "「当前行」没有虚线标记（用户看不出 ↑↓ 会从哪一行开始）"
     assert ":has(input:checked)" in flat, \
         "缺少「已选中行」的底色标记（全选 70 项时只能靠 18px 勾选框辨认）"
+
+
+# ---------------------------------------------------------------------------
+# QAS 转存任务路径筛选（issue #53 追问：「转存任务的管理可以加入路径筛选功能」）
+# ---------------------------------------------------------------------------
+
+def test_qas_task_filter_ui_exists(dist):
+    """筛选栏三件套必须在源与产物里都在：路径包含 / 任务名包含 / 清除。
+
+    诉求本身就是「能按路径筛」，所以这里先钉住控件存在性；
+    行为（真的只剩匹配行、全选不越界）由 scripts/check_library_task_filter_dom.py 验。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    for cid in ("qasFilterBar", "qasFilterPath", "qasFilterName", "qasFilterClear",
+                "qasPathChips", "qasPageSize", "qasPrev", "qasNext"):
+        assert 'id="{}"'.format(cid) in body, "任务筛选栏缺少控件 #{}".format(cid)
+    # 输入框必须回填模型（oninput），否则打字界面不动
+    for cid in ("qasFilterPath", "qasFilterName"):
+        seg = body[body.index('id="{}"'.format(cid)):]
+        assert "oninput=" in seg[:seg.index(">")], \
+            "#{} 缺少 oninput 处理器（打字不会触发筛选）".format(cid)
+
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    for name in ("onQasFilterInput", "clearQasFilter", "setQasPathFilter",
+                 "filteredQasTasks", "_qasVisibleTasks", "_qasVisibleKeys",
+                 "_qasPathPrefixes", "setQasPageSize", "qasPage"):
+        assert "function " + name in js, "缺少任务筛选实现 {}".format(name)
+
+    css = _read(os.path.join(_SRC, "styles", "main.css")).replace("\n", "").replace(" ", "")
+    for sel in (".task-filter{", ".task-chip{", ".task-chip.on{", ".task-pager{"):
+        assert sel in css, "缺少任务筛选栏样式 {}".format(sel)
+
+
+def test_qas_task_filter_input_feeds_the_model(dist):
+    """输入框的 value 必须**被读进模型**。
+
+    踩坑（实测，被走查脚本第 1 条断言抓出）：onQasFilterInput 最初只写
+    「重置页码 + 重渲染」，以为 value 会被渲染逻辑自动收编 —— 结果 input 事件
+    确实在跑、界面却纹丝不动，模型永远是空的。这里把「读 value」钉死。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    fn = js[js.index("function onQasFilterInput("):js.index("function onQasFilterKeydown(")]
+    assert "qasFilter.path" in fn and "qasFilter.name" in fn, \
+        "onQasFilterInput 没有把输入框的 value 写进 qasFilter 模型"
+    assert ".value" in fn, "onQasFilterInput 没有读输入框的 value"
+
+
+def test_qas_select_all_is_limited_to_visible_rows(dist):
+    """全选**只能**作用于当前可见行（筛选结果 + 当前页）。
+
+    这是本轮最危险的一条：旧实现是「qasSelected = {} 后遍历 qasTasks 全量勾选」。
+    加了筛选/分页之后，那等于「看着 19 行、点一下全选、实际勾上 291 条」。
+    断言钉在「遍历的是可见行」这一实现事实上。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    fn = js[js.index("function toggleQasSelectAll("):]
+    fn = fn[:fn.index("\n}")]
+    assert "_qasVisibleTasks()" in fn, \
+        "toggleQasSelectAll 没有以可见行为范围（会把被筛掉的行一起勾上）"
+    assert "qasTasks.forEach" not in fn, \
+        "toggleQasSelectAll 仍在遍历全量 qasTasks —— 筛选后全选会勾上隐藏行"
+
+
+def test_qas_action_bar_reports_hidden_selection(dist):
+    """操作条必须如实标出「不在当前筛选/页内」的勾选数。
+
+    静默带着隐藏勾选去删除，是这类界面最危险的失败模式：
+    用户看到「已选 3 条」，实际删掉的可能是 291 条。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    fn = js[js.index("function updateQasActionBar("):]
+    fn = fn[:fn.index("function toggleQasSelectAll(")]
+    assert "_qasVisibleKeys()" in fn, "操作条没有用可见行去比对勾选，无法发现隐藏勾选"
+    assert "不在当前筛选" in fn, "没有把「隐藏勾选」的条数写进操作条文案"
+
+
+def test_qas_delete_confirm_repeats_filter_scope(dist):
+    """筛选生效时，删除确认框必须复述筛选条件与作用条数。
+
+    只说「所选 N 条」，用户会怀疑「我明明有 200 条任务，它是不是要全删」。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    fn = js[js.index("function deleteSelectedQasTasks("):]
+    fn = fn[:fn.index("\n}")]
+    assert "qasFilterActive()" in fn, "删除所选时没有判断筛选是否生效"
+    assert "筛选：" in fn, "删除确认文案没有复述筛选条件"
+
+
+def test_qas_task_list_is_paginated(dist):
+    """任务列表必须有界分页（291 行全渲染 ≈ 6 屏高，且首屏被拖慢）。"""
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert 'id="qasPageSize"' in body, "缺少「每页条数」控件"
+    for n in ('value="10"', 'value="20"', 'value="50"', 'value="100"'):
+        assert n in body, "每页条数缺少选项 {}".format(n)
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    assert "QAS_CHIP_MIN" in js, "路径前缀 chips 缺少「至少命中几次」的阈值"
+    # 筛选条件变化必须回到第 1 页（否则会停在越界页拿到空列表）
+    for fname in ("function onQasFilterInput(", "function setQasPathFilter(",
+                  "function setQasPageSize("):
+        fn = js[js.index(fname):]
+        fn = fn[:fn.index("\n}")]
+        assert "qasPageNo = 1" in fn, "{} 没有把页码重置回第 1 页".format(fname)

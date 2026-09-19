@@ -519,6 +519,42 @@
           <div style="color:var(--text2);font-size:12px;margin-bottom:8px">
             此处删除只移除夸克自动转存的<strong>任务配置</strong>（分享链接 / 保存路径 / 匹配规则），网盘里已转存的文件不受影响。
           </div>
+          <!-- 任务筛选（issue #53 追问：「希望这个转存任务的管理可以加入路径筛选」）。
+               任务数常见 200+，一屏只能看十几条，靠人眼在长列表里翻找不现实。
+               筛选在**前端内存里**做（任务列表一次全量拉回），不发新请求、不打断已有勾选。 -->
+          <div class="task-filter" id="qasFilterBar">
+            <div class="task-filter-line">
+              <label class="task-filter-fld" for="qasFilterPath">
+                <span class="task-filter-label">路径包含</span>
+                <input type="search" id="qasFilterPath" placeholder="如 /影视/电视剧" autocomplete="off"
+                       oninput="onQasFilterInput()" onkeydown="onQasFilterKeydown(event)">
+              </label>
+              <button class="btn btn-sm btn-outline" id="qasFilterClear" onclick="clearQasFilter()" disabled>清除</button>
+            </div>
+            <div class="task-filter-line">
+              <label class="task-filter-fld" for="qasFilterName">
+                <span class="task-filter-label">任务名包含</span>
+                <input type="search" id="qasFilterName" placeholder="如 瑞克和莫蒂" autocomplete="off"
+                       oninput="onQasFilterInput()" onkeydown="onQasFilterKeydown(event)">
+              </label>
+            </div>
+            <div class="task-filter-line task-filter-chips" id="qasPathChips" role="group" aria-label="按转存路径前缀快速筛选"></div>
+            <div class="task-filter-line">
+              <div class="task-pager">
+                <span class="task-pager-pos" id="qasPagerPos">— / —</span>
+                <label class="task-pager-size" for="qasPageSize">每页
+                  <select id="qasPageSize" onchange="setQasPageSize(this.value)">
+                    <option value="10">10</option>
+                    <option value="20" selected>20</option>
+                    <option value="50">50</option>
+                    <option value="100">100</option>
+                  </select>
+                </label>
+                <button class="btn btn-sm btn-outline" id="qasPrev" onclick="qasPage(-1)" disabled>上一页</button>
+                <button class="btn btn-sm btn-outline" id="qasNext" onclick="qasPage(1)" disabled>下一页</button>
+              </div>
+            </div>
+          </div>
           <div id="qasTaskList"><div class="empty-state" style="padding:24px 20px"><div class="empty-title">加载中...</div></div></div>
           <!-- 批量删除操作条 -->
           <div id="qasActionBar" class="lib-actionbar" style="display:none">
