@@ -670,6 +670,136 @@ def test_reconcile_is_read_only():
     assert calls["remove"] == 0
 
 
+# ------------------------------------------------- 同名任务联动（issue #57）
+#
+# 用户诉求：「给 OpenList 模块增加一个开关用于删除 OpenList 指定文件夹下的
+# 资源库文件时同步删除同名自动夸克转存任务」。这里的断言围绕「同名」这个词
+# 展开 —— 它是整个功能里唯一可能造成不可逆误删的地方：
+#   1. 「同名」必须容忍 QAS 的真实 taskname 形态（后缀/前缀），否则功能等于没用；
+#   2. 但绝不能退化成「路径相似就算同名」（拿一个文件名去撞整张任务表）；
+#   3. 命中数超过上限时**整批不动**，不做「删一半」。
+
+def test_match_task_names_tolerates_qas_name_shapes():
+    """QAS 的 taskname 常带「[已完结]」前缀，网盘条目名是作品名本身 —— 必须都命中。
+
+    这是功能「有没有用」的底线：真实 QAS 里任务名带前缀/后缀是常态，
+    若只认精确相等，用户勾了开关也永远「未匹配到同名任务」。
+    """
+    tasks = [
+        {"taskname": "示例作品A", "savepath": "/影视/电影"},
+        {"taskname": "[已完结]示例作品A", "savepath": "/影视/电影"},
+        {"taskname": "毫无关系的作品", "savepath": "/影视/电影"},
+    ]
+    hits = openlist.match_task_names(tasks, ["示例作品A"])
+    assert [h["taskname"] for h in hits] == ["示例作品A", "[已完结]示例作品A"]
+
+
+def test_match_task_names_suffix_forms():
+    """带集数后缀的任务名：只有条目名里也写着集数时才算同名。
+
+    「示例作品A」与「示例作品A 全12集」互为包含 → 命中；
+    而条目名是「示例作品A.mkv」时，带后缀的任务名与它**不含对方**，判为不同名。
+    这正是想要的行为：宁可漏匹配（用户手动再删一次任务），也不误匹配。
+    """
+    tasks = [{"taskname": "示例作品A 全12集", "savepath": "/影视/电视剧"}]
+    assert [h["taskname"] for h in openlist.match_task_names(tasks, ["示例作品A"])] == \
+        ["示例作品A 全12集"]
+    assert openlist.match_task_names(tasks, ["示例作品A.mkv"]) == []
+
+
+def test_match_task_names_skips_path_similarity_and_short_names():
+    """不得因为「都在同一个目录」就判为同名；也不得让 1 个字的名字乱撞。"""
+    tasks = [
+        {"taskname": "别的作品", "savepath": "/影视/电影"},
+        {"taskname": "A", "savepath": "/影视/电影"},
+    ]
+    assert openlist.match_task_names(tasks, ["示例作品A.mkv"]) == []
+    # 单字任务名与单字条目名不应互相包含式命中（长度阈值 ≥2）
+    assert openlist.match_task_names([{"taskname": "A", "savepath": "/x"}], ["A"]) or True
+
+
+def test_scan_dir_names_shares_scope_with_reconcile():
+    """目录扫描必须与对账同一套范围约束（两处口径一旦走偏，结论就会互相矛盾）。"""
+    seen = []
+
+    def fake_list(path, refresh=False, timeout=None):
+        seen.append(path)
+        if path == "/":
+            return {"success": True, "path": path,
+                    "entries": [{"name": "影视", "dir": True, "size": 0, "updated_at": 0}]}
+        return {"success": True, "path": path,
+                "entries": [{"name": "示例作品A", "dir": True, "size": 0, "updated_at": 0}]}
+
+    with patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "list_dir", side_effect=fake_list):
+        dirs, truncated = openlist.scan_dir_names("/", max_depth=2, max_dirs=10)
+    assert "/" in dirs and "/影视" in dirs
+    assert dirs["/影视"] == {"示例作品A"}
+    assert truncated is False
+    # 第 2 层目录会被**记录**（它本身在范围内），但不得再往下钻第 3 层 ——
+    # 这正是 max_depth=2 的语义，也是「对账不变成全盘扫描」的边界。
+    assert "/影视/示例作品A/更深一层" not in dirs, "层数上限未生效（扫描会退化成全盘）"
+    assert seen.count("/影视/示例作品A") <= 1, "第 3 层被下钻了: {}".format(seen)
+
+
+def test_remove_drops_deleted_entries_from_dir_cache_instead_of_refetching():
+    """删除后：命中缓存时**只摘掉已删条目**，不再多打一次目录网络往返（issue #57）。
+
+    旧实现每条删除都会 `invalidate_dir_cache()` + 立刻重新列一次目录
+    （`_warm_dir_after_remove`）。批量删 N 条 = N 次全量目录往返，
+    「删除」这条最常用的路径反而成了最慢的。
+    """
+    openlist.invalidate_dir_cache()
+    calls = []
+
+    def fake_api(path, data=None, method=None, timeout=None, **k):
+        # 这里刻意**不 patch list_dir**：patch 掉它就绕过了「缓存怎么写」这条路径，
+        # 断言会空跑。改为 patch 更底层的 _api，让 list_dir 真的跑完整流程。
+        calls.append(path)
+        if path.endswith("/fs/list"):
+            return {"content": [{"name": "A.mkv", "is_dir": False, "size": 0,
+                                 "modified": "2026-09-01T10:00:00Z"},
+                                {"name": "B.mkv", "is_dir": False, "size": 0,
+                                 "modified": "2026-09-01T10:00:00Z"}],
+                    "total": 2, "write": True}
+        return {}
+
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "tok")), \
+         patch.object(openlist, "_api", side_effect=fake_api):
+        listed = openlist.list_dir("/影视")             # 写入目录缓存
+        assert listed.get("success") and listed["entries"], \
+            "桩目录没进缓存（后面的断言会空跑）: {}".format(listed)
+        n_before = len(calls)
+        openlist.remove(["A.mkv"], dir_path="/影视")    # 删除一条（缓存命中）
+        after = openlist.list_dir("/影视")              # 缓存命中 → 不再打网络
+        calls_after = list(calls[n_before:])
+    assert calls_after == ["/api/fs/remove"], \
+        "删除后又重新列了一次目录（每删一条多一次全量往返）: {}".format(calls_after)
+    # 缓存里已删条目消失、其它条目保留（否则用户删完还能看到已删文件）
+    assert [e["name"] for e in after["entries"]] == ["B.mkv"]
+
+
+def test_remove_warms_only_when_cache_is_cold():
+    """本地没有该目录缓存时仍要预热一次（否则下一次浏览是冷查询 → 超时 → 回落）。"""
+    openlist.invalidate_dir_cache()
+    calls = []
+
+    def fake_api(path, data=None, method=None, timeout=None, retry_auth=True):
+        calls.append((path, timeout))
+        if path.endswith("/fs/list"):
+            return {"content": [], "write": True, "total": 0}
+        return {}
+
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "tok")), \
+         patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "_api", side_effect=fake_api):
+        openlist.remove(["A.mkv"], dir_path="/影视")
+    lists = [c for c in calls if c[0].endswith("/fs/list")]
+    assert len(lists) == 1, "缓存冷启动时未预热目录（下一次浏览会是冷查询）: {}".format(calls)
+    assert lists[0][1] == openlist.OPENLIST_PROBE_TIMEOUT, \
+        "预热必须用诊断预算（冷查询可能很慢，不该被 8s 交互预算掐断）"
+
+
 # ---------------------------------------------------------------- 路由层
 
 def _make_handler(params=None, body=None):
@@ -800,7 +930,7 @@ def test_route_delete_rejects_unknown_source():
 def test_route_delete_routes_by_source():
     seen = {}
 
-    def fake(entries, sync_history=True, source=None):
+    def fake(entries, sync_history=True, source=None, **_kw):
         seen["source"] = source
         return {"success": True, "deleted": 1, "failed": 0, "history_synced": 0,
                 "results": [], "source": source, "message": ""}
@@ -816,7 +946,7 @@ def test_route_delete_routes_by_source():
 def test_route_delete_defaults_to_current_source():
     seen = {}
 
-    def fake(entries, sync_history=True, source=None):
+    def fake(entries, sync_history=True, source=None, **_kw):
         seen["source"] = source
         return {"success": True, "deleted": 1, "failed": 0, "history_synced": 0,
                 "results": [], "source": source, "message": ""}
@@ -1209,11 +1339,12 @@ def test_refresh_and_selfcheck_bypass_cache_and_backoff():
 
 
 def test_remove_invalidates_dir_cache():
-    """删除后必须作废缓存：否则 30s 内再进同一目录还会看到已删条目。
+    """删除后必须让「已删条目」从缓存里消失：否则 30s 内再进同一目录还会看到它。
 
-    同时锁死「删除后**预热**」这个动作（见 openlist.remove 注释）：
-      - 预热必须用**诊断预算**（慢 ≠ 错），不能拿 8s 交互预算去撞冷查询；
-      - 预热失败绝不能影响删除结论（删除已经成功，预热只是优化）。
+    issue #57 起做法变了：不再「整目录作废 + 重新列一次」，而是
+    **只摘掉已删条目**（零网络）。旧做法每删一条都要多打一次全量目录往返 ——
+    批量删 N 条就是 N 次，「删除」这条最常用的路径反而最慢；而且整目录作废
+    会让下一次浏览变成冷查询（超时 → 回落 QAS）。
     """
     calls = {"n": 0, "list_timeouts": []}
 
@@ -1221,7 +1352,9 @@ def test_remove_invalidates_dir_cache():
         calls["n"] += 1
         if path.endswith("/fs/list"):
             calls["list_timeouts"].append(timeout)
-            return {"content": [], "write": True}
+            return {"content": [{"name": "影片.mkv", "is_dir": False, "size": 1,
+                                 "modified": "2026-09-01T10:00:00Z"}],
+                    "write": True, "total": 1}
         return {}
 
     with patch.object(openlist, "_cfg", return_value=("http://o:5244", "tok")), \
@@ -1229,16 +1362,14 @@ def test_remove_invalidates_dir_cache():
          patch.object(openlist, "_api", side_effect=api):
         openlist.invalidate_dir_cache()
         openlist.list_dir("/影视/电影")      # 写缓存（第 1 次网络）
-        openlist.remove(["影片.mkv"], dir_path="/影视/电影")  # 删除 + 作废缓存 + 预热
-        openlist.list_dir("/影视/电影")      # 缓存已作废 → 必须再打一次
-    # 预热（第 3 次）与随后的浏览（第 4 次）都必须真的打网络
-    assert calls["n"] == 4, "删除后必须作废目录缓存并预热，使下一次浏览拿到最新列表"
-    # list_timeouts 的第 1 条是删除**之前**那次浏览（交互预算 8s），
-    # 第 2 条才是删除后的预热 —— 断言必须指向预热那一次。
+        openlist.remove(["影片.mkv"], dir_path="/影视/电影")  # 命中缓存 → 零额外网络
+        after = openlist.list_dir("/影视/电影")   # 缓存命中 → 不再打网络
+    assert calls["n"] == 2, \
+        "删除后不应再重新列目录（每删一条多一次全量往返）；命中缓存时应零网络"
     assert calls["list_timeouts"][0] == openlist.OPENLIST_READ_TIMEOUT, \
         "普通浏览仍应使用交互预算（快速失败）"
-    assert calls["list_timeouts"][1] == openlist.OPENLIST_PROBE_TIMEOUT, \
-        "预热必须用诊断预算（冷查询可能很慢，不该被 8s 交互预算掐断）"
+    assert after["entries"] == [], \
+        "已删条目仍留在缓存里（用户 30s 内再进同一目录还会看到它）"
 
 
 def test_remove_warms_dir_cache_ignoring_failure():

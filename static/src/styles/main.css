@@ -1781,7 +1781,16 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .lib-crumb a:hover{color:var(--accent);text-decoration:underline}
 .lib-sep{color:var(--text3);margin:0 2px}
 .lib-actionbar{display:flex;align-items:center;gap:10px;margin-top:12px;padding-top:12px;
-  border-top:1px solid var(--border)}
+  border-top:1px solid var(--border);flex-wrap:wrap}
+/* 破坏性联动开关（issue #57）：它是**默认关闭**的附加动作，不能长得和
+   「同步清理转存历史」一样 —— 后者误勾只是少删一条历史，前者误勾会连带
+   删掉 QAS 任务表里的条目。因此这里用 warning 色 + 前缀符号把它标出来。
+   窄屏（≤900px）允许换行，靠 .lib-actionbar 的 flex-wrap 兜住，
+   不允许出现横向溢出（走查脚本会量）。 */
+.lib-danger-opt{display:flex;align-items:center;gap:5px;font-size:12.5px;
+  color:var(--warning,var(--text2));cursor:pointer;white-space:nowrap}
+.lib-danger-opt input{accent-color:var(--warning,var(--accent));cursor:pointer}
+@media(max-width:600px){.lib-danger-opt{white-space:normal}}
 /* 键盘选择提示（issue #53）：快捷键必须「看得见」才有人用。
    放在目录栏右端，窄屏收起（触屏没有这些键）。 */
 .lib-keyhint{display:flex;align-items:center;gap:6px;margin-left:auto;

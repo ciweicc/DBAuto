@@ -832,20 +832,40 @@ function toggleQasSelectAll(on){
 //  1. 删除前必须确认，且文案里写清「任务配置会被移除、网盘里已转存的文件不受影响」，
 //     避免用户以为连文件一起删了；
 //  2. 后端是**整表写回**（QAS /update 为整表替换语义），失败时后端不做任何改动。
-async function doDeleteQasTasks(items, label){
+// extra（issue #57）：本次删除附带的联动动作。目前只有一条 ——
+// 「同步删除网盘上的同名条目」。它必须在**确认框文案里复述**（用户确认的是
+// 删什么，不是一个模糊的「确定」），也必须随请求发给后端（否则勾了等于没勾）。
+async function doDeleteQasTasks(items, label, extra){
   if(!items || !items.length) return;
+  extra = extra || {};
   // 同 doDelete：确认框返回 false 时绝不能继续（issue #27）
-  var confirmed = await confirmThen('删除 QAS 任务', '将从夸克自动转存中移除 ' + label + '。\n' +
-    '只删除任务配置（分享链接/保存路径/匹配规则），网盘里已转存的文件不受影响。',
+  var extraText = extra.pathFilter
+    ? '\n\n同时会删除网盘上的同名条目（仅限任务名能被文件/文件夹名匹配到的，且路径包含「' +
+      extra.pathFilter + '」）。'
+    : '\n\n同时会删除网盘上的同名条目（仅限任务名能被文件/文件夹名匹配到的）。';
+  var confirmed = await confirmThen('删除 QAS 任务',
+    '将从夸克自动转存中移除 ' + label + '。\n' +
+    '只删除任务配置（分享链接/保存路径/匹配规则），网盘里已转存的文件不受影响。' +
+    (extra.syncTasks ? extraText : ''),
     '删除', '取消');
   if(!confirmed) return;
 
   var btn = document.getElementById('qasDelBtn');
   if(btn) btn.classList.add('loading');
   try{
-    var res = await apiPost('/api/qas/delete_tasks', { tasks: items });
+    var payload = { tasks: items };
+    // 默认关：关着的时候连字段都不发 —— 一个「有默认值语义的布尔字段」
+    // 一旦被前端写错（或后端默认值被改），就会变成静默删任务。
+    if(extra.syncTasks){
+      payload.sync_tasks = true;
+      if(extra.pathFilter) payload.sync_tasks_path_filter = extra.pathFilter;
+    }
+    var res = await apiPost('/api/qas/delete_tasks', payload);
     if(res.success){
-      showToast('已删除 ' + res.deleted + ' 条 QAS 任务', true);
+      // 联动结果必须如实分开报（issue #57）：任务删成功而网盘侧没匹配上、
+      // 或者网盘侧只删了一半，都不能被一句「已删除 N 条任务」盖过去。
+      var extraMsg = _tasksResultMsg(res, extra && extra.syncTasks);
+      showToast('已删除 ' + res.deleted + ' 条 QAS 任务' + extraMsg, true);
       // 后端返回写回后的完整列表，直接复用可省掉一次往返
       if(res.tasks){
         qasTasks = res.tasks;
@@ -869,7 +889,51 @@ async function doDeleteQasTasks(items, label){
 function deleteQasTask(key){
   var t = findQasTask(key);
   if(!t) return;
-  doDeleteQasTasks([{ taskname: t.taskname, savepath: t.savepath }], '任务「' + t.taskname + '」');
+  doDeleteQasTasks([{ taskname: t.taskname, savepath: t.savepath }], '任务「' + t.taskname + '」',
+                   _syncTasksExtra([{ taskname: t.taskname, savepath: t.savepath }]));
+}
+
+// ---------- 删除范围开关（issue #57） ----------
+//
+// 用户诉求：「删除 OpenList 指定文件夹下的资源库文件时，同步删除同名自动夸克
+// 转存任务」+ 一个开关。两个方向都要能开（网盘侧删文件 / QAS 侧删任务），
+// 因为用户实际是两种操作都会做。
+//
+// 三条约束（每一条都对应一种「看起来能用、其实很危险」的实现）：
+//   1. **默认关**：删任务不可逆，且「同名」这件事本身可能撞车（不同作品同名、
+//      taskname 带「[已完结]」后缀）。不勾就绝不动 QAS 任务表。
+//   2. **范围收紧到当前筛选**：用户在界面里只看到筛出来的那批任务，
+//      联动就该只作用在这批的范围内。不带范围 = 拿一条文件名去删整表里的同名任务。
+//   3. **结果如实分开报**：任务删成功、网盘侧 0 命中（或部分失败）必须分别说明，
+//      不能用一句「已删除 N 条任务」把它们盖过去。
+function _syncTasksExtra(items){
+  var chk = document.getElementById('syncQasTasksChk');
+  if(!chk || !chk.checked) return { syncTasks: false };
+  return { syncTasks: true, pathFilter: qasFilter.path.trim(), items: items };
+}
+
+// 网盘侧删除时的同名任务联动（方向二）。
+function _syncTasksFromLibExtra(entries){
+  var chk = document.getElementById('syncQasTasksFromLibChk');
+  if(!chk || !chk.checked) return { syncTasks: false };
+  // 网盘侧没有「路径筛选」这一说，但**当前浏览目录**就是天然的范围：
+  // 只允许删「保存路径与当前目录相关」的同名任务，避免拿文件名去撞全表。
+  return { syncTasks: true, pathFilter: libAtRoot(libPath) ? '' : libPath,
+           names: (entries || []).map(function(e){ return e && e.name; }).filter(Boolean) };
+}
+
+// 联动结果的统一回显（两个方向共用）。
+// 返回一段可直接拼在 toast 后面的文案；没开联动时返回空串。
+function _tasksResultMsg(res, syncTasks){
+  if(!syncTasks) return '';
+  var r = res && res.tasks_result;
+  if(!r) return '；网盘侧联动未执行（后端未回报结果）';
+  if(r.success){
+    return '；网盘侧同名条目已删 ' + (r.deleted || 0) + ' 项' +
+      (r.failed ? '（失败 ' + r.failed + ' 项）' : '');
+  }
+  // 任务已删成功，但网盘侧一条都没动 —— 必须说清「为什么」，否则用户以为删干净了
+  return '；网盘侧同名条目未删除: ' + (r.message || '未匹配到同名条目');
 }
 
 function deleteSelectedQasTasks(){
@@ -886,7 +950,8 @@ function deleteSelectedQasTasks(){
                     qasFilter.name.trim() ? '任务名含「' + qasFilter.name.trim() + '」' : '']
         .filter(Boolean).join('、') + '）'
     : '';
-  doDeleteQasTasks(items, '所选的 ' + items.length + ' 条任务' + scope);
+  doDeleteQasTasks(items, '所选的 ' + items.length + ' 条任务' + scope,
+                   _syncTasksExtra(items));
 }
 
 // ---------- 网盘文件 ----------
@@ -1739,6 +1804,14 @@ async function doDelete(entries, label){
   var sync = document.getElementById('syncHistoryChk');
   var syncHistory = !sync || sync.checked;
   var extra = syncHistory ? '\n同时会清理 DBAuto 中对应的转存历史（匹配不到则跳过）。' : '';
+  // 联动删任务必须在确认框里复述（issue #57）：删任务不可逆，
+  // 不能让用户在「确认删除文件」的弹窗里顺手删掉一批任务配置。
+  var syncTasksExtra = _syncTasksFromLibExtra(entries);
+  if(syncTasksExtra.syncTasks){
+    extra += '\n\n同时会删除同名（任务名与文件名互相包含）的 QAS 转存任务配置' +
+      (syncTasksExtra.pathFilter ? '，且仅限保存路径含「' + syncTasksExtra.pathFilter + '」的任务' : '') +
+      '。任务配置删除后不可恢复。';
+  }
   // 必须检查返回值：取消/遮罩/ESC 都是 false，此时不能删除（issue #27 严重问题）
   var confirmed = await confirmThen('确认删除', '将从夸克网盘删除 ' + label + '。' + extra, '删除', '取消');
   if(!confirmed) return;
@@ -1746,15 +1819,25 @@ async function doDelete(entries, label){
   var btn = document.getElementById('libDelBtn');
   if(btn) btn.classList.add('loading');
   try{
-    var res = await apiPost('/api/qas/delete', {
+    var payload = {
       entries: entries,
       sync_history: syncHistory,
       // 谁列出来的条目就交给谁删：OpenList 认条目名、QAS 认 fid。
       // 跨源转换需要猜父目录，猜错就是删掉别的东西（后端也会按 source 校验字段）。
       source: libSource
-    });
+    };
+    // 删除范围开关（issue #57）：勾了才把「同步删同名任务」的意图发给后端。
+    // 默认关时连字段都不发 —— 静默删任务是最贵的事故（要一条条重建）。
+    var syncExtra = _syncTasksFromLibExtra(entries);
+    if(syncExtra.syncTasks){
+      payload.sync_tasks = true;
+      if(syncExtra.pathFilter) payload.sync_tasks_path_filter = syncExtra.pathFilter;
+      payload.sync_tasks_names = syncExtra.names;
+    }
+    var res = await apiPost('/api/qas/delete', payload);
     if(res.success){
-      showToast('已删除 ' + res.deleted + ' 项' + (res.history_synced ? '，同步清理历史 ' + res.history_synced + ' 条' : ''), true);
+      showToast('已删除 ' + res.deleted + ' 项' + (res.history_synced ? '，同步清理历史 ' + res.history_synced + ' 条' : '') +
+        _tasksResultMsg(res, syncExtra.syncTasks), true);
     }else if(res.deleted > 0){
       showToast('部分成功：删除 ' + res.deleted + '，失败 ' + res.failed, false);
     }else{

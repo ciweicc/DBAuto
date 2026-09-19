@@ -506,6 +506,13 @@
           <div id="libActionBar" class="lib-actionbar" style="display:none">
             <label class="toggle" title="删除网盘文件的同时，清理 DBAuto 中对应的转存历史"><input type="checkbox" id="syncHistoryChk" checked><span class="slider"></span></label>
             <span style="color:var(--text2);font-size:13px">同步清理转存历史</span>
+            <!-- 删除范围开关（issue #57）：网盘侧删文件时，同步删掉任务名与文件名
+                 匹配的 QAS 转存任务 —— 否则文件删了、任务还在，明天它又把同一作品拉回来。
+                 **默认关**：删任务不可逆，不勾就不动 QAS 任务表。 -->
+            <label class="lib-danger-opt" title="仅当 QAS 任务名与所删条目同名（或互为包含）时，一并删除该任务配置（与「删除所选」同批提交）">
+              <input type="checkbox" id="syncQasTasksFromLibChk">
+              同步删除同名转存任务
+            </label>
             <span style="flex:1"></span>
             <span id="libSelCount" style="color:var(--text2);font-size:13px"></span>
             <button class="btn btn-sm btn-danger" id="libDelBtn" onclick="deleteSelected()" disabled>删除所选</button>
@@ -564,6 +571,13 @@
           <div id="qasActionBar" class="lib-actionbar" style="display:none">
             <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text2);cursor:pointer">
               <input type="checkbox" id="qasSelAll" onchange="toggleQasSelectAll(this.checked)">全选
+            </label>
+            <!-- 删除范围开关（issue #57）：删任务后，网盘里已转存的文件仍在，
+                 下次转存任务又会把同一作品拉回来 —— 于是用户要「删任务 + 删文件」两步。
+                 这里把两步并成一步（可选）。**默认关**：删任务不可逆，绝不能默认打开。 -->
+            <label class="lib-danger-opt" title="仅当所选任务的任务名在网盘上有同名条目时，一并删除该条目（与「删除所选任务」是两个独立动作）">
+              <input type="checkbox" id="syncQasTasksChk">
+              同步删除网盘上的同名条目
             </label>
             <span style="flex:1"></span>
             <span id="qasSelCount" style="color:var(--text2);font-size:13px"></span>

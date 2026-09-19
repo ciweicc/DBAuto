@@ -244,6 +244,42 @@ def test_route_delete_rejects_empty_entries():
     assert h.status == 400
 
 
+def test_route_delete_passes_sync_switch_to_backend():
+    """路由层：/api/qas/delete 的 sync_tasks 必须真的传给删除实现（默认关）。"""
+    fake = _FakeClient(delete_resp={"success": True, "code": 0})
+    seen = {}
+
+    def fake_delete(entries, sync_history=True, source=None,
+                    sync_tasks=False, sync_tasks_path_filter=""):
+        seen["sync_tasks"] = sync_tasks
+        seen["path_filter"] = sync_tasks_path_filter
+        return {"success": True, "deleted": 1, "failed": 0, "history_synced": 0,
+                "results": [], "source": source, "message": ""}
+
+    h = _make_handler()
+    with patch.object(media_library, "_client", return_value=fake), \
+         patch.object(media_library, "delete_entries_by_source",
+                      side_effect=fake_delete):
+        h._handle_library_post("/api/qas/delete",
+                               {"entries": [{"fid": "1", "name": "A"}]})
+        assert seen["sync_tasks"] is False, "不传开关时必须当作关闭"
+        h._handle_library_post("/api/qas/delete",
+                               {"entries": [{"fid": "1", "name": "A"}],
+                                "sync_tasks": True, "sync_tasks_path_filter": "/影视"})
+    assert seen["sync_tasks"] is True and seen["path_filter"] == "/影视"
+
+
+def test_route_delete_rejects_bad_sync_path():
+    fake = _FakeClient(delete_resp={"success": True, "code": 0})
+    h = _make_handler()
+    with patch.object(media_library, "_client", return_value=fake):
+        h._handle_library_post("/api/qas/delete",
+                               {"entries": [{"fid": "1", "name": "A"}],
+                                "sync_tasks": True,
+                                "sync_tasks_path_filter": "/影视/../etc"})
+    assert h.status == 400 and ".." in h.sent["error"]
+
+
 def test_route_delete_ok():
     fake = _FakeClient(delete_resp={"success": True, "code": 0})
     h = _make_handler()
@@ -422,6 +458,190 @@ def test_remove_from_qas_semantics():
     assert transfer.remove_from_qas("") is False
 
 
+# ---------- 同名任务联动（issue #57） ----------
+#
+# 用户诉求：「给 OpenList 模块增加一个开关用于删除 OpenList 指定文件夹下的
+# 资源库文件时同步删除同名自动夸克转存任务」。
+# 这里锁住三件事，缺任何一环这个功能都会变成「看起来做了其实没通」或者更糟
+# ——「看起来开了、其实删了不该删的」：
+#   1. 默认关：不传 sync_tasks 时绝不碰 QAS 任务表；
+#   2. 开了之后只删「同名」且落在路径范围内的任务，绝不误伤别的任务；
+#   3. 联动失败/未命中**不得改写**网盘删除的结论（文件确实已经删了）。
+
+
+def test_match_tasks_by_names_only_takes_same_name():
+    """只挑同名的：既不能漏（功能没用），也不能把「都在同一个目录」当同名（误删）。"""
+    tasks = [
+        {"taskname": "示例作品A", "savepath": "/影视/电影"},
+        {"taskname": "[已完结]示例作品A", "savepath": "/影视/电影"},
+        {"taskname": "别的作品", "savepath": "/影视/电影"},
+    ]
+    hits = media_library.match_tasks_by_names(tasks, ["示例作品A"])
+    assert [h["taskname"] for h in hits] == ["示例作品A", "[已完结]示例作品A"]
+    assert "别的作品" not in [h["taskname"] for h in hits]
+
+
+def test_match_tasks_by_names_respects_path_filter():
+    """路径过滤必须收窄范围：网盘侧删的是某个目录下的文件，不该撞到别处的同名任务。"""
+    tasks = [
+        {"taskname": "示例作品A", "savepath": "/影视/电影"},
+        {"taskname": "示例作品A", "savepath": "/下载/临时"},
+    ]
+    hits = media_library.match_tasks_by_names(tasks, ["示例作品A"], path_filter="/影视")
+    assert [h["savepath"] for h in hits] == ["/影视/电影"]
+
+
+def test_sync_tasks_by_names_no_match_writes_nothing():
+    """一条都没撞上时**不得写 QAS 任务表**：一次多余的整表写回是纯风险。"""
+    fake = _FakeClient(data_resp={"success": True, "data": {"tasklist": _tasks("别的作品")}})
+    with patch.object(media_library, "_client", return_value=fake):
+        res = media_library.sync_tasks_by_names(["示例作品A"], path_filter="/影视")
+    assert res["success"] is True and res["matched"] == 0
+    assert res["deleted"] == 0
+    assert fake.update_calls == [], "没命中却写回了 QAS 任务表"
+    assert "未匹配到同名任务" in res["message"]
+
+
+def test_sync_tasks_by_names_deletes_only_matched():
+    fake = _FakeClient(data_resp={"success": True, "data": {
+        "tasklist": _tasks("示例作品A", "别的作品")}})
+    with patch.object(media_library, "_client", return_value=fake):
+        res = media_library.sync_tasks_by_names(["示例作品A"], path_filter="/媒体库")
+    assert res["success"] is True and res["matched"] == 1 and res["deleted"] == 1
+    assert [t["taskname"] for t in fake.update_calls[0]] == ["别的作品"]
+    # 命中信息要能被前端/日志核对（否则用户看到「删了 1 条任务」不知道是哪条）
+    assert res["matched_tasks"][0]["taskname"] == "示例作品A"
+
+
+def test_sync_tasks_by_names_over_limit_aborts():
+    """同名任务多到超上限时整批不动 —— 不做「删一半」的不可逆操作。"""
+    names = ["同名作品-{}".format(i) for i in range(5)]
+    fake = _FakeClient(data_resp={"success": True, "data": {
+        "tasklist": _tasks(*names)}})
+    with patch.object(media_library, "_client", return_value=fake):
+        res = media_library.sync_tasks_by_names(["同名作品"], max_delete=2)
+    assert res["success"] is False and res["deleted"] == 0
+    assert fake.update_calls == []
+    assert "上限" in res["message"]
+
+
+def test_sync_tasks_by_names_reports_qas_down():
+    class Boom:
+        def get_data(self):
+            raise TimeoutError("connect timed out")
+
+    with patch.object(media_library, "_client", return_value=Boom()):
+        res = media_library.sync_tasks_by_names(["A"])
+    assert res["success"] is False and "读取 QAS 任务失败" in res["message"]
+
+
+def test_openlist_delete_without_switch_never_touches_tasks():
+    """默认（不传 sync_tasks）：删除路径不得触碰 QAS 任务链路。"""
+    with patch.object(media_library.openlist, "is_configured", return_value=True), \
+         patch.object(media_library.openlist, "remove",
+                      return_value={"success": True, "deleted": 1, "failed": 0,
+                                    "results": [], "message": ""}), \
+         patch.object(media_library, "sync_tasks_by_names") as m:
+        res = media_library.delete_entries_by_source(
+            [{"name": "示例作品A.mkv", "dir": "/影视/电影"}],
+            sync_history=False, source="openlist")
+    assert res["success"] is True
+    m.assert_not_called()
+    assert "tasks_result" not in res, "开关关闭时不应返回任务联动结果"
+
+
+def test_openlist_delete_with_switch_syncs_same_name_tasks():
+    """开了开关：按「条目名 + 当前目录范围」联动删同名任务，结果单独挂 tasks_result。"""
+    seen = {}
+
+    def fake_sync(names, path_filter="", tasks=None, max_delete=None):
+        seen["names"] = list(names)
+        seen["path_filter"] = path_filter
+        return {"success": True, "deleted": 1, "failed": 0, "results": [],
+                "matched": 1, "message": ""}
+
+    with patch.object(media_library.openlist, "is_configured", return_value=True), \
+         patch.object(media_library.openlist, "remove",
+                      return_value={"success": True, "deleted": 1, "failed": 0,
+                                    "results": [], "message": ""}), \
+         patch.object(media_library, "sync_tasks_by_names", side_effect=fake_sync):
+        res = media_library.delete_entries_by_source(
+            [{"name": "示例作品A.mkv", "dir": "/影视/电影"}],
+            sync_history=False, source="openlist",
+            sync_tasks=True, sync_tasks_path_filter="/影视/电影")
+    assert res["deleted"] == 1 and res["success"] is True
+    assert seen == {"names": ["示例作品A.mkv"], "path_filter": "/影视/电影"}
+    assert res["tasks_result"]["matched"] == 1
+
+
+def test_openlist_delete_sync_failure_does_not_flip_netdisk_result():
+    """联动炸了也不能把「网盘已删成功」改写成失败 —— 那会让用户重复删除。"""
+    with patch.object(media_library.openlist, "is_configured", return_value=True), \
+         patch.object(media_library.openlist, "remove",
+                      return_value={"success": True, "deleted": 1, "failed": 0,
+                                    "results": [], "message": ""}), \
+         patch.object(media_library, "sync_tasks_by_names",
+                      side_effect=RuntimeError("QAS 挂了")):
+        res = media_library.delete_entries_by_source(
+            [{"name": "示例作品A.mkv", "dir": "/影视/电影"}],
+            sync_history=False, source="openlist", sync_tasks=True)
+    assert res["success"] is True and res["deleted"] == 1, \
+        "网盘删除已经落地，联动失败不得改写这个事实"
+    assert res["tasks_result"]["success"] is False
+    assert "QAS 挂了" in res["tasks_result"]["message"]
+
+
+def test_openlist_delete_failure_does_not_sync_tasks():
+    """网盘侧压根没删成时，绝不能顺手去删任务（否则用户以为只是删除失败）。"""
+    with patch.object(media_library.openlist, "is_configured", return_value=True), \
+         patch.object(media_library.openlist, "remove",
+                      return_value={"success": False, "deleted": 0, "failed": 1,
+                                    "results": [], "message": "权限不足"}), \
+         patch.object(media_library, "sync_tasks_by_names") as m:
+        res = media_library.delete_entries_by_source(
+            [{"name": "示例作品A.mkv", "dir": "/影视/电影"}],
+            sync_history=False, source="openlist", sync_tasks=True)
+    assert res["success"] is False
+    m.assert_not_called()
+    assert "tasks_result" not in res
+
+
+def test_sync_library_entries_by_names_matches_in_scanned_dirs():
+    """反方向（删任务 → 删网盘同名条目）：命中项必须来自扫描结果里的真实目录。"""
+    def fake_scan(root, max_depth=2, max_dirs=40):
+        return ({"/影视/电影": {"示例作品A", "别的作品"}}, False)
+
+    with patch.object(media_library.openlist, "is_configured", return_value=True), \
+         patch.object(media_library.openlist, "scan_dir_names", side_effect=fake_scan), \
+         patch.object(media_library.openlist, "remove",
+                      return_value={"success": True, "deleted": 1, "failed": 0,
+                                    "results": [], "message": ""}) as rm, \
+         patch.object(media_library, "invalidate_library_cache"):
+        res = media_library.sync_library_entries_by_names(
+            ["示例作品A"], path_filter="/影视/电影")
+    assert res["success"] is True and res["deleted"] == 1
+    assert rm.call_args.args[0] == ["示例作品A"]
+    assert rm.call_args.kwargs["dir_path"] == "/影视/电影"
+
+
+def test_sync_library_entries_by_names_no_match_is_not_an_error():
+    """网盘上没有同名条目是**正常结果**，不能报成失败（否则用户以为联动坏掉了）。"""
+    with patch.object(media_library.openlist, "is_configured", return_value=True), \
+         patch.object(media_library.openlist, "scan_dir_names",
+                      return_value=({"/影视/电影": {"别的作品"}}, False)), \
+         patch.object(media_library.openlist, "remove") as rm:
+        res = media_library.sync_library_entries_by_names(["示例作品A"], path_filter="/影视")
+    assert res["success"] is True and res["deleted"] == 0
+    rm.assert_not_called()
+    assert "未匹配到同名条目" in res["message"]
+
+
+def test_sync_library_entries_rejects_path_traversal():
+    with patch.object(media_library.openlist, "is_configured", return_value=True):
+        res = media_library.sync_library_entries_by_names(["A"], path_filter="/影视/../etc")
+    assert res["success"] is False and ".." in res["message"]
+
+
 # ---------- 路由：POST /api/qas/delete_tasks ----------
 
 def test_route_delete_tasks_ok():
@@ -432,6 +652,56 @@ def test_route_delete_tasks_ok():
             "/api/qas/delete_tasks",
             {"tasks": [{"taskname": "A", "savepath": "/媒体库/A"}]}) is True
     assert h.sent["success"] is True and h.status == 200
+
+
+def test_route_delete_tasks_sync_switch_default_off():
+    """路由层：不传 sync_tasks 时绝不触发网盘联动（开关默认关的最后一公里）。"""
+    fake = _FakeClient(data_resp={"success": True, "data": {"tasklist": _tasks("A")}})
+    h = _make_handler()
+    with patch.object(media_library, "_client", return_value=fake), \
+         patch.object(media_library, "sync_library_entries_by_names") as m:
+        assert h._handle_library_post(
+            "/api/qas/delete_tasks",
+            {"tasks": [{"taskname": "A", "savepath": "/媒体库/A"}]}) is True
+    assert h.sent["success"] is True
+    m.assert_not_called()
+    assert "tasks_result" not in h.sent
+
+
+def test_route_delete_tasks_sync_switch_passes_names_and_scope():
+    """路由层：勾了开关才把任务名与路径范围交给联动实现。"""
+    fake = _FakeClient(data_resp={"success": True, "data": {"tasklist": _tasks("A")}})
+    h = _make_handler()
+    seen = {}
+
+    def fake_sync(names, path_filter=""):
+        seen["names"] = list(names)
+        seen["path_filter"] = path_filter
+        return {"success": True, "deleted": 1, "failed": 0, "results": [],
+                "matched_names": ["A"], "message": ""}
+
+    with patch.object(media_library, "_client", return_value=fake), \
+         patch.object(media_library, "sync_library_entries_by_names",
+                      side_effect=fake_sync):
+        assert h._handle_library_post(
+            "/api/qas/delete_tasks",
+            {"tasks": [{"taskname": "A", "savepath": "/媒体库/A"}],
+             "sync_tasks": True, "sync_tasks_path_filter": "/媒体库"}) is True
+    assert seen == {"names": ["A"], "path_filter": "/媒体库"}
+    assert h.sent["tasks_result"]["deleted"] == 1
+    assert h.sent["success"] is True, "联动结果不得改写任务删除的结论"
+
+
+def test_route_delete_tasks_rejects_bad_sync_path():
+    """联动范围来自前端，必须挡掉 `..`（否则会扫到浏览范围之外）。"""
+    fake = _FakeClient(data_resp={"success": True, "data": {"tasklist": _tasks("A")}})
+    h = _make_handler()
+    with patch.object(media_library, "_client", return_value=fake):
+        h._handle_library_post(
+            "/api/qas/delete_tasks",
+            {"tasks": [{"taskname": "A", "savepath": "/媒体库/A"}],
+             "sync_tasks": True, "sync_tasks_path_filter": "/媒体库/../etc"})
+    assert h.status == 400 and ".." in h.sent["error"]
 
 
 def test_route_delete_tasks_rejects_empty_and_invalid():

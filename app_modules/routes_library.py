@@ -6,6 +6,10 @@
 #   POST /api/qas/delete           —— 删除网盘条目 + 可选同步清理 DBAuto 历史
 #   POST /api/qas/delete_tasks     —— 删除 QAS 条目任务配置（整表写回）
 #
+# 删除范围开关（issue #57）：两个删除接口都支持可选的 sync_tasks
+#   （网盘侧删文件 → 同步删同名任务；删任务 → 同步删网盘同名条目）。
+#   **默认关**，且联动结果单独回报（tasks_result），不改变主操作的成败结论。
+#
 # OpenList 数据源（issue #27 追问）：目录浏览可改由 OpenList 回答，
 #   GET  /api/library/source       —— 当前数据源 / 各源可用性自检
 #   GET  /api/openlist/tasks/audit —— QAS 任务 ↔ 网盘内容 对账（只读）
@@ -15,6 +19,7 @@
 import openlist
 import media_library
 from media_library import LIBRARY_SOURCE_OPENLIST, LIBRARY_SOURCE_QAS
+from utils import log
 from validator import validate_string, validate_list
 
 
@@ -164,8 +169,17 @@ class LibraryRouteMixin:
             cleaned.append(it)
 
         sync_history = body.get("sync_history", True)
+        # 删除范围开关（issue #57）：网盘侧删文件时联动删除**同名**的 QAS 任务。
+        # 默认关（不传即为 False），并且**范围必须收窄**：带上的路径过滤会
+        # 限制成「savepath 命中该范围的任务」，避免拿一个文件名去撞整张任务表。
+        sync_tasks = bool(body.get("sync_tasks"))
+        path_filter = str(body.get("sync_tasks_path_filter") or "").strip()
+        if ".." in path_filter:
+            self._send_json({"error": "sync_tasks_path_filter 不允许包含 .."}, 400)
+            return True
         res = media_library.delete_entries_by_source(
-            cleaned, sync_history=bool(sync_history), source=source)
+            cleaned, sync_history=bool(sync_history), source=source,
+            sync_tasks=sync_tasks, sync_tasks_path_filter=path_filter)
         self._send_json(res, 200 if res.get("success") else 502)
         return True
 
@@ -184,6 +198,26 @@ class LibraryRouteMixin:
             if not has_index and not it.get("taskname"):
                 self._send_json({"error": "tasks 每项必须包含 taskname 或 index"}, 400)
                 return True
+        # 删除范围开关（issue #57）：删任务后顺带删掉网盘上的同名条目。
+        # 与「网盘侧删除」是两个方向的同一件事，因此字段名与语义保持一致：
+        #   sync_tasks 默认关；sync_tasks_path_filter 收窄联动范围。
+        # 任务删除的结论**不因联动失败而改写**（任务确实已经删了），
+        # 联动结果单独挂在 tasks_result 下，由前端分开复述。
         res = media_library.delete_tasks(tasks)
+        if body.get("sync_tasks") and res.get("success"):
+            path_filter = str(body.get("sync_tasks_path_filter") or "").strip()
+            if ".." in path_filter:
+                self._send_json({"error": "sync_tasks_path_filter 不允许包含 .."}, 400)
+                return True
+            names = [str(t.get("taskname") or "").strip() for t in tasks
+                     if isinstance(t, dict) and t.get("taskname")]
+            try:
+                res["tasks_result"] = media_library.sync_library_entries_by_names(
+                    names, path_filter=path_filter)
+            except Exception as e:
+                log("删除任务后同步删除网盘同名条目异常: {}".format(e))
+                res["tasks_result"] = {"success": False, "deleted": 0, "failed": 0,
+                                       "results": [], "matched_names": names,
+                                       "message": "同步删除网盘条目异常: {}".format(e)}
         self._send_json(res, 200 if res.get("success") else 502)
         return True
