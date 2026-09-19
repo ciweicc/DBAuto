@@ -2947,6 +2947,10 @@ def test_library_keyboard_covers_both_views(dist):
     els = js[js.index("function libRowEls("):js.index("function _libFocusIdx(")]
     assert "lib-table" in els, \
         "行元素查询未覆盖列表视图（.lib-table），切视图后快捷键会失效"
+    # 收敛容器：任务表用同一套 .lib-row，不限定 #libList 就会把 20 条任务
+    # 混进媒体库的行列表（issue #53 追问：「这里也需要快捷」时实测踩到）。
+    assert "#libList" in els, \
+        "行元素查询未收敛在 #libList：会把 QAS 任务表的行一起捞进来（选择全错位）"
 
 
 def test_library_keyboard_resets_state_on_dir_change(dist):
@@ -3196,3 +3200,184 @@ def test_qas_task_list_is_paginated(dist):
         fn = js[js.index(fname):]
         fn = fn[:fn.index("\n}")]
         assert "qasPageNo = 1" in fn, "{} 没有把页码重置回第 1 页".format(fname)
+
+
+# ---------------------------------------------------------------------------
+# QAS 任务表键盘选择（issue #53 追问：「这里也需要快捷」）
+# ---------------------------------------------------------------------------
+#
+# 用户给 QAS 任务清单的截图配了一句「这里也需要快捷」。这与媒体库那条是
+# **同一个诉求的第二处**：媒体库已经有一整套键盘选择，任务表却还得靠鼠标
+# 一行行点。本轮把同一套语义搬过去。
+#
+# 本组同样是**静态**门禁（挡「实现被删掉/接线被拆掉」），
+# 「按下 Ctrl+A 之后真的勾上了几行」由 scripts/check_qas_keys_dom.py 验。
+
+
+def test_qas_keyboard_selection_is_implemented(dist):
+    """任务表必须实现整套键盘选择，且按键与媒体库一致。"""
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    for name in ("_qasKeydown", "qasSelectAll", "qasClearSelection",
+                 "_qasSelectRange", "qasFocusRow", "qasRowClick", "qasRowKeydown",
+                 "qasRowEls", "_qasSyncCheckboxes"):
+        assert "function " + name in js, "任务表缺少键盘选择实现 {}".format(name)
+
+    kd = js[js.index("function _qasKeydown("):]
+    kd = kd[:kd.index("function kbPageAvailable(")]
+    assert "lower === 'a'" in kd and "preventDefault" in kd, \
+        "任务表未实现 Ctrl/⌘+A 全选（或未阻止浏览器「选中整页文字」的默认行为）"
+    assert "'Escape'" in kd, "任务表未实现 Esc 清空选择"
+    assert "ArrowUp" in kd and "ArrowDown" in kd, "任务表未实现方向键移动当前行"
+    assert "e.shiftKey" in kd, "任务表未实现 Shift 范围选择"
+    assert "' '" in kd or "Spacebar" in kd, "任务表未实现空格切换当前行"
+    assert "e.ctrlKey || e.metaKey" in kd, "任务表未实现 Ctrl/⌘ 修饰键（macOS 上 ⌘ 会失效）"
+
+    # 两张表必须共用同一套按键语义：把差异钉到「只有一个前缀不同」的层面上。
+    kd_sig = set(re.findall(r"e\.key === '([^']+)'", kd)) | set(
+        re.findall(r"k === '([^']+)'", kd))
+    lib = _read(os.path.join(_JS_DIR, "library.js"))
+    lib_kd = lib[lib.index("function _libKeydown("):lib.index("function libFocusRowIdx(")]
+    lib_sig = set(re.findall(r"e\.key === '([^']+)'", lib_kd)) | set(
+        re.findall(r"k === '([^']+)'", lib_kd))
+    missing = lib_sig - kd_sig
+    assert not missing, \
+        "任务表键盘语义与媒体库分岔，缺了 {}".format(sorted(missing))
+
+
+def test_qas_keyboard_wired_into_global_shortcuts(dist):
+    """任务表键盘处理必须接在全局 keydown 上，且排在 Esc 分支之前。
+
+    与媒体库同一个坑（实测过）：init.js 的 Esc 分支对任何 Escape 都 return，
+    排在它后面就永远收不到 Esc —— 「Ctrl+A 全选后按 Esc 没反应」。
+    """
+    init = _read(os.path.join(_JS_DIR, "init.js"))
+    assert "_qasKeydown(e)" in init, "全局快捷键未接入任务表的键盘选择"
+    idx_qas = init.index("_qasKeydown(e)")
+    idx_esc = init.index("// Esc：关闭确认框 / Sheet")
+    assert idx_qas < idx_esc, \
+        "任务表键盘处理排在 Esc 分支之后：Esc 会被提前 return 掉，清空选择永远不生效"
+
+
+def test_qas_keyboard_ignores_typing_in_inputs(dist):
+    """焦点在输入框里时，任务表的键盘选择必须完全放行。
+
+    任务表上有两个搜索框（路径包含 / 任务名包含）。不加这层守卫，
+    「在搜索框里打一个空格」会被当成「勾选当前行」，而 Esc 也会被当成清空选择，
+    用户根本没法正常输入 —— 这是把快捷键搬到带输入框的表上时最容易漏的一条。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    kd = js[js.index("function _qasKeydown("):js.index("function kbPageAvailable(")]
+    guard = kd[:kd.index("var rows = qasRowEls()")]
+    for tag in ("INPUT", "TEXTAREA", "SELECT"):
+        assert "'" + tag + "'" in guard, \
+            "焦点在 {} 里时未放行（打字会被快捷键吃掉）".format(tag)
+
+
+def test_qas_keyboard_scope_is_visible_rows_only(dist):
+    """任务表的全选/范围选择只能作用于**可见行**（筛选结果 + 当前页）。
+
+    这是从媒体库继承过来、又在任务表上被放大的一条：任务表有筛选 + 分页，
+    「看着 20 行、按一下 Ctrl+A、实际勾上 291 条」在这里是真实可达的。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    # 1. 行元素只能来自 DOM（筛选/分页/每页条数都会改它）
+    els = js[js.index("function qasRowEls("):js.index("function _qasFocusIdx(")]
+    assert "qasTaskList .lib-row:not(.lib-head)" in els, \
+        "行元素查询未走 #qasTaskList（会拿到被筛掉/不在当前页的行）"
+    assert "qasTasks" not in els, "行元素查询绕过了渲染结果，直接用全量任务"
+    # 2. 全选复用「只动可见行」的既有入口
+    allfn = js[js.index("function qasSelectAll("):js.index("function qasClearSelection(")]
+    assert "toggleQasSelectAll(true)" in allfn, \
+        "任务表全选没有复用「只勾可见行」的既有入口（自己另写一份遍历就会越界）"
+    assert "qasTasks" not in allfn, \
+        "全选函数里出现了全量 qasTasks —— 这就是「看着 20 行、勾上 291 条」的写法"
+    # 3. 范围选择只按行下标在**当前 DOM 行**里取
+    rng = js[js.index("function _qasSelectRange("):js.index("function qasSelectAll(")]
+    assert "rows[j]" in rng and "findQasTask(" in rng, \
+        "范围选择没有按下标在可见行里取（会选到列表外的任务）"
+    assert "_qasSyncCheckboxes(rows)" in rng, \
+        "范围选择没有同步勾选框 DOM（内部状态与屏幕会不一致）"
+    assert "updateQasActionBar()" in rng, "范围选择没有刷新操作条计数/删除按钮状态"
+
+
+def test_qas_rows_carry_key_and_handlers_for_keyboard(dist):
+    """任务表的行必须带 data-key 与鼠标/键盘处理器，否则快捷键静默失效。
+
+    媒体库那边踩过：列表视图的行缺 data-key 时，「按空格有反应但什么都没选中」。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    render = js[js.index("function _renderQasTasks("):js.index("function findQasTask(")]
+    assert 'data-key="' in render, '任务行缺少 data-key（键盘选择会静默失效）'
+    assert "qasRowKeydown(" in render, "任务行未接 onkeydown（行内空格会翻两次勾选框）"
+    assert "qasRowClick(" in render, "任务行未接 onclick（Shift/⌘+点击无法连选）"
+
+
+def test_qas_keyboard_state_resets_on_reload_and_error(dist):
+    """重新加载 / 失败态必须清空焦点、锚点与范围基线。
+
+    否则「在旧任务列表按 Shift 选了一段，刷新后再按 Shift+↓」会拿旧锚点算新
+    列表的下标，选出来的范围莫名其妙。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    load = js[js.index("async function loadQasTasks("):js.index("// ---------- 任务筛选（issue #53 追问）")]
+    for token in ("qasFocusKey = null", "qasSelectAnchor = null", "qasRangeBase = null"):
+        assert token in load, "重新加载任务未重置键盘状态 {}（选择会串味）".format(token)
+    err = js[js.index("function _renderQasTasksError("):js.index("function _renderQasTasks(")]
+    for token in ("qasFocusKey = null", "qasSelectAnchor = null", "qasRangeBase = null"):
+        assert token in err, "任务失败态未重置键盘状态 {}".format(token)
+
+
+def test_qas_keyboard_keeps_visible_cursor_after_rerender(dist):
+    """重渲染后「当前行」的虚线框必须补回来。
+
+    _renderQasTasks 是 innerHTML 整体替换，.lib-current 会被一起丢掉 ——
+    翻页/筛选之后虚线框消失，用户就以为「当前行没了」，Shift 连选失去参照。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    render = js[js.index("function _renderQasTasks("):js.index("function findQasTask(")]
+    assert "qasFocusRow(" in render, \
+        "重渲染后没有恢复「当前行」标记（翻页/筛选后虚线框会消失）"
+
+
+def test_qas_keyboard_hint_is_visible(dist):
+    """快捷键要「看得见」才有人用（诉求本身就是「不知道怎么选」）。"""
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert 'id="qasKeyHint"' in body, "任务表缺少键盘操作提示"
+    seg = body[body.index('id="qasKeyHint"'):body.index('id="qasKeyHint"') + 500]
+    for token in ("Ctrl/⌘", "A", "Shift", "Esc", "空格"):
+        assert token in seg, "任务表键盘提示缺少 {} 的说明".format(token)
+    # 与媒体库共用同一套提示样式：两处口径必须一致，否则「一个看得见一个看不见」
+    assert 'class="lib-keyhint qas-keyhint"' in body, \
+        "任务表提示条未复用 .lib-keyhint 样式（与媒体库的收起断点会漂移）"
+    css = _read(_SRC and os.path.join(_SRC, "styles", "main.css"))
+    assert ".qas-keyhint{" in css.replace(" ", ""), "缺少任务表提示条的样式"
+    # 收口在 .lib-keyhint 的窄屏规则上：两处一起藏，不会出现只藏一个
+    assert ".lib-keyhint{display:none}" in css.replace("\n", "").replace(" ", ""), \
+        "窄屏未收起键盘提示（触屏没有这些键，白占地方）"
+
+
+def test_qas_keyboard_page_turn_on_arrow_at_edge(dist):
+    """↑↓ 到页末/页首要能接着翻页，而不是「按了没反应」。
+
+    任务表默认每页 20 条，而一个 /影视/电视剧 前缀常有上百条。
+    只能在当前页里移动光标的话，用户要「选到第 21 条」得先放下键盘去点「下一页」
+    —— 快捷键的价值会被分页吃掉一半。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    kd = js[js.index("function _qasKeydown("):js.index("function kbPageAvailable(")]
+    assert "kbPageAvailable(" in kd, "↑↓ 到边界时没有考虑翻页"
+    assert "qasGotoPage(" in kd, "边界处没有走翻页入口"
+    goto = js[js.index("function qasGotoPage("):js.index("function qasRowClick(")]
+    assert "qasPage(delta)" in goto, "翻页入口没有复用既有的 qasPage（筛选/页码语义会漂移）"
+    # 落到哪一端由**方向**决定，跟翻书一致：下一页 → 首行（继续 ↓ 往下走），
+    # 上一页 → 末行（继续 ↑ 往上走）。两处都写死 0 的话，「按 ↑ 回上一页」
+    # 会把光标甩到页首，用户再按 ↑ 立刻又翻回去 —— 看起来像翻页失灵
+    # （本轮实测踩到，走查第 7 条抓的）。
+    assert "qasFocusRow(" in goto, "翻页后没有把「当前行」放到本页（继续按键会失去参照）"
+    assert "delta < 0" in goto, \
+        "翻页后未按方向决定落到页首还是页末（按 ↑ 回上一页会停在页首，再按 ↑ 又翻回去）"
+    assert "rows.length - 1" in goto, "上一页没有把「当前行」放到本页最后一行"
+
+    # 产物已重建
+    for token in ("_qasKeydown", "qasRowClick", "qasSelectAll", "qasKeyHint"):
+        assert token in dist, "产物未包含{}（需重跑 build.sh）".format(token)

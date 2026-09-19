@@ -475,9 +475,13 @@ def main():
                     dlg_text[:160]))
             if "{} 条任务".format(vis) not in dlg_text:
                 fail("删除确认框未写明作用条数 {}（文案：{!r}）".format(vis, dlg_text[:160]))
-            # 关掉确认框，别真的删（走查只读）
-            page.keyboard.press("Escape")
-            page.wait_for_timeout(250)
+            # 关掉确认框，别真的删（走查只读）。
+            # 这里点「取消按钮」而不是按 Escape：确认框的 Esc 由 initShortcuts 的
+            # Esc 分支处理，而**接在它后面**的键盘选择处理器也可能消费这个键
+            # —— 走查不该依赖那个顺序（顺序不稳就会卡住 30s 然后超时，
+            # 实测过一次）。取消按钮是确定性的入口。
+            page.click("#confirmCancel")
+            page.wait_for_timeout(300)
             s = st()
             if len(s["rows"]) != vis:
                 fail("Esc 关闭确认框后竟真的删除了任务（剩 {} 行）".format(len(s["rows"])))
