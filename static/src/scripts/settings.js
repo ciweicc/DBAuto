@@ -241,13 +241,13 @@ async function checkOpenList(){
   try{
     // 自检会**真的列一次目录**（后端 openlist.self_check）：
     // 只验证登录时，「挂载路径不匹配」会被误判成可用 —— 那正是
-    // 「配了 OpenList 却仍回落」的成因，必须在这里就暴露出来。
+    // 「配了 OpenList 却仍读不到目录」的成因，必须在这里就暴露出来。
     var d=await apiGet('/api/library/source');
     var msg;
     // 提示里必须同时出现「谁在回答」「用什么身份回答」「实测列到了什么」：
     // 只报「可用」，用户配了令牌也不知道到底生效没有（两者行为差异肉眼不可见）；
     // 只报「登录成功」，前缀填错时又会被误判成可用 —— 那正是
-    // 「配了 OpenList 却仍回落」的成因，必须在这里就暴露出来。
+    // 「配了 OpenList 却仍读不到目录」的成因，必须在这里就暴露出来。
     // 令牌这条路径还要点明「不会获得额外权限」—— 用户问的就是这个，
     // 若默认「令牌权限更大」，填了令牌却发现删不掉（403）时只会以为程序坏了。
     var mode=d.openlist_auth_mode||'';
@@ -276,7 +276,9 @@ async function checkOpenList(){
         :(kind==='path_missing'?'OpenList 上找不到该目录'
         :(kind==='auth'?'OpenList 鉴权失败'
         :(kind==='network'?'OpenList 连不上':'OpenList 不可用')));
-      msg=title+'：'+(d.openlist_message||'未知原因')+'。媒体库已回落到 QAS 直连。';
+      // issue #57：网盘文件模块只剩 OpenList 这一个数据源，不再回落 QAS。
+      // 文案必须跟着改 —— 还写「已回落 QAS」会让用户以为目录照样能看。
+      msg=title+'：'+(d.openlist_message||'未知原因')+'。此时媒体库的「网盘文件」读不出目录。';
       if(kind==='path_missing'||d.openlist_path_missing){
         // 只有这一类是**确定**的配置问题，可以放心点名「路径前缀」。
         msg+='（目录在 OpenList 上不存在 —— 请检查「路径前缀」是否指向 OpenList 挂载夸克网盘的那个目录）';
@@ -293,7 +295,7 @@ async function checkOpenList(){
       if(d.openlist_auth&&!d.openlist_auth.token_set){msg+='当前没有可用凭据（游客模式，令牌留空），若 OpenList 关闭了游客访问，请在下方填访问令牌。'}
       showToast(title,false);
     }else{
-      msg='未配置 OpenList 地址，媒体库目录由 QAS 直连回答（较慢）。';
+      msg='未配置 OpenList 地址，媒体库的「网盘文件」不可用（该模块只支持 OpenList）。';
       showToast('未配置 OpenList',false);
     }
     // 顺序要紧：_applyOpenListSubState 会按「已配置」把面板收起，

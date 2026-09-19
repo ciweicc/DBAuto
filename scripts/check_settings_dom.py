@@ -75,7 +75,7 @@ STUBS = {
     # 与超时相反，这一类必须明确把用户引到「路径前缀」—— 两者混在一起时
     # 用户会在「改配置」和「等一会」之间反复横跳（issue #47 的成因之一）。
     "/api/library/source_path_missing": {
-        "success": True, "source": "qas", "openlist": True,
+        "success": True, "source": "openlist", "openlist": True,
         "openlist_ok": False,
         "openlist_path_missing": True,
         "openlist_message": "OpenList 错误 500: storage not found",
@@ -94,7 +94,7 @@ STUBS = {
     # 这里刻意不在 message 里出现「路径前缀」——真实超时的报错也不含它，
     # 若页面把用户往「路径前缀」引，正是本题要抓的误导。
     "/api/library/source_timeout": {
-        "success": True, "source": "qas", "openlist": True,
+        "success": True, "source": "openlist", "openlist": True,
         "openlist_ok": False,
         "openlist_message": "OpenList 请求失败: 请求超时（timed out）。OpenList 有响应但太慢"
                             " —— 这通常不是配置错误，多半是它正在等网盘（如夸克）返回列表。"
@@ -414,12 +414,12 @@ def main():
                     if cs.get("rootH", 0) <= 0:
                         fail("折叠子分区内缺少「路径前缀」输入框（cfg_openlist_root）："
                              "OpenList 挂载点与网盘路径不一致时用户无处可配，"
-                             "只能看着「已回落」")
+                             "只能看着「读不到目录」")
                     elif not cs.get("rootInVp"):
                         fail("「路径前缀」输入框滚不进视口（探针前置条件不成立，"
                              "不能据此判定可点）")
                     elif not cs.get("rootHit"):
-                        fail("「路径前缀」输入框展开后点不到，用户无法修复回落问题")
+                        fail("「路径前缀」输入框展开后点不到，用户无法修复读不到目录的问题")
 
                 # 超宽视口必须把设置页压到 MAX_WIDE_TAB_H 以内：
                 # 这是 issue #15 的核心指标（修复前 2560px 下 1756px 高）。

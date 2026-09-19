@@ -280,16 +280,23 @@ function jsArg(v){
   return "'" + t + "'";
 }
 
-// 当前目录回答者：'openlist' | 'qas'，由后端在目录响应里如实给出。
-// 它同时决定删除走哪条链路 —— 谁列出来的条目，就删谁那边的（见 doDelete）。
-var libSource = 'qas';
+// 当前目录回答者。issue #57 起网盘文件模块**只剩 OpenList 一个数据源**，
+// 因此这里恒为 'openlist'；字段仍保留是因为删除链路要凭它决定「条目按什么形态发」
+// （OpenList 认条目名 + 目录），也是后端契约的一部分。
+var libSource = 'openlist';
+// 「是否发生了回落」—— issue #57 之后**恒为 false**：QAS 直连已移除。
+// 保留它是为了兼容旧后端响应（读到 true 时不再渲染「已回落 QAS」这类
+// 早就不成立的结论，见 _renderLibSourceBadge）。
 var libFallback = false;
+// 目录读取**失败原因**（不再叫「回落原因」）：issue #57 之后失败就是失败，
+// 界面上要如实讲清楚为什么读不出来。
 var libFallbackReason = '';
+// 失败归类提示（issue #47/#57）：只给一句「不可用」，用户无从判断该改哪儿。
 var libFallbackHint = '';
-// 回落归类（issue #47）：只给一句「不可用」，用户无从判断该改哪儿。
+// 失败归类：'timeout' / 'auth' / 'path_missing' / 'unconfigured' …
 var libFallbackKind = '';
 // 是否处于「OpenList 刚失败」的自动退避窗口（issue #47：「经常回落」）。
-// 退避是短暂且自动的 —— 这类回落不该被描述成「配置坏了」。
+// 退避是短暂且自动的 —— 这类失败不该被描述成「配置坏了」。
 var libFallbackBackoff = false;
 // 退避窗口还剩多少秒（后端给的实测值：窗口长度 - 已过时间）。
 // 0 = 不知道剩多久，此时文案退化为「稍后自动重试」，**不编造**倒计时。
@@ -297,10 +304,10 @@ var libFallbackBackoffLeft = 0;
 // 本轮响应里被丢弃的「无名条目」数量（渲染不出来，但要如实告诉用户）。
 var libHiddenNoName = 0;
 
-// 数据源徽标：让「变快了 / 变慢了」能被归因。
-// 不显示徽标的代价是：用户只能看到「快了点」，不知道是因为 OpenList 生效、
-// 还是因为这次运气好（缓存命中）。回落时必须明确标出来 ——
-// 否则 OpenList 挂掉后用户会以为自己在用 OpenList，实际走的是慢链路。
+// 数据源徽标：让「数据从哪来」能被读到。
+// issue #57 起数据源唯一（OpenList），徽标不再承担「区分 OpenList / QAS」的
+// 职责，但仍要显示：它同时也是「这一屏内容是 OpenList 刚回答的」这条断言
+// —— 走查脚本靠它证明目录确实来自 OpenList，而不是某个残留的兜底结果。
 // 退避倒计时的文案片段。
 // 后端把「窗口长度 + 记录时刻」一起给了（openlist.list_dir → backoff_seconds /
 // backoff_since），这里只负责把它翻译成一句话 —— 两边分离的意义是：
@@ -312,9 +319,11 @@ function _backoffLeftText(){
   return '约 ' + libFallbackBackoffLeft + ' 秒内';
 }
 
-// 回落排查弹窗：把「该去改哪个设置」直接讲清楚。
-// 实测下来「配了 OpenList 却仍回落」几乎都是路径前缀问题（OpenList 的挂载点
-// 不是网盘根），但表现和「OpenList 挂了」完全一样，所以这里按原因分流。
+// 「目录读不出来」的排查弹窗：把「该去改哪个设置」直接讲清楚。
+// 实测下来「配了 OpenList 却仍读不到目录」几乎都是路径前缀问题
+// （OpenList 的挂载点不是网盘根），但它和「OpenList 挂了」表现完全一样，
+// 所以这里按原因分流。issue #57 去掉了「回落 QAS」这条路，
+// 因此文案不再提回落，只讲 OpenList 侧怎么修。
 function _showFallbackHelp(){
   var reason = libFallbackReason || '未知原因';
   var tips;
@@ -324,7 +333,7 @@ function _showFallbackHelp(){
     tips = 'OpenList 有响应但太慢（本次等待超时）—— 这**通常不是配置错误**，'
          + '多半是它正在等网盘（如夸克）返回列表。\n'
          + (libFallbackBackoff
-            ? '系统正在自动重试（' + _backoffLeftText() + '自动回到 OpenList），**不需要改任何配置**。'
+            ? '系统正在自动重试（' + _backoffLeftText() + '自动重试），**不需要改任何配置**。'
             : '建议：稍后重试；若每次都超时，说明该目录在网盘侧确实很慢，'
               + '可先用 OpenList 自己的网页界面确认目录能不能列出来。');
   }else if(libFallbackHint === 'path_prefix'){
@@ -343,7 +352,7 @@ function _showFallbackHelp(){
          + '· 找不到该目录 → 检查「路径前缀」';
   }
   // 用应用内 toast（原生 alert 会阻塞渲染，也无法在走查脚本里断言）
-  showToast('已回落到 QAS 直连：' + reason + ' ' + tips.replace(/\n+/g, ' '), false, 12000);
+  showToast('网盘目录读取失败：' + reason + ' ' + tips.replace(/\n+/g, ' '), false, 12000);
 }
 
 function _renderLibSourceBadge(){
@@ -363,37 +372,18 @@ function _renderLibSourceBadge(){
     el.style.cursor = '';
     return;
   }
-  var label, title;
-  if(libSource === 'openlist'){
-    label = 'OpenList';
-    title = '目录由 OpenList 回答（对夸克驱动有列表缓存，通常更快）';
-  }else{
-    label = libFallback ? 'QAS（OpenList 回落）' : 'QAS 直连';
-    if(libFallback){
-      // 回落原因必须能看见、能点开（issue #27 追问「配了 OpenList 却仍回落」）：
-      // 「已回落」本身不是信息，用户需要知道是地址错了还是路径前缀不对。
-      // 所以 title 直接给结论 + 修复方向，点开是更完整的步骤。
-      var fix = libFallbackKind === 'timeout'
-        ? (libFallbackBackoff
-           ? 'OpenList 响应超时（不是配置错误），系统正在自动重试，' + _backoffLeftText() + '自动回到 OpenList。'
-           : 'OpenList 响应超时（多半是网盘侧目录拉取慢，不是配置错误）：稍后重试即可。')
-        : (libFallbackHint === 'path_prefix'
-          ? '多半是「路径前缀」没填对：设置 → 数据源 → OpenList 里填 OpenList 挂载夸克网盘的目录。'
-          : '到「设置 → 数据源 → OpenList」点「连接自检」看具体原因。');
-      title = (libFallbackKind === 'timeout' ? 'OpenList 响应超时，已回落到 QAS 直连（较慢）。原因：' : 'OpenList 不可用，已回落到 QAS 直连（较慢）。原因：')
-        + (libFallbackReason || '未知') + fix + '（点此查看完整排查步骤）';
-      el.onclick = function(){ _showFallbackHelp(); };
-      el.style.cursor = 'pointer';
-    }else{
-      title = '目录由 QAS 直连回答（未配置 OpenList）。配置 OpenList 可显著加快目录浏览';
-      el.onclick = null;
-      el.style.cursor = '';
-    }
-  }
-  if(libSource === 'openlist'){ el.onclick = null; el.style.cursor = ''; }
+  // issue #57：数据源唯一（OpenList），因此这里不再有「OpenList / QAS 回落 /
+  // QAS 直连」三态。徽标退化成一条**关于最近一次真实响应**的陈述：
+  //   - 读到数据 → 「OpenList」（点开是缓存/直读说明）；
+  //   - 没读到   → 由错误态负责讲原因，徽标不在同一页面上再讲一遍
+  //     （见 _renderLibError：失败时徽标被清掉，避免两个元素互相打架）。
+  var label = 'OpenList';
+  var title = '目录由 OpenList 回答（对夸克驱动有列表缓存，通常更快）';
+  el.onclick = null;
+  el.style.cursor = '';
   el.textContent = label;
   el.title = title;
-  el.className = 'lib-src-badge lib-src-' + (libSource === 'openlist' ? 'ol' : 'qas');
+  el.className = 'lib-src-badge lib-src-ol';
   el.style.display = '';
 }
 
@@ -461,10 +451,15 @@ async function libFetch(url){
         return { ok:false, message:'登录已过期', ms: Date.now() - t0 };
       }
       if(!r.ok){
-        lastErr = new Error('HTTP ' + r.status);
-      }else{
-        return { ok:true, data: await r.json(), ms: Date.now() - t0 };
+        // 非 2xx 也要把响应体读出来：后端（如 /api/qas/library）用 502 表达
+        // 「读取失败」，而**为什么失败**只在 body 里。丢了 body，用户就看到
+        // 一句「HTTP 502」——本轮走查实测到的正是这个（issue #57 的失败态）。
+        var ebody = null;
+        try{ ebody = await r.json(); }catch(e){}
+        return { ok:false, message: 'HTTP ' + r.status,
+                 data: ebody, ms: Date.now() - t0 };
       }
+      return { ok:true, data: await r.json(), ms: Date.now() - t0 };
     }catch(e){
       // 软超时 / 网络异常：都走「快速失败」路径，不再叠加后端级长重试
       lastErr = (e && e.name === 'AbortError')
@@ -1413,14 +1408,25 @@ async function loadLibrary(path, opts){
     clearInterval(hintTimer);
 
     if(!r.ok){
-      if(!hit) _renderLibError(target, r.message, r.ms);
-      else showToast('刷新失败：' + r.message + '（显示的是缓存数据）', false);
+      // 非 2xx 时**必须把响应体里的原因读出来**：后端在这条链路上用
+      // 200/502 区分成败，真正有用的（OpenList 报了什么、归类是什么）
+      // 都在 body 里。只看 HTTP 状态码，用户拿到的是「HTTP 502」——
+      // 一句对他毫无帮助的日志（本轮走查实测：失败态只剩 HTTP 502）。
+      var errBody = _libErrorBody(r.data);
+      if(errBody) _applyLibFailureMeta(errBody);
+      var errMsg = (errBody && errBody.message) || r.message;
+      if(!hit) _renderLibError(target, errMsg, r.ms);
+      else showToast('刷新失败：' + errMsg + '（显示的是缓存数据）', false);
       return;
     }
     var res = r.data || {};
     if(!res.success){
-      if(!hit) _renderLibError(target, res.message || '请检查 QAS 配置', r.ms);
-      else showToast('刷新失败：' + (res.message || 'QAS 返回异常') + '（显示的是缓存数据）', false);
+      // 失败原因（kind / hint）必须先落到状态里，再渲染错误态 ——
+      // 错误态要靠它区分「没配 OpenList」与「配了但连不上/前缀错」，
+      // 否则用户拿到的还是一句「读取失败」，只能靠猜（issue #47 的老问题）。
+      _applyLibFailureMeta(res);
+      if(!hit) _renderLibError(target, res.message || '请检查 OpenList 配置', r.ms);
+      else showToast('刷新失败：' + (res.message || 'OpenList 返回异常') + '（显示的是缓存数据）', false);
       return;
     }
     // 丢弃「无名条目」：name 为空的条目既渲染不出有意义的卡片（标题/aria-label 全空），
@@ -1430,11 +1436,14 @@ async function loadLibrary(path, opts){
     var rawEntries = res.entries || [];
     var entries = rawEntries.filter(function(it){ return it && String(it.name || '').trim(); });
     libHiddenNoName = rawEntries.length - entries.length;
+    // 字段名沿用 fallback_*（后端契约），但语义已改成「最近一次失败的原因」
+    // （issue #57：数据源唯一，不再有回落）。后端在失败分支给的 kind / backoff
+    // 与成功分支同口径，这里一并记下供错误态渲染使用。
     var meta = {source: res.source, fallback: res.fallback,
                 fallback_reason: res.fallback_reason, fallback_hint: res.fallback_hint,
-                fallback_kind: res.fallback_kind,
-                fallback_backoff: res.fallback_backoff,
-                fallback_backoff_left: res.fallback_backoff_left};
+                fallback_kind: res.fallback_kind || res.kind,
+                fallback_backoff: res.fallback_backoff || res.backoff,
+                fallback_backoff_left: res.fallback_backoff_left || res.backoff_left};
     libCache[target] = { ts: Date.now(), entries: entries, meta: meta };
     _libRememberRows(entries.length);   // 下次首帧骨架按真实条数占位，减少高度跳动
     _renderLibrary(target, entries, false, r.ms, meta);
@@ -1442,6 +1451,27 @@ async function loadLibrary(path, opts){
     clearInterval(hintTimer);
     if(!hit) _renderLibError(target, e.message, Date.now() - t0);
   }
+}
+
+// 非 2xx 响应体：libFetch 在 HTTP 非 2xx 时只带回 status 文案，
+// 但后端把失败原因（message / kind / fallback_hint）都放在 JSON body 里。
+// 这里把 body 解析出来 —— 解析失败返回 null，绝不猜一个原因出来。
+function _libErrorBody(data){
+  if(!data || typeof data !== 'object') return null;
+  if(!data.success && (data.message || data.fallback_reason || data.kind)) return data;
+  if(data.error) return {message: String(data.error)};
+  return null;
+}
+
+// 把「最近一次失败」的归类写进状态（issue #57）：错误态要用它分流文案。
+// 只认后端**明确给出**的字段，不猜 —— 猜错会把用户引向无关的设置。
+function _applyLibFailureMeta(res){
+  res = res || {};
+  libFallbackReason = res.fallback_reason || res.message || '';
+  libFallbackHint = res.fallback_hint || '';
+  libFallbackKind = res.fallback_kind || res.kind || '';
+  libFallbackBackoff = !!(res.fallback_backoff || res.backoff);
+  libFallbackBackoffLeft = Number(res.fallback_backoff_left || res.backoff_left || 0) || 0;
 }
 
 function _renderLibError(path, message, ms){
@@ -1454,26 +1484,28 @@ function _renderLibError(path, message, ms){
   renderBreadcrumb(path);
   var cnt = document.getElementById('libCount');
   if(cnt) cnt.textContent = '';
-  // 失败态必须让**上一轮的回落结论一起消失**。
+  // 失败态必须让**上一轮的目录结论一起消失**。
   //
   // 踩坑（实测）：徽标是挂在卡片标题行上的独立元素，渲染失败态时并没有清掉它。
-  // 于是「先在某目录看到回落 → 再打开另一个目录、这次连 QAS 都失败了」的场景里，
-  // 页面会同时显示「读取失败」和「QAS（OpenList 回落）· OpenList 请求超时…」，
-  // 用户据此去改 OpenList 配置 —— 而真正挂了的是 QAS。失败态就应该只讲这一件事。
-  libSource = 'qas';
+  // 于是「先在某目录读到内容 → 再打开另一个目录、这次失败了」的场景里，
+  // 页面会同时显示「读取失败」和一个关于上一轮的陈旧徽标 —— 徽标是断言，
+  // 失败时它已经不成立了，必须撤销（隐藏 ≠ 撤销，见 _renderLibSourceBadge）。
+  libSource = 'openlist';
   libFallback = false;
-  libFallbackReason = '';
-  libFallbackHint = '';
-  libFallbackKind = '';
-  libFallbackBackoff = false;
-  libFallbackBackoffLeft = 0;
   libHiddenNoName = 0;
   _renderLibSourceBadge();
+  // issue #57：网盘目录只由 OpenList 回答（QAS 直连已移除），
+  // 因此失败态只讲 OpenList 这一件事 —— 指向 QAS 的旧文案会把用户引错方向。
+  // 这里**保留** libFallbackKind/Hint（不在清空列表里）：它是本次失败的原因，
+  // 下面两行文案正是靠它分流；由 _applyLibFailureMeta 在渲染前写入。
+  var hint = libFallbackKind === 'unconfigured'
+    ? '未配置 OpenList：请到「设置 → 数据源 → 媒体库文件源（OpenList）」填写地址与令牌。'
+    : '网盘目录由 OpenList 读取；若持续失败请检查 OpenList 是否在线、'
+      + '「路径前缀」是否填对（设置 → 数据源 → 媒体库文件源）。';
   box.innerHTML = '<div class="empty-state" style="padding:24px 20px">' +
     '<div class="empty-title">读取失败</div>' +
-    '<div class="empty-desc">' + esc(message || '请检查 QAS 配置') + '</div>' +
-    '<div class="empty-desc">已用 ' + (ms/1000).toFixed(1) + 's。网盘目录由 QAS 实时向夸克拉取，' +
-    '若持续超时请检查 QAS 是否在线、夸克 Cookie 是否失效。</div>' +
+    '<div class="empty-desc">' + esc(message || '请检查 OpenList 配置') + '</div>' +
+    '<div class="empty-desc">已用 ' + (ms/1000).toFixed(1) + 's。' + hint + '</div>' +
     '<div class="empty-desc"><button class="btn btn-sm btn-outline" onclick="loadLibrary(libPath, {force:true})">重试</button></div>' +
     '</div>';
   updateLibActionBar();
@@ -1485,22 +1517,22 @@ function _renderLibrary(path, entries, fromCache, ms, source){
   if(!box) return;
   libPath = path;
   libEntries = entries || [];
-  // source === null 表示「只画内容，对数据源不做断言」（陈旧缓存先顶上的那一帧）。
-  // 这种情况必须**原样保留**当前数据源状态，一个字都不改。
+  // source === null 表示「只画内容，对数据源/失败原因不做断言」（陈旧缓存先顶上的那一帧）。
+  // 这种情况必须**原样保留**当前状态，一个字都不改。
   //
   // 踩坑（本轮实测）：最初这里写成「无条件用 source 的值覆盖」，
-  // 于是传 null 时把 libFallbackReason / Kind / Backoff 全清空了，
+  // 于是传 null 时把 failure reason / kind / backoff 全清空了，
   // 而 libSource 因为 `if(source && source.source)` 的短判断反而留着旧值 ——
-  // 结果得到一个自相矛盾的状态（source=qas 但 reason 为空），
-  // 徽标既不是 OpenList 也不是「回落」，用户看到的就是一个没有来源的 QAS。
+  // 结果得到一个自相矛盾的状态（有来源但没有原因），徽标与错误态互相打架。
   if(source){
     if(source.source) libSource = source.source;
     if(typeof source.fallback === 'boolean') libFallback = source.fallback;
     libFallbackReason = source.fallback_reason || '';
     libFallbackHint = source.fallback_hint || '';
-    libFallbackKind = source.fallback_kind || '';
-    libFallbackBackoff = !!source.fallback_backoff;
-    libFallbackBackoffLeft = Number(source.fallback_backoff_left || 0) || 0;
+    libFallbackKind = source.fallback_kind || source.kind || '';
+    libFallbackBackoff = !!(source.fallback_backoff || source.backoff);
+    libFallbackBackoffLeft = Number(source.fallback_backoff_left
+                                    || source.backoff_left || 0) || 0;
   }
   libSelected = {};
   // 键盘状态同理：DOM 每次重渲染都是全新的节点，focus/anchor 的 key 必须重新建立
