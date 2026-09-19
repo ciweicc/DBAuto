@@ -109,10 +109,32 @@ var LIB_CACHE_TTL = 60000;
 var libCache = {};        // path -> {ts, entries}
 var libInflight = {};     // path -> Promise（同一目录并发只打一次）
 
-// 两种视图（issue #27）：卡片视图（默认，等高的紧凑卡）/ 列表视图（紧凑表格）。
-// 偏好存 localStorage，用户切过一次之后一直记住。
-var LIB_VIEW_KEY = 'lib_view';       // 'card' | 'list'
+// 展示形态（issue #27 + issue #53）。
+//
+// 这里从前是一个布尔：`lib_view = 'card' | 'list'`，按钮在两者之间二选一。
+// 但用户要的从来是两件事，被塞进了一个按钮：
+//   ① 「卡片还是表格」（**布局**）—— issue #27 引入的；
+//   ② 「一屏能看多少条」（**密度**）—— issue #53 追问：「新增切换显示密度的功能
+//      当前只能列表显示，实在是信息密度太低了」。
+// 二选一的按钮把这层理解偏差固化了下来：想「看得更多」就只有列表视图一条路，
+// 而列表视图一屏也就 20 行上下。本轮把它拆成**两维**：
+//   * 布局：card（卡片）/ list（表格）
+//   * 密度：comfortable（舒适）/ compact（紧凑）
+//
+// 关键实现决策（都是踩过坑才这么定的）：
+//   1. 旧值 `'card' | 'list'` 必须被**读懂**，不能让用户「打开就回到默认」；
+//      见 _migrateLibPrefs()；
+//   2. 密度存在**单独的键**里，不做「4 个枚举值」的合并键：那样以后想加第三种布局
+//      就得再迁一次存储，两维各自独立演进更稳；
+//   3. 布局按钮与密度按钮**共用同一条渲染路径**（都调 _applyLibView()），
+//      不存在「密度切了、键盘选择失灵」这类分叉；
+//   4. 键盘选择逻辑查的是 `#libGrid` 或 `.lib-table`，与密度无关 ——
+//      紧凑视图仍是 .lib-card（带 data-key），所以 Ctrl+A / Shift+连选照旧生效。
+var LIB_VIEW_KEY = 'lib_view';            // 'card' | 'list'
+var LIB_DENSITY_KEY = 'lib_density';      // 'comfortable' | 'compact'
+var LIB_DENSITIES = ['comfortable', 'compact'];
 var libView = 'card';
+var libDensity = 'comfortable';
 
 function libViewMode(){
   try{
@@ -122,11 +144,48 @@ function libViewMode(){
   return 'card';
 }
 
+function libDensityMode(){
+  try{
+    var v = localStorage.getItem(LIB_DENSITY_KEY);
+    if(LIB_DENSITIES.indexOf(v) >= 0) return v;
+  }catch(e){}
+  return 'comfortable';
+}
+
+// 旧偏好迁移：'card' | 'list' 已经能表达布局，**不需要**迁移（读写口径不变）。
+// 独立出来是为了给「以后再加一档密度」留一个显式的入口，
+// 而不是让读存储的逻辑散落在三处。
+function _migrateLibPrefs(){
+  var v = libViewMode(), d = libDensityMode();
+  libView = (v === 'list') ? 'list' : 'card';
+  libDensity = (d === 'compact') ? 'compact' : 'comfortable';
+}
+
+// 布局与密度的**唯一**落点：写存储 → 更新控件文案 → 原地重渲染当前目录。
+// 传 opts.save=false 时不写存储（用在「从存储初始化」这条路径上）。
+function _applyLibView(opts){
+  opts = opts || {};
+  if(opts.save !== false){
+    try{
+      localStorage.setItem(LIB_VIEW_KEY, libView);
+      localStorage.setItem(LIB_DENSITY_KEY, libDensity);
+    }catch(e){}
+  }
+  _updateLibViewBtn();
+  _updateLibDensityBtn();
+  // 只重画目录区（不重新发请求）：切视图不能顺带打网络，否则「密度切换」
+  // 在慢接口下会变成一次几秒的等待 —— 用户按的是展示开关，不是刷新。
+  _renderLibrary(libPath, libEntries, false, null, true);
+}
+
 function toggleLibView(){
   libView = (libView === 'card') ? 'list' : 'card';
-  try{ localStorage.setItem(LIB_VIEW_KEY, libView); }catch(e){}
-  _updateLibViewBtn();
-  _renderLibrary(libPath, libEntries, false, null, true);
+  _applyLibView();
+}
+
+function toggleLibDensity(){
+  libDensity = (libDensity === 'comfortable') ? 'compact' : 'comfortable';
+  _applyLibView();
 }
 
 function _updateLibViewBtn(){
@@ -134,6 +193,18 @@ function _updateLibViewBtn(){
   if(!btn) return;
   btn.textContent = (libView === 'card') ? '列表视图' : '卡片视图';
   btn.setAttribute('aria-label', (libView === 'card') ? '切换为列表视图' : '切换为卡片视图');
+  btn.setAttribute('aria-pressed', libView === 'list' ? 'true' : 'false');
+}
+
+function _updateLibDensityBtn(){
+  var btn = document.getElementById('libDensityBtn');
+  if(!btn) return;
+  var compact = (libDensity === 'compact');
+  btn.textContent = compact ? '舒适密度' : '紧凑密度';
+  btn.setAttribute('aria-label', compact ? '切换为舒适密度' : '切换为紧凑密度');
+  // aria-pressed 暴露的是「当前是不是紧凑密度」，屏幕阅读器据此读出状态
+  btn.setAttribute('aria-pressed', compact ? 'true' : 'false');
+  btn.title = compact ? '当前：紧凑（一屏显示更多条目）' : '当前：舒适（信息更宽松）';
 }
 
 // 单请求预算：与 QAS「本地服务」定位匹配，宁可快速失败也不让用户干等 30s+
@@ -323,8 +394,9 @@ function libCountText(){
 
 function loadLibraryPage(){
   // 目录与任务互不依赖：并行发起，先到先渲染（原先串行 await 白等一倍时间）
-  libView = libViewMode();
+  _migrateLibPrefs();
   _updateLibViewBtn();
+  _updateLibDensityBtn();
   // 首次进入且尚未导航过时，落到设置里的「媒体库根目录」。
   // （libPath 在脚本加载期就已初始化为当时的 libRoot，此处覆盖为最新配置）
   loadLibrary(libPath);
@@ -1052,8 +1124,12 @@ function _renderLibrary(path, entries, fromCache, ms, source){
     if(a.dir !== b.dir) return a.dir ? -1 : 1;
     return String(a.name).localeCompare(String(b.name), 'zh');
   });
-  libView = libView || libViewMode();
+  // 展示形态：布局（card/list）与密度（comfortable/compact）一起生效。
+  // 这里**不**在缺省时重读 localStorage（`libView || libViewMode()` 那种写法）：
+  // 状态初始化已由 _migrateLibPrefs() 在 loadLibraryPage 里统一完成，
+  // 读两次存储会出现「刚切的密度被旧值盖回去」的竞态。
   _updateLibViewBtn();
+  _updateLibDensityBtn();
   box.innerHTML = (libView === 'card') ? _libCardHtml() : _libTableHtml();
   updateLibActionBar();
 }
@@ -1107,7 +1183,9 @@ function _libCardHtml(){
   // 记录数量用于走查断言：行数多而高度未被限制 = 会变成「一屏全是卡」。
   var box = document.getElementById('libList');
   if(box) box.setAttribute('data-lib-count', String(libEntries.length));
-  var html = '<div class="lib-grid" id="libGrid">';
+  // 密度落在网格类名上（.lib-grid-compact）：列宽由 CSS 决定，
+  // 卡片模板本身**一行为一档**，不在 JS 里拼样式 —— 走查断言要的是渲染后数值。
+  var html = '<div class="lib-grid' + (libDensity === 'compact' ? ' lib-grid-compact' : '') + '" id="libGrid">';
   libEntries.forEach(function(it){
     html += it.dir ? _libDirCardHtml(it) : _libFileCardHtml(it);
   });

@@ -474,7 +474,11 @@
               <span id="libSourceBadge" class="lib-src-badge" style="display:none"></span>
             </span>
             <span>
+              <!-- 展示形态两维（issue #53 追问「信息密度太低了」）：
+                   左 = 布局（卡片 / 表格），右 = 密度（舒适 / 紧凑）。
+                   两个按钮都直接重画当前目录、不发新请求。 -->
               <button class="btn btn-sm btn-outline" id="libViewBtn" onclick="toggleLibView()" aria-label="切换为列表视图">列表视图</button>
+              <button class="btn btn-sm btn-outline" id="libDensityBtn" onclick="toggleLibDensity()" aria-label="切换为紧凑密度" title="当前：舒适（信息更宽松）">紧凑密度</button>
               <button class="btn btn-sm btn-outline" id="libUpBtn" onclick="libGoUp()" disabled>上一级</button>
               <button class="btn btn-sm btn-outline" onclick="refreshLibrary()">刷新</button>
             </span>
