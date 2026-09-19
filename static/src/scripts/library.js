@@ -75,6 +75,34 @@ var libRangeBase = null;
 var qasTasks = [];
 var qasSelected = {};      // QAS 任务的勾选状态：key -> task
 
+// ---------- 任务筛选状态（issue #53 追问：「转存任务的管理可以加入路径筛选」） ----------
+// 为什么需要：任务数常见 200+（实测 291 条），一屏只看得到十几行。想找「电视剧里
+// 有哪些没配好」只能靠人眼翻 6 屏 —— 这是纯粹的体力活。
+//
+// 三段式，从粗到细：
+//   path   —— 转存路径包含（核心诉求，输入框 + 前缀 chips 两个入口写同一个变量）
+//   name   —— 任务名包含（找到那一条）
+//   分页   —— 有界首屏，避免 291 行全渲染
+//
+// 两个刻意的设计：
+//  1. **筛选只在内存里做**（/api/qas/tasks 本来就是一次全量拉回），
+//     不发新请求：输入即筛选，不会因为打字而打爆 QAS。
+//  2. **筛选后勾选的一律是「看得见的行」**。删除按钮的文案会如实写出
+//     「全部 N 条 / 筛选结果 N 条」，见 _qasVisibleKeys / doDeleteQasTasks。
+var qasFilter = { path: '', name: '' };
+// 分页状态。筛选条件一变就回到第 1 页 —— 否则「第 7 页 + 新筛选」会得到空列表，
+// 用户只会认为「筛选坏了」。
+var qasPageNo = 1;
+var qasPageSize = (function(){
+  try{
+    var n = parseInt(localStorage.getItem('qas_page_size'), 10);
+    if([10,20,50,100].indexOf(n) >= 0) return n;
+  }catch(e){}
+  return 20;
+})();
+var QAS_CHIP_LIMIT = 12;   // 路径前缀 chips 最多显示几个（其余归入输入框）
+var QAS_CHIP_MIN = 3;      // 前缀至少出现几次才配得上一个 chip（避免全是「只有 1 条」）
+
 // 目录响应缓存：短时间内重复进入同一目录直接复用，避免无谓往返。
 // 只缓存「成功」结果；失败不缓存，用户重试才会真的重试。
 var LIB_CACHE_TTL = 60000;
@@ -389,6 +417,184 @@ async function loadQasTasks(){
   _renderQasTasks();
 }
 
+// ---------- 任务筛选（issue #53 追问） ----------
+
+// 大小写不敏感的子串匹配。QAS 的路径/任务名可能含全角与大小写混排，
+// 这里统一走 toLowerCase()；中文不受影响，英文路径（/TV、/Anime）能对齐。
+function _qasMatch(t){
+  var p = qasFilter.path.trim().toLowerCase();
+  var n = qasFilter.name.trim().toLowerCase();
+  if(p){
+    var sp = String(t.savepath == null ? '' : t.savepath).toLowerCase();
+    if(sp.indexOf(p) < 0) return false;
+  }
+  if(n){
+    var tn = String(t.taskname == null ? '' : t.taskname).toLowerCase();
+    if(tn.indexOf(n) < 0) return false;
+  }
+  return true;
+}
+
+function filteredQasTasks(){
+  return qasTasks.filter(_qasMatch);
+}
+
+function qasFilterActive(){
+  return !!(qasFilter.path.trim() || qasFilter.name.trim());
+}
+
+// 当前页可见的任务。**这是删除安全的唯一依据**：任何批量操作都必须经过这里，
+// 否则「筛选出 5 条却删掉 291 条」。
+function _qasVisibleTasks(){
+  var out = filteredQasTasks();
+  if(qasPageSize > 0){
+    var start = (qasPageNo - 1) * qasPageSize;
+    out = out.slice(start, start + qasPageSize);
+  }
+  return out;
+}
+
+function _qasVisibleKeys(){
+  return _qasVisibleTasks().map(qasKey);
+}
+
+// 筛选条件变化：回到第 1 页（理由见 qasPageNo 的注释），再重渲染。
+// 勾选**不清空**，但会把「已选但已被筛掉」的行在操作条里如实标注出来 ——
+// 静默带着隐藏的勾选去删除，是这类界面最危险的行为。
+// 输入框 → 模型的**唯一**入口。
+// 踩坑记录：最初这里只写「重置页码 + 重渲染」，以为输入框的 value 会被渲染逻辑
+// 自动收编 —— 结果打字时 input 事件确实在跑、界面却纹丝不动（模型永远是空的），
+// 走查脚本第 1 条断言就把它抓出来了（「输入 /影视/电视剧 后仍是 9 行」）。
+// 从这里读写 value，再交给 _renderQasFilterBar 做回写，保证模型是唯一真相。
+function onQasFilterInput(){
+  var p = document.getElementById('qasFilterPath');
+  var n = document.getElementById('qasFilterName');
+  qasFilter.path = p ? p.value : '';
+  qasFilter.name = n ? n.value : '';
+  qasPageNo = 1;
+  _renderQasTasks();
+}
+
+function onQasFilterKeydown(e){
+  if(!e) return;
+  if(e.key === 'Escape'){
+    // 只清筛选，不影响媒体库的选择（Esc 在媒体库里的语义见 _libKeydown）
+    if(qasFilterActive()){
+      clearQasFilter();
+      e.stopPropagation();
+      e.preventDefault();
+    }
+  }else if(e.key === 'Enter'){
+    qasPageNo = 1;
+    _renderQasTasks();
+    e.preventDefault();
+  }
+}
+
+function setQasPathFilter(v){
+  qasFilter.path = v == null ? '' : String(v);
+  qasPageNo = 1;
+  var el = document.getElementById('qasFilterPath');
+  if(el) el.value = qasFilter.path;
+  _renderQasTasks();
+}
+
+function clearQasFilter(){
+  qasFilter.path = '';
+  qasFilter.name = '';
+  qasPageNo = 1;
+  var p = document.getElementById('qasFilterPath');
+  if(p) p.value = '';
+  var n = document.getElementById('qasFilterName');
+  if(n) n.value = '';
+  _renderQasTasks();
+}
+
+function setQasPageSize(v){
+  var n = parseInt(v, 10);
+  qasPageSize = [10,20,50,100].indexOf(n) >= 0 ? n : 20;
+  try{ localStorage.setItem('qas_page_size', String(qasPageSize)); }catch(e){}
+  qasPageNo = 1;
+  _renderQasTasks();
+}
+
+function qasPage(delta){
+  var pages = _qasPageCount();
+  var next = qasPageNo + delta;
+  if(next < 1 || next > pages) return;
+  qasPageNo = next;
+  _renderQasTasks();
+}
+
+function _qasPageCount(){
+  if(!qasPageSize) return 1;
+  var total = filteredQasTasks().length;
+  return Math.max(1, Math.ceil(total / qasPageSize));
+}
+
+// 路径前缀 chips：把 291 条任务的 savepath 归并成「前 2 层」的分类，
+// 命中最多的排前面并标注条数 —— 用户点之前就知道会筛出多少条。
+//
+// 为什么取 2 层：实测路径形如 /影视/电视剧/瑞克和莫蒂 第九季，
+// 第 1 层（/影视）太粗（等于不筛），第 3 层已经接近单条任务（等于搜索）。
+function _qasPathPrefixes(){
+  var counts = {}, order = [];
+  qasTasks.forEach(function(t){
+    var segs = String(t.savepath == null ? '' : t.savepath).split('/').filter(Boolean);
+    if(!segs.length) return;
+    var key = '/' + segs.slice(0, 2).join('/');
+    if(counts[key] == null){ counts[key] = 0; order.push(key); }
+    counts[key]++;
+  });
+  return order
+    .filter(function(k){ return counts[k] >= QAS_CHIP_MIN; })
+    .sort(function(a, b){ return counts[b] - counts[a] || (a < b ? -1 : 1); })
+    .slice(0, QAS_CHIP_LIMIT)
+    .map(function(k){ return { path: k, n: counts[k] }; });
+}
+
+function _renderQasFilterBar(){
+  var bar = document.getElementById('qasFilterBar');
+  if(!bar) return;
+  // 没有任务时筛什么筛：整条筛选栏藏起来，不给空界面加控件
+  bar.style.display = qasTasks.length ? 'flex' : 'none';
+
+  // 输入框与状态同步（重渲染 / chips 点击 / 程序化设置都走这里，单一出口）
+  var pEl = document.getElementById('qasFilterPath');
+  if(pEl && pEl.value !== qasFilter.path) pEl.value = qasFilter.path;
+  var nEl = document.getElementById('qasFilterName');
+  if(nEl && nEl.value !== qasFilter.name) nEl.value = qasFilter.name;
+
+  var clearBtn = document.getElementById('qasFilterClear');
+  if(clearBtn) clearBtn.disabled = !qasFilterActive();
+
+  // 路径前缀 chips
+  var chips = document.getElementById('qasPathChips');
+  if(chips){
+    var pref = _qasPathPrefixes();
+    var html = pref.map(function(pf){
+      var on = qasFilter.path === pf.path;
+      return '<button type="button" class="task-chip' + (on ? ' on' : '') + '"' +
+        ' title="' + esc('转存路径以 ' + pf.path + ' 开头 · ' + pf.n + ' 条') + '"' +
+        ' onclick="setQasPathFilter(' + jsArg(on ? '' : pf.path) + ')">' +
+        esc(pf.path) + '<i>' + pf.n + '</i></button>';
+    }).join('');
+    chips.innerHTML = html;
+    chips.style.display = pref.length ? 'flex' : 'none';
+  }
+
+  // 分页控件
+  var pages = _qasPageCount();
+  var pos = document.getElementById('qasPagerPos');
+  if(pos) pos.textContent = '第 ' + qasPageNo + ' / ' + pages + ' 页';
+  var prev = document.getElementById('qasPrev');
+  if(prev) prev.disabled = qasPageNo <= 1;
+  var next = document.getElementById('qasNext');
+  if(next) next.disabled = qasPageNo >= pages;
+  var sizeEl = document.getElementById('qasPageSize');
+  if(sizeEl && String(sizeEl.value) !== String(qasPageSize)) sizeEl.value = String(qasPageSize);
+}
+
 // QAS 任务的定位键：QAS 不保证 taskname 唯一，故用 taskname + savepath。
 // 刷新后若任务被改名/移动，键会自然失配（勾选清空），不会误删别的任务。
 //
@@ -408,6 +614,8 @@ function _renderQasTasksError(message){
   if(!box) return;
   var cnt = document.getElementById('qasTaskCount');
   if(cnt) cnt.textContent = '';
+  var bar = document.getElementById('qasFilterBar');
+  if(bar) bar.style.display = 'none';
   box.innerHTML = '<div class="empty-state" style="padding:24px 20px">' +
     '<div class="empty-title">读取失败</div>' +
     '<div class="empty-desc">' + esc(message || '请检查 QAS 配置') + '</div>' +
@@ -416,23 +624,58 @@ function _renderQasTasksError(message){
   updateQasActionBar();
 }
 
+// 计数文案：筛选生效时必须同时给出「筛出多少 / 总共多少」。
+// 只显示「共 8 条」会让用户以为任务被删了；只显示总数则看不出筛选效果。
+function _qasCountText(){
+  var total = qasTasks.length;
+  if(!total) return '';
+  var n = filteredQasTasks().length;
+  if(!qasFilterActive()) return '共 ' + total + ' 条';
+  return '筛选出 ' + n + ' / ' + total + ' 条';
+}
+
 function _renderQasTasks(){
   var box = document.getElementById('qasTaskList');
   if(!box) return;
+  _renderQasFilterBar();
+
   var cnt = document.getElementById('qasTaskCount');
-  if(cnt) cnt.textContent = qasTasks.length ? '共 ' + qasTasks.length + ' 条' : '';
+  if(cnt) cnt.textContent = _qasCountText();
+
   if(!qasTasks.length){
     box.innerHTML = '<div class="empty-state" style="padding:24px 20px"><div class="empty-title">暂无任务</div></div>';
     updateQasActionBar();
     return;
   }
-  var html = '<div class="lib-table lib-table-tasks">';
-  html += '<div class="lib-row lib-head"><span class="lib-cb"></span><span>任务名</span><span>转存路径</span><span>分享链接</span><span></span></div>';
-  qasTasks.forEach(function(t){
+
+  // 页码越界兜底：筛选/删除后总页数会变小，qasPageNo 可能指到空页
+  var pages = _qasPageCount();
+  if(qasPageNo > pages) qasPageNo = pages;
+
+  var rows = _qasVisibleTasks();
+  if(!rows.length){
+    box.innerHTML = '<div class="task-filter-empty">没有匹配的任务。' +
+      '<button class="btn btn-sm btn-outline" style="margin-left:8px" onclick="clearQasFilter()">清除筛选</button></div>';
+    updateQasActionBar();
+    return;
+  }
+
+  var head = '<div class="lib-row lib-head"><span class="lib-cb"></span><span>任务名</span><span>转存路径</span><span>分享链接</span><span></span></div>';
+  if(qasPageSize && filteredQasTasks().length > qasPageSize){
+    var start = (qasPageNo - 1) * qasPageSize + 1;
+    var end = (qasPageNo - 1) * qasPageSize + rows.length;
+    head = '<div class="lib-row lib-head"><span class="lib-cb"></span><span>任务名</span>' +
+      '<span>转存路径</span><span>分享链接</span>' +
+      '<span class="lib-ops" style="color:var(--text3);font-weight:400">' + start + '–' + end + '</span></div>';
+  }
+  var html = '<div class="lib-table lib-table-tasks">' + head;
+  rows.forEach(function(t){
     var key = qasKey(t);
     // 行内只带 key（不把任务名拼进 onclick 字符串），避免引号/特殊字符破坏属性
     html += '<div class="lib-row">' +
-      '<span class="lib-cb"><input type="checkbox" aria-label="选择 ' + esc(t.taskname) + '" onchange="toggleQasSelect(' + jsArg(key) + ', this.checked)"></span>' +
+      '<span class="lib-cb"><input type="checkbox" aria-label="选择 ' + esc(t.taskname) + '"' +
+        (qasSelected[key] ? ' checked' : '') +
+        ' onchange="toggleQasSelect(' + jsArg(key) + ', this.checked)"></span>' +
       '<span class="lib-name" title="' + esc(t.taskname) + '">' + esc(t.taskname || '—') + '</span>' +
       '<span class="lib-sub" title="' + esc(t.savepath) + '">' + esc(t.savepath || '—') + '</span>' +
       '<span class="lib-sub">' + (t.shareurl ? '<a href="' + esc(t.shareurl) + '" target="_blank" rel="noopener noreferrer">链接</a>' : '—') + '</span>' +
@@ -462,23 +705,49 @@ function updateQasActionBar(){
   var bar = document.getElementById('qasActionBar');
   var n = Object.keys(qasSelected).length;
   if(bar) bar.style.display = qasTasks.length ? 'flex' : 'none';
+
   var cnt = document.getElementById('qasSelCount');
-  if(cnt) cnt.textContent = n ? '已选 ' + n + ' 条' : '';
+  if(cnt){
+    var txt = n ? '已选 ' + n + ' 条' : '';
+    // 勾选里有「当前筛选/当前页看不到的」行时如实标出。
+    // 静默带着隐藏勾选去删除是最危险的失败模式（删的比看到的多）。
+    if(n){
+      var visible = {};
+      _qasVisibleKeys().forEach(function(k){ visible[k] = 1; });
+      var hidden = Object.keys(qasSelected).filter(function(k){ return !visible[k]; }).length;
+      if(hidden) txt += '（其中 ' + hidden + ' 条不在当前筛选/页内）';
+    }
+    cnt.textContent = txt;
+  }
+
   var btn = document.getElementById('qasDelBtn');
   if(btn) btn.disabled = n === 0;
+
+  // 表头全选框只对「当前可见行」负责：筛选后点全选，语义是「全选这 N 条可见的」。
+  var vis = _qasVisibleKeys();
+  var visSel = vis.filter(function(k){ return !!qasSelected[k]; }).length;
   var all = document.getElementById('qasSelAll');
   if(all){
-    all.checked = n > 0 && n === qasTasks.length;
-    all.indeterminate = n > 0 && n < qasTasks.length;
+    all.checked = vis.length > 0 && visSel === vis.length;
+    all.indeterminate = visSel > 0 && visSel < vis.length;
+    all.disabled = vis.length === 0;
+    all.title = qasFilterActive() || qasPageSize
+      ? '选择当前筛选/页内可见的 ' + vis.length + ' 条'
+      : '选择本目录全部条目';
   }
 }
 
+// 全选/取消全选**只作用于当前可见行**（筛选结果 + 当前页）。
+// 旧实现是 qasSelected = {} 后遍历 qasTasks 全量勾选 —— 加了筛选/分页之后，
+// 那等于「看着 20 行、点一下全选，实际勾上 291 条」。这里改成只动可见行，
+// 且**保留**范围外的已有勾选（用户可能先勾了几条再翻页）。
 function toggleQasSelectAll(on){
-  qasSelected = {};
-  if(on){
-    qasTasks.forEach(function(t){ qasSelected[qasKey(t)] = t; });
-  }
+  _qasVisibleTasks().forEach(function(t){
+    var key = qasKey(t);
+    if(on) qasSelected[key] = t; else delete qasSelected[key];
+  });
   // 重渲染以同步表头的全选态与各行的勾选框
+  if(!on && qasSelected && !Object.keys(qasSelected).length) qasSelected = {};
   _renderQasTasks();
 }
 
@@ -538,7 +807,14 @@ function deleteSelectedQasTasks(){
     var t = qasSelected[k];
     return { taskname: t.taskname, savepath: t.savepath };
   });
-  doDeleteQasTasks(items, '所选的 ' + items.length + ' 条任务');
+  // 文案里写清「在哪批里选的」：筛选生效时只说「所选 5 条」，用户会怀疑
+  // 「我明明有 200 条任务，它是不是要全删」。把筛选条件复述出来成本最低。
+  var scope = qasFilterActive()
+    ? '（筛选：' + [qasFilter.path.trim() ? '路径含「' + qasFilter.path.trim() + '」' : '',
+                    qasFilter.name.trim() ? '任务名含「' + qasFilter.name.trim() + '」' : '']
+        .filter(Boolean).join('、') + '）'
+    : '';
+  doDeleteQasTasks(items, '所选的 ' + items.length + ' 条任务' + scope);
 }
 
 // ---------- 网盘文件 ----------

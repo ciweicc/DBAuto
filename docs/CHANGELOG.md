@@ -1,3 +1,65 @@
+## [当前] QAS 转存任务路径筛选：路径/任务名筛选 + 前缀 chips + 分页（issue #53 追问）
+
+> 对应 [issue #53](https://cnb.cool/ciweicc/DBAuto/-/issues/53) 的后续追问：
+> 「我希望这个转存任务的管理。可以加入路径筛选功能」（附 291 条任务的截图）。
+>
+> 现象：QAS 转存任务列表一次拉回 200+ 条（截图里 291 条），一屏只看得到十几行。
+> 想找「电视剧里还有哪些任务」只能靠人眼翻 6 屏 —— 纯粹的体力活，
+> 而且没有任何「现在看的是哪一批」的反馈。
+
+**做了什么**
+
+三段式筛选，从粗到细：
+
+| 入口 | 行为 |
+| --- | --- |
+| 路径包含 | 输入即筛（不发新请求），大小写不敏感 |
+| 路径前缀 chips | 把 savepath 归并成「前 2 层」分类，标出命中条数，点击即筛、再点取消 |
+| 任务名包含 | 与路径筛选取**交集**（AND），用于收窄到单条 |
+| 分页 | 每页 10/20/50/100（默认 20，存 localStorage），筛选变了自动回第 1 页 |
+
+计数文案在筛选生效时同时给出「筛选出 N / M 条」—— 只显示总数会让用户
+以为任务被删了，只显示筛出数则看不出筛选幅度。
+
+**删除安全（本轮最要紧的部分）**
+
+加了筛选之后，「全选」和「删除所选」的语义必须同步收窄，否则会出现
+「看着 19 行、点一下全选、实际勾上 291 条」这种删得比看得多的失败模式。三处收口：
+
+1. `toggleQasSelectAll` 只遍历 `_qasVisibleTasks()`（筛选结果 + 当前页），
+   且**保留**范围外的已有勾选（用户可能先勾了几条再翻页）；
+2. 操作条如实标出「已选 N 条（其中 K 条不在当前筛选/页内）」——
+   隐藏勾选绝不静默；
+3. 删除确认框复述作用域：「所选的 19 条任务（筛选：路径含「/影视/电视剧」）」。
+
+**踩到并修掉的坑（先复现、后修）**
+
+1. **输入框不喂模型**：`onQasFilterInput` 最初只写「重置页码 + 重渲染」，
+   以为 value 会被渲染逻辑自动收编 —— 结果 `input` 事件确实在触发、
+   界面纹丝不动，`qasFilter` 永远是空的。
+   → 从输入框读 value 进模型，`_renderQasFilterBar` 负责回写，模型是唯一真相。
+   走查脚本第 1 条断言（「输入后仍渲染全部行」）把它抓出来。
+2. **全选越界**：旧实现 `qasSelected = {}` 后遍历全量 `qasTasks`。
+   → 改为只动可见行，`_qasVisibleKeys()` 成为批量操作的唯一范围依据。
+3. **重渲染丢掉勾选态**：加了分页后行会重建，渲染时若不回写 `checked`，
+   翻页回来勾选就「看着没了」（其实还在状态里）。→ 行模板按 `qasSelected[key]` 出 `checked`。
+4. **页码越界**：筛选/删除后总页数会变小，`qasPageNo` 可能指到空页。
+   → 渲染前兜底夹紧到 `_qasPageCount()`。
+
+**验证证据**
+
+- `python -m pytest tests/ -q` → **433 passed**（新增 6 条静态门禁）
+- `python scripts/check_library_task_filter_dom.py --serve` → **0 处问题**
+  （新增走查：真打字、真点 chip、真读渲染后的行文本与勾选框 DOM，25 条桩任务）
+- **断言有牙齿**：把 `toggleQasSelectAll` 人为改回「全量勾选」重跑，
+  走查立刻报 5 处问题（「被筛掉的行在解除筛选后仍是勾选态」等），改回即 0
+- 连带回归全绿：`check_library_dom.py` / `check_library_keys_dom.py` /
+  `check_overview_dom.py` / `check_settings_dom.py` / `check_log_panel_dom.py` /
+  `check_login_dom.py` / `check_discovery_dom.py` / `check_tmdb_filters_dom.py` /
+  `check_checkbox_dom.py` 各 0 处问题；`check_contrast.py` 18 组 0 组未达标；
+  `ruff check .` 通过
+- 产物重建幂等（`bash static/src/build.sh` 后无额外 diff）
+
 ## [当前] 媒体库键盘选择：Ctrl/⌘+A 全选、Shift 范围连选、↑↓ 移当前行（issue #53）
 
 > 对应 [issue #53](https://cnb.cool/ciweicc/DBAuto/-/issues/53)：

@@ -1790,6 +1790,40 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   border:1px solid var(--border2);border-radius:var(--radius-xs);
   background:var(--field-bg);color:var(--text2)}
 @media(max-width:900px){.lib-keyhint{display:none}}
+@media(max-width:600px){
+  .task-filter{padding:8px 10px}
+  .task-filter-fld{flex:1 1 100%}
+  .task-pager{width:100%;margin-left:0;justify-content:space-between}
+}
+
+/* ---------- 任务筛选栏（issue #53 追问：路径筛选） ----------
+   291 条任务、一屏十几行，用户真正想找的是「某一类路径下的一批任务」。
+   这里给三层入口，从粗到细：路径前缀 chips（一眼看到有哪些分类）→
+   路径包含（自由输入）→ 任务名包含（收窄到单条）。
+   筛选在前端内存里做，不发新请求；分页是为了「有界首屏」（291 行全渲染 ≈ 6 屏高）。 */
+.task-filter{display:flex;flex-direction:column;gap:8px;margin:0 0 10px;
+  padding:10px 12px;border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--accent-wash, rgba(10,132,255,.08))}
+.task-filter-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.task-filter-fld{display:flex;align-items:center;gap:6px;flex:1 1 240px;min-width:0}
+.task-filter-label{font-size:12px;color:var(--text3);white-space:nowrap}
+.task-filter-fld input[type=search]{flex:1 1 auto;min-width:0}
+/* 路径前缀 chips：命中数写在 chip 里，点之前就知道会筛出多少条 */
+.task-filter-chips{gap:6px}
+.task-chip{display:inline-flex;align-items:center;gap:5px;padding:4px 10px;
+  border:1px solid var(--border2);border-radius:999px;background:var(--field-bg);
+  color:var(--text2);font-size:12px;line-height:1.4;cursor:pointer;max-width:260px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.task-chip:hover{border-color:var(--accent);color:var(--text1)}
+.task-chip.on{background:var(--accent-wash-strong, rgba(10,132,255,.14));
+  border-color:var(--accent);color:var(--accent)}
+.task-chip i{font-style:normal;color:var(--text3);font-variant-numeric:tabular-nums}
+.task-chip.on i{color:inherit}
+.task-pager{display:flex;align-items:center;gap:8px;margin-left:auto}
+.task-pager-pos{font-size:12px;color:var(--text3);font-variant-numeric:tabular-nums}
+.task-pager-size{display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text3)}
+.task-pager-size select{padding:2px 6px;font-size:12px}
+.task-filter-empty{padding:20px;text-align:center;color:var(--text3);font-size:13px}
 
 /* ---------- 卡片视图（等高紧凑卡，issue #27 观感重做） ----------
    用户先反馈「排版太丑、很乱」，改完又反馈「有一些有图，有一些没图，干脆不要图了」。
