@@ -2064,7 +2064,7 @@ def test_library_cards_show_modified_time(dist):
         assert gone in css, "未在窄卡下隐藏完整格式" 
 
     # 3. 列表视图：表头与数据列都要有时间语义
-    table_fn = js[js.index("function _libTableHtml("):js.index("// ---------- 卡片视图")]
+    table_fn = js[js.index("function _libTableHtml("):js.index("function _libMetaText(")]
     assert "修改时间</span>" in table_fn, "列表视图表头缺少「修改时间」列"
     assert "fmtTs(it.updated_at)" in table_fn, "列表视图未渲染修改时间"
     assert "lib-sub-time" in table_fn, "列表视图时间列未使用专用样式"
@@ -2960,7 +2960,7 @@ def test_library_cache_never_asserts_data_source(dist):
 
     # _renderLibrary 在 source 为 null 时必须**原样保留**当前状态
     # （无条件覆盖会把回落原因清空，留下一个自相矛盾的状态）
-    render = js[js.index("function _renderLibrary("):js.index("// ---------- 列表视图")]
+    render = js[js.index("function _renderLibrary("):js.index("function _libCardHtml(")]
     assert "if(source){" in render, \
         "_renderLibrary 未区分「无 source 断言」与「source 为空对象」"
     assert "if(source && source.source) libSource = source.source;" not in render, \
@@ -2974,7 +2974,7 @@ def test_library_error_state_clears_stale_source_badge(dist):
     显示「读取失败」和一个关于上一轮的陈旧徽标，用户据此判断时必然出错。
     """
     js = _read(os.path.join(_JS_DIR, "library.js"))
-    err = js[js.index("function _renderLibError("):js.index("// 渲染一次目录")]
+    err = js[js.index("function _renderLibError("):js.index("function _renderLibrary(")]
     assert "libSource = 'openlist';" in err, \
         "失败态未把数据源重置为唯一事实（openlist）"
     assert "libFallback = false;" in err, \
@@ -3136,7 +3136,7 @@ def test_library_keyboard_resets_state_on_dir_change(dist):
     去算新列表的下标，选出来的范围莫名其妙。
     """
     js = _read(os.path.join(_JS_DIR, "library.js"))
-    render = js[js.index("function _renderLibrary("):js.index("// ---------- 列表视图")]
+    render = js[js.index("function _renderLibrary("):js.index("function _libCardHtml(")]
     for token in ("libFocusKey = null", "libSelectAnchor = null", "libRangeBase = null"):
         assert token in render, \
             "重渲染未重置键盘状态 {}（换目录后选择会串味）".format(token)
@@ -3558,6 +3558,109 @@ def test_qas_keyboard_page_turn_on_arrow_at_edge(dist):
     for token in ("_qasKeydown", "qasRowClick", "qasSelectAll", "qasKeyHint"):
         assert token in dist, "产物未包含{}（需重跑 build.sh）".format(token)
 
+
+def test_qas_view_switch_entry_and_source_of_truth(dist):
+    """QAS 任务表必须有「列表视图 / 卡片视图」切换入口（issue #57 追问）。
+
+    用户诉求原文：给「QAS 转存任务」那一屏的截图配了一句
+    「夸克自动转存模块增加列表视图和卡片视图的切换按钮」。
+
+    本用例钉的是**入口存在 + 状态只有一个真相**这两条静态事实
+    （「点下去真的换了布局」只能在渲染后判定，见
+    scripts/check_qas_view_dom.py）：
+
+      1. 卡片标题行上有 #qasViewBtn，onclick 指向 toggleQasView；
+      2. 默认是**列表视图**（任务是配置不是内容，一屏扫更多条更重要）；
+      3. 偏好存在**独立**的存储键 qas_view 里 —— 与媒体库的 lib_view 分开：
+         两张表是两件事，共用一个键会让切这张表顺手把那张表也改掉；
+      4. 布局只在一处分流（_renderQasTasks 末尾按 qasView 选渲染函数），
+         筛选/分页/空态/计数对两种布局共用 —— 分叉写两遍必然漂移；
+      5. 键盘的行查询必须同时认 .lib-row 与 .lib-card，否则
+         「切成卡片视图后快捷键静默失效」；
+      6. 产生物已重建。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    body = _read(os.path.join(_SRC, "body.html"))
+    css = _read(_CSS_MAIN)
+
+    # 1. 入口
+    qas_card = body[body.index('id="qasCard"'):body.index('id="qasTaskList"')]
+    assert 'id="qasViewBtn"' in qas_card, "QAS 任务卡片标题行缺少视图切换按钮"
+    assert "toggleQasView()" in qas_card, "视图切换按钮未绑定 toggleQasView()"
+    assert "卡片视图" in qas_card, "按钮缺少「卡片视图」文案"
+
+    # 2. 默认列表视图 + 独立存储键
+    assert "var qasView = 'list';" in js, "QAS 默认应是列表视图（加开关不该换默认观感）"
+    assert "var QAS_VIEW_KEY = 'qas_view';" in js, "QAS 布局偏好未使用独立存储键"
+    assert "QAS_VIEW_KEY" in js and "LIB_VIEW_KEY" in js, "两种布局偏好需各自的键"
+    # 读存储的入口只认合法值（非法值回落默认，不能让一个脏值把界面搞成空白）
+    mode = js[js.index("function qasViewMode("):js.index("function _applyQasView(")]
+    assert "QAS_VIEWS.indexOf(v) >= 0" in mode, "QAS 布局偏好未做合法性校验"
+    assert "return 'list'" in mode, "非法/缺失时应回落到默认的列表视图"
+
+    # 3. 一处分流
+    render = js[js.index("function _renderQasTasks("):js.index("// ---------- QAS 列表视图")]
+    assert "qasView === 'card'" in render, "渲染器未按 qasView 分流"
+    assert "_qasCardHtml(" in render and "_qasTableHtml(" in render, \
+        "两种布局的渲染函数未接进 _renderQasTasks（会在别处再分一份叉）"
+    # 空态 / 筛选 / 分页逻辑在分流**之前**，两种布局共用
+    assert render.index("_renderQasFilterBar()") < render.index("qasView === 'card'"), \
+        "筛选栏渲染排在了布局分流之后：卡片视图下筛选会失效"
+
+    # 4. 键盘行查询覆盖卡片视图
+    rows_fn = js[js.index("function qasRowEls("):js.index("function _qasFocusIdx(")]
+    assert ".lib-card" in rows_fn, \
+        "键盘行查询未覆盖卡片视图（切成卡片后快捷键会静默失效）"
+    kd = js[js.index("function _qasKeydown("):js.index("function kbPageAvailable(")]
+    assert "ArrowLeft" in kd or "ArrowRight" in kd, \
+        "卡片视图没有左右方向键（网格里按 ↑↓ 只会滚页面）"
+    assert "qasView !== 'card'" in kd, \
+        "↑↓ 未按布局让位（卡片视图下抢 ↑↓ = 用户想滚页面却看到当前行乱跳）"
+
+    # 5. 样式：任务卡允许路径折两行（卡片视图存在的意义是「看得见信息」）
+    assert ".lib-card-task .lib-card-path{" in css, "缺少任务卡的路径样式"
+    task_css = css[css.index(".lib-card-task .lib-card-path{"):]
+    task_css = task_css[:task_css.index("}")]
+    assert "line-clamp:2" in task_css and "white-space:normal" in task_css, \
+        "任务卡路径未折行（单行省略会把最能确认身份的前缀切掉）"
+
+    # 6. 产物已重建
+    for token in ("qasViewBtn", "toggleQasView", "qasViewMode", "_qasCardHtml",
+                  "lib-card-task", "qas_view"):
+        assert token in dist, "产物未包含{}（需重跑 build.sh）".format(token)
+
+
+def test_qas_view_toggle_does_not_break_selection_contract(dist):
+    """切布局不得破坏「删除靠什么」这条契约（issue #57 追问的连带风险）。
+
+    卡片视图最危险的失败模式不是「卡片不好看」，而是**删错东西**：
+    删任务走的是 data-key（见 deleteQasTask / qasKey），一旦卡片漏了 data-key、
+    或者卡片与表格的 key 生成口径不同，就会出现「看着选中了「寒战1994」，
+    删掉的是别的任务」——不可逆。
+
+    因此两种布局必须满足同一组契约：
+      1. 每张卡都有 data-key，且 key 由同一个 qasKey() 生成；
+      2. 每张卡都有勾选框与删除入口（少一个 = 那种布局下该功能不存在）；
+      3. 全选的范围仍然是「当前可见行」（_qasVisibleTasks），不因布局而放宽。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    card_fn = js[js.index("function _qasCardHtml("):js.index("function findQasTask(")]
+    assert 'data-key="' in card_fn, "任务卡缺少 data-key（键盘/删除都靠它定位）"
+    assert "qasKey(t)" in card_fn, "任务卡未复用统一的 key 生成口径"
+    assert 'type="checkbox"' in card_fn, "任务卡缺少勾选框"
+    assert "deleteQasTask(" in card_fn, "任务卡缺少删除入口"
+    assert "toggleQasSelect(" in card_fn, "任务卡的勾选框未接到既有的选择入口"
+    assert "qasRowClick(" in card_fn and "qasRowKeydown(" in card_fn, \
+        "任务卡未复用行点击/按键处理器（会变成两套语义）"
+
+    # 全选范围不因布局变化：仍然只勾可见行
+    all_fn = js[js.index("function qasSelectAll("):js.index("function qasClearSelection(")]
+    assert "_qasVisibleTasks()" in all_fn or "_qasVisibleTasks()" in js[
+        js.index("function toggleQasSelectAll("):js.index("---------- 删除 QAS 任务")], \
+        "全选未收敛到「当前可见行」"
+
+    for token in ("data-key", "deleteQasTask", "toggleQasSelect"):
+        assert token in dist, "产物未包含{}（需重跑 build.sh）".format(token)
 
 def test_settings_field_links_point_to_projects(dist):
     """设置页字段标签的「蓝字外链」（issue #57）。

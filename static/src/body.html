@@ -538,6 +538,12 @@
           <div class="card-title" style="justify-content:space-between">
             <span>QAS 转存任务 <span id="qasTaskCount" style="color:var(--text3);font-weight:400"></span></span>
             <span>
+              <!-- 展示布局切换（issue #57 追问：「夸克自动转存模块增加列表视图和卡片
+                   视图的切换按钮」）。这一屏就是「夸克自动转存」的任务清单 —— 227 条
+                   任务全是「任务名 / 转存路径 / 分享链接」三列，表格适合逐列比对；
+                   卡片适合一眼扫任务名。按钮只重画当前页、不发新请求。
+                   与媒体库同一套语义（同一个存储键、同一套键盘），文案随当前视图变。 -->
+              <button class="btn btn-sm btn-outline" id="qasViewBtn" onclick="toggleQasView()" aria-label="切换为卡片视图">卡片视图</button>
               <button class="btn btn-sm btn-outline" onclick="loadQasTasks()">刷新</button>
             </span>
           </div>
@@ -587,7 +593,7 @@
           <div class="lib-keyhint qas-keyhint" id="qasKeyHint" title="Ctrl 在 macOS 上为 ⌘">
             <kbd>Ctrl/⌘</kbd>+<kbd>A</kbd> 全选本页
             <kbd>Shift</kbd>+<kbd>↑↓</kbd> 连选
-            <kbd>↑↓</kbd> 移动（页末接着翻页）
+            <kbd>↑↓</kbd> 移动（卡片视图为 ←→；页末接着翻页）
             <kbd>空格</kbd> 勾选
             <kbd>Esc</kbd> 取消
           </div>

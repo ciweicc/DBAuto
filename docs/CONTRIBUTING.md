@@ -49,6 +49,7 @@
   python scripts/check_library_dom.py --serve    # 媒体库顺序 / 加载反馈 / 快速失败 / 缓存
   python scripts/check_library_keys_dom.py --serve  # 媒体库键盘选择（Ctrl+A / Shift 范围 / ↑↓）
   python scripts/check_qas_keys_dom.py --serve   # QAS 任务表键盘选择（同上 + 可见行范围 / 翻页 / 输入框让路）
+  python scripts/check_qas_view_dom.py --serve   # QAS 任务表「列表 / 卡片」视图切换（入口 / 选择语义 / 持久化 / 几何）
   ```
 
 - 执行日志面板的**信息密度**走查（改动 `log()` 调用或面板渲染后必跑，无需浏览器）：

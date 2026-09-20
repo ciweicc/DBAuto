@@ -1922,6 +1922,30 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
      - 超大目录给网格高度上限（卡片内滚动），底部操作条始终可见。 */
 .lib-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:10px;
   margin-top:10px;align-items:start;max-height:560px;overflow:auto;padding:2px}
+/* QAS 任务卡片（issue #57 追问：「夸克自动转存模块增加列表视图和卡片视图的切换
+   按钮」）。任务卡不是内容卡：没有大小、没有修改时间，只有「任务名 / 转存路径 /
+   分享链接」三件事，所以这里只覆盖「路径折两行」这一处，其余外壳全部复用
+   .lib-card / .lib-grid —— 同尺寸、同 hover、同键盘语义（走查脚本会断言
+   「切布局往返之后网格列数/卡片宽度与媒体库同口径」）。
+   为什么路径要折行：任务名与 savepath 常常只差前后缀
+   （「寒战1994」/「/影视/电影/寒战1994」），单行省略会把最能确认身份的那一段
+   切掉；两行足够放下 /影视/电影/ 这类常见前缀 + 作品名。 */
+.lib-grid-tasks{max-height:640px}
+/* 勾选框对齐到卡片顶部：任务卡比媒体库的卡高（名称 + 2 行路径），
+   垂直居中会让勾选框悬在「名称与路径之间」——扫一列卡时勾选框不在一条直线上。
+   3px 是量出来的：卡片 padding-top 7px，勾选框 18px 时的视觉基线偏移。 */
+.lib-card-task > .lib-card-cb,.lib-card-task > .lib-card-icon{align-self:flex-start;
+  margin-top:3px}
+.lib-card-task .lib-card-path{white-space:normal;overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+/* 卡片右侧操作列：分享链接 + 删除。链接做成小胶囊（和表格里的「链接」同为可点
+   的次要动作），没有链接时给一个不可点的占位，避免同一行里卡片宽度不齐。 */
+.qas-card-ops{display:flex;align-items:center;gap:4px;flex:0 0 auto}
+.qas-card-link{font-size:var(--fs-xs);color:var(--accent);text-decoration:none;
+  padding:2px 6px;border:1px solid var(--border2);border-radius:999px;line-height:1.4;
+  white-space:nowrap}
+.qas-card-link:hover{background:var(--hover-wash)}
+.qas-card-link.off{color:var(--text3);border-style:dashed;cursor:default}
 @media(max-width:900px){.lib-grid{grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}}
 @media(max-width:600px){.lib-grid{grid-template-columns:1fr;gap:8px;max-height:520px}}
 /* 紧凑视图（issue #53 追问：「切换显示密度的功能当前只能列表显示，实在是信息密度太低了」）：
