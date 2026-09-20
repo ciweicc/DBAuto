@@ -253,14 +253,57 @@ MEASURE = r"""
         title: (c.querySelector('.card-title') || {}).textContent || '',
       };
     });
-  // issue #75：分区不再是可见容器，只剩锚点。这里量的是「统一网格的列数」与
+  // issue #75：分区不再是可见容器，只剩锚点。这里量的是「设置项的列数」与
   // 「每张卡的宽度是否同宽」—— 卡片宽度一致才是「设置项不再有一些高有一些低」
   // 的可量化证据。
   const grid = tab.querySelector('.settings-flat');
   const gridR = grid ? grid.getBoundingClientRect() : null;
   const gridStyle = grid ? getComputedStyle(grid) : null;
-  const gridCols = gridStyle
-    ? gridStyle.gridTemplateColumns.split(' ').filter(Boolean).length : 0;
+  // issue #77：布局由 grid 改为多列（column-width）后，列数不再由
+  // gridTemplateColumns 表达（它是 none）。多列容器的计算列数没有直接属性，
+  // 因此按「卡片左边界去重」数出来 —— 同一列的卡片左边界必然相同。
+  // 顺带保留 grid 分支，便于将来回退布局时脚本仍可用。
+  const gridCols = (() => {
+    if (gridStyle && gridStyle.columnCount && gridStyle.columnCount !== 'auto') {
+      return parseInt(gridStyle.columnCount, 10);
+    }
+    const lefts = new Set(cards.map(c => {
+      const el = tab.querySelectorAll('.settings-flat > .card')[c.i];
+      return el ? Math.round(el.getBoundingClientRect().left) : null;
+    }).filter(v => v !== null));
+    return lefts.size || (gridStyle && gridStyle.gridTemplateColumns
+      ? gridStyle.gridTemplateColumns.split(' ').filter(Boolean).length : 0);
+  })();
+  // issue #77（用户原话「空位太多了」）：卡片之间不得再有**行内空洞**。
+  // 基线：一层 grid + align-items:start 时行高由该行最高卡决定，「转存服务」
+  // （700px+）把同排的「搜索服务」（154px）顶出 630px 纯空白。
+  // 度量口径：按卡片左边界分列，列内相邻两卡的纵向间距减掉卡片本身的
+  // margin-bottom（合法间距）后，剩下的即「空洞」。
+  const rowHoles = (() => {
+    const els = [...tab.querySelectorAll('.settings-flat > .card')];
+    const byCol = {};
+    els.forEach(el => {
+      const r = el.getBoundingClientRect();
+      const key = Math.round(r.left);
+      (byCol[key] = byCol[key] || []).push({
+        el, top: Math.round(r.top), bottom: Math.round(r.bottom),
+        mb: parseFloat(getComputedStyle(el).marginBottom) || 0,
+        title: (el.querySelector('.card-title') || {}).textContent || '',
+      });
+    });
+    const holes = [];
+    Object.keys(byCol).forEach(col => {
+      const list = byCol[col].sort((a, b) => a.top - b.top);
+      for (let i = 1; i < list.length; i++) {
+        const gap = list[i].top - list[i - 1].bottom - list[i - 1].mb;
+        if (gap > 1) {
+          holes.push({col: parseInt(col, 10), above: list[i - 1].title.trim(),
+                      below: list[i].title.trim(), gap: Math.round(gap)});
+        }
+      }
+    });
+    return holes;
+  })();
   const anchors = [...tab.querySelectorAll('.set-anchor')].map(a => {
     const r = a.getBoundingClientRect();
     // 锚点必须脱离排布：零尺寸（或至少不占网格单元格）
@@ -385,6 +428,7 @@ MEASURE = r"""
     cards,
     groups,
     gridCols,
+    rowHoles,
     anchors,
     density,
     fieldRows,
@@ -524,13 +568,27 @@ def main():
                 # 旧实现同屏出现 660px 与 1400px 两种卡宽（分组宽度随卡片数跳变）、
                 # 154px 与 290px 两种卡高（分组边框等高拉伸），用户原话
                 # 「当前的设置项太乱了，有一些高，有一些低」。
-                # 统一网格后卡片宽度只由列轨道决定，必然同宽：宽度极差 >1px 即为回归。
+                # 瀑布流里卡片宽度只由列宽决定，必然同宽：宽度极差 >1px 即为回归。
                 widths = [c["w"] for c in m["cards"]]
                 if widths and (max(widths) - min(widths)) > 1:
                     worst = sorted(widths)
                     fail("设置卡宽度不一致（{}~{}px，极差 {}px）："
                          "设置项应同宽，「有一些高，有一些低」正是由此而来".format(
                              worst[0], worst[-1], worst[-1] - worst[0]))
+
+                # issue #77（用户原话「空位太多了」）：卡片之间不得再有**行内空洞**。
+                # 基线：一层 grid + align-items:start 时，行高由该行最高的卡决定，
+                # 「转存服务」（700px+）把同排的「搜索服务」（154px）顶出 630px 空白
+                # —— 卡片外的大片空洞，比卡片内的空白更刺眼。
+                # 多列瀑布流后卡片按列咬合，列内相邻卡只应相隔卡片自身的 margin。
+                holes = m.get("rowHoles") or []
+                if holes:
+                    worst_hole = max(holes, key=lambda h: h["gap"])
+                    fail("设置卡之间存在行内空洞 {} 处（最大 {}px："
+                         "「{}」下方空到「{}」）：同排短卡被最高卡顶出大片空白，"
+                         "「空位太多了」正是由此而来".format(
+                             len(holes), worst_hole["gap"],
+                             worst_hole["above"], worst_hole["below"]))
 
                 if m.get("anchors") is not None:
                     if len(m["anchors"]) != 4:
@@ -542,7 +600,7 @@ def main():
                                      a["id"], a["w"], a["h"]))
 
                 if m.get("gridCols", 0) < 1:
-                    fail("未找到统一卡片网格 .settings-flat")
+                    fail("未找到设置项容器 .settings-flat（或列数为 0）")
 
                 if m["docOverflowX"] > 0:
                     fail("文档横向溢出 {}px".format(m["docOverflowX"]))
