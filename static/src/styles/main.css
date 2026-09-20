@@ -1097,36 +1097,43 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .set-jump-chip.active{color:var(--accent);border-color:var(--accent);background:var(--accent-wash)}
 .set-jump-chip:focus-visible{outline:none;box-shadow:var(--focus-ring)}
 
-/* ===== 设置项：统一卡片网格（issue #75） ===== */
-/* 历史包袱：此前是「分组 <details> + 组内网格」两层结构。
-   分组宽度随卡片数在 1 列 / 2 列之间跳动（660px 卡 vs 1400px 卡同屏），
-   组内卡片又被分组边框等高拉伸（154px 卡被拉到 290px），
-   于是同一屏里既有两种卡宽又有两种卡高，短卡下方大片纯空白
-   —— 用户原话「当前的设置项太乱了，有一些高，有一些低」。
-   改为**一层**统一网格：所有卡片同宽、同内边距、按内容自然高度紧密排布。
-   分组不再渲染可见边框，分组语义由顶部 chips + 分区锚点承载。 */
+/* ===== 设置项：统一卡片瀑布流（issue #75 → #77） ===== */
+/* 演进史（两轮，都别退回去）：
+   1) 最初是「分组 <details> + 组内网格」两层结构，分组的宽度随卡片数在
+      1 列 / 2 列间跳动（同屏 660px 卡与 1400px 卡并存），组内卡片又被分组边框
+      等高拉伸（154px 卡被拉到 290px）—— 用户原话「有一些高，有一些低」（#75）。
+   2) 改成一层 grid（align-items:start）后卡宽统一了，但**行内空洞**没解决：
+      grid 的行高由该行最高的卡决定，「转存服务」这类 700px+ 的高卡会把同排邻居
+      顶出一大片空白 —— 实测 2560px 视口下「搜索服务」仅 154px，却在 792px 高的
+      行里空出 630px；「TMDB 数据源」空出 456px。用户原话「空位太多了」（#77）。
+   因此改用**多列（column）瀑布流**：卡片按 DOM 顺序自上而下填满一列再换列，
+   高度不等的卡片互相咬合，行内空洞恒为 0；卡宽仍只由列宽决定，必然同宽。
+   （不用 `grid-template-rows: masonry`：浏览器支持尚不完整。） */
 .settings-flat{
   position:relative;
-  display:grid;
-  grid-template-columns:repeat(auto-fit,minmax(340px,1fr));
-  gap:var(--set-field-gap) 12px;
-  align-items:start;              /* 卡片按自身内容高度排布，不互相拉伸 */
+  display:block;                   /* 多列容器是 block 流，不是 grid */
+  /* column-width 而非 column-count：让**容器实际宽度**决定列数，
+     与旧网格的 repeat(auto-fit,minmax(340px,1fr)) 同口径 ——
+     固定列数会在 2560 与 1920 视口给出同样的 4 列（两者内容区宽度相近），
+     而 340px 下界能让 1920 自然收到 3 列、1600 收到 2 列。 */
+  column-width:340px;
+  column-gap:12px;
   margin-top:4px;
 }
 .settings-flat>.card{
-  width:100%;margin:0;             /* 网格已给间距，卡片自身不再带 margin-bottom */
+  /* 多列里卡片必须整体不跨列，否则会被拦腰截断成两半 */
+  break-inside:avoid;-webkit-column-break-inside:avoid;
+  width:auto;margin:0 0 var(--set-field-gap); /* 列内纵向间距＝字段间距 */
   display:flex;flex-direction:column;
   /* 具名容器：卡片宽 ≥600px 时字段改走两列（见下方 @container 查询）。
      用容器查询而非媒体查询，是因为「卡宽」才是字段能否铺两列的决定因素：
      同一视口下不同列数会得到不同卡宽，媒体查询表达不了。 */
   container-type:inline-size;container-name:settings-card;
 }
-/* 分区锚点：不可见、不占位、不参与网格排布，仅作为 chips 跳转与滚动高亮的目标。
-   放在统一网格里必须显式脱离布局，否则会被当成一个空网格项占掉一格。 */
+/* 分区锚点：仅作为 chips 跳转与滚动高亮的目标，不参与视觉。多列容器里
+   若保留占位会被当成一个有高度的块，直接撑高整列，故显式脱离布局。 */
 .set-anchor{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none;
   scroll-margin-top:96px}
-/* 锚点会 absolute 定位，容器需建立包含块，否则锚点会跑到 .content 上，
-   chips 的 scrollIntoView 目标偏移 —— settings-flat 已是 grid（相对定位容器） */
 
 
 /* 设置卡内的可折叠子分区（如「转存服务」卡里的「媒体库文件源（OpenList）」）：
@@ -1750,12 +1757,11 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 /* 统一卡片网格的列数下界固定 340px：低于此值时两列会把输入框压到 300px 以下。
    注意这里**不**再按「分组」分档 —— issue #75 后设置页只有一层网格，
    分档只会让卡宽在不同视口间跳变（那正是用户看到的「有一些高，有一些低」）。 */
-@media(max-width:1500px){
-  .settings-flat{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
-}
+/* 列数由容器宽 + column-width 自动推导（见 .settings-flat），
+   这里只在窄视口放宽下界：侧栏收起后主列更宽，340px 下界会少一列、
+   反而不省纵向滚动，降到 300px 与旧网格的 1024px 断点一致。 */
 @media(max-width:1024px){
-  /* 侧栏收起，主列更宽；下界降到 300px 让两列仍能并排（更省纵向滚动） */
-  .settings-flat{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .settings-flat{column-width:300px}
 }
 /* 宽卡（单列占满）时字段本身改为两列铺排：纵向更短，且两侧仍被卡片宽度限住。
    窄卡（多列并排，卡宽 < 600px）保持单列字段，避免输入框被压到 200px 以下。 */
@@ -1769,7 +1775,8 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
      反而更松 —— 同一张卡在手机上比在桌面上还「散」。 */
   :root{--set-label-fs:var(--fs-base);--set-hint-fs:var(--fs-base);
         --set-field-gap:var(--card-pad)}
-  .settings-flat{grid-template-columns:1fr;gap:var(--card-pad)}
+  /* 移动端单列：column-count:1 等价于普通纵向流，卡片间靠 margin 分隔 */
+  .settings-flat{column-count:1}
   .set-jump{
     gap:6px;margin-bottom:12px;
     overflow-x:auto;flex-wrap:nowrap;

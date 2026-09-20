@@ -345,27 +345,36 @@ def test_settings_savebar_replaces_empty_card(dist):
 
 
 def test_settings_cards_uniform_width_and_actions(dist):
-    """issue #75：所有设置卡必须同宽，动作位在卡内贴底。
+    """issue #75 / #77：所有设置卡必须同宽，动作位在卡内贴底。
 
     旧实现同屏出现 660px 与 1400px 两种卡宽（分组宽度随卡片数跳变），
-    以及 154px 与 290px 两种卡高（分组边框等高拉伸）。现在统一为**一层**网格：
-    卡片宽度只由列轨道决定，因此同视口下必然同宽。
+    以及 154px 与 290px 两种卡高（分组边框等高拉伸）。现改为**一层**多列
+    瀑布流：卡片宽度只由列宽决定，同视口下必然同宽；高度不等的卡片互相咬合。
     """
     css, _ = _extract(dist)
     compact = re.sub(r"\s+", "", css)
-    # 卡片是纵向 flex，动作位靠 margin-top:auto 贴底（卡内既有字段又有按钮时，
+    # 卡片纵向 flex，动作位靠 margin-top:auto 贴底（卡内既有字段又有按钮时，
     # 按钮不会浮在中间）。
-    assert ".settings-flat>.card{width:100%;margin:0;display:flex;flex-direction:column" in compact, (
+    assert "display:flex;flex-direction:column" in compact and ".settings-flat>.card" in compact, (
         "设置卡片缺少 flex 纵向布局（底部动作位依赖该布局）"
+    )
+    card_block = re.search(r"\.settings-flat>\.card\{(.*?)\}", css, re.S).group(1).replace(" ", "")
+    assert card_block.startswith("break-inside:avoid") or "break-inside:avoid" in card_block, (
+        "瀑布流里卡片必须 break-inside:avoid：否则高卡会被拦腰截断成两半"
+    )
+    assert "width:auto" in card_block, (
+        "多列容器里卡片宽度应由列宽决定（width:auto），不得写死 100%"
     )
     assert ".settings-flat>.card>.set-card-actions{margin-top:auto}" in compact, (
         "卡片动作位未贴底：卡片里既有字段又有按钮时按钮会浮在中间"
     )
-    # 网格轨道必须均分（auto-fit/minmax(..,1fr)）：卡片宽度只由轨道决定。
-    grid = re.search(r"\.settings-flat\{(.*?)\}", css, re.S).group(1).replace(" ", "")
-    assert "display:grid" in grid, "设置项必须用一层网格铺排"
-    assert "grid-template-columns:repeat(auto-fit,minmax(340px,1fr))" in grid, (
-        "卡片轨道未均分：卡片宽度会随内容跳变（「有一些高，有一些低」的根因）"
+    # 列宽下界固定 340px：卡片宽度只由列宽决定，不随内容跳变。
+    flat = re.search(r"\.settings-flat\{(.*?)\}", css, re.S).group(1).replace(" ", "")
+    assert "column-width:340px" in flat, (
+        "卡片列宽下界未固定为 340px：卡片宽度会随内容跳变"
+    )
+    assert "display:grid" not in flat, (
+        "设置项又回到 grid：grid 的行高由最高卡决定，同排短卡会被压出行内空洞"
     )
 
 
@@ -411,21 +420,29 @@ def test_settings_flat_grid_replaces_group_chrome(dist):
     )
 
 
-def test_settings_cards_not_force_equal_height(dist):
-    """issue #15 / #75：同行卡片不得被强行等高。
+def test_settings_no_row_holes_after_grid(dist):
+    """issue #77：设置卡之间不得再有「行内空洞」（用户原话「空位太多了」）。
 
-    基线：「搜索服务」内容 149px，与 245px 的「TMDB 数据源」同行被 stretch
-    拉到同高，底部空出 90px+。等高拉伸必须去掉，改为按内容高度排布
-    （`.settings-flat{align-items:start}`）。
+    基线：一层 grid + align-items:start 时，行高由该行最高的卡决定，
+    「转存服务」（700px+）把同排的「搜索服务」（154px）顶出 630px 空白。
+    修法：改用多列瀑布流（column-width），卡片按列自上而下咬合，空洞恒为 0。
+
+    这里只能做静态防复发（选择器级）；**渲染后**的空洞度量由
+    `scripts/check_settings_dom.py` 的 `rowHoles` 断言覆盖。
     """
     css, _ = _extract(dist)
-    grid = re.search(r"\.settings-flat\{(.*?)\}", css, re.S).group(1).replace(" ", "")
-    assert "align-items:start" in grid, (
-        "统一网格未声明 align-items:start：卡片会被拉伸等高，短卡撑出整块空白"
+    flat = re.search(r"\.settings-flat\{(.*?)\}", css, re.S).group(1).replace(" ", "")
+    assert "align-items:start" not in flat, (
+        "设置项仍是行对齐的 grid：行高由最高卡决定，同排短卡会被压出行内空洞"
     )
-    assert "align-items:stretch" not in grid, (
-        "统一网格仍在强拉等高，短卡会被撑出空白"
+    assert "column-width:340px" in flat, "设置项未改用多列瀑布流（column-width）"
+    compact = re.sub(r"\s+", "", css)
+    assert "break-inside:avoid" in compact, "瀑布流卡片未声明 break-inside:avoid"
+    assert "-webkit-column-break-inside:avoid" in compact, (
+        "缺少 -webkit- 前缀：旧版 Safari/WebKit 会把卡片拦腰截断"
     )
+
+
 def test_settings_fields_two_column_on_wide_cards(dist):
     """宽卡（单列铺满）时字段走两列 —— 把「留空不修改」等提示占的纵向空间收掉。"""
     css, _ = _extract(dist)

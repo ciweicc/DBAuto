@@ -100,7 +100,73 @@
 `check_contrast.py` 18 组全达标；概览 / 媒体库 / QAS 键盘 / QAS 视图 /
 转存 / 日志栏 / 设置 各走查脚本全部 0 处问题。
 
+## [当前] 设置页：取消行内空洞，改用多列瀑布流（issue #75 追问）
+
+> 用户原话：「空位太多了」（配图为 2560px 视口下的设置页，#75 的同一页面）。
+
+### 根因：上一轮的「一层网格」把空洞从卡内搬到了卡外
+
+#75 用 `align-items:start` 去掉了卡片内的等高拉伸，却保留了 grid 的**行对齐**：
+grid 的行高由该行最高的卡决定，「转存服务」这类 700px+ 的高卡会把同排邻居
+顶出一大片空白。
+
+实测 2560px 视口（`scripts/check_settings_dom.py` 同口径）：
+
+| 卡 | 高 | 同排行高 | 卡下方空洞 |
+| --- | --- | --- | --- |
+| 搜索服务 | 154px | 792px | **630px** |
+| TMDB 数据源 | 336px | 792px | **456px** |
+| 转存路径 | 436px | 792px | 356px |
+| 管理认证 | 227px | 227px | 0（第二行） |
+
+九组视口累计行内空洞 60～406px，最多的一档在 2560px 有 2 处、1024px 有 4 处
+—— 比 #75 修掉的卡内空白更刺眼。
+
+### 修法：一层网格 → 多列瀑布流
+
+- `.settings-flat` 由 `display:grid` 改为 `display:block; column-width:340px`；
+- 卡片 `break-inside:avoid`（含 `-webkit-` 前缀）保证整体不跨列，
+  纵向间距由卡片自身 `margin-bottom:var(--set-field-gap)` 提供；
+- 列宽下界仍取 340px，与旧网格 `repeat(auto-fit,minmax(340px,1fr))` **同口径**
+  —— 实测九组视口的卡宽与改前**逐档一致**（341/439/504/434/379/489/320/354/362）；
+- 不用 `grid-template-rows:masonry`：浏览器支持尚不完整；
+  窄视口（≤1024px）把下界放宽到 300px，与旧网格的断点一致。
+
+### 实测（`scripts/check_settings_dom.py`）
+
+| 视口 | 行内空洞合计（改前 → 改后） | 页高（改前 → 改后） |
+| --- | --- | --- |
+| 2560 | 406 → **0** | 871 → 698 |
+| 1920 | 258 → **0** | 962 → 923 |
+| 1600 | 334 → **0** | 1183 → 994 |
+| 1440 | 352 → **0** | 1201 → 1007 |
+| 1280 | 370 → **0** | 1219 → 1012 |
+| 1024 | 334 → **0** | 1183 → 959 |
+| 760 | 370 → **0** | 1219 → 1012 |
+| 390 | 60 → **0** | 1811 → 1823 |
+
+（数值取自 `scripts/check_settings_dom.py --json`；改前 = 把 `.settings-flat`
+临时改回 `display:grid;align-items:start`，其余不变。）
+
+卡宽逐档不变、空洞归零、页高同步下降（移动端 +12px 是单列下卡片 margin 的
+收尾间距，非空洞）。
+
+### 门禁
+
+- `scripts/check_settings_dom.py` 新增 **`rowHoles`** 度量：按卡片左边界分列，
+  列内相邻卡的纵向间距减掉卡片自身 `margin-bottom`，>1px 即判为行内空洞；
+  列数也不再从 `gridTemplateColumns` 读（多列下为 `none`），改为按左边界去重。
+- 反例对照（证明断言有判别力）：把 `.settings-flat` 改回 `display:grid;
+  align-items:start` → 脚本在 **9 组视口**报出空洞（最大单处 294px）。
+- `tests/test_build.py`：`test_settings_cards_uniform_width_and_actions` 改断
+  瀑布流不变量，`test_settings_cards_not_force_equal_height` 重写为
+  `test_settings_no_row_holes_after_grid`（选择器级静态防复发）。
+
 ## [当前] 设置页：设置项统一为同一宽度（issue #75）
+
+> 说明：#75 解决「卡宽跳变」的结论仍然成立（一层结构 + 锚点），
+> 但其中的 `display:grid; align-items:start` 已被多列瀑布流取代 ——
+> grid 的行对齐会让同排短卡留下大片行内空洞，详见上一条。
 
 > 用户原话：「当前的设置项太乱了，有一些高，有一些低」；任务描述给了两条路
 > ——「调整各个设置模块之间的一致性，或者取消设置模块的样式」。
