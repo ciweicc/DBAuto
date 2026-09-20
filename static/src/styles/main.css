@@ -1589,14 +1589,12 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .tmdb-adv[disabled]{opacity:.62}
 /* 标题行：必须是 fieldset 内的普通块级元素（body.html 用 div 而非 legend）。
    legend 会被 UA 样式提到 fieldset 边框上排版（实测顶边相对 fieldset 为 0px，
-   而普通子元素为 +46px），导致标题与胶囊被面板上边框横切，观感即「字体重叠」。
+   而普通子元素为 +46px），导致标题被面板上边框横切，观感即「字体重叠」。
    所以这里只负责行内排版，不靠 legend 的边框定位。 */
 .tmdb-adv-legend{
   display:flex;align-items:center;gap:7px;padding:0 0 10px;
   font-size:var(--fs-xs);font-weight:700;color:var(--text2);letter-spacing:.4px;
 }
-.tmdb-adv-hint{font-weight:500;color:var(--text3);letter-spacing:0;
-  padding:2px 8px;border-radius:999px;background:var(--hover-wash);border:1px solid var(--border)}
 .tmdb-genre-group{margin-bottom:10px}
 .tmdb-genre-label{display:flex;align-items:center;gap:5px;
   font-size:var(--fs-xs);font-weight:600;color:var(--text2);letter-spacing:.3px}

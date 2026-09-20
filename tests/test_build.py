@@ -1525,7 +1525,7 @@ def test_adv_legend_is_not_fieldset_legend(dist):
     main_css = _read(MAIN_CSS)
     block = main_css[main_css.index(".tmdb-adv-legend{"):]
     block = block[:block.index("}")]
-    assert "display:flex" in block, "标题行不再是 flex 行，图标/标题/胶囊无法基线对齐"
+    assert "display:flex" in block, "标题行不再是 flex 行，图标/标题无法基线对齐"
 
 
 def test_discovery_dom_script_asserts_adv_legend_overflow():
@@ -1541,12 +1541,34 @@ def test_discovery_dom_script_asserts_adv_legend_overflow():
     assert float(m.group(1)) <= 0.5, (
         "MAX_LEGEND_OVERFLOW 被放宽到 {}：旧版实测溢出 15px，放宽阈值等于放行回归".format(
             m.group(1)))
-    assert "legendOverflow" in src and "hintOverflow" in src, "缺少标题/胶囊溢出测量"
+    assert "legendOverflow" in src and "hintOverflow" in src, "缺少标题溢出测量"
     # 正数即「溢出到内容盒之上」，判定必须比上限严格
     assert "legendOverflow\"] > MAX_LEGEND_OVERFLOW" in src, "标题溢出断言丢失"
-    assert "hintOverflow\"] > MAX_LEGEND_OVERFLOW" in src, "胶囊溢出断言丢失"
     assert "contentTop" in src and "borderTopWidth" in src and "paddingTop" in src, \
         "内容盒顶边的计算口径丢失（必须含边框 + 内边距）"
+
+def test_adv_hint_removed(dist):
+    """回归（issue #57 追问）：高级筛选标题旁的「仅「发现」榜单有效」提示不得回来。
+
+    用户截图指着 `.tmdb-adv-hint` 说「这个提示有点多余了」：高级筛选的排序 /
+    评分 / 年份 / 平台 / 类型本来就只作用于本模块的 TMDB 结果，再挂一句
+    「仅「发现」榜单有效」既解释了不存在的歧义，又在标题行里多出一个胶囊。
+    与同类改动一致，这里既删 DOM / 样式，也留下防复发门禁。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert "tmdb-adv-hint" not in body, "body.html 里的「仅「发现」榜单有效」提示未删除"
+    assert "榜单有效" not in body, "body.html 仍留有「…榜单有效」措辞"
+    assert "tmdb-adv-hint" not in dist, "产物里仍有 .tmdb-adv-hint（需重跑 build.sh）"
+
+    main_css = _read(MAIN_CSS)
+    assert ".tmdb-adv-hint" not in main_css, "main.css 里的 .tmdb-adv-hint 规则未删除"
+
+    # 走查脚本必须留 A8 断言（DOM 计数 + 可见文本双判据），否则回归无人拦
+    src = _read(os.path.join(_ROOT, "scripts", "check_tmdb_filters_dom.py"))
+    assert "advHintCount" in src, "走查脚本缺少 advHintCount 探针"
+    assert ".tmdb-adv-hint" in src, "走查脚本不再检查冗余提示是否回归"
+    assert "榜单有效" in src, "走查脚本缺少对「…榜单有效」措辞的断言"
+
 
 def test_library_tab_wired(dist):
     """回归（issue #27）：媒体库页必须完整接线。
@@ -3576,3 +3598,39 @@ def test_settings_field_links_point_to_projects(dist):
     for _field, url in pairs:
         assert url in dist, "产物未包含链接 {}（需重跑 build.sh）".format(url)
     assert "TMDB 官网" not in dist, "产物仍残留旧的「TMDB 官网」文字链"
+
+
+def test_tmdb_icon_is_vector_not_text(dist):
+    """TMDB 图标必须是矢量路径，不得用 SVG <text>（issue #57 追问）。
+
+    用户反馈：「TMDB 的图标糊成一坨了」。
+
+    原因：`icon-tmdb` 是 sprite 里**唯一**用 `<text>tmdb</text>` 画的图标。
+    sprite 通过 `<use>` 引用时会整体缩放，且字号的换算依赖用户机器的字体堆栈 ——
+    在导航栏 18px / 面板标题 16px 的图标位上，等效正文只有 6~7px，
+    既没字形细节、又被栅格化糊成一团；换了字体（或无该字体）还会更糟。
+
+    约束：图标图形必须**只由矢量图元（path/rect/circle…）构成**，任何尺寸都清晰、
+    且不依赖客户端字体。这里对全部 sprite 符号一并断言，防止别的图标回退到 <text>。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+
+    sprite = body[body.index("<defs>"):body.index("</svg>", body.index("<defs>"))]
+    assert "icon-tmdb" in sprite, "sprite 里找不到 icon-tmdb"
+
+    # 1. 所有 sprite 符号都不得出现 <text>（字体依赖 + 缩放即糊）
+    texts = re.findall(r"<symbol[^>]*id=\"(icon-[a-z-]+)\"[^>]*>(.*?)</symbol>", sprite, re.S)
+    assert texts, "未能解析出任何 sprite 符号"
+    offenders = [name for name, inner in texts if "<text" in inner]
+    assert not offenders, "以下图标用 <text> 绘制（缩放后会糊，且依赖用户字体）：{}".format(offenders)
+
+    # 2. icon-tmdb 本体必须是「外框 + 实心 T」的纯矢量图形
+    tmdb = dict(texts)["icon-tmdb"]
+    assert "<rect" in tmdb and "stroke=\"currentColor\"" in tmdb, "TMDB 图标缺少描边圆角徽标"
+    assert "<path" in tmdb and "fill=\"currentColor\"" in tmdb, "TMDB 图标缺少实心字形路径"
+    assert "font-family" not in tmdb and "font-size" not in tmdb, "TMDB 图标仍依赖字体"
+
+    # 3. 产物已重建（两个使用位点都在，且不再含 <text> 版本）
+    assert dist.count('href="#icon-tmdb"') >= 2, "产物未包含 TMDB 图标的使用位点"
+    assert ">tmdb</text>" not in dist, "产物仍残留 <text>tmdb</text> 版本（需重跑 build.sh）"
+    assert 'id="icon-tmdb"' in dist, "产物缺少重建后的 icon-tmdb"
