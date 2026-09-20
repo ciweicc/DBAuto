@@ -2542,6 +2542,52 @@ def test_delete_sync_switch_is_wired_end_to_end(dist):
         "产物未包含删除范围开关（需重跑 build.sh）"
 
 
+def test_delete_switches_share_toggle_style_and_persist(dist):
+    """回归（issue #57 追问）：两个删除联动开关形态一致 + 状态持久化。
+
+    用户诉求原文：「这个开关和旁边的开关风格保持一致」「并且开关状态在设置后
+    持久化保持状态」。指的是网盘删除操作条（#libActionBar）上的两个开关：
+      * #syncHistoryChk         「同步清理转存历史」（默认开）
+      * #syncQasTasksFromLibChk 「同步删除同名转存任务」（默认关）
+
+    这里锁住两件静态可见的事（浏览器侧的几何/还原由
+    scripts/check_library_task_filter_dom.py 走查，见其第 11 节）：
+
+      ① **形态一致**：后者也必须用 .toggle（自绘滑轨）本体，而不是原生 checkbox
+         —— 否则又回到「一个是系统蓝方块、一个是滑轨」的视觉裂缝；
+      ② **持久化接线**：两个开关都要有 onchange 落点，且 JS 侧读写 localStorage
+         （进页还原 + 切换写入）。少了任一半，用户重启页面就回到默认值。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    # ① 两个开关都必须是 .toggle 本体（自绘滑轨 + 隐藏 input）
+    for eid in ("syncHistoryChk", "syncQasTasksFromLibChk"):
+        idx = body.index('id="{}"'.format(eid))
+        seg = body[max(0, idx - 120):idx + 200]
+        assert "toggle" in seg and "slider" in seg, \
+            "{} 不是 .toggle 滑动开关：两个开关形态不一致（issue #57 追问）".format(eid)
+        assert 'onchange="saveLibSyncPrefs()"' in seg, \
+            "{} 缺少持久化落点 onchange=saveLibSyncPrefs()".format(eid)
+    # `.lib-danger-opt` 只负责配色，不能再用原生 checkbox 当本体
+    assert "<input type=\"checkbox\" id=\"syncQasTasksFromLibChk\">" not in body, \
+        "破坏性开关仍在用原生 checkbox（应复用 .toggle 本体）"
+
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    assert "function _restoreLibSyncPrefs(" in js, "缺少开关状态的还原入口"
+    assert "function saveLibSyncPrefs(" in js, "缺少开关状态的写入入口"
+    assert "LIB_SYNC_HISTORY_KEY" in js and "LIB_SYNC_TASKS_KEY" in js, \
+        "两个开关必须各用独立的存储键（互不干扰、便于以后扩展）"
+    # 还原必须真的在进页路径上被调用（定义了不调 = 功能不生效）
+    assert "_restoreLibSyncPrefs();" in js, "还原入口没有被调用（进页不会恢复状态）"
+    # 默认值不能被存储悄悄改掉：无键时必须保留 HTML 的 checked 默认
+    restore = js[js.index("function _restoreLibSyncPrefs("):]
+    restore = restore[:restore.index("\n}")]
+    assert "!== null" in restore, \
+        "还原逻辑必须区分「存储里没有键」与「存的是 false」，否则会用存储覆盖 HTML 默认值"
+
+    assert "saveLibSyncPrefs" in dist and "lib_sync_history" in dist, \
+        "产物未包含开关持久化逻辑（需重跑 build.sh）"
+
+
 def test_delete_sync_switch_does_not_refetch_directory_per_entry():
     """回归（issue #57）：删除不得「每删一条就重新列一次目录」。
 
