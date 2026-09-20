@@ -29,6 +29,7 @@ python scripts/check_qas_keys_dom.py --serve # QAS 任务表键盘选择走查�
 python scripts/check_qas_view_dom.py --serve # QAS 任务表列表/卡片视图切换走查（改任务表后必跑）
 python scripts/check_login_dom.py --serve    # 登录页真实合成对比度/磨砂/色带走查（改登录页后必跑）
 python scripts/check_transfer_schedule_dom.py --serve # 转存页/定时任务管理走查（改转存页后必跑）
+python scripts/check_search_kbd_dom.py --serve # 顶栏搜索框快捷键走查（改快捷键/顶栏后必跑）
 ```
 
 > `scripts/check_library_selection_dom.py` 覆盖媒体库的「选中 / 取消选中」：
@@ -56,6 +57,13 @@ python scripts/check_transfer_schedule_dom.py --serve # 转存页/定时任务�
 > 定时任务管理控件齐全（启用开关 / 时间 / 下次执行 / 立即执行 / 检测目录）、
 > 「下次执行」按「时间 / 未启用 / 计算失败」三态显示、勾选榜单确被写进保存请求、
 > 点「立即执行」发出的 run_now 请求**带 section**（此前概览页漏传，按钮点了必 400）。
+> `scripts/check_search_kbd_dom.py` 覆盖顶栏「资源搜索」框的快捷键（issue #78：
+> 「这个搜索框的快捷键是无效的」）。它钉住的是「提示长在谁身上、谁就得响应」：
+> 搜索框里的 `Ctrl+K` / `⌘K` 徽标按下后必须**聚焦这个搜索框**，而不是打开另一个
+> 东西（命令面板已挪到 `Ctrl/⌘ + /`）；徽标按平台显示（Windows 没有 ⌘ 键）；
+> 焦点在别的输入框里时按下要**跳过来且不留下字面 k**；窄视口下搜索框默认
+> `display:none`，按下必须先展开移动搜索层再聚焦，否则就是「按了没反应」。
+>
 > `scripts/check_qas_keys_dom.py` 覆盖 QAS 任务表的键盘选择：Ctrl+A 只勾**当前
 > 可见行**（筛选/分页后不越界）、Shift+↑↓ 可扩可缩且不吞掉先前选择、↑↓ 到页末
 > 接着翻页、焦点在搜索框里时全部放行。它还会验证两张表的快捷键**归属**：

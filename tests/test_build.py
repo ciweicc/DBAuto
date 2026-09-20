@@ -3963,3 +3963,123 @@ def test_log_detail_is_collapsible(dist):
 
     # 产物里同样要有（构建必须真的带上这些改动）
     assert "log-detail-toggle" in html, "构建产物缺少折叠详情（未重建？）"
+
+
+# ---------------------------------------------------------------------------
+# issue #78：搜索框的快捷键必须与它自己的提示一致
+# ---------------------------------------------------------------------------
+def test_search_box_shortcut_matches_its_own_badge(dist):
+    """搜索框上印的快捷键，必须在按下时真的作用在**这个搜索框**上。
+
+    issue #78 的现象：顶栏搜索框的 placeholder 写着
+    「搜索资源…（⌘K 命令面板）」，用户站在这框前面按 ⌘K，
+    得到的却是另一个东西（覆盖全屏的命令面板）—— 「快捷键无效」。
+    修法是把归属摆正：徽标在搜索框上，⌘K 就聚焦搜索框。
+    """
+    init = _read(os.path.join(_JS_DIR, "init.js"))
+    # 1. ⌘K 分支的目标动作必须是「聚焦搜索框」，而不是打开命令面板
+    assert "focusSearchBox()" in init, "⌘K 未接到 focusSearchBox（搜索框的快捷键没有目标动作）"
+    k_idx = init.index("e.key.toLowerCase() === 'k'")
+    k_block = init[k_idx:init.index("return;", k_idx)]
+    assert "focusSearchBox()" in k_block, \
+        "⌘K 分支没有调用 focusSearchBox（按了不会落到搜索框上）"
+    assert "openCommandPalette()" not in k_block, \
+        "⌘K 仍然直接打开命令面板 —— 这就是 issue #78 里「按了没反应/反应不对」的成因"
+
+    # 2. 必须 preventDefault：否则在被绑定的组合下会插入字面 'k'
+    assert "e.preventDefault()" in k_block, \
+        "⌘K 未 preventDefault：焦点在输入框时会打出一个字面的 k"
+
+    # 3. 命令面板换到 ⌘/，并保留可见的入口，避免「能力被删掉」
+    assert "'/'" in init and "openCommandPalette()" in init, \
+        "命令面板失去了键盘入口（换键位不等于删功能）"
+
+    # 4. 产物确实带上了这版逻辑（未重建就是漂移）
+    assert "focusSearchBox" in dist, \
+        "构建产物里没有 focusSearchBox（改了 src 但没跑 build.sh？）"
+    assert "搜索资源…（⌘K 命令面板）" not in dist, \
+        "产物里仍有旧的那句误导性 placeholder（它把 ⌘K 说成搜索框自身的快捷键）"
+
+
+def test_search_box_badge_is_visible_and_platform_aware(dist):
+    """搜索框必须有**可见**的快捷键徽标，且按平台显示 ⌘K / Ctrl+K。
+
+    issue #78 的截图来自 Windows：那里键盘上没有 ⌘ 键，一律印 ⌘K 等于印了一个
+    用户按不出来的键 —— 「无效」有一半是这么来的。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    search_js = _read(os.path.join(_JS_DIR, "search.js"))
+    main_css = _read(os.path.join(_SRC, "styles", "main.css"))
+
+    # 1. 搜索框里有一枚 kbd 徽标（不再是埋进 placeholder 的灰字）
+    assert 'class="search-kbd"' in body, "搜索框缺少可见的快捷键徽标"
+    i_kbd = body.index('class="search-kbd"')
+    i_wrapper_end = body.index("</div>", body.index('id="searchInput"'))
+    assert i_kbd < i_wrapper_end, "快捷键徽标没有落在搜索框内部"
+    assert "aria-keyshortcuts" in body, "搜索框未声明 aria-keyshortcuts（读屏拿不到快捷键）"
+
+    # 2. 徽标按平台取值，macOS 显示 ⌘K，其余显示 Ctrl+K
+    assert "syncSearchKbd" in search_js, "缺少按平台刷新徽标的 syncSearchKbd"
+    assert "\\u2318" in search_js or "⌘" in search_js, "macOS 分支没有输出 ⌘"
+    assert "'Ctrl'" in search_js or '"Ctrl"' in search_js, "非 macOS 分支没有输出 Ctrl"
+
+    # 3. 徽标有实际样式，且聚焦/有值时让位（不跟输入内容抢位置）
+    assert ".search-kbd{" in main_css.replace(" .search-kbd{", ".search-kbd{"), "徽标无样式（会挤成一团）"
+    assert ".search-box:focus-within .search-kbd" in main_css, \
+        "聚焦时徽标未让位（会和输入内容重叠）"
+    assert ".search-box.has-value .search-kbd" in main_css, \
+        "有输入时徽标未让位"
+
+    # 4. 产物带上了徽标与同步逻辑
+    assert "search-kbd" in dist and "syncSearchKbd" in dist, \
+        "构建产物缺少搜索框快捷键徽标（未重建？）"
+
+
+def test_search_box_shortcut_works_with_focus_inside_input(dist):
+    """焦点在输入框里时 ⌘K 仍必须生效，且不能把 'k' 打进那个框。
+
+    这是最容易被顺手写坏的一条：常见的写法是「焦点在输入框 → 放行」，
+    但用户敲 ⌘K 恰恰是想从输入框跳到搜索框，放行等于没反应。
+    """
+    init = _read(os.path.join(_JS_DIR, "init.js"))
+    # 取整条 if 语句（从 if( 到它的第一个 return;），修饰键判定在 key 判定之前
+    i_end = init.index("e.key.toLowerCase() === 'k'")
+    i_start = init.rindex("if(", 0, i_end)
+    k_block = init[i_start:init.index("return;", i_end)]
+    # 不得有「目标在 INPUT 就直接 return」这类提前放行
+    assert "return" not in k_block.split("focusSearchBox()")[0], \
+        "⌘K 在聚焦输入框时被提前 return（用户从别的框跳不过来）"
+    assert "INPUT" not in k_block and "tagName" not in k_block, \
+        "⌘K 分支按目标标签放行（焦点在输入框时就废了）"
+    # 修饰键判定要排除 alt/shift，避免误吞 Alt+Shift+K 之类的输入
+    assert "!e.altKey" in k_block and "!e.shiftKey" in k_block, \
+        "⌘K 未排除 Alt/Shift 组合，会误吞其它输入法/组合键"
+
+    # focusSearchBox 会先打开窄屏的移动搜索层，否则聚焦到 display:none 的框上
+    search_js = _read(os.path.join(_JS_DIR, "search.js"))
+    fn = search_js[search_js.index("function focusSearchBox("):]
+    fn = fn[:fn.index("\nfunction ")]
+    assert "mobile-show" in fn, \
+        "focusSearchBox 未处理窄屏：搜索框此时 display:none，聚焦等于没反应"
+    assert "focus()" in fn, "focusSearchBox 没有真的调用 focus()"
+
+
+def test_search_kbd_dom_script_present(dist):
+    """搜索框快捷键的 DOM 走查脚本必须落库。
+
+    本轮修复的结论（「按 ⌘K 真的聚焦搜索框、真的没打出 k、窄屏真的先展开」）
+    是渲染后才有的事实，静态扫描表达不了 —— 所以证据必须落成可复跑的脚本，
+    而不是留在某次运行的 shell 历史里。
+    """
+    path = os.path.join(_ROOT, "scripts", "check_search_kbd_dom.py")
+    assert os.path.isfile(path), "缺少 scripts/check_search_kbd_dom.py"
+    body = _read(path)
+    assert "MEASURE" in body, "脚本未度量渲染后状态（只有逻辑断言＝什么都没验）"
+    assert "--json" in body and "--serve" in body, "脚本缺少 --json / --serve 入口"
+    assert "return 1 if problems else 0" in body, "脚本未在发现问题时返回非零退出码"
+    # 关键场景必须被覆盖，否则脚本会「绿着漏掉回归」
+    for scene in ("activeId", "paletteShown", "inputValue", "wrapperDisplay", "kbdText"):
+        assert scene in body, "脚本未度量 {!r}（该场景会静默漏检）".format(scene)
+    # 平台差异（Windows 没有 ⌘ 键）与窄屏（搜索框 display:none）都要有
+    assert "Meta+k" in body and "Control+k" in body, "脚本未区分 macOS ⌘K 与其它平台 Ctrl+K"
+    assert "UA_MAC" in body, "脚本未构造 macOS UA 场景"

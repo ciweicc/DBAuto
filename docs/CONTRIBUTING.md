@@ -51,6 +51,7 @@
   python scripts/check_library_selection_dom.py --serve  # 媒体库选中/取消选中（点勾选框 / 点行 / Ctrl+点击 / 空格 / Esc / Shift 连选）
   python scripts/check_qas_keys_dom.py --serve   # QAS 任务表键盘选择（同上 + 可见行范围 / 翻页 / 输入框让路）
   python scripts/check_qas_view_dom.py --serve   # QAS 任务表「列表 / 卡片」视图切换（入口 / 选择语义 / 持久化 / 几何）
+  python scripts/check_search_kbd_dom.py --serve # 顶栏搜索框快捷键（⌘K/Ctrl+K 聚焦本框 / 平台徽标 / 窄屏展开 / 面板不误开）
   ```
 
 - 执行日志面板的**信息密度**走查（改动 `log()` 调用或面板渲染后必跑，无需浏览器）：
