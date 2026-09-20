@@ -1,4 +1,54 @@
-## [当前] QAS 任务表键盘选择：两张表一套快捷键，作用范围收窄到「看得见的行」（issue #53 追问）
+## [当前] 网盘文件模块移除 QAS 直连：只保留 OpenList 一个数据源（issue #57）
+
+> 用户原话：「网盘文件模块移除夸克自动转存的 API 支持，只保留 OpenList。
+> 夸克自动转存 API 并不好用」。（附媒体库截图）
+
+**改了什么**
+
+媒体库的「网盘文件」卡原本是「OpenList 优先、失败回落 QAS 直连」。这一层回落
+整条删掉：目录**只**由 OpenList 回答，读不到就如实报错并给出修复方向。
+
+删掉的那几条代码路径：
+
+- `list_library_entries()` 里的 QAS 回退；未配置 OpenList 时直接失败，并带上
+  `kind='unconfigured'` 与「去设置里配」的文案，而不是偷偷打一次必然超时的
+  QAS 实时查询（`/get_savepath_detail` 每次都拿 Cookie 向夸克实查目录）；
+- `/api/qas/delete` 的 QAS 分支（fid / path 定位）。source 只认 `openlist`，
+  请求里带别的值一律 400 —— 删除不可逆，跨源转换要猜父目录，猜错就删错东西；
+  实现层再拦一道（非 openlist 源「拒绝执行」，不降级到另一条删除路径）；
+- `/api/library/source` 自检失败时的 `source='qas'` 回落标记；
+- 前端「QAS 直连 / QAS（OpenList 回落）」三态徽标，收成「OpenList」单一态。
+
+**保留下来、且更重要的两件事**
+
+1. **失败必须可归因**（issue #47 的结论不能在 #57 丢掉）：OpenList 失败时把
+   `kind`（timeout / auth / path_missing / unconfigured）、`fallback_hint`、
+   退避窗口与剩余秒数一并透出。前端据此分流文案 —— 「慢，等一会自动重试，
+   别改配置」与「前缀填错了，去改设置」要做的动作完全相反。
+2. **失败态不得残留上一轮的结论**：徽标是一句断言，隐藏 ≠ 撤销。渲染失败态时
+   显式把数据源重置为唯一事实，并**保留**本次失败的 kind（错误提示靠它分流）。
+
+**顺手补掉的一个真问题（走查抓出来的）**
+
+`libFetch` 在 HTTP 非 2xx 时只带回 `HTTP 502` 字符串，把响应体丢了 ——
+而失败原因全在 body 里。于是「读不到目录」的页面上，用户只能看到一句
+「HTTP 502」，对他毫无帮助。现在非 2xx 也解析 body，把 OpenList 的原始原因
+送到错误态里。
+
+**验证证据**
+
+- `python -m pytest tests/ -q` → **471 passed**（改写/新增 18 条单测，锁住
+  「不得再回落」「未配 OpenList 不得去打 QAS」「非 openlist 源必须被拒」等反向断言）
+- `python scripts/check_library_dom.py --serve` → **0 处问题**（新增两节走查：
+  读取失败必须透出原因 + 不得再提「回落 QAS」；未配置 OpenList 必须指向设置项）
+- `python scripts/check_settings_dom.py --serve` → 12 组视口 0 处问题
+- **断言有牙齿**：把「未配置时的失败」改回 QAS 兜底 → 单测立刻报错；
+  把失败态的徽标重置删掉 → 静态门禁报错；把失败原因透出去掉 →
+  DOM 走查报 2 处（「未透出 OpenList 侧的原因」「未点明未配置」）。改回即 0
+- `ruff check .` 全绿；对比度 18 组全通过；媒体库键盘/密度、QAS 任务筛选/键盘、
+  勾选框、概览、日志栏走查各 0 处问题
+
+## 历史：QAS 任务表键盘选择：两张表一套快捷键，作用范围收窄到「看得见的行」（issue #53 追问）
 
 > 对应 [issue #53](https://cnb.cool/ciweicc/DBAuto/-/issues/53) 的第 5 条追问：
 > 用户给 QAS 任务清单的截图配了一句「这里也需要快捷」。

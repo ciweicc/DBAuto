@@ -232,10 +232,25 @@ def test_route_library_get_unknown_route_not_handled():
     assert h._handle_library_get("/api/whatever") is False
 
 
-def test_route_delete_rejects_missing_fid_and_path():
+def test_route_delete_rejects_missing_name():
+    """issue #57：网盘文件模块只剩 OpenList，条目按「name + dir」定位。
+
+    旧契约允许 QAS 侧用 fid/path 定位；现在只有 name 一条路，
+    缺 name 必须 400（宁可拒绝，也不猜一个目录去删）。
+    """
     h = _make_handler()
-    assert h._handle_library_post("/api/qas/delete", {"entries": [{"name": "A"}]}) is True
-    assert "fid" in h.sent["error"] and h.status == 400
+    assert h._handle_library_post("/api/qas/delete",
+                                  {"entries": [{"fid": "1"}]}) is True
+    assert "name" in h.sent["error"] and h.status == 400
+
+
+def test_route_delete_rejects_non_openlist_source():
+    """请求里带 QAS 源时必须 400 —— 不降到另一条删除路径（那才是误删的来源）。"""
+    h = _make_handler()
+    assert h._handle_library_post(
+        "/api/qas/delete",
+        {"entries": [{"name": "A"}], "source": "qas"}) is True
+    assert h.status == 400 and "openlist" in h.sent["error"]
 
 
 def test_route_delete_rejects_empty_entries():
@@ -281,12 +296,19 @@ def test_route_delete_rejects_bad_sync_path():
 
 
 def test_route_delete_ok():
-    fake = _FakeClient(delete_resp={"success": True, "code": 0})
+    """OpenList 侧删除：条目名 + 目录交给 openlist.remove，不再打 QAS /delete_file。"""
     h = _make_handler()
-    with patch.object(media_library, "_client", return_value=fake), \
+    with patch.object(media_library.openlist, "is_configured", return_value=True), \
+         patch.object(media_library.openlist, "remove",
+                      return_value={"success": True, "deleted": 1, "failed": 0,
+                                    "results": [], "message": ""}) as rm, \
          patch.object(media_library, "delete_history_item", return_value=True):
-        assert h._handle_library_post("/api/qas/delete", {"entries": [{"fid": "1", "name": "A"}]}) is True
+        assert h._handle_library_post(
+            "/api/qas/delete",
+            {"entries": [{"name": "A", "dir": "/媒体库"}], "source": "openlist"}) is True
     assert h.sent["success"] is True and h.status == 200
+    assert rm.call_args[0][0] == ["A"], "OpenList 侧删除必须用条目名"
+    assert rm.call_args[1]["dir_path"] == "/媒体库", "删除目录必须来自条目的真实目录"
 
 
 # ---------- 读取超时预算（issue #27「网盘文件模块访问有点慢」） ----------
@@ -752,22 +774,35 @@ def test_get_library_root_falls_back_on_invalid():
 
 
 def test_route_library_uses_configured_root_when_path_absent():
-    fake = _FakeClient(data_resp={"success": True, "data": {"list": []}})
+    """未传 path 时落到配置的媒体库根目录（issue #27），且目录来源是 OpenList。"""
+    seen = {}
+
+    def fake_list_dir(path="/", refresh=False, timeout=None):
+        seen["path"] = path
+        return {"success": True, "path": path, "entries": [], "message": ""}
+
     h = _make_handler()  # 无 path 参数
-    with patch.object(media_library, "_client", return_value=fake), \
+    with patch.object(media_library.openlist, "is_configured", return_value=True), \
+         patch.object(media_library.openlist, "list_dir", side_effect=fake_list_dir), \
          _settings_with_root("/媒体库"):
         assert h._handle_library_get("/api/qas/library") is True
     assert h.status == 200
-    assert fake.detail_path == "/媒体库", "未传 path 时应落到配置的媒体库根目录"
+    assert seen["path"] == "/媒体库", "未传 path 时应落到配置的媒体库根目录"
 
 
 def test_route_library_explicit_path_wins_over_root():
-    fake = _FakeClient(data_resp={"success": True, "data": {"list": []}})
+    seen = {}
+
+    def fake_list_dir(path="/", refresh=False, timeout=None):
+        seen["path"] = path
+        return {"success": True, "path": path, "entries": [], "message": ""}
+
     h = _make_handler(params={"path": "/其它"})
-    with patch.object(media_library, "_client", return_value=fake), \
+    with patch.object(media_library.openlist, "is_configured", return_value=True), \
+         patch.object(media_library.openlist, "list_dir", side_effect=fake_list_dir), \
          _settings_with_root("/媒体库"):
         assert h._handle_library_get("/api/qas/library") is True
-    assert fake.detail_path == "/其它", "显式 path 必须优先于配置根目录"
+    assert seen["path"] == "/其它", "显式 path 必须优先于配置根目录"
 
 
 # ---------- 打开速度（issue #27：「每次打开都要等几秒」） ----------
@@ -881,88 +916,95 @@ def test_library_cache_expires(monkeypatch):
         assert media_library._lib_cache_get("path:/媒体库") is None
 
 
-def test_route_library_refresh_param_bypasses_cache():
-    """前端「刷新」按钮带 refresh=1，必须绕过后端缓存。"""
+def test_route_library_refresh_param_reaches_openlist():
+    """前端「刷新」按钮带 refresh=1，必须真的下传到 OpenList（绕过它的列表缓存）。"""
+    seen = []
+
+    def fake_list_dir(path="/", refresh=False, timeout=None):
+        seen.append(refresh)
+        return {"success": True, "path": path, "entries": [], "message": ""}
+
     media_library.invalidate_library_cache()
-    fake = _FakeClient(savepath_resp=_resp([]))
-    h = _make_handler(params={"path": "/媒体库", "refresh": "1"})
-    with patch.object(media_library, "_client", return_value=fake):
+    with patch.object(media_library.openlist, "is_configured", return_value=True), \
+         patch.object(media_library.openlist, "list_dir", side_effect=fake_list_dir):
+        h = _make_handler(params={"path": "/媒体库", "refresh": "1"})
         h._handle_library_get("/api/qas/library")
         assert h.status == 200
-        assert media_library._lib_cache_get("path:/媒体库") is None, \
-            "refresh=1 的响应不应写回缓存（否则普通打开会拿到「刚强制刷新过」的旧数据）"
-        # 普通打开（不带 refresh）仍应写入缓存
         h2 = _make_handler(params={"path": "/媒体库"})
         h2._handle_library_get("/api/qas/library")
-        assert media_library._lib_cache_get("path:/媒体库") is not None
+    assert seen == [True, False], "refresh=1 必须下传为 OpenList 的 refresh=True"
 
 
-# ---------------------------------------------------------------- 合并 OpenList 数据源后的缓存语义
-# 背景：「媒体库打开慢」(#42) 与「接入 OpenList 数据源」(#43) 两轮改动在同一个
-# 目录读取链路上交汇 —— 前者引入后端 30s 目录缓存与 refresh 绕过，后者把目录
-# 读取改为「OpenList 优先、失败回落 QAS」。合并后必须保证两件事不互相抵消：
-#   1. refresh=1（前端刷新）在 OpenList 与 QAS 两级上都要生效；
-#   2. 回落 QAS 时同样遵守 refresh 语义，不能「装了 OpenList 之后 QAS 缓存就不受控」。
+# ------------------------------------------------- 数据源唯一：OpenList（issue #57）
+# 背景：issue #27 引入 OpenList 后，目录浏览曾是「OpenList 优先、失败回落 QAS」。
+# 用户实测「夸克自动转存的 API 并不好用」（issue #57），于是**删掉回落这一层**。
+# 下面这组用例锁住删掉之后的语义：
+#   1. 没配 OpenList → 明确失败（可归因），而不是偷偷打一次 QAS；
+#   2. OpenList 失败 → 如实回报失败原因（kind / hint / backoff），不再有 fallback=True；
+#   3. source 恒为 openlist（前端徽标与删除链路都靠它）。
 
 
-def test_list_library_entries_refresh_bypasses_qas_cache_on_fallback():
-    """OpenList 未配置 → 回落 QAS；此时 refresh 仍必须能绕过 QAS 目录缓存。"""
-    media_library.invalidate_library_cache()
-    fake = _FakeClient(savepath_resp=_resp([]))
-    with patch.object(media_library, "_client", return_value=fake), \
-         patch.object(media_library.openlist, "is_configured", return_value=False):
-        media_library.list_library_entries(path="/媒体库")             # 普通打开 → 写缓存
-        assert media_library._lib_cache_get("path:/媒体库") is not None
-        media_library.invalidate_library_cache()
-        res = media_library.list_library_entries(path="/媒体库", refresh=True)
-        assert res["source"] == "qas" and res["fallback"] is False
-        assert media_library._lib_cache_get("path:/媒体库") is None, \
-            "refresh=True 时 QAS 侧不应写回缓存（否则下次普通打开会拿到强制刷新的旧数据）"
+def test_list_library_entries_without_openlist_fails_without_touching_qas():
+    """未配 OpenList：直接失败并指明去哪配，**不得**再走一次 QAS 目录查询。
 
-
-def test_list_library_entries_qas_fallback_uses_cache_without_refresh():
-    """回落 QAS 时的普通打开仍应命中缓存（缓存不是被 OpenList 的引入废掉的）。"""
-    media_library.invalidate_library_cache()
-    fake = _FakeClient(savepath_resp=_resp([]))
-    with patch.object(media_library, "_client", return_value=fake), \
-         patch.object(media_library.openlist, "is_configured", return_value=False):
-        media_library.list_library_entries(path="/媒体库")
-        res = media_library.list_library_entries(path="/媒体库")
-    assert res["success"] and res["source"] == "qas"
-    assert media_library._lib_cache_get("path:/媒体库") is not None
-
-
-def test_list_library_entries_openlist_failure_falls_back_and_labels_source():
-    """OpenList 配了但不可用 → 回落 QAS，并如实标注 fallback=True（用户要能归因）。"""
-    media_library.invalidate_library_cache()
-    fake = _FakeClient(savepath_resp=_resp([]))
-    with patch.object(media_library, "_client", return_value=fake), \
-         patch.object(media_library.openlist, "is_configured", return_value=True), \
-         patch.object(media_library.openlist, "list_dir",
-                      return_value={"success": False, "message": "OpenList 不可达"}):
-        res = media_library.list_library_entries(path="/媒体库", refresh=True)
-    assert res["success"] is True
-    assert res["source"] == "qas" and res["fallback"] is True
-
-
-def test_fallback_forwards_timeout_kind_and_backoff_flag():
-    """回落时必须把「失败归类」与「是否在自动退避」一起带给前端（issue #47）。
-
-    只有一句「已回落」，前端无从区分「慢（等一会自动恢复）」与「配错（去改设置）」；
-    而退避窗口是**自动恢复期**，前端必须据此告诉用户「不用改配置」——
-    否则用户会在 20 秒的自动恢复期里跑去翻设置，把本来正确的配置改坏。
+    回落之所以要被删掉，一半原因就在这里：它会让用户为「没配」付出一次
+    必然超时的 QAS 实时查询，然后拿到一份来源不同、字段不同的旧视图。
     """
     media_library.invalidate_library_cache()
     fake = _FakeClient(savepath_resp=_resp([]))
     with patch.object(media_library, "_client", return_value=fake), \
+         patch.object(media_library.openlist, "is_configured", return_value=False):
+        res = media_library.list_library_entries(path="/媒体库", refresh=True)
+    assert res["success"] is False
+    assert fake.detail_path is None, "未配 OpenList 时不得再去问 QAS 目录"
+    assert res["source"] == "openlist" and res["fallback"] is False
+    assert res["kind"] == "unconfigured"
+    assert "设置" in res["message"], "失败文案必须告诉用户去哪配置"
+
+
+def test_list_library_entries_openlist_failure_reports_reason_not_fallback():
+    """OpenList 失败：如实透出原因与归类，且**不再**标 fallback=True。"""
+    media_library.invalidate_library_cache()
+    fake = _FakeClient(savepath_resp=_resp([]))
+    with patch.object(media_library, "_client", return_value=fake), \
          patch.object(media_library.openlist, "is_configured", return_value=True), \
          patch.object(media_library.openlist, "list_dir",
-                      return_value={"success": False, "message": "OpenList 请求失败: timed out",
-                                    "kind": "timeout", "backoff": True}):
+                      return_value={"success": False, "message": "OpenList 不可达",
+                                    "kind": "network"}):
         res = media_library.list_library_entries(path="/媒体库", refresh=True)
-    assert res["fallback"] is True
-    assert res["fallback_kind"] == "timeout", "必须透传失败归类（超时 ≠ 配错）"
-    assert res["fallback_backoff"] is True, "必须透传退避标记（自动恢复 ≠ 需要改配置）"
+    assert res["success"] is False
+    assert res["fallback"] is False, "已无回落，必须不再标 fallback"
+    assert res["source"] == "openlist"
+    assert res["kind"] == "network" and "不可达" in res["fallback_reason"]
+    assert fake.detail_path is None, "OpenList 失败不得降级去打 QAS"
+
+
+def test_list_library_entries_forwards_timeout_kind_and_backoff():
+    """失败归类（超时 / 退避）必须一路带到前端（issue #47 的结论不能因 #57 丢失）。
+
+    只有一句「读取失败」，用户无从区分「慢（等一会自动恢复）」与
+    「配错（去改前缀/地址）」—— 这两类要做的动作完全相反。
+    """
+    media_library.invalidate_library_cache()
+    with patch.object(media_library.openlist, "is_configured", return_value=True), \
+         patch.object(media_library.openlist, "list_dir",
+                      return_value={"success": False, "message": "OpenList 请求失败: timed out",
+                                    "kind": "timeout", "backoff": True,
+                                    "backoff_seconds": 20,
+                                    "backoff_since": __import__("time").time()}):
+        res = media_library.list_library_entries(path="/媒体库", refresh=True)
+    assert res["success"] is False
+    assert res["kind"] == "timeout", "必须透传失败归类（超时 ≠ 配错）"
+    assert res["backoff"] is True, "必须透传退避标记（自动恢复 ≠ 需要改配置）"
+    assert res["backoff_left"] >= 1, "退避剩余时长要给前端一个真实数字"
+
+
+def test_library_source_is_always_openlist():
+    """数据源选择函数：issue #57 之后恒为 openlist（不再有「未配置就回落」）。"""
+    with patch.object(media_library.openlist, "is_configured", return_value=False):
+        assert media_library.library_source() == media_library.LIBRARY_SOURCE_OPENLIST
+    with patch.object(media_library.openlist, "is_configured", return_value=True):
+        assert media_library.library_source() == media_library.LIBRARY_SOURCE_OPENLIST
 
 
 def test_openlist_success_still_reports_openlist_source():

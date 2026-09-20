@@ -451,30 +451,33 @@ def test_self_check_success_reports_listed_count():
     assert chk["success"] is True and chk["count"] == 1 and chk["stage"] == "ok"
 
 
-def test_fallback_carries_reason_to_frontend():
-    """回落必须连原因一起返回，前端才能告诉用户「该去改哪个设置」。"""
+def test_read_failure_carries_reason_to_frontend():
+    """读取失败必须连原因一起返回，前端才能告诉用户「该去改哪个设置」。
+
+    issue #57：这条链路以前叫「回落」，现在数据源唯一（OpenList），
+    但「原因必须可归因」这条要求不变 —— 只报一句「读取失败」等于没报。
+    """
     with patch.object(openlist, "is_configured", return_value=True), \
          patch.object(openlist, "list_dir",
                       return_value={"success": False, "path": "/影视", "entries": [],
                                     "message": "OpenList 上找不到目录 /影视",
-                                    "fallback_hint": "path_prefix"}), \
-         patch.object(media_library, "list_library",
-                      return_value={"success": True, "path": "/影视",
-                                    "entries": [{"name": "A", "dir": True, "size": 0,
-                                                 "updated_at": 0}]}):
+                                    "fallback_hint": "path_prefix"}):
         res = media_library.list_library_entries("/影视")
-    assert res["source"] == media_library.LIBRARY_SOURCE_QAS and res["fallback"] is True
-    assert "找不到目录" in res["fallback_reason"], "回落原因未透传给前端"
+    assert res["success"] is False
+    assert res["source"] == media_library.LIBRARY_SOURCE_OPENLIST
+    assert res["fallback"] is False, "已无回落，不得再标 fallback"
+    assert "找不到目录" in res["fallback_reason"], "失败原因未透传给前端"
     assert res["fallback_hint"] == "path_prefix"
 
 
 # ---------------------------------------------------------------- 数据源选择与回落
 
-def test_library_source_prefers_openlist_then_falls_back():
+def test_library_source_is_openlist_only():
+    """issue #57：数据源只剩 OpenList，未配置也不再「回落 QAS」。"""
     with patch.object(openlist, "is_configured", return_value=True):
         assert media_library.library_source() == media_library.LIBRARY_SOURCE_OPENLIST
     with patch.object(openlist, "is_configured", return_value=False):
-        assert media_library.library_source() == media_library.LIBRARY_SOURCE_QAS
+        assert media_library.library_source() == media_library.LIBRARY_SOURCE_OPENLIST
 
 
 def test_list_library_entries_uses_openlist_and_labels_source():
@@ -488,32 +491,23 @@ def test_list_library_entries_uses_openlist_and_labels_source():
     assert res["fallback"] is False and res["entries"][0]["name"] == "A"
 
 
-def test_list_library_entries_falls_back_to_qas_when_openlist_down():
-    """OpenList 挂了也必须能浏览 —— 媒体库不能因为「没配好 OpenList」而打不开。"""
+def test_openlist_down_does_not_fall_back_to_qas():
+    """OpenList 挂了就是失败 —— 不得再偷偷打一次 QAS 目录查询（issue #57）。
+
+    这条用例是**反向**的：它断言「回落已不存在」。旧实现会返回
+    success=True + source='qas' + fallback=True，用户看到一份来源不同的
+    慢视图，还以为功能正常。现在必须如实失败，让用户去修 OpenList。
+    """
     with patch.object(openlist, "is_configured", return_value=True), \
          patch.object(openlist, "list_dir",
                       return_value={"success": False, "entries": [],
-                                    "message": "OpenList 请求失败: refused"}):
-        with patch.object(media_library, "list_library",
-                          return_value={"success": True, "path": "/", "entries": [], "message": ""}):
-            res = media_library.list_library_entries("/")
-    assert res["success"] is True
-    assert res["source"] == media_library.LIBRARY_SOURCE_QAS
-    assert res["fallback"] is True, "回落必须如实标记，用户才知道数据不是从 OpenList 来的"
-
-
-def test_both_sources_down_reports_both_reasons():
-    """两个源都失败时，必须把**两个**原因都说清（否则用户无从判断该修哪个）。"""
-    with patch.object(openlist, "is_configured", return_value=True), \
-         patch.object(openlist, "list_dir",
-                      return_value={"success": False, "entries": [],
-                                    "message": "OpenList 请求失败: refused"}):
-        with patch.object(media_library, "list_library",
-                          return_value={"success": False, "path": "/", "entries": [],
-                                        "message": "QAS 连接超时"}):
-            res = media_library.list_library_entries("/")
+                                    "message": "OpenList 请求失败: refused"}), \
+         patch.object(media_library, "list_library") as qas_read:
+        res = media_library.list_library_entries("/")
     assert res["success"] is False
-    assert "OpenList" in res["message"] and "QAS" in res["message"]
+    assert res["source"] == media_library.LIBRARY_SOURCE_OPENLIST
+    assert res["fallback"] is False
+    assert qas_read.call_count == 0, "不得再降级去读 QAS 目录（回落已移除）"
 
 
 def test_delete_by_source_openlist_uses_dir_and_names():
@@ -535,14 +529,19 @@ def test_delete_by_source_openlist_uses_dir_and_names():
     assert res["history_synced"] == 1, "OpenList 侧删除同样要同步清理转存历史"
 
 
-def test_delete_by_source_qas_path_unchanged():
-    """QAS 侧的删除语义不得被这次改动改变（fid 定位 + 部分失败语义）。"""
-    with patch.object(media_library, "delete_entries",
-                      return_value={"success": True, "deleted": 1, "failed": 0,
-                                    "history_synced": 0, "results": [], "message": ""}) as m:
+def test_delete_by_source_rejects_non_openlist_source():
+    """非 OpenList 的 source 必须**拒绝执行**，而不是降到另一条删除路径。
+
+    删除不可逆：把「QAS 的 fid」喂给 OpenList 删除、或反过来拿条目名去猜
+    父目录，都只会删错东西。宁可在一条路上报错（issue #57）。
+    """
+    with patch.object(media_library, "delete_entries") as m, \
+         patch.object(media_library.openlist, "remove") as rm:
         res = media_library.delete_entries_by_source(
             [{"fid": "f1", "name": "A"}], source=media_library.LIBRARY_SOURCE_QAS)
-    assert m.called and res["source"] == media_library.LIBRARY_SOURCE_QAS
+    assert res["success"] is False and res["deleted"] == 0
+    assert "OpenList" in res["message"]
+    assert m.call_count == 0 and rm.call_count == 0, "拒绝执行时不得调用任何删除实现"
 
 
 # ---------------------------------------------------------------- 任务对账
@@ -883,7 +882,10 @@ def test_route_library_source_selfcheck_lists_a_real_dir():
     assert h.sent["openlist_ok"] is False, \
         "登录通但列目录失败时，自检不得报「可用」"
     assert h.sent["openlist_stage"] == "list", "自检需说明失败发生在哪一步"
-    assert h.sent["source"] == "qas", "自检失败时 source 必须如实回落为 qas"
+    # issue #57：数据源唯一，自检失败时 source 仍是 openlist ——
+    # 前端徽标与错误态必须指向同一个结论（都怪 OpenList），
+    # 不能一边说「读不到目录」一边标着一个已经不存在的 qas 源。
+    assert h.sent["source"] == "openlist", "自检失败时 source 不应再回落到 qas"
 
 
 def test_route_library_source_selfcheck_when_unavailable():
@@ -944,6 +946,7 @@ def test_route_delete_routes_by_source():
 
 
 def test_route_delete_defaults_to_current_source():
+    """未指定 source 时按当前数据源（issue #57 恒为 openlist）下发。"""
     seen = {}
 
     def fake(entries, sync_history=True, source=None, **_kw):
@@ -952,10 +955,17 @@ def test_route_delete_defaults_to_current_source():
                 "results": [], "source": source, "message": ""}
 
     h = _make_handler()
-    with patch("routes_library.media_library.delete_entries_by_source", side_effect=fake), \
-         patch("routes_library.media_library.library_source", return_value="qas"):
-        h._handle_library_post("/api/qas/delete", {"entries": [{"fid": "f1", "name": "A"}]})
-    assert seen["source"] == "qas", "未指定 source 时应与当前浏览数据源一致"
+    with patch("routes_library.media_library.delete_entries_by_source", side_effect=fake):
+        h._handle_library_post("/api/qas/delete", {"entries": [{"name": "A"}]})
+    assert seen["source"] == "openlist", "未指定 source 时应为当前（唯一）数据源"
+
+
+def test_route_delete_rejects_qas_source():
+    """显式传 source=qas 必须 400：QAS 直连已移除，不做跨源降级。"""
+    h = _make_handler()
+    assert h._handle_library_post(
+        "/api/qas/delete", {"entries": [{"name": "A"}], "source": "qas"}) is True
+    assert h.status == 400 and "openlist" in h.sent["error"]
 
 
 # ------------------------------------------------- 配置脱敏与校验（issue #47：凭据只剩令牌）
@@ -1201,20 +1211,17 @@ def test_generic_http_error_is_not_classified_as_timeout():
             assert e.kind == openlist.KIND_HTTP
 
 
-def test_fallback_kind_reaches_frontend():
-    """回落链路必须把失败归类透传到前端（前端据此给可执行提示）。"""
+def test_failure_kind_reaches_frontend():
+    """读取失败链路必须把失败归类透传到前端（前端据此给可执行提示）。"""
     with patch.object(media_library.openlist, "is_configured", return_value=True), \
          patch.object(media_library.openlist, "list_dir",
                       return_value={"success": False, "path": "/", "entries": [],
                                     "message": "OpenList 请求失败: 超时",
-                                    "kind": openlist.KIND_TIMEOUT}), \
-         patch.object(media_library, "list_library",
-                      return_value={"success": True, "path": "/", "entries": [],
-                                    "message": ""}):
+                                    "kind": openlist.KIND_TIMEOUT}):
         res = media_library.list_library_entries("/", refresh=True)
-    assert res["source"] == "qas" and res["fallback"] is True
-    assert res["fallback_kind"] == openlist.KIND_TIMEOUT, \
-        "回落原因没有归类，前端只能显示一句「不可用」"
+    assert res["source"] == "openlist" and res["fallback"] is False
+    assert res["kind"] == openlist.KIND_TIMEOUT, \
+        "失败原因没有归类，前端只能显示一句「不可用」"
 
 
 def test_route_library_source_reports_fail_kind_and_budget():

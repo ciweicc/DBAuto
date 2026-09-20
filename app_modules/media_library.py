@@ -670,24 +670,29 @@ def delete_tasks(items):
 # 引入 OpenList 后，目录浏览改由 OpenList 的文件系统视图回答
 # （它对夸克驱动有列表缓存），token 也在进程内复用，因此首屏明显更快。
 #
-# 三条设计底线：
-#   1. **不破坏可用性**：OpenList 未配置 / 不可达时自动回落到 QAS 直连，
-#      媒体库不会因为「没配 OpenList」而打不开；
-#   2. **不猜**：由谁回答必须如实告诉前端（source 字段），用户才知道
-#      自己看到的是 OpenList 的缓存视图还是 QAS 的实时视图；
-#   3. **删除仍走真实数据源**：OpenList 浏览出来的条目在 OpenList 侧删，
-#      QAS 浏览出来的条目在 QAS 侧删；两边都不是「猜路径」，而是用真实条目名。
+# issue #57：**网盘文件模块只保留 OpenList 一个数据源**。用户实测
+# 「夸克自动转存的 API 并不好用」，于是删掉「OpenList 失败 → 回落 QAS 直连」
+# 这条路径。三条设计底线随之改写：
+#   1. **失败要可归因**：OpenList 未配置 / 不可达时如实报错并给修复方向，
+#      不再偷偷用 QAS 实时查询兜底（那比失败更慢，还会把两套视图混在一起）；
+#   2. **不猜**：source 字段仍如实回报（当前恒为 openlist），
+#      用户看到的目录究竟来自哪、为什么没出来，都能在界面上读到；
+#   3. **删除与浏览同源**：条目由 OpenList 列出来，就在 OpenList 侧删
+#      （用真实条目名 + 真实目录），不做可能误删的路径拼接。
+#      QAS 侧只保留「任务管理」这条路（tasklist 的读 / 删），不再参与目录浏览。
 
 LIBRARY_SOURCE_QAS = "qas"
 LIBRARY_SOURCE_OPENLIST = "openlist"
 
 
 def library_source():
-    """当前媒体库目录浏览使用的数据源。
+    """网盘文件模块使用的数据源。
 
-    优先 OpenList（更快，且是本项目的「媒体库视图」需求），未配置时回落 QAS。
+    issue #57 之后**恒为 OpenList**：QAS 直连已被移除，不再有「未配置就回落」
+    这个分支。保留这个函数（而不是各处直接写常量）是因为它同时被路由层用来
+    判断「当前能不能浏览目录」，语义比常量更清楚。
     """
-    return LIBRARY_SOURCE_OPENLIST if openlist.is_configured() else LIBRARY_SOURCE_QAS
+    return LIBRARY_SOURCE_OPENLIST
 
 
 def _backoff_left(res):
@@ -711,71 +716,71 @@ def _backoff_left(res):
 
 
 def list_library_entries(path=None, refresh=False):
-    """按当前数据源列出网盘目录（统一入口，前端只认这一个）。
+    """列出网盘目录（统一入口，前端只认这一个）。
 
-    返回在 list_library 的基础上增加：
-      - source: 'openlist' | 'qas'（谁回答的）
-      - fallback: 是否发生了回落（OpenList 配了但不可用 → 用了 QAS）
+    数据源**只有 OpenList 一个**（issue #57：用户要求移除网盘文件模块里的
+    QAS 直连支持）。因此这里不再有「回落 QAS」这一层：
 
-    refresh=True 时显式绕过两级的缓存：OpenList 侧不透传缓存，QAS 侧
-    `use_cache=False` 不读**也不写**目录短命缓存 —— 否则下一次普通打开会拿到
-    「刚刚强制刷新过」的旧数据（见文件头「目录短命缓存」）。
+      - 未配置 OpenList  → 直接返回 success=False（前端提示去「设置 → 数据源」配置），
+        而不是悄悄降级成一次必然超时的 QAS 实时查询；
+      - OpenList 可达但列目录失败 → 如实透出失败归类（kind / backoff / hint），
+        让用户能区分「慢（等一会自动恢复）」与「配错（去改前缀/地址）」。
 
-    失败时若 OpenList 已配置，会自动再试一次 QAS —— 但只在
-    OpenList 侧**完全没拿到数据**时回落，避免「一半来自 A、一半来自 B」。
+    返回字段：
+      - source: 恒为 'openlist'（数据源唯一，保留字段是因为前端与既有契约都读它）
+      - fallback: 恒为 False（**不再存在回落**；保留字段是为了让旧前端读到 false
+        时按「OpenList 直连」渲染，而不是因为字段缺失而崩）
+
+    为什么删掉回落而不是留一个开关：用户实测「QAS 自动转存 API 并不好用」
+    （issue #57），回落路径每次都要等一次 QAS 实时查询超时，回落本身比失败更慢、
+    更难归因；而且「一半目录来自 OpenList、一半来自 QAS」的混合视图会让
+    删除入口的源判定（OpenList 认条目名、QAS 认 fid）变得不可预测。
+
+    refresh=True 时绕过 OpenList 的列表缓存（见 openlist.list_dir）。
     """
     target = path or get_library_root()
-    if openlist.is_configured():
-        res = openlist.list_dir(target, refresh=refresh)
-        if res.get("success"):
-            return {"success": True, "path": res.get("path", target),
-                    "entries": res.get("entries", []), "message": "",
-                    "source": LIBRARY_SOURCE_OPENLIST, "fallback": False}
-        ol_msg = res.get("message") or "OpenList 读取失败"
-        # 记一条日志：否则用户只会看到「读取失败」，无从知道是 OpenList 的问题
-        log("媒体库改用 QAS 兜底（OpenList 不可用）: {}".format(ol_msg))
-        qas = list_library(path=target, use_cache=not refresh)
-        qas["source"] = LIBRARY_SOURCE_QAS
-        qas["fallback"] = True
-        # 回落原因必须带给前端（issue #27 追问「配了 OpenList 却仍回落」）：
-        # 只说「已回落」用户无从下手，要把 OpenList 侧的原始原因一起透出，
-        # 才能区分「地址/密码错」和「路径前缀不对」这两类完全不同的成因。
-        qas["fallback_reason"] = ol_msg
-        qas["fallback_hint"] = res.get("fallback_hint", "")
-        # 失败归类（issue #47）：只给一句话，前端没法判断该让用户做什么
-        # （超时 → 重试；地址错 → 改地址；前缀错 → 改前缀）。
-        qas["fallback_kind"] = res.get("kind", "")
-        # 是否处于「失败退避」窗口（issue #47）：退避是**自动的、短暂的**，
-        # 前端据此告诉用户「正在自动重试，不必改配置」，避免用户在
-        # 20 秒的自动恢复期里就去翻设置、把好配置改坏。
-        qas["fallback_backoff"] = bool(res.get("backoff"))
-        # 退避窗口的剩余时长（issue #47 追问「上一级就回落」）：徽标要写
-        # 「约 N 秒内自动回到 OpenList」，N 必须来自后端真实窗口，而不是前端
-        # 硬编码一个数字 —— 两处一旦脱节，用户会按一个错的时间去重试。
-        if res.get("backoff"):
-            qas["fallback_backoff_seconds"] = res.get("backoff_seconds", 0)
-            qas["fallback_backoff_left"] = _backoff_left(res)
-        if qas.get("success"):
-            qas["message"] = ""
-            return qas
-        # 两个源都失败：如实说明是哪个源、失败原因各自是什么
+    if not openlist.is_configured():
         return {"success": False, "path": target, "entries": [],
-                "source": LIBRARY_SOURCE_QAS, "fallback": True,
-                "message": "OpenList: {}；QAS: {}".format(ol_msg, qas.get("message", ""))}
-    res = list_library(path=target, use_cache=not refresh)
-    res["source"] = LIBRARY_SOURCE_QAS
-    res["fallback"] = False
-    return res
+                "source": LIBRARY_SOURCE_OPENLIST, "fallback": False,
+                "kind": "unconfigured", "fallback_hint": "openlist_unconfigured",
+                "message": "未配置 OpenList 地址，无法浏览网盘目录"
+                           "（请到「设置 → 数据源 → 媒体库文件源（OpenList）」填写）"}
+    res = openlist.list_dir(target, refresh=refresh)
+    if res.get("success"):
+        return {"success": True, "path": res.get("path", target),
+                "entries": res.get("entries", []), "message": "",
+                "source": LIBRARY_SOURCE_OPENLIST, "fallback": False}
+    # 失败原因必须完整带给前端：只说「读取失败」用户无从下手，
+    # 要把 OpenList 侧的原始原因 + 修复方向一起透出（与既有 fallback_* 同口径，
+    # 前端沿用同一套提示渲染，不新增一套字段名）。
+    log("媒体库读取失败（OpenList 是唯一数据源，不再回落 QAS）: {}".format(
+        res.get("message") or "OpenList 读取失败"))
+    return {"success": False, "path": target, "entries": [],
+            "source": LIBRARY_SOURCE_OPENLIST, "fallback": False,
+            "fallback_reason": res.get("message") or "OpenList 读取失败",
+            "fallback_hint": res.get("fallback_hint", ""),
+            "kind": res.get("kind", ""),
+            "backoff": bool(res.get("backoff")),
+            "backoff_seconds": res.get("backoff_seconds", 0),
+            "backoff_left": _backoff_left(res),
+            "message": res.get("message") or "OpenList 读取失败"}
 
 
 def delete_entries_by_source(entries, sync_history=True, source=None,
                             sync_tasks=False, sync_tasks_path_filter=""):
-    """按数据源删除网盘条目（OpenList 侧用条目名删，QAS 侧用 fid 删）。
+    """删除网盘条目（OpenList 侧用条目名 + 目录删）。
 
-    为什么不在两种源之间互相转换（把 OpenList 的条目名当成 QAS 的 path 用）：
+    issue #57 之后**只剩 OpenList 一条路**：QAS 直连已被移除，不再有
+    「条目来自 QAS、用 fid 删」这一分支。传进来的 source 只用于兼容旧前端
+    （它仍会带上条目来源），非 openlist 的值一律按 OpenList 处理并如实说明 ——
+    宁可在一条路上报错，也不在两条路之间做可能误删的转换。
+
+    「谁列出来的谁删」这条约束在 issue #57 之后更硬：浏览只剩 OpenList，
+    删除也就只剩这一条路，任何「另一个源」的输入都会被拒绝执行。
+
+    为什么不做源之间的转换（把 OpenList 的条目名当成 QAS 的 path 用）：
     QAS 的 /delete_file 需要 fid 或**完整 path**，而 OpenList 的条目名不含
-    父目录，转换需要猜父目录 —— 猜错就是删掉别的东西。宁可要求
-    「谁列出来的谁删」，也不做可能误删的路径拼接。
+    父目录，转换需要猜父目录 —— 猜错就是删掉别的东西。
 
     sync_tasks（issue #57）：网盘侧删除成功后，是否**联动删除同名的 QAS 任务**。
       默认 False —— 删任务不可逆（QAS 里没有回收站），只有调用方明确要求才做。
@@ -783,7 +788,7 @@ def delete_entries_by_source(entries, sync_history=True, source=None,
       （网盘侧就是「当前浏览目录」），避免拿一个文件名去撞整张任务表。
     """
     src = source or LIBRARY_SOURCE_OPENLIST
-    if src == LIBRARY_SOURCE_OPENLIST:
+    if src == LIBRARY_SOURCE_OPENLIST:  # nosec - 数据源唯一，另一个值只用于报错文案
         if not openlist.is_configured():
             return {"success": False, "deleted": 0, "failed": 0, "history_synced": 0,
                     "results": [], "source": src,
@@ -828,23 +833,14 @@ def delete_entries_by_source(entries, sync_history=True, source=None,
                                        "path_filter": sync_tasks_path_filter,
                                        "message": "同步删除同名任务异常: {}".format(e)}
         return out
-    res = delete_entries(entries, sync_history=sync_history)
-    res["source"] = LIBRARY_SOURCE_QAS
-    if sync_tasks and res.get("deleted"):
-        # 与 OpenList 侧同口径：联动结果单独挂，不改变网盘删除的成败结论。
-        names = [e.get("name") or e.get("title") for e in entries
-                 if isinstance(e, dict) and (e.get("name") or e.get("title"))]
-        try:
-            res["tasks_result"] = sync_tasks_by_names(
-                names, path_filter=sync_tasks_path_filter,
-                max_delete=MAX_TASK_DELETE_BATCH)
-        except Exception as e:
-            log("网盘删除后同步删除同名任务异常: {}".format(e))
-            res["tasks_result"] = {"success": False, "deleted": 0, "failed": 0,
-                                   "results": [], "matched": 0, "names": names,
-                                   "path_filter": sync_tasks_path_filter,
-                                   "message": "同步删除同名任务异常: {}".format(e)}
-    return res
+    # 走到这里说明 source 不是 openlist（旧前端/旧书签）。QAS 直连已移除，
+    # 因此**拒绝执行**而不是降级到另一条删除路径：删除不可逆，
+    # 「用错源的字段去删」正是最容易删错东西的情况（见本函数开头）。
+    log("拒绝删除：source={!r} 不是 openlist（QAS 直连已于 issue #57 移除）".format(src))
+    return {"success": False, "deleted": 0, "failed": 0, "history_synced": 0,
+            "results": [], "source": LIBRARY_SOURCE_OPENLIST,
+            "message": "网盘文件模块已只支持 OpenList 数据源，"
+                       "请刷新页面后重试（条目来源：{}）".format(src or "未知")}
 
 
 def reconcile_tasks(root=None):

@@ -462,7 +462,7 @@
       <section class="page" id="tabLibrary">
         <div class="page-head">
           <h1>媒体库</h1>
-          <p style="color:var(--text2);font-size:13px;margin-top:4px">浏览夸克网盘真实文件与 QAS 转存任务；在此删除会同步清理本地转存历史，避免「网盘已删、本地仍判为已转存」。</p>
+          <p style="color:var(--text2);font-size:13px;margin-top:4px">浏览夸克网盘真实文件（目录由 OpenList 读取）与 QAS 转存任务；在此删除会同步清理本地转存历史，避免「网盘已删、本地仍判为已转存」。</p>
         </div>
 
         <!-- 网盘文件浏览（issue #27 优化：置顶，用户最常用；先于 QAS 任务加载）。
@@ -470,8 +470,9 @@
         <div class="card" id="libCard">
           <div class="card-title" style="justify-content:space-between">
             <span>网盘文件 <span id="libCount" style="color:var(--text3);font-weight:400"></span>
-              <!-- 数据源徽标（issue #27 追问）：告诉用户目录是 OpenList 回答的还是 QAS 直连的，
-                   以及是否发生了回落。不标的话「变快了 / 变慢了」无从归因。 -->
+              <!-- 数据源徽标（issue #27 追问）：告诉用户这一屏目录是谁回答的。
+                   issue #57 起数据源唯一（OpenList），徽标不再是「区分两个源」，
+                   而是「这份内容确实来自 OpenList」的可见断言。 -->
               <span id="libSourceBadge" class="lib-src-badge" style="display:none"></span>
             </span>
             <span>
@@ -502,7 +503,7 @@
             </span>
           </div>
           <div id="libList"><div class="empty-state" style="padding:24px 20px"><div class="empty-title">加载中...</div></div></div>
-          <div id="libTip" class="lib-tip">文件夹与文件以等高卡片展示（不显示封面图），每张卡都标出文件大小与修改时间；删除会同步清理本地转存历史。目录由「设置 → 数据源」里的 OpenList 回答（未配置时回落 QAS 直连）。</div>
+          <div id="libTip" class="lib-tip">文件夹与文件以等高卡片展示（不显示封面图），每张卡都标出文件大小与修改时间；删除会同步清理本地转存历史。目录由「设置 → 数据源」里的 OpenList 回答（未配置 OpenList 时本模块不可用）。</div>
           <!-- 批量删除操作条 -->
           <div id="libActionBar" class="lib-actionbar" style="display:none">
             <label class="toggle" title="删除网盘文件的同时，清理 DBAuto 中对应的转存历史"><input type="checkbox" id="syncHistoryChk" checked><span class="slider"></span></label>
@@ -702,12 +703,12 @@
                            两种凭据并存时，用户必须自己判断「我到底在用哪一种」，
                            而两者行为差异（多一轮登录往返、改密后失效）在界面上看不见。
                            现在只剩令牌一个入口，界面与后端行为一一对应。 -->
-                      <div class="form-group"><label for="cfg_openlist_token">访问令牌</label><div class="pwd-wrap"><input type="password" id="cfg_openlist_token" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示令牌" title="显示令牌"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div><div class="form-hint" id="openlistAuthHint">OpenList 的**唯一**鉴权方式：在 OpenList 后台「个人资料 / 令牌」处获取，填了就直接用它请求（不再有账号密码登录）。留空按游客模式访问，若 OpenList 关闭了游客访问，媒体库会回落 QAS 直连。令牌不会获得额外权限：它只回答「你是谁」，能看什么、能不能删由该账号的角色与目录权限决定 —— 所以请填有权限账号的令牌，而不是随便一个。</div></div>
+                      <div class="form-group"><label for="cfg_openlist_token">访问令牌</label><div class="pwd-wrap"><input type="password" id="cfg_openlist_token" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示令牌" title="显示令牌"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div><div class="form-hint" id="openlistAuthHint">OpenList 的**唯一**鉴权方式：在 OpenList 后台「个人资料 / 令牌」处获取，填了就直接用它请求（不再有账号密码登录）。留空按游客模式访问，若 OpenList 关闭了游客访问，媒体库会读不到目录（弹窗会提示去「连接自检」）。令牌不会获得额外权限：它只回答「你是谁」，能看什么、能不能删由该账号的角色与目录权限决定 —— 所以请填有权限账号的令牌，而不是随便一个。</div></div>
                       <div class="form-group form-group-inline">
                         <label for="cfg_openlist_root">路径前缀</label><input type="text" id="cfg_openlist_root" placeholder="/夸克（留空=与网盘路径一致）">
                       </div>
-                      <div class="form-hint">OpenList 上挂载夸克网盘的那个目录。媒体库路径（如 <code>/影视/电影</code>）会拼在它后面去 OpenList 取目录；<b>填错会导致每次浏览都回落 QAS</b>。</div>
-                      <div class="form-hint" id="openlistSelfCheckHint">填地址后媒体库目录改由 OpenList 回答（比经 QAS 实时拉取快）；留空回落 QAS 直连。鉴权只支持访问令牌：未填令牌按游客模式访问。</div>
+                      <div class="form-hint">OpenList 上挂载夸克网盘的那个目录。媒体库路径（如 <code>/影视/电影</code>）会拼在它后面去 OpenList 取目录；<b>填错会导致每次浏览都读不到目录</b>。</div>
+                      <div class="form-hint" id="openlistSelfCheckHint">媒体库的「网盘文件」模块只由 OpenList 读取（比经 QAS 实时拉取快）；<b>留空则该模块不可用</b>。鉴权只支持访问令牌：未填令牌按游客模式访问。</div>
                       <div class="set-card-actions">
                         <button class="btn btn-outline btn-sm" id="openlistCheckBtn" onclick="checkOpenList()">连接自检</button>
                       </div>

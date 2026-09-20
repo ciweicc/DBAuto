@@ -2,7 +2,7 @@
 #
 # 对外接口（均需登录认证，走统一速率限制）：
 #   GET  /api/qas/tasks            —— QAS tasklist 列表
-#   GET  /api/qas/library?path=/   —— 夸克网盘目录浏览（媒体库）
+#   GET  /api/qas/library?path=/   —— 网盘目录浏览（媒体库，issue #57 起只走 OpenList）
 #   POST /api/qas/delete           —— 删除网盘条目 + 可选同步清理 DBAuto 历史
 #   POST /api/qas/delete_tasks     —— 删除 QAS 条目任务配置（整表写回）
 #
@@ -18,7 +18,7 @@
 # 删除就发给谁（OpenList 用条目名、QAS 用 fid）。跨源拼路径会误删，见 media_library。
 import openlist
 import media_library
-from media_library import LIBRARY_SOURCE_OPENLIST, LIBRARY_SOURCE_QAS
+from media_library import LIBRARY_SOURCE_OPENLIST
 from utils import log
 from validator import validate_string, validate_list
 
@@ -111,9 +111,10 @@ class LibraryRouteMixin:
                 info["openlist_auth_source"] = openlist.ping().get("mode", "")
                 info["openlist_auth_label"] = info["openlist_auth"].get("mode_label", "")
                 if not chk.get("success"):
-                    # 自检失败时，「谁在回答」会回落成 qas；让 source 如实反映，
-                    # 前端文案才不会和徽标自相矛盾。
-                    info["source"] = media_library.LIBRARY_SOURCE_QAS
+                    # 自检失败：目录现在**读不出来**（issue #57 起 OpenList 是
+                    # 网盘文件模块的唯一数据源，不再回落 QAS）。source 保持不变，
+                    # 让前端文案与徽标一致 —— 都是「OpenList 不可用」。
+                    info["source"] = media_library.LIBRARY_SOURCE_OPENLIST
             self._send_json({"success": True, **info})
             return True
 
@@ -146,12 +147,12 @@ class LibraryRouteMixin:
             self._send_json({"error": "entries: {}".format(msg)}, 400)
             return True
 
-        # 数据源：OpenList 侧用条目名定位（与浏览同源），QAS 侧用 fid / path。
-        # 默认取当前数据源，允许请求显式指定（前端按条目的 _src 传，防止
-        # 「OpenList 浏览、QAS 删除」这种跨源错配）。
+        # 数据源：网盘文件模块只有 OpenList（issue #57），条目名 + 目录定位，
+        # 与浏览**同源**。字段仍接受，但只认 openlist —— 请求里带别的值
+        # 直接拒绝，避免「用一个源的字段去删另一个源的东西」这类误删。
         source = body.get("source") or media_library.library_source()
-        if source not in (LIBRARY_SOURCE_OPENLIST, LIBRARY_SOURCE_QAS):
-            self._send_json({"error": "source 必须是 openlist 或 qas"}, 400)
+        if source != LIBRARY_SOURCE_OPENLIST:
+            self._send_json({"error": "source 必须是 openlist（QAS 直连已移除）"}, 400)
             return True
 
         cleaned = []
@@ -159,12 +160,8 @@ class LibraryRouteMixin:
             if not isinstance(it, dict):
                 self._send_json({"error": "entries 每项必须是对象"}, 400)
                 return True
-            if source == LIBRARY_SOURCE_OPENLIST:
-                if not str(it.get("name") or "").strip():
-                    self._send_json({"error": "entries 每项必须包含 name"}, 400)
-                    return True
-            elif it.get("fid") in (None, "") and not it.get("path"):
-                self._send_json({"error": "entries 每项必须包含 fid 或 path"}, 400)
+            if not str(it.get("name") or "").strip():
+                self._send_json({"error": "entries 每项必须包含 name"}, 400)
                 return True
             cleaned.append(it)
 

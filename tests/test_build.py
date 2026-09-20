@@ -2072,10 +2072,12 @@ def test_library_open_speed_backend_budget():
     assert "def _http_kwargs(" in api, "APIClient 未提供 timeout/retries 统一下传"
     assert 'kwargs["retries"] = self.retries' in api, "retries 未透传到底层 http_*"
     routes = _read(os.path.join(_ROOT, "app_modules", "routes_library.py"))
-    # 合并 OpenList 数据源后，缓存开关由 list_library_entries(refresh=...) 下传：
-    # refresh=True 时 QAS 侧 use_cache=False（不读也不写缓存）。
+    # 缓存开关由 list_library_entries(refresh=...) 下传；
+    # issue #57 起数据源只剩 OpenList，refresh 必须一路传到 openlist.list_dir
+    # （它才是现在唯一有「列表缓存」的那一层）。
     assert "refresh=" in routes, "路由未把「是否绕过缓存」下传"
-    assert "use_cache=not refresh" in lib, "QAS 目录缓存开关未接到 refresh 上"
+    assert "openlist.list_dir(target, refresh=refresh)" in lib, \
+        "OpenList 列表缓存开关未接到 refresh 上"
 
 
 def test_library_refresh_bypasses_server_cache():
@@ -2215,8 +2217,14 @@ def test_openlist_delete_requires_same_source():
     routes = _read(os.path.join(_ROOT, "app_modules", "routes_library.py"))
     assert "LIBRARY_SOURCE_OPENLIST" in routes and "必须包含 name" in routes, \
         "OpenList 侧删除未校验 name"
+    # issue #57：数据源唯一（OpenList），因此「同源」进一步收紧成
+    # 「只认 openlist，其它值一律拒绝」—— 路由层与实现层各拦一道。
+    assert 'source != LIBRARY_SOURCE_OPENLIST' in routes, \
+        "路由未拒绝非 OpenList 的 source（跨源删除会删错东西）"
     lib = _read(os.path.join(_ROOT, "app_modules", "media_library.py"))
     assert "谁列出来的谁删" in lib, "缺少「同源删除」的说明（这条约束必须写下来防回退）"
+    assert "拒绝执行" in lib, \
+        "实现层缺少「非 OpenList 源一律拒绝执行」的说明（不能降级到另一条删除路径）"
 
 
 def test_task_audit_distinguishes_unverified_from_missing():
@@ -2374,7 +2382,12 @@ def test_openlist_selfcheck_keeps_auth_and_path_semantics(dist):
         "自检未回传路径前缀：用户无法从提示定位到该改哪个字段"
     assert 'info["openlist_stage"]' in src_block, \
         "自检未区分「登录失败」与「登录通过但列目录失败」"
-    assert "LIBRARY_SOURCE_QAS" in src_block, "自检失败时 source 未如实回落为 qas"
+    # issue #57：数据源唯一，自检失败时 source 保持 openlist ——
+    # 徽标与错误态必须指向同一个结论（都怪 OpenList），不能残留一个 qas 源
+    assert "LIBRARY_SOURCE_OPENLIST" in src_block, \
+        "自检失败时 source 未保持为 openlist（数据源唯一，已无回落）"
+    assert "LIBRARY_SOURCE_QAS" not in src_block, \
+        "自检仍在回落 qas：QAS 直连已在 issue #57 移除"
     # 两侧字段必须并存，而不是互相覆盖
     for field in ("openlist_auth", "openlist_auth_mode", "openlist_auth_source",
                   "openlist_stage", "openlist_path", "openlist_count",
@@ -2737,15 +2750,15 @@ def test_library_read_path_keeps_both_source_and_cache_semantics(dist):
     routes = _read(os.path.join(_ROOT, "app_modules", "routes_library.py"))
     lib = _read(os.path.join(_ROOT, "app_modules", "media_library.py"))
 
-    # 1. 数据源分发（#43）：路由走统一入口 list_library_entries，而非直连某一路
+    # 1. 读取入口（#57）：路由走统一入口 list_library_entries（唯一数据源 OpenList）
     assert "media_library.list_library_entries(" in routes, \
-        "路由未走数据源分发入口（会丢掉 OpenList 优先 / QAS 回落）"
+        "路由未走目录读取入口（会绕过数据源与失败归因逻辑）"
     assert "refresh=self._cache_disabled(params)" in routes, \
         "refresh 语义取反：refresh=1 必须表示「绕过缓存」，取反会让「刷新」失效"
 
-    # 2. 缓存语义（#42）：refresh 必须真正下传到 QAS 侧的 use_cache
-    assert "use_cache=not refresh" in lib, \
-        "QAS 目录缓存开关未接到 refresh 上（合并时丢了缓存绕过逻辑）"
+    # 2. 缓存语义（#42）：refresh 必须真正下传到 OpenList 的列表缓存
+    assert "openlist.list_dir(target, refresh=refresh)" in lib, \
+        "OpenList 列表缓存开关未接到 refresh 上（合并时丢了缓存绕过逻辑）"
 
     # 3. 前端（#42+#43）：一次响应同时写「缓存条目 + 骨架行数 + 数据源元信息」
     js = _read(os.path.join(_JS_DIR, "library.js"))
@@ -2796,21 +2809,26 @@ def test_library_cache_never_asserts_data_source(dist):
         "仍在使用「部分覆盖」：null 会清空回落原因却留下旧 source"
 
 
-def test_library_error_state_clears_stale_fallback_attribution(dist):
-    """失败态不得继续挂着上一轮的「OpenList 回落」结论。
+def test_library_error_state_clears_stale_source_badge(dist):
+    """失败态不得继续挂着上一轮的目录结论（徽标是断言，隐藏 ≠ 撤销）。
 
-    实测：先在某目录看到回落，再打开另一个目录、这次连 QAS 都失败了 ——
-    页面会同时显示「读取失败」和「QAS（OpenList 回落）· OpenList 请求超时…」，
-    用户据此去改 OpenList 配置，而真正挂了的是 QAS。
+    实测：先在某目录读到内容，再打开另一个目录、这次失败了 —— 页面会同时
+    显示「读取失败」和一个关于上一轮的陈旧徽标，用户据此判断时必然出错。
     """
     js = _read(os.path.join(_JS_DIR, "library.js"))
     err = js[js.index("function _renderLibError("):js.index("// 渲染一次目录")]
-    for reset in ("libFallback = false;", "libFallbackReason = '';",
-                  "libFallbackKind = '';", "libFallbackBackoff = false;"):
-        assert reset in err, \
-            "失败态未清理上一轮的回落状态（{}）：提示会自相矛盾".format(reset)
+    assert "libSource = 'openlist';" in err, \
+        "失败态未把数据源重置为唯一事实（openlist）"
+    assert "libFallback = false;" in err, \
+        "失败态未清掉「回落」标记：会残留早就不成立的结论"
     assert "_renderLibSourceBadge();" in err, \
         "失败态未重绘徽标：会残留上一轮的数据源结论"
+    # issue #57：失败原因（kind）**不能**在失败态里被清空 ——
+    # 下面两行文案正是靠它区分「未配置」与「配了但读不到」。
+    assert "libFallbackKind = '';" not in err, \
+        "失败态清空了失败归类：错误提示会退化成一句笼统的「读取失败」"
+    assert "未配置 OpenList" in err, \
+        "失败态未针对「未配置」给出去哪配置的引导"
 
 
 def test_library_drops_entries_without_name(dist):
