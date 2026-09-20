@@ -113,6 +113,76 @@ var qasPageSize = (function(){
 var QAS_CHIP_LIMIT = 12;   // 路径前缀 chips 最多显示几个（其余归入输入框）
 var QAS_CHIP_MIN = 3;      // 前缀至少出现几次才配得上一个 chip（避免全是「只有 1 条」）
 
+// QAS 任务表的展示布局（issue #57 追问：「夸克自动转存模块增加列表视图和卡片视图的
+// 切换按钮」）。
+//
+// 这里的「这一屏」指的就是 QAS 转存任务卡 —— 227 条任务全是「任务名 / 转存路径 /
+// 分享链接」三列，表格适合逐列比对，卡片适合一眼扫任务名。
+//
+// 四条实现决策，每条都对应一种「加了按钮等于没加」的坏法：
+//   1. **存储键独立**（qas_view，不是 lib_view）：两张表是两件事，用户想让任务表
+//      用表格、网盘文件用卡片是完全合理的；共用一个键会让切这张表把那张表也改掉。
+//   2. **默认 list**：任务表原本就是表格，而且任务是「配置」不是「内容」——
+//      一屏能扫更多条比看名字更重要。默认值不该因为加了个开关就变。
+//   3. **渲染时读全局变量，不重读 localStorage**：媒体库那边踩过「刚切的档位被
+//      旧值盖回去」的竞态（见 _renderLibrary 的注释），这里沿用同一口径。
+//   4. **只重画当前页**：切布局是纯展示行为，不发请求、不动勾选、不重置页码。
+//      重画走 _renderQasTasks()，因此筛选/分页/键盘提示/操作条全部一起更新。
+var QAS_VIEW_KEY = 'qas_view';            // 'card' | 'list'
+var QAS_VIEWS = ['card', 'list'];
+var qasView = 'list';
+
+function qasViewMode(){
+  try{
+    var v = localStorage.getItem(QAS_VIEW_KEY);
+    if(QAS_VIEWS.indexOf(v) >= 0) return v;
+  }catch(e){}
+  return 'list';
+}
+
+// 布局的**唯一**落点：写存储 → 更新按钮 → 原地重画当前页。
+// 过 _renderQasTasks 而不是只改 DOM：筛选栏的显示/隐藏、页码夹取、
+// 「当前行」标记的重建都在那条路径上，绕过它就会出现
+// 「切了视图后虚线框不见了 / 全选统计还是旧的」。
+function _applyQasView(opts){
+  opts = opts || {};
+  if(opts.save !== false){
+    try{ localStorage.setItem(QAS_VIEW_KEY, qasView); }catch(e){}
+  }
+  _updateQasViewBtn();
+  _renderQasTasks();
+}
+
+function toggleQasView(){
+  qasView = (qasView === 'card') ? 'list' : 'card';
+  _applyQasView();
+}
+
+function _updateQasViewBtn(){
+  var btn = document.getElementById('qasViewBtn');
+  if(!btn) return;
+  var isCard = (qasView === 'card');
+  btn.textContent = isCard ? '列表视图' : '卡片视图';
+  btn.setAttribute('aria-label', isCard ? '切换为列表视图' : '切换为卡片视图');
+  // aria-pressed 暴露的是「当前是不是卡片视图」，屏幕阅读器据此读出状态
+  btn.setAttribute('aria-pressed', isCard ? 'true' : 'false');
+}
+
+// 卡片视图的行元素就是卡片本身（与媒体库同一套 .lib-card 标记）。
+// 键盘提示条要说「←→」而不是「↑↓」—— 一张网格里按 ↑↓ 只会被浏览器当成
+// 页面滚动，提示与实际行为不符比没有提示更糟。
+function _updateQasKeyHint(){
+  var el = document.getElementById('qasKeyHint');
+  if(!el) return;
+  var move = (qasView === 'card') ? '←→' : '↑↓';
+  el.innerHTML =
+    '<kbd>Ctrl/⌘</kbd>+<kbd>A</kbd> 全选本页' +
+    '<kbd>Shift</kbd>+<kbd>←→</kbd> 连选' +
+    '<kbd>' + move + '</kbd> 移动（页末接着翻页）' +
+    '<kbd>空格</kbd> 勾选' +
+    '<kbd>Esc</kbd> 取消';
+}
+
 // 目录响应缓存：短时间内重复进入同一目录直接复用，避免无谓往返。
 // 只缓存「成功」结果；失败不缓存，用户重试才会真的重试。
 var LIB_CACHE_TTL = 60000;
@@ -456,6 +526,11 @@ function loadLibraryPage(){
   // 放在这里而不是 DOMContentLoaded，是因为操作条是随目录渲染的 ——
   // 但开关本体在静态 body 里就有，所以此处一定取得到元素。
   _restoreLibSyncPrefs();
+  // QAS 任务表的布局偏好（issue #57 追问）：与媒体库同一套口径 —— 进页时从存储
+  // 还原、save=false 不写回。按钮文案在这里先对齐一次，避免「数据还没回来时
+  // 按钮写着上一个布局」的瞬间闪烁（_renderQasTasks 里还会再对一次）。
+  qasView = qasViewMode();
+  _applyQasView({ save: false });
   // 首次进入且尚未导航过时，落到设置里的「媒体库根目录」。
   // （libPath 在脚本加载期就已初始化为当时的 libRoot，此处覆盖为最新配置）
   loadLibrary(libPath);
@@ -618,10 +693,15 @@ function _qasKeyboardEnabled(){
 }
 
 // 当前渲染出来的任务行。**必须走 DOM**：行是 _renderQasTasks 重建的，
-// 只有 DOM 才知道此刻屏幕上究竟是哪几行（筛选/分页/每页条数都会改它）。
+// 只有 DOM 才知道此刻屏幕上究竟是哪几行（筛选/分页/每页条数/布局都会改它）。
+//
+// 两种布局都要认（列表视图 = .lib-row，卡片视图 = .lib-card）。只查 .lib-row
+// 会让「切成卡片视图后快捷键全部失效」—— 而失效的姿态最坏的一种是
+// **静默的**：Ctrl+A 勾不到东西、Shift+↓ 不动、当前行虚线框消失，页面不报错。
+// 媒体库那边已经因为同样原因踩过一次（见 libRowEls），这里一次到位。
 function qasRowEls(){
   return Array.prototype.slice.call(
-    document.querySelectorAll('#qasTaskList .lib-row:not(.lib-head)'));
+    document.querySelectorAll('#qasTaskList .lib-row:not(.lib-head), #qasTaskList .lib-card'));
 }
 
 function _qasFocusIdx(rows){
@@ -742,6 +822,8 @@ function qasClearSelection(){
 // 两处都写死 0 的话，「按 ↑ 回到上一页」会把光标甩到页首，
 // 用户再按 ↑ 就立刻又翻回下一页 —— 看起来像「翻页失灵」（本轮实测踩到）。
 function qasGotoPage(delta){
+  // 两种布局都走这里：DOM 顺序在两种布局里都是「第 1 条 → 第 20 条」，
+  // 所以「下一页落首行、上一页落末行」的语义与布局无关。
   libKeyScope = 'qas';
   var before = qasPageNo;
   qasPage(delta);
@@ -804,7 +886,12 @@ function qasRowClick(key, ev){
 // 我们在 document 上再处理一次就会翻两次（勾了又取消）。两种视图都拦。
 function qasRowKeydown(key, ev){
   if(!ev) return;
-  if(ev.key === 'ArrowUp' || ev.key === 'ArrowDown'){ _qasKeydown(ev); return; }
+  // ←→ 必须在这里也拦一道：卡片视图的方向键语义是「左右」，而卡片是网格里的
+  // 一个盒子，浏览器对它的默认行为是横向滚动 —— 不拦就会「按 → 页面横着滚了一下、
+  // 当前行纹丝不动」。列表视图里 ←→ 不参与选择（表格的视觉顺序是上下），
+  // 但拦下来没有副作用：_qasKeydown 只在卡片布局下消费它。
+  if(ev.key === 'ArrowUp' || ev.key === 'ArrowDown' ||
+     ev.key === 'ArrowLeft' || ev.key === 'ArrowRight'){ _qasKeydown(ev); return; }
   if(ev.key === ' ' || ev.key === 'Spacebar'){ _qasKeydown(ev); }
 }
 
@@ -847,15 +934,19 @@ function _qasKeydown(e){
     qasClearSelection();
     return true;
   }
-  // Ctrl/⌘+↑↓：移动当前行但不改变选择（「看看但不选」）
-  if(mod && (k === 'ArrowUp' || k === 'ArrowDown')){
+  // Ctrl/⌘+↑↓：移动当前行但不改变选择（「看看但不选」）。
+  // 与上面的 ↑↓ 同理：卡片视图是左右顺序，这个组合键在那边让位给浏览器滚动。
+  if(mod && (k === 'ArrowUp' || k === 'ArrowDown') && qasView !== 'card'){
     e.preventDefault();
     qasFocusRow(focus + ((k === 'ArrowDown') ? 1 : -1));
     qasSelectAnchor = _qasFocusIdx(rows);
     qasRangeBase = null;
     return true;
   }
-  if(k === 'ArrowUp' || k === 'ArrowDown'){
+  // ↑↓ 的语义**只在列表视图**成立：表格的视觉顺序是上下，按 ↓ 就是「下一行」。
+  // 卡片视图是网格，视觉顺序是左右，此时 ↑↓ 交给浏览器做页面滚动
+  // （用户按 ↓ 想看下面的卡片，结果当前行往下跳一格才是最讨厌的行为）。
+  if((k === 'ArrowUp' || k === 'ArrowDown') && qasView !== 'card'){
     e.preventDefault();
     var step = (k === 'ArrowDown') ? 1 : -1;
     var ns = focus + step;
@@ -877,6 +968,29 @@ function _qasKeydown(e){
       _qasSelectRange(anchor, ni, rows);
     }else{
       qasSelectAnchor = ni;
+    }
+    return true;
+  }
+  // ←→（卡片视图）：与列表视图的 ↑↓ 逐条同构 —— 同一段代码，只是把步长
+  // 的来源从「上下」换成「左右」，因此到边界翻页、Shift 连选、锚点不跟焦点跑
+  // 这些细节天然一致（抄一份上下的实现才是真会漂移）。
+  if((k === 'ArrowLeft' || k === 'ArrowRight') && qasView === 'card'){
+    e.preventDefault();
+    var hstep = (k === 'ArrowRight') ? 1 : -1;
+    var hns = focus + hstep;
+    if(hns < 0 || hns > rows.length - 1){
+      if(kbPageAvailable(hstep)){       // 行末按 → = 翻下一页，与页末按 ↓ 等价
+        qasGotoPage(hstep);
+        return true;
+      }
+      return true;
+    }
+    qasFocusRow(hns);
+    var hni = _qasFocusIdx(rows);
+    if(e.shiftKey){
+      _qasSelectRange(anchor, hni, rows);
+    }else{
+      qasSelectAnchor = hni;
     }
     return true;
   }
@@ -1011,6 +1125,12 @@ function _renderQasFilterBar(){
   if(!bar) return;
   // 没有任务时筛什么筛：整条筛选栏藏起来，不给空界面加控件
   bar.style.display = qasTasks.length ? 'flex' : 'none';
+  // 展示布局按钮状态（issue #57 追问）：这里的更新不能只在 loadQasTasks /
+  // toggleQasView 里做 —— 筛选栏随数据显隐，按钮文案必须跟着「此刻真的是哪种布局」
+  // 走，否则会出现「卡片视图下按钮写着卡片视图」（点一下什么都不变的假按钮）。
+  _updateQasViewBtn();
+  // 键盘提示条也要跟着布局换按键（↑↓ / ←→），见 _updateQasKeyHint
+  _updateQasKeyHint();
 
   // 输入框与状态同步（重渲染 / chips 点击 / 程序化设置都走这里，单一出口）
   var pEl = document.getElementById('qasFilterPath');
@@ -1119,6 +1239,30 @@ function _renderQasTasks(){
     return;
   }
 
+  // 布局分叉点（issue #57 追问）：这里是**唯一**一处按 qasView 分流的地方。
+  // 分流放在最后、紧贴 innerHTML，是为了让上面的筛选/分页/空态/计数逻辑
+  // 对两种布局完全共用 —— 否则「卡片视图下筛选坏了」会变成又一条只在某个
+  // 布局里复现的 bug。
+  box.innerHTML = (qasView === 'card') ? _qasCardHtml(rows, tabidx) : _qasTableHtml(rows, tabidx);
+  // 重渲染会把 .lib-current 一起丢掉（innerHTML 是整体替换）。
+  // 不补回来的话「翻页/筛选之后虚线框消失」—— 用户会认为当前行没了。
+  if(_qasFocusIdx(qasRowEls()) >= 0) qasFocusRow(_qasFocusIdx(qasRowEls()), {scroll:false});
+  updateQasActionBar();
+}
+
+// ==================== 媒体库页脚本·媒体库部分结束 ====================
+// 分章标记：媒体库的全部逻辑（浏览 / 渲染 / 删除 / 键盘 / 对账）到此为止，
+// 下一行开始是 QAS 任务表这一章。既有单元测试用
+// `library.js[函数起点 : 下一个章标题]` 切片断言「媒体库那几段函数的完整语义」；
+// 本轮在媒体库与原有的候选章标题之间插了一整节（QAS 卡片视图）之后，
+// 那两处切片当场变成空串、3 条既有用例失败。章首标记有且只有这一个，
+// 切片终点从此稳定，不再依赖「下一个函数叫什么」。
+
+// ---------- QAS 列表视图（表格，原样保留） ----------
+//
+// 表头在翻页时补上「1–20」的行号区间：只看页码不知道这页装的是哪一批。
+function _qasTableHtml(rows, tabidx){
+  var tabidxAttr = tabidx || '';
   var head = '<div class="lib-row lib-head"><span class="lib-cb"></span><span>任务名</span><span>转存路径</span><span>分享链接</span><span></span></div>';
   if(qasPageSize && filteredQasTasks().length > qasPageSize){
     var start = (qasPageNo - 1) * qasPageSize + 1;
@@ -1127,7 +1271,7 @@ function _renderQasTasks(){
       '<span>转存路径</span><span>分享链接</span>' +
       '<span class="lib-ops" style="color:var(--text3);font-weight:400">' + start + '–' + end + '</span></div>';
   }
-  var html = '<div class="lib-table lib-table-tasks"' + (tabidx ? ' tabindex="-1"' : '') +
+  var html = '<div class="lib-table lib-table-tasks"' + (tabidxAttr ? ' tabindex="-1"' : '') +
     ' aria-label="QAS 转存任务列表（Ctrl+A 全选 / Shift+↑↓ 连选 / 空格勾选 / Esc 取消）">' + head;
   rows.forEach(function(t){
     var key = qasKey(t);
@@ -1135,7 +1279,7 @@ function _renderQasTasks(){
     // data-key / tabindex / onkeydown / onclick（issue #53 追问）：键盘选择靠
     // data-key 定位行，缺了它「按空格有反应但什么都没选中」（媒体库那边实测过）。
     html += '<div class="lib-row"' +
-        ' data-key="' + esc(key) + '"' + tabidx +
+        ' data-key="' + esc(key) + '"' + tabidxAttr +
         ' onkeydown="qasRowKeydown(' + jsArg(key) + ', event)"' +
         ' onclick="qasRowClick(' + jsArg(key) + ', event)">' +
       '<span class="lib-cb"><input type="checkbox" aria-label="选择 ' + esc(t.taskname) + '"' +
@@ -1148,11 +1292,58 @@ function _renderQasTasks(){
       '</div>';
   });
   html += '</div>';
-  box.innerHTML = html;
-  // 重渲染会把 .lib-current 一起丢掉（innerHTML 是整体替换）。
-  // 不补回来的话「翻页/筛选之后虚线框消失」—— 用户会认为当前行没了。
-  if(_qasFocusIdx(qasRowEls()) >= 0) qasFocusRow(_qasFocusIdx(qasRowEls()), {scroll:false});
-  updateQasActionBar();
+  return html;
+}
+
+// ---------- QAS 卡片视图（issue #57 追问） ----------
+//
+// 一张任务卡的排版取舍：任务**没有大小、没有修改时间**，只有「任务名 / 转存路径 /
+// 分享链接」三件事，所以卡片不做成媒体库那张「图标 + 名称 + 元信息」，
+// 而是把三件事各占一行（名称在最上、路径折行显示、底部一行操作）：
+//   [勾选框] [任务名 + 转存路径] [链接 / 删除]
+// 直接复用媒体库的 .lib-card 外壳（同尺寸、同 hover、同键盘语义），
+// 变体只让「路径允许折两行」—— 媒体库那边路径永远是单行省略，
+// 而任务名与 savepath 常常只差前后缀（「寒战1994」/「/影视/电影/寒战1994」），
+// 折行能省掉用户一次点开确认。
+//
+// 三处「必须与列表视图逐字一致」的地方（不一致 = 删错东西）：
+//   1. data-key 与 tabindex：键盘选择靠它把 DOM 与 qasTasks 对上；
+//   2. onclick/onkeydown 处理器：qasRowClick / qasRowKeydown 两种布局共用一套；
+//   3. 勾选框的 aria-label 与勾选态来源（qasSelected[key]）。
+function _qasCardHtml(rows, tabidx){
+  var tabidxAttr = tabidx || '';
+  var html = '<div class="lib-grid lib-grid-tasks" id="qasGrid"' +
+    (tabidxAttr ? ' tabindex="-1"' : '') +
+    ' aria-label="QAS 转存任务卡片（Ctrl+A 全选 / Shift+←→ 连选 / 空格勾选 / Esc 取消）">';
+  rows.forEach(function(t){
+    var key = qasKey(t);
+    html += '<div class="lib-card lib-card-task" data-key="' + esc(key) + '"' +
+        ' data-name="' + esc(t.taskname) + '"' + tabidxAttr +
+        ' onkeydown="qasRowKeydown(' + jsArg(key) + ', event)"' +
+        ' onclick="qasRowClick(' + jsArg(key) + ', event)">' +
+      // 外壳用 <label>（与媒体库一致）：点勾选框热区时浏览器自己翻转，
+      // 不走行点击那条会「只选中这一行」的路径。
+      '<label class="lib-card-cb" title="选择该任务">' +
+        '<input type="checkbox" aria-label="选择 ' + esc(t.taskname) + '"' +
+        (qasSelected[key] ? ' checked' : '') +
+        ' onchange="toggleQasSelect(' + jsArg(key) + ', this.checked)">' +
+      '</label>' +
+      '<span class="lib-card-name-col">' +
+        '<span class="lib-card-title" title="' + esc(t.taskname) + '">' + esc(t.taskname || '—') + '</span>' +
+        '<span class="lib-card-meta lib-card-path" title="转存路径 ' + esc(t.savepath) + '">' + esc(t.savepath || '—') + '</span>' +
+      '</span>' +
+      '<span class="qas-card-ops">' +
+        (t.shareurl
+          ? '<a class="qas-card-link" href="' + esc(t.shareurl) + '" target="_blank" rel="noopener noreferrer" title="打开分享链接">链接</a>'
+          : '<span class="qas-card-link off" title="该任务没有分享链接">—</span>') +
+        '<button class="lib-icon-btn" title="删除任务「' + esc(t.taskname) + '」" aria-label="删除 ' + esc(t.taskname) + '" onclick="deleteQasTask(' + jsArg(key) + ')">' +
+          '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><use href="#icon-trash"/></svg>' +
+        '</button>' +
+      '</span>' +
+      '</div>';
+  });
+  html += '</div>';
+  return html;
 }
 
 function findQasTask(key){
@@ -1355,6 +1546,7 @@ function deleteSelectedQasTasks(){
   doDeleteQasTasks(items, '所选的 ' + items.length + ' 条任务' + scope,
                    _syncTasksExtra(items));
 }
+
 
 // ---------- 网盘文件 ----------
 
@@ -1638,7 +1830,7 @@ function _renderLibrary(path, entries, fromCache, ms, source){
   updateLibActionBar();
 }
 
-// ---------- 列表视图（保留原有紧凑表格，随时可切回） ----------
+// ---------- 媒体库列表视图（保留原有紧凑表格，随时可切回） ----------
 function _libTableHtml(){
   var html = '<div class="lib-table">';
   // 列表视图的表头与卡片视图保持同一套语义：名称 / 大小 / 修改时间（issue #27 跟进）。

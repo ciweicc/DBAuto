@@ -24,6 +24,7 @@ python scripts/check_log_panel_dom.py --serve # 日志栏 DOM 度量走查（改
 python scripts/check_settings_dom.py --serve  # 设置页空白度量走查（改设置页后必跑）
 python scripts/check_library_dom.py --serve  # 媒体库顺序/加载反馈/缓存度量走查（改媒体库后必跑）
 python scripts/check_qas_keys_dom.py --serve # QAS 任务表键盘选择走查（改任务表后必跑）
+python scripts/check_qas_view_dom.py --serve # QAS 任务表列表/卡片视图切换走查（改任务表后必跑）
 python scripts/check_login_dom.py --serve    # 登录页真实合成对比度/磨砂/色带走查（改登录页后必跑）
 ```
 
@@ -36,6 +37,11 @@ python scripts/check_login_dom.py --serve    # 登录页真实合成对比度/�
 > `scripts/check_library_dom.py` 覆盖媒体库页：网盘文件必须排在 QAS 任务之前且
 > 首屏可见、请求发出即有带时长的加载反馈、目录接口卡死时按时快速失败并可重试、
 > 返回父目录命中缓存（不再打网络）。
+> `scripts/check_qas_view_dom.py` 覆盖 QAS 任务表的「列表视图 / 卡片视图」切换：
+> 真点按钮断言「换了布局且**没发新请求**」、卡片里选择语义与表格逐条一致
+> （点卡片 / Ctrl+A / Shift+←→ / 空格 / Esc）、↑↓ 在网格里让位给浏览器滚动、
+> 筛选与分页在两种布局下一致、卡片高度与路径折行（卡片存在的意义）、
+> 偏好写进 `qas_view` 且与媒体库的 `lib_view` 不串味。
 > `scripts/check_qas_keys_dom.py` 覆盖 QAS 任务表的键盘选择：Ctrl+A 只勾**当前
 > 可见行**（筛选/分页后不越界）、Shift+↑↓ 可扩可缩且不吞掉先前选择、↑↓ 到页末
 > 接着翻页、焦点在搜索框里时全部放行。它还会验证两张表的快捷键**归属**：
