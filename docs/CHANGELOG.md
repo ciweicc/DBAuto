@@ -50,6 +50,55 @@
 - 连带回归全绿（各 0 处）：媒体库 DOM / 媒体库键盘 / 媒体库密度 / 密度切换 /
   QAS 键盘 / QAS 筛选 / 复选控件 / 对比度 18 组；`ruff check .` 全绿
 
+## [当前] 移除「仅「发现」榜单有效」提示：高级筛选标题行回归单一标题（issue #57 追问）
+
+> 用户原话：「这个提示有点多余了」——截图箭头指着高级筛选标题旁的胶囊
+> `.tmdb-adv-hint`。
+
+**为什么算多余**：高级筛选的排序 / 评分 / 年份 / 流媒体平台 / 类型本来就只作用于
+本模块的 TMDB 结果，不存在「另一个榜单」会被误伤。这句话解释的是一个不存在的
+歧义，副作用却是在标题行里多挂一个胶囊，把「高级筛选」这一行拆成了两段语义。
+
+**改法**：直接删 —— 不止删 DOM。
+
+| 位置 | 改动 |
+| --- | --- |
+| `static/src/body.html` | 删掉 `<span class="tmdb-adv-hint">`；注释同步去掉「胶囊」措辞 |
+| `static/src/styles/main.css` | 删掉 `.tmdb-adv-hint{...}` 规则（唯一引用点已消失） |
+| `scripts/check_tmdb_filters_dom.py` | 新增 A8 断言：`.tmdb-adv-hint` 计数必须为 0、底卡可见文本不得含「榜单有效」；原 `hintOverflow` 探针改为「一旦不为 None 即失败」 |
+| `tests/test_build.py` | 新增静态门禁 `test_adv_hint_removed`（源码 / 产物 / CSS / 走查脚本四处同查） |
+
+**验证证据**：
+- `python -m pytest tests/ -q` → **477 passed**
+- `python scripts/check_tmdb_filters_dom.py --serve` → **9 组视口 0 处问题**（A7 标题行溢出仍为 0px）
+- `python -m ruff check .` 全绿；`python scripts/check_contrast.py` 18 组全通过
+- **断言有牙齿**：把提示加回产物 → 走查每组视口报 2 处（计数 + 文本）、单测挂 2 条；删掉即恢复 0 处
+## [当前] 设置页字段标签变成项目外链：TMDB 官网链接搬到 API Key 上（issue #57）
+
+> 用户原话：「红色箭头指向的文字分别对应它们的项目 GitHub 地址，然后 TMDB 官网那个
+> 蓝色字跳转不要了，移动到 TMDB 数据源的 API Key 文字上，变成蓝色超链接。」
+
+按图里四处箭头，给设置页字段标签挂上对应项目地址：
+
+| 标签 | 目标 |
+| --- | --- |
+| PanSou 地址 | `https://github.com/fish2018/pansou` |
+| API Key（TMDB 数据源） | `https://www.themoviedb.org/settings/api` |
+| QAS 地址 | `https://github.com/Cp0204/quark-auto-save` |
+| OpenList 地址 | `https://github.com/OpenListTeam/OpenList` |
+
+同一处字段原先在提示文案里有「前往 [TMDB 官网](...) 申请 API Key」的蓝字，
+现在**搬走**到 API Key 标签本身，提示文案改成「前往上方 API Key 链接申请密钥」——
+一个字段只有一个跳转目标，不再出现「标签旁一个、提示里又一个」。
+
+样式上新增 `.form-group label a`：走 `--accent`（即蓝色超链接）、
+`hover` 加下划线；`target="_blank" rel="noopener"` 避免抢走当前页。
+对比度沿用 `--accent` 既有取值（明暗两套均已过 `scripts/check_contrast.py`）。
+
+回归保护：`tests/test_build.py::test_settings_field_links_point_to_projects`
+断言四处链接的地址、`target/rel`、标签外链样式，且「TMDB 官网」旧文字链不再出现、
+TMDB 申请页链接全页唯一。
+
 ## [当前] 删除联动开关：与旁边的开关同形，且状态持久化（issue #57 追问）
 
 > 用户原话：「这个开关和旁边的开关风格保持一致」，并「开关状态在设置后持久化保持状态」。

@@ -14,11 +14,13 @@
      A5. 类型 chips 必须是胶囊（圆角 ≥ 100px），选中态必须落在强调色系（蓝），
          旧版用的是绿色 (--green)，与页面主色不是一套；
      A6. 移动端 chips 不得过矮（≥32px，触控目标）；
-     A7. 「高级筛选」标题行必须整体落在内层底卡的内边距流内 —— 标题 / 提示胶囊
+     A7. 「高级筛选」标题行必须整体落在内层底卡的内边距流内 —— 标题
          不得被底卡上边框横切（issue #24：fieldset > legend 会被 UA 样式提到
          fieldset 边框上排版，实测顶边相对 fieldset 为 0px，而普通子元素是
-         +46px，于是面板上边框从「高级筛选」与「仅「发现」榜单有效」中间穿过，
-         观感即「字体重叠」）。
+         +46px，于是面板上边框从标题中间穿过，观感即「字体重叠」）。
+     A8. 「仅「发现」榜单有效」这条冗余提示不得回来（issue #57 追问）——
+         用户在截图里指出「这个提示有点多余了」。判据两条：DOM 里不存在
+         `.tmdb-adv-hint`，且底卡可见文本里不得出现「仅…榜单有效」一类措辞。
   B. 结构（分层与命名）
      B1. 模块标题必须是「TMDB 发现」（用户明确要求重命名）；
      B2. 筛选栏必须有「快捷筛选」分组标题栏（分层是这次改动的重点之一）；
@@ -178,6 +180,11 @@ MEASURE = r"""
     })(),
     reset: resetR ? {w: Math.round(resetR.width), h: Math.round(resetR.height),
                      text: (reset.textContent || '').trim()} : null,
+    // A8：冗余提示不得回来（issue #57 追问「这个提示有点多余了」）
+    advHintCount: qa('#tmdbAdv .tmdb-adv-hint').length,
+    advLegendText: (q('#tmdbAdv .tmdb-adv-legend') || {}).textContent
+      ? q('#tmdbAdv .tmdb-adv-legend').textContent.replace(/\s+/g, '').trim() : '',
+    advText: (adv && adv.textContent) ? adv.textContent.replace(/\s+/g, '') : '',
   };
 }
 """
@@ -335,18 +342,31 @@ def main():
                 else:
                     if lg["hasLegendTag"] or lg["tagName"] == "legend":
                         fail("高级筛选标题行仍是 <legend>：UA 样式会把它提到 fieldset "
-                             "边框上排版，标题/胶囊会被面板上边框横切（issue #24）")
+                             "边框上排版，标题会被面板上边框横切（issue #24）")
                     if lg["legendOverflow"] > MAX_LEGEND_OVERFLOW:
                         fail("「高级筛选」标题行溢出底卡内容盒 {:.1f}px（上限 {:.1f}px）"
                              "—— 标题被内层底卡上边框横切，即「字体重叠」".format(
                                  lg["legendOverflow"], MAX_LEGEND_OVERFLOW))
-                    if lg["hintOverflow"] is not None and lg["hintOverflow"] > MAX_LEGEND_OVERFLOW:
-                        fail("「仅「发现」榜单有效」胶囊溢出底卡内容盒 {:.1f}px（上限 {:.1f}px）"
-                             "—— 胶囊被底卡上边框横切".format(
-                                 lg["hintOverflow"], MAX_LEGEND_OVERFLOW))
+                    # 注：hintOverflow 探针保留，但提示已被移除（A8），
+                    # 正常情况下恒为 None；一旦有人把提示加回来就会重新有值。
+                    if lg["hintOverflow"] is not None:
+                        fail("高级筛选标题行又出现了附属提示胶囊（hintOverflow={}）："
+                             "该提示已按 issue #57 移除".format(lg["hintOverflow"]))
                     if lg["legendBottomInside"] > 0:
                         fail("「高级筛选」标题行底边超出底卡 {:.1f}px（标题应整行落在卡内）"
                              .format(lg["legendBottomInside"]))
+
+                # ---- A8 冗余提示不得回来（issue #57 追问） ----
+                if m.get("advHintCount"):
+                    fail("「仅「发现」榜单有效」提示仍在（.tmdb-adv-hint 命中 {} 个）："
+                         "用户已明确说这条提示多余，高级筛选本身就只作用于本模块榜单"
+                         .format(m["advHintCount"]))
+                for _t in (m.get("advLegendText") or "", m.get("advText") or ""):
+                    if "榜单有效" in _t:
+                        fail("高级筛选区仍有「…榜单有效」措辞（实测文本「{}」）"
+                             .format(_t[:40]))
+                if m.get("advHintCount") is None:
+                    fail("缺少 advHintCount 探针：无法拦住冗余提示回归")
 
                 # ---- B 结构与命名 ----
                 if m["panelTitle"] != "TMDB 发现":
