@@ -47,17 +47,13 @@ function parseCats(containers, onClick, idPrefix, selAllSave){
 }
 
 function parseCategories(){
-  // 手动转存：容器 catsMovie/catsTV/catsVariety，chip 点击不自动保存，全选也不保存
-  parseCats({movie:'catsMovie', tv:'catsTV', variety:'catsVariety'}, toggleChip, '', false);
+  // issue #68 追问：合并「转存」「定时」两页后，分类 chips **只有这一份**，
+  // 既是「立即转存」的输入，也是「定时转存」的输入。
+  // 因此点击即 autoSaveSchedule()：改一下勾选就等于同时改了两处，不再需要「同步到定时任务」。
+  parseCats({movie:'catsMovie', tv:'catsTV', variety:'catsVariety'}, toggleChip, '', true);
 }
 
-function parseSchedCats(){
-  // 定时任务：容器 schedCatsMovie/schedCatsTV/schedCatsVariety，chip 点击自动保存，全选也保存
-  parseCats({movie:'schedCatsMovie', tv:'schedCatsTV', variety:'schedCatsVariety'}, toggleSchedChip, 'sch_', true);
-}
-
-function toggleChip(el){el.classList.toggle('on')}
-function toggleSchedChip(el){el.classList.toggle('on');autoSaveSchedule()}
+function toggleChip(el){el.classList.toggle('on');autoSaveSchedule()}
 // 豆瓣想看同步相关函数（toggleWishCat/toggleWishEnabled/renderWishAccounts 等）已随功能移除
 
 function toggleSubChips(btn, save){
@@ -82,19 +78,4 @@ function getSelectedTasks(prefix){
   return tasks;
 }
 
-function syncToSchedule(){
-  document.querySelectorAll('#tabSchedule .chip').forEach(function(c){c.classList.remove('on')});
-  var manual = document.querySelectorAll('#tabManual .chip.on');
-  var paths = new Set();
-  manual.forEach(function(m){
-    var key = m.dataset.path+'/'+m.dataset.type;
-    paths.add(key);
-  });
-  document.querySelectorAll('#tabSchedule .chip').forEach(function(c){
-    var key = c.dataset.path+'/'+c.dataset.type;
-    if(paths.has(key))c.classList.add('on');
-  });
-  autoSaveSchedule();
-  showToast('已同步到定时任务',true);
-}
 

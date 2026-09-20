@@ -71,8 +71,8 @@ with sync_playwright() as p:
     header_ver = page.eval_on_selector("#headerVersion", "el => el.textContent")
     print("ovTodayCount:", dash_today, "| ovNextSchedule:", repr(dash_next), "| headerVersion:", header_ver)
 
-    # 切到调度页 -> 状态条
-    page.click('.side-nav-item[data-tab="schedule"]')
+    # 切到「转存」页（issue #68 追问后定时状态条并入此页）-> 状态条
+    page.click('.side-nav-item[data-tab="manual"]')
     page.wait_for_timeout(300)
     sched_t = page.eval_on_selector("#schedLastTransfer", "el => el.textContent")
     sched_e = page.eval_on_selector("#schedLastExpired", "el => el.textContent")

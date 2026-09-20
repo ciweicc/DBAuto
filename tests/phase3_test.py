@@ -70,8 +70,8 @@ with sync_playwright() as p:
         ind = pg.eval_on_selector('#execHistoryTable thead th[data-sort="time"] .sort-ind', "el => el.textContent")
         print("time sort indicator after click (expect ▲ for asc):", ind)
 
-    # Schedule status bar
-    pg.click('.side-nav-item[data-tab="schedule"]')
+    # Schedule status bar（issue #68 追问：定时任务管理已并入「转存」页）
+    pg.click('.side-nav-item[data-tab="manual"]')
     pg.wait_for_timeout(400)
     lt = pg.eval_on_selector("#schedLastTransfer", "el => el.textContent")
     le = pg.eval_on_selector("#schedLastExpired", "el => el.textContent")

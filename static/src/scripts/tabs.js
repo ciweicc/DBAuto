@@ -1,9 +1,11 @@
 // ============ Tab / Navigation ============
 // 页面容器 id 映射：手动/定时/历史保持原 id（categories/schedule/transfer/history.js 依赖）
+// issue #68 追问：原「定时」页是「转存」页的重复副本（分类 chips / 筛选逐字重复），
+// 合并后不再有独立的 schedule 页面 —— 定时任务管理成为「转存」页里的一张卡片，
+// 因此 PAGE_IDS / PAGES / BOTTOM_NAV 三处一起摘掉 schedule（少一个页面是目的本身）。
 var PAGE_IDS = {
   overview: 'pageOverview',
   manual: 'tabManual',
-  schedule: 'tabSchedule',
   history: 'tabHistory',
   library: 'tabLibrary',
   settings: 'tabSettings'
@@ -11,10 +13,10 @@ var PAGE_IDS = {
 // issue #14：TMDB 不再是一个「页面」，而是概览页里的「发现」分区。
 // 因此它从 PAGE_IDS / PAGES / BOTTOM_NAV 三处一起消失 ——
 // 少一个页面、少一份导航项，TMDB 也只有一套 DOM（筛选栏只有一份）。
-var PAGES = ['overview', 'manual', 'schedule', 'history', 'library', 'settings'];
-// 底部导航与 BOTTOM_NAV 顺序保持一致：概览 / 转存 / 定时 / 媒体库 / 历史 / 设置
+var PAGES = ['overview', 'manual', 'history', 'library', 'settings'];
+// 底部导航与 BOTTOM_NAV 顺序保持一致：概览 / 转存 / 媒体库 / 历史 / 设置
 // 媒体库排在历史之前，与「媒体库」页内「网盘文件置顶」的优先级一致（issue #27）。
-var BOTTOM_NAV = ['overview', 'manual', 'schedule', 'library', 'history', 'settings'];
+var BOTTOM_NAV = ['overview', 'manual', 'library', 'history', 'settings'];
 
 function switchTab(tab){
   currentTab = tab;
@@ -42,7 +44,8 @@ function switchTab(tab){
   closeDrawers();
   // 按需加载
   if(tab === 'overview') loadOverviewPage();
-  if(tab === 'schedule') loadSchedule();
+  // 「转存」页内嵌了定时任务管理卡片，切到该页同时拉取调度配置与状态
+  if(tab === 'manual') loadSchedule();
   if(tab === 'history') loadExecHistory();
   if(tab === 'library') loadLibraryPage();
   if(tab === 'settings') loadConfig();

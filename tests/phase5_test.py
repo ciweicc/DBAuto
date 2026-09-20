@@ -95,16 +95,16 @@ with sync_playwright() as p:
     assert not has_open(".log-panel"), "closeDrawers 应关闭日志面板"
 
     # 底部导航切换（移动端主导航）
-    # issue #14：导航不再含「发现」，顺序为 概览/转存/定时/历史/设置，
-    # 因此「定时」从原来的第 2 项变为第 3 项；这里按标签定位，避免顺序变化再次踩坑。
+    # issue #68 追问：导航为 概览/转存/媒体库/历史/设置（「定时」并入「转存」）；
+    # 这里按标签定位，避免顺序变化再次踩坑。
     nav_labels = page.eval_on_selector_all('.bottom-nav .nav-item', "els => els.map(e => e.textContent.trim())")
     print("bottom-nav labels:", nav_labels)
-    assert nav_labels == ['概览', '转存', '定时', '历史', '设置'], "移动端底栏应与侧栏一致（5 项）"
-    page.click('.bottom-nav .nav-item:nth-child(3)')  # 定时任务
+    assert nav_labels == ['概览', '转存', '媒体库', '历史', '设置'], "移动端底栏应与侧栏一致（5 项）"
+    page.click('.bottom-nav .nav-item:nth-child(2)')  # 转存（含定时任务管理）
     page.wait_for_timeout(200)
-    sched_visible = page.eval_on_selector("#tabSchedule", "el => getComputedStyle(el).display !== 'none'")
-    print("schedule visible after bottom-nav click:", sched_visible)
-    assert sched_visible, "底部导航应切换到定时任务页"
+    sched_visible = page.eval_on_selector("#tabManual", "el => getComputedStyle(el).display !== 'none'")
+    print("transfer page (with schedule mgmt) visible after bottom-nav click:", sched_visible)
+    assert sched_visible, "底部导航应切换到「转存」页（内含定时任务管理）"
 
     # ≤480px 搜索全屏浮层
     page.set_viewport_size({"width": 420, "height": 720})

@@ -134,7 +134,8 @@ with sync_playwright() as p:
         "转存后仍应留在概览页（TMDB 不再是独立页面）"
 
     # 8) 其它页可正常切换
-    for t in ("manual", "schedule", "history", "settings"):
+    # issue #68 追问：「定时」并入「转存」，只遍历现存页面
+    for t in ("manual", "history", "settings"):
         page.click('.side-nav-item[data-tab="%s"]' % t)
         page.wait_for_timeout(150)
         vis = page.eval_on_selector("#tab%s" % t.capitalize() if t != "manual" else "#tabManual",
