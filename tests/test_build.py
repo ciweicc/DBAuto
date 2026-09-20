@@ -3557,3 +3557,44 @@ def test_qas_keyboard_page_turn_on_arrow_at_edge(dist):
     # 产物已重建
     for token in ("_qasKeydown", "qasRowClick", "qasSelectAll", "qasKeyHint"):
         assert token in dist, "产物未包含{}（需重跑 build.sh）".format(token)
+
+
+def test_settings_field_links_point_to_projects(dist):
+    """设置页字段标签的「蓝字外链」（issue #57）。
+
+    用户诉求：给几处关键字段的标签加上对应项目的官方 / GitHub 地址，
+    并把原来提示文案里的「TMDB 官网」链接**移走**（挪到 API Key 标签上），
+    避免同一处出现两个跳转目标。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+
+    # 1. 四个标签各自挂上正确的地址（顺序即图里箭头的指向）
+    pairs = (
+        ("cfg_pansou", "https://github.com/fish2018/pansou"),
+        ("cfg_tmdb_api_key", "https://www.themoviedb.org/settings/api"),
+        ("cfg_qas", "https://github.com/Cp0204/quark-auto-save"),
+        ("cfg_openlist", "https://github.com/OpenListTeam/OpenList"),
+    )
+    for field, url in pairs:
+        label = 'for="{}"'.format(field)
+        start = body.index(label)
+        seg = body[start:body.index("</label>", start)]
+        assert "<a " in seg, "{} 的标签没有超链接".format(field)
+        assert url in seg, "{} 的标签链接不是 {}".format(field, url)
+        assert 'target="_blank"' in seg and 'rel="noopener"' in seg, \
+            "{} 的外链缺少 target/rel（会抢走当前页）".format(field)
+
+    # 2. 旧的「TMDB 官网」文字链必须移除，只保留标签上的那一处
+    assert "TMDB 官网" not in body, "提示文案里仍残留「TMDB 官网」旧链接"
+    assert body.count("https://www.themoviedb.org/settings/api") == 1, \
+        "TMDB 申请页链接应唯一（避免两个跳转目标）"
+
+    # 3. 标签外链要有「蓝色超链接」样式，否则看不出可点
+    css = _read(os.path.join(_SRC, "styles", "main.css")).replace("\n", "").replace(" ", "")
+    assert ".form-grouplabela{color:var(--accent)" in css, \
+        "标签外链没有走 --accent（不是蓝色超链接）"
+
+    # 4. 产物已重建，四处链接都在
+    for _field, url in pairs:
+        assert url in dist, "产物未包含链接 {}（需重跑 build.sh）".format(url)
+    assert "TMDB 官网" not in dist, "产物仍残留旧的「TMDB 官网」文字链"
