@@ -4,6 +4,50 @@ var searchTimer=null;var searchAbort=null;var searchCheckSeq=0;
 var searchActiveIndex=-1;
 var searchOptions=[];
 
+// 平台相关的修饰键显示：macOS 用 ⌘，其余用 Ctrl。
+// 之前的提示一律写 ⌘K，Windows 用户（见 issue #78 截图）看到的是一颗
+// 自己键盘上没有的键 —— 「无效」有一半是这么来的。
+function searchModKeyLabel(){
+  try{
+    var p=(navigator.userAgentData && navigator.userAgentData.platform) || navigator.platform || '';
+    if(/mac|iphone|ipad|ipod/i.test(p)) return '\u2318';
+  }catch(e){}
+  return 'Ctrl';
+}
+// 把带平台修饰键的 kbd 提示刷成当前平台的样子（macOS ⌘ / 其它 Ctrl）。
+// 搜索框的徽标、命令面板 footer 的「快捷键」提示共用这一套，避免
+// footer 里死写 ⌘ 而 Windows 用户按不出来（issue #78 的截图就是 Windows）。
+function syncModKeyLabels(){
+  var mod=searchModKeyLabel();
+  document.querySelectorAll('.cmd-modkey').forEach(function(el){
+    el.textContent=mod+'/';
+  });
+}
+// 把搜索框上的快捷键徽标刷成当前平台的样子（桌面 ⌘K / 其它 Ctrl+K）
+function syncSearchKbd(){
+  var kbd=document.querySelector('.search-kbd');
+  if(!kbd) return;
+  var mod=searchModKeyLabel();
+  kbd.textContent=(mod==='\u2318') ? '\u2318K' : mod+'+K';
+  var tip='搜索资源（'+mod+'+K 聚焦本框）';
+  var input=document.getElementById('searchInput');
+  if(input) input.title=tip;
+  kbd.setAttribute('title',tip);
+  kbd.setAttribute('aria-hidden','true');
+  syncModKeyLabels();
+}
+// 聚焦搜索框（⌘K / Ctrl+K 的目标动作，issue #78）。
+// 窄屏时搜索框默认隐藏，需要先把移动态搜索层打开，否则「聚焦」聚焦到
+// 一个 display:none 的输入上 = 按了没反应。
+function focusSearchBox(){
+  var w=document.querySelector('.search-wrapper');
+  var input=document.getElementById('searchInput');
+  if(!w || !input) return false;
+  if(getComputedStyle(w).display==='none') w.classList.add('mobile-show');
+  try{ input.focus(); input.select(); }catch(e){ return false; }
+  return true;
+}
+
 function toggleMobileSearch(){
   var w=document.querySelector('.search-wrapper');
   w.classList.toggle('mobile-show');

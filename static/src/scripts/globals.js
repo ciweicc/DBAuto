@@ -79,7 +79,9 @@ function updateDensityBtn(){
   btn.dataset.density = cur;
 }
 
-// ============ 命令面板（⌘K / Ctrl+K） ============
+// ============ 命令面板（⌘/ / Ctrl+/） ============
+// issue #78：⌘K 已归还给顶栏「资源搜索」框（谁把提示写在搜索框上，谁负责响应）。
+// 命令面板换到 ⌘/ —— 它自己 footer 里就印着这个键，可发现性不降。
 // 全局快捷操作入口：切 tab、触发转存、切换主题/密度等。
 var CMD_LIST = [
   {title:'前往 概览', icon:'icon-dashboard', hint:'首页', run:function(){ switchTab('overview'); }},

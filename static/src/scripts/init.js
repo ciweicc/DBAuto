@@ -14,6 +14,8 @@ function initTimeSelects(){
 
 async function init(){
   initTheme(); initDensity(); initTimeSelects(); updateSoundBtn(); initShortcuts();
+  // 搜索框快捷键徽标按平台显示（⌘K / Ctrl+K），见 search.js syncSearchKbd
+  try{ syncSearchKbd(); }catch(e){ console.error('search kbd sync error', e); }
   // 概览页栅格由「主列实测宽度」驱动（见 overview.js / docs/UI_Roadmap_Next.md 第十节）
   initOverviewViewport();
   try{ C = await apiGet('/api/categories'); }
@@ -153,8 +155,21 @@ function initShortcuts(){
       }
       return;
     }
-    // Ctrl/⌘ + K：打开命令面板
-    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k'){
+    // Ctrl/⌘ + K：聚焦顶栏「资源搜索」框（issue #78）。
+    //
+    // 这里的归属曾经是反的：搜索框的 placeholder 写着「（⌘K 命令面板）」，
+    // 但 ⌘K 打开的是覆盖全屏的命令面板 —— 用户站在搜索框前按 ⌘K，得到的是
+    // 另一个东西。现在谁承诺谁负责：搜索框上的 ⌘K 徽标 = 聚焦这个搜索框。
+    //
+    // 焦点已经在某个输入框里时仍然生效：用户敲 ⌘K 就是想跳到搜索框，
+    // 而不是在原来的输入框里打出一个字。preventDefault 保证不会插入字面 'k'。
+    if((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'k'){
+      e.preventDefault();
+      focusSearchBox();
+      return;
+    }
+    // Ctrl/⌘ + /：打开命令面板（它自己就是「命令」的入口，与搜索框区分开）
+    if((e.ctrlKey || e.metaKey) && (e.key === '/' || e.key === '?')){
       e.preventDefault();
       openCommandPalette();
       return;
