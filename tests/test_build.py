@@ -3068,6 +3068,102 @@ def test_library_keyboard_selection_is_implemented(dist):
     assert "e.shiftKey" in kd, "未实现 Shift 范围选择"
 
 
+def test_library_selection_can_be_toggled_off(dist):
+    """已选中的行必须能再点一下取消（issue #68）。
+
+    用户原话：「在选中后无法通过再点击选中框，来取消选中」。
+    配图里 6 个框全勾着、鼠标正指着第一个勾选框，再点没有任何反应。
+
+    成因是一句写死的 `var on = multi ? !libSelected[key] : true;`：
+    普通点击被硬编码成「选中」，取消只在 Ctrl/⌘+点击 那条路上存在。
+    这里把静态契约钉死 —— 「点下去真的翻了」由
+    scripts/check_library_selection_dom.py 在真实浏览器里验。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    fn = js[js.index("function libCardClick("):js.index("function libRowKeydown(")]
+    # 1. 必须按「当前勾选态取反」，不得再按修饰键分岔出「永远置 true」的分支
+    assert "var on = !libSelected[key];" in fn, \
+        "libCardClick 未按当前勾选态取反：已选中再点一下无法取消（issue #68）"
+    assert "? !libSelected[key] : true" not in fn, \
+        "libCardClick 仍把「普通点击」写死为选中：取消在媒体库里不存在"
+    # 2. 勾选框自己的 onchange 必须存在，且与行点击共用同一份真相
+    assert "function _libCheckboxChanged(" in js, \
+        "缺少勾选框的 onchange 处理：点勾选框这条路没有归一入口"
+    cb = js[js.index("function _libCheckboxChanged("):js.index("function guessTitle(")]
+    assert "box.checked" in cb, \
+        "_libCheckboxChanged 没有以 DOM 勾选框的实际状态为准（那才是用户看到的状态）"
+    assert "stopPropagation" in cb, \
+        "_libCheckboxChanged 未阻止冒泡：行点击会与勾选框再互相翻转一次"
+    # 3. 两种视图的勾选框都要接上它（漏一个 = 那种视图下点勾选框还是取消不掉）
+    card = js[js.index("function _libCardShell("):js.index("function _libMetaHtml(")]
+    table = js[js.index("function _libTableHtml("):js.index("function _libCardHtml(")]
+    for seg, view in ((card, "卡片视图"), (table, "列表视图")):
+        assert "_libCheckboxChanged(" in seg, \
+            "{}的勾选框未接 _libCheckboxChanged（那种视图下取消不掉）".format(view)
+    assert "onchange=\"toggleLibSelect(" not in card + table, \
+        "仍有一处勾选框直接接 toggleLibSelect：会与行点击各翻一次"
+    # 4. 产物已重建
+    assert "_libCheckboxChanged" in dist, "产物未包含勾选框的归一入口（需重跑 build.sh）"
+
+
+def test_library_keydown_dispatched_once_per_keypress(dist):
+    """一次按键只能走一次媒体库的键盘选择（issue #68 的键盘侧成因）。
+
+    踩坑（本轮用事件日志实测）：行上的 `libRowKeydown` 原来自己调了一次
+    `_libKeydown`，document 上的全局处理器（init.js）又调了一次 ——
+    同一个空心格键被处理两遍，切换被翻回去，净效果 = 「按空格什么都没发生」。
+    它和鼠标侧是同一个 bug 的两条路径：**没有「取消」这个结果**。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    fn = js[js.index("function libRowKeydown("):js.index("function _libKeydown(")]
+    assert "_libKeydown(" not in fn, \
+        "libRowKeydown 又自己分发了一次按键：与 document 上的处理器叠加会翻两次"
+    # 但函数名必须保留 —— HTML 里挂着 onkeydown="libRowKeydown(...)"，
+    # 删掉定义会变成 ReferenceError（内联属性里的异常还会打断同一元素的后续处理）
+    assert "function libRowKeydown(" in js, \
+        "libRowKeydown 被删掉，但行模板仍在 onkeydown 里调用它（会报 ReferenceError）"
+    render = js[js.index("function _libTableHtml("):js.index("function _libCardHtml(")]
+    assert "libRowKeydown(" in render, "行模板丢失了 onkeydown 钩子（与函数定义不一致）"
+    init = _read(os.path.join(_JS_DIR, "init.js"))
+    assert "_libKeydown(e)" in init, "全局处理器未接管媒体库按键（行内不再分发后就没人接手了）"
+
+
+def test_library_card_view_arrows_are_horizontal(dist):
+    """卡片视图（网格）的方向键是 ←→，↑↓ 让位给浏览器滚动。
+
+    缺口（issue #68 走查实测）：`_libKeydown` 只有 ↑↓ 分支，而媒体库**默认**
+    就是卡片视图 —— 也就是说主视图下 Shift+←/→ 什么都不会发生，
+    「范围选择」在那里等于不存在。任务表卡片视图早就补上了（_qasKeydown），
+    媒体库这边漏了。这里把两支方向键与布局绑定钉死。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    kd = js[js.index("function _libKeydown("):js.index("function libFocusRowIdx(")]
+    assert "ArrowLeft" in kd and "ArrowRight" in kd, \
+        "媒体库未实现卡片视图的左右方向键（卡片视图下范围选择不可用）"
+    assert "libView === 'card'" in kd, "左右方向键未与卡片视图绑定"
+    assert "libView !== 'card'" in kd, \
+        "↑↓ 未按布局让位（卡片视图下抢 ↑↓ = 用户想滚页面却看到当前行乱跳）"
+    # 与任务表同口径：那边的卡片视图也是这一对
+    qas = js[js.index("function _qasKeydown("):js.index("function kbPageAvailable(")]
+    assert "ArrowLeft" in qas and "qasView === 'card'" in qas, \
+        "任务表卡片视图未提供左右方向键（两张表口径会分岔）"
+
+
+def test_library_clear_selection_drops_focus_marker(dist):
+    """「清空选择」必须连「当前行」一起清掉（否则后续按键从旧位置起算）。
+
+    缺口（issue #68 走查实测）：Esc 清空后 libFocusKey 还在，行上仍留着
+    虚线框 —— 用户读到的意思是「当前行还在这儿」，而紧接着按空格选出来的
+    是清空前的那一行。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+    fn = js[js.index("function libClearSelection("):js.index("function libCardClick(")]
+    assert "libFocusKey = null" in fn, "清空选择未重置「当前行」：Esc 后仍有虚线框、按键从旧位置起算"
+    assert "lib-current" in fn, "清空选择未抹掉行上的虚线框标记（用户会以为当前行还在）"
+    assert "libSelectAnchor = null" in fn, \
+        "清空选择未重置锚点：再按 Shift 会从旧位置重新选出一段"
+
+
 def test_library_keyboard_wired_into_global_shortcuts(dist):
     """键盘选择必须接在全局 keydown 上，且**排在 Esc 分支之前**。
 

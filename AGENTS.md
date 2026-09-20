@@ -23,12 +23,20 @@ python scripts/check_overview_dom.py --serve # 概览页 DOM 度量走查（改�
 python scripts/check_log_panel_dom.py --serve # 日志栏 DOM 度量走查（改日志栏后必跑）
 python scripts/check_settings_dom.py --serve  # 设置页空白度量走查（改设置页后必跑）
 python scripts/check_library_dom.py --serve  # 媒体库顺序/加载反馈/缓存度量走查（改媒体库后必跑）
+python scripts/check_library_keys_dom.py --serve    # 媒体库键盘选择走查（改键盘逻辑后必跑）
+python scripts/check_library_selection_dom.py --serve # 媒体库选中/取消选中走查（改勾选逻辑后必跑）
 python scripts/check_qas_keys_dom.py --serve # QAS 任务表键盘选择走查（改任务表后必跑）
 python scripts/check_qas_view_dom.py --serve # QAS 任务表列表/卡片视图切换走查（改任务表后必跑）
 python scripts/check_login_dom.py --serve    # 登录页真实合成对比度/磨砂/色带走查（改登录页后必跑）
 python scripts/check_transfer_schedule_dom.py --serve # 转存页/定时任务管理走查（改转存页后必跑）
 ```
 
+> `scripts/check_library_selection_dom.py` 覆盖媒体库的「选中 / 取消选中」：
+> 点勾选框、点行空白、Ctrl/⌘+点击、空格、Ctrl+A+Esc、Shift+连选六条路径，
+> 每条都同时校验**逻辑状态（`libSelected`）与屏幕状态（`input:checked`）**，
+> 外加操作条计数与「删除所选」按钮的可用性 —— 这两者不一致就是
+> 「看着选了、删的时候没有」这类最贵的 bug。issue #68（「选中后无法取消」）
+> 就是它抓出来的：改动前 16 处问题，改动后 0 处。
 > `scripts/check_overview_dom.py` 需要 playwright + chromium；缺少时会以退出码 0
 > 跳过，不会阻断 CI。它是「改概览页 → 先跑脚本拿数值证据」的入口，
 > 能替代大部分截图走查（首屏一屏内 / 指标行等高 / 无横向滚动 / 状态与日期语义 /

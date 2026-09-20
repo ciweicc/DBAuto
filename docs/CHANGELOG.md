@@ -1,3 +1,76 @@
+## [当前] 媒体库：选中后能再点一下取消（issue #68）
+
+> 用户原话：「在选中后无法通过再点击选中框，来取消选中」。
+> 配图里 6 个框全勾着、鼠标正指着第一个勾选框，再点没有任何反应。
+
+不是「取消机制坏了」，是**取消这条路根本不存在**。
+
+### 鼠标：普通点击被写死成「选中」
+
+```js
+var on = multi ? !libSelected[key] : true;   // 旧实现
+```
+
+Ctrl/⌘+点击走「取反」，普通点击（点勾选框、点整张卡）**永远置为 true**。
+于是「已选中再点一下」只会把它重新选中一次 —— 点几次都一样。
+现在两支合一，都是「按当前勾选态取反」：
+
+- 勾选框自己的 `onchange` 换成 `_libCheckboxChanged`，它只认一件事：
+  **DOM 上那个框当前是不是勾的**（用户眼睛看到的状态）；
+- 行点击 `libCardClick` 同样取反，并回写勾选框（幂等）；
+- `_libCheckboxChanged` 里 `stopPropagation()`：否则「行点击」与「勾选框 onchange」
+  会各按自己的理解翻一次，结果取决于事件顺序 —— 时好时坏的 bug 最难查。
+
+任务表的「普通点击 = 只选中该行」**刻意保留**：那边行里没有 `<label>`，
+点空白处不触发任何原生行为；媒体库的卡片是 `<label>` 包着 checkbox，
+浏览器已经把框翻好了，这里要做的只是「跟上它」。
+
+### 键盘：一次按键被处理了两遍
+
+行元素挂着 `onkeydown="libRowKeydown(...)"`，它自己调了一次 `_libKeydown`，
+document 上的全局处理器（`init.js`）又调一次 —— **同一个空格键翻两次**，
+净效果 = 「按空格什么都没发生」。事件日志实测：
+一次 keydown → `_libKeydown` 被调用两次、返回 `[true, true]`。
+
+现在按键只由 document 那处理一次（`_libKeydown` 自带 tab / 焦点守卫）；
+`libRowKeydown` 保留为**空实现兼墓碑**（HTML 里仍挂着这个调用，
+删掉定义会变 ReferenceError），并把这段历史写在注释里，防止有人「顺手加回来」。
+
+### 顺带补掉一个真实缺口：卡片视图没有左右方向键
+
+`_libKeydown` 只有 ↑↓ 分支，而**卡片视图是默认视图** —— 网格里按 Shift+←/→
+什么都不会发生。也就是说「范围选择」在主视图里等于不存在。任务表的卡片视图
+早就补上了（`_qasKeydown`），媒体库这边漏了。现在两支同构：
+
+- 卡片视图（网格，顺序是左右）：`←/→` 移动，`Shift+←/→` 连选；
+  `↑↓` 让位给浏览器滚动（与任务表同口径）；
+- 列表视图（表格，顺序是上下）：`↑↓` 移动，`Shift+↑↓` 连选，行为不变。
+
+### 两处一致性缺口
+
+- `libClearSelection()` 现在连**当前行**一起清（`libFocusKey` + 行上的 `.lib-current`）。
+  清空后仍留着虚线框，用户读到的是「当前行还在这儿」，紧接着按空格选出来的是
+  清空前的那一行 —— 走查实测抓到的。
+- 清空后的第一次方向键会从第 1 行建起光标，不再命中旧焦点。
+
+### 实测证据（都可复跑）
+
+- `python3 scripts/check_library_selection_dom.py --serve`（**本轮新增、已落库**）：
+  真实浏览器 + 接口桩，卡片 / 列表两种视图各 6 条数据，逐条断言
+  「点勾选框 / 点行空白 / Ctrl+点击 / 空格 / Ctrl+A+Esc / Shift+连选」六条路径，
+  每条同时校验**逻辑状态（`libSelected`）与屏幕状态（`input:checked`）**，
+  外加操作条计数与「删除所选」按钮的可用性 —— **0 处问题**。
+  改动前同一脚本：**16 处问题**（含「点勾选框两次仍是选中」）。
+- `python3 -m pytest tests/ -q` → **497 passed**（新增 4 条静态门禁：
+  取反写法、单一写入口、按键只分发一次、卡片视图左右方向键、清空连当前行一起清）。
+- `ruff check .` 全绿。
+- 既有走查无回归：`check_library_dom.py`、`check_library_keys_dom.py`
+  （顺带把卡片视图的断言从 ↑↓ 改成 ←→）、`check_library_density_dom.py`、
+  `check_qas_keys_dom.py`、`check_qas_view_dom.py`、`check_library_task_filter_dom.py`、
+  `check_overview_dom.py`、`check_settings_dom.py`、`check_log_panel_dom.py`、
+  `check_transfer_schedule_dom.py`、`check_checkbox_dom.py` 全部 0 处问题。
+- 产物已重建（`bash static/src/build.sh`）。
+
 ## [当前] 「转存」与「定时」两页合并为单页，并补齐定时任务管理（issue #68 追问）
 
 > 用户原话：「考量这两个页面整合的可能性，另外加入定时任务管理的功能，
