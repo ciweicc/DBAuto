@@ -1918,14 +1918,28 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
    为什么路径要折行：任务名与 savepath 常常只差前后缀
    （「寒战1994」/「/影视/电影/寒战1994」），单行省略会把最能确认身份的那一段
    切掉；两行足够放下 /影视/电影/ 这类常见前缀 + 作品名。 */
-.lib-grid-tasks{max-height:640px}
+.lib-grid-tasks{max-height:640px;align-items:stretch}
+/* 任务卡**同一行必须等高**（issue #75「资源条目高度不一致」）。
+   父级 .lib-grid 用的是 `align-items:start` —— 对媒体库那张「图标 + 名称 +
+   元信息 + 时间」的卡是必要的（它要求卡按内容高度逐张收边），但任务卡只要
+   路径长一点就折成 3 行，`start` 会让同一行里出现 51 / 67 / 84 / 100px 四种
+   高度、底边参差（走查实测极差 49px），看上去是「网格排歪了」。
+   网格容器的 `align-items:stretch`（默认值）本来就会把同一行的卡拉到**
+   该行最高**的那张 —— 短卡多出的是留白，长卡的信息一行不裁，两边都不亏。 */
 /* 勾选框对齐到卡片顶部：任务卡比媒体库的卡高（名称 + 2 行路径），
    垂直居中会让勾选框悬在「名称与路径之间」——扫一列卡时勾选框不在一条直线上。
    3px 是量出来的：卡片 padding-top 7px，勾选框 18px 时的视觉基线偏移。 */
 .lib-card-task > .lib-card-cb,.lib-card-task > .lib-card-icon{align-self:flex-start;
   margin-top:3px}
-.lib-card-task .lib-card-path{white-space:normal;overflow-wrap:anywhere;
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+/* 任务卡的路径**按内容自然折行**（issue #75）。
+   上一轮（issue #57）用 `-webkit-line-clamp:2` 把路径钉死在 2 行，带来两个
+   同源的坏处，截图里一眼可见的正是这两个：
+     1. 路径 1 行放得下的卡只有「名称 + 1 行」，放不下的是「名称 + 2 行」，
+        同一行里 51px 与 67px 并排，底边参差 —— 「条目高度不一致」；
+     2. 2 行还不够的路径被截成省略号（实测 8 条里 2 条）。
+   修法：去掉 clamp，让路径真折完，卡片高度按内容自然生长；
+   同一行再由父级 align-items:stretch 拉齐（见 .lib-grid-tasks）。 */
+.lib-card-task .lib-card-path{white-space:normal;overflow-wrap:anywhere}
 /* 卡片右侧操作列：分享链接 + 删除。链接做成小胶囊（和表格里的「链接」同为可点
    的次要动作），没有链接时给一个不可点的占位，避免同一行里卡片宽度不齐。 */
 .qas-card-ops{display:flex;align-items:center;gap:4px;flex:0 0 auto}
