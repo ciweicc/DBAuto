@@ -449,6 +449,22 @@ input[type="radio"]:focus-visible{outline:2px solid var(--accent);outline-offset
 .log-line{padding:1px 0;opacity:0;animation:logLineIn .25s ease forwards}
 .log-line.wrapped{padding-left:var(--log-wrap-pad);text-indent:calc(-1 * var(--log-wrap-pad))}
 @keyframes logLineIn{to{opacity:1}}
+/* 折叠详情（issue #68 二次追问）：requests 的整段异常糊在面板上会被折成 5–6 行，
+   一屏只放得下一条事件。默认只渲染主行，详情收进主行下面一行灰字，
+   点「详情」展开；展开状态用 .collapsed 控制，避免被 renderLog 重建时丢失。 */
+.log-detail{margin:2px 0 4px;display:flex;align-items:flex-start;gap:6px;
+  padding-left:var(--log-wrap-pad);font-size:var(--fs-xs);color:var(--text3)}
+.log-detail-toggle{flex-shrink:0;background:transparent;border:1px solid var(--glass-border);
+  border-radius:var(--radius-sm);color:var(--text3);cursor:pointer;
+  font-family:var(--font-display);font-size:9px;line-height:1;padding:2px 6px;
+  margin-top:3px;transition:color var(--transition-fast),border-color var(--transition-fast)}
+.log-detail-toggle:hover{color:var(--accent);border-color:var(--accent)}
+.log-detail-text{flex:1 1 auto;min-width:0;white-space:pre-wrap;overflow-wrap:anywhere;
+  border-left:2px solid var(--glass-border);padding-left:8px}
+/* 折叠态要能省略号收尾：flex 子项默认 min-width:auto 不会收缩，
+   必须显式 min-width:0 + overflow:hidden，否则整段异常把日志区撑出横向滚动。 */
+.log-detail.collapsed .log-detail-text{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .log-box .ok{color:var(--green)}.log-box .sk{color:var(--text3)}.log-box .er{color:var(--red)}.log-box .inf{color:var(--cyan)}
 .log-pause{position:sticky;bottom:8px;float:right;padding:5px 12px;border-radius:var(--radius-sm);
   background:var(--accent);color:#fff;font-size:var(--fs-xs);cursor:pointer;font-family:var(--font-display);font-weight:600;border:none;z-index:5}

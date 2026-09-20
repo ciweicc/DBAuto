@@ -100,7 +100,11 @@ function initSSE(){
   });
   es.addEventListener('log', function(e){
     var d = JSON.parse(e.data);
-    if(d.line) addLog(d.line);
+    if(!d.line) return;
+    // 后端把「主行 + 详情」一起发：详情挂到这条主行下面折叠（issue #68）。
+    // 只有 line 的事件走 addLog（兼容旧后端），它会自己判断要不要折叠。
+    if(d.detail) addLogEvent(d.line, d.detail);
+    else addLog(d.line);
   });
   es.onerror = function(){
     es.close();

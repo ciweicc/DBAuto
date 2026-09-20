@@ -85,6 +85,78 @@
 「标签保留用于溯源」、「`panel=False` 仍写文件日志」、
 「已知噪声不上面板」；`scripts/check_log_density.py` 提供可复跑的行数证据。
 
+## [当前] 执行日志信息密度（二）：把 requests 异常收进可折叠「详情」（issue #68 追问）
+
+> 用户原话：「日志的内容信息密度还是很低」，并附了一张新截图。
+
+第一轮（PR #70）把「行数」压下去了 —— 一个标题只剩一条终态行。但用户看到的
+问题没解决，因为**行本身**还在把一整段 requests 异常糊在面板上：
+
+```
+[20:46:56] HTTP POST 超过重试预算，放弃: HTTPConnectionPool(host='19
+2.168.5.55', port=8080): Read timed out. (read timeout=20)
+[20:46:56] PanSou 重试: HTTPConnectionPool(host='192.168.5.55', port=
+8080): Read timed out. (read timeout=20)
+```
+
+在 280–340px 宽的日志栏里，这两行会各折成 5–6 个视觉行；一次 1 条任务的转存，
+面板上摊开 7 行，而其中 2 行是同一件事的重复流水。
+
+**改法：主行只说结论，异常原文降级成可折叠的「详情」。**
+
+- 后端 `log()` 新增 `detail=`，并把 `"主行: 异常原文"` 自动拆成「主行 + 详情」
+  （`utils._split_detail`）；`data/app.log` 里无论折叠与否都是完整原文。
+- 面板主行截断到 120 字符，`progress` 里仍成对写入「主行 + 详情行」
+  （progress 是 SSE 断连时的回填源，必须自足）。
+- 前端默认只渲染主行，详情收进主行下面一行灰字 + 省略号，点「详情」展开。
+- 新增面板黑名单：`搜索: X`、`QAS: N 个任务已缓存`、`失效检测目录范围: ...`。
+- 重试类日志改成能读的主行：`HTTP POST 超时放弃（已重试 3 次）`，
+  原来的 `HTTP POST 超过重试预算，放弃: <整段异常>` 不再占主行。
+
+实测（`python3 scripts/check_log_density.py`，脚本已落库）：
+
+```
+面板行数 before = 123  (每标题 6.15 行)
+面板行数 after  = 63   (每标题 3.15 行)   降幅 49%
+视觉行数 before = 203  (每标题 10.2 行 @46 字符/行)
+视觉行数 after  = 83   (每标题 4.2 行，详情默认折叠)   视觉降幅 59%
+```
+
+面板变成一行一件事：
+
+```
+[TRANSFER#AB12CD] 流浪地球：转存成功
+[TRANSFER#AB12CD] HTTP POST 超时放弃（已重试 3 次）   [详情]
+```
+
+**踩到的坑（都已落成断言，避免复发）：**
+
+- 详情**不能按 progress 的奇偶位**认领：`clear_progress()` / deque 上限会裁掉队首，
+  起始偏移不固定，实测整段异常被挂到了 `empty-state` 占位节点上，
+  日志区横向溢出 191px。改为「下一行以 `本行: ` 开头」这条与后端同源的规则配对。
+- `#log` 里那个「准备就绪」的静态占位会让 `children[i]` 与 `logBefore[i]` 错位一格，
+  必须在渲染首条日志时移除。
+- 折叠态的 flex 子项要显式 `min-width:0`，否则不收缩、省略号失效。
+- `updateLogHint` 会被 scroll 监听直接调用，参数是事件对象 —— 必须只认数字，
+  否则提示显示成 `最新 [object Event] 条`。
+
+**验证证据（全部本仓库内可复跑）：**
+
+```bash
+python3 -m pytest tests/ -q                       # 495 passed
+python3 scripts/check_log_density.py              # 视觉降幅 59%，主行不含异常原文
+python3 scripts/check_log_panel_dom.py --serve    # 10 组视口 0 问题
+                                                  # 详情 6/6 默认折叠、点开不横向溢出
+ruff check .                                      # All checks passed
+python scripts/check_contrast.py                  # 18 组受检 0 组未达标
+```
+
+新增回归保护：`tests/test_log_density.py` 加 7 条（异常原文必须从主行剥出、
+裸异常行要有可读主行、普通句子的冒号不能被误拆、长句不能被藏进详情、
+文件日志仍留原文、progress 成对可回填）；`tests/test_build.py` 加
+`test_log_detail_is_collapsible`（折叠块/按钮存在、配对不依赖奇偶位、
+折叠态省略号收尾、展开态跨重渲染保留）。
+
 ## [当前] QAS 转存任务：列表视图 / 卡片视图切换（issue #57 追问）
 
 > 用户原话：给「QAS 转存任务」那一屏的截图配了一句

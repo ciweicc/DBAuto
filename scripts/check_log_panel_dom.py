@@ -68,6 +68,12 @@ def _launch_kwargs():
 def _progress():
     lines = [_LOG_LINE.format(i % 60, i, i) for i in range(60)]
     lines.insert(10, _LONG_LINE)
+    # issue #68：后端把「主行 + 详情」成对写进 progress（详情是 requests 的整段异常）。
+    # 这里插 6 组，用于断言「详情默认折叠、不占视觉行」。
+    for i in range(6):
+        lines.append("2026-09-15 10:02:{:02d} HTTP POST 超时放弃（已重试 3 次）".format(i))
+        lines.append("2026-09-15 10:02:{:02d} HTTP POST 超时放弃（已重试 3 次）: POST https://pansou/api | "
+                     "HTTPConnectionPool(host='192.168.5.55', port=8080): Read timed out. (read timeout=20)".format(i))
     return lines
 
 
@@ -106,8 +112,19 @@ MEASURE = r"""
     const r = e.getBoundingClientRect();
     return r.top >= boxRect.top - 1 && r.bottom <= boxRect.bottom + 1;
   }).length;
+  // issue #68：默认折叠的详情块不计入「视觉行数」（它们只占 1 行灰字 +
+  // 折叠态省略号），展开的才计。用户扫一屏看到的信息量由可见行数决定。
+  const details = [...box.querySelectorAll('.log-detail')];
+  const collapsedDetails = details.filter(d => d.classList.contains('collapsed'));
+  const detailTextH = details.map(d => {
+    const t = d.querySelector('.log-detail-text');
+    return t ? Math.round(t.getBoundingClientRect().height) : 0;
+  });
   return {
     missing: false,
+    detailCount: details.length,
+    detailCollapsed: collapsedDetails.length,
+    detailMaxTextH: detailTextH.length ? Math.max(...detailTextH) : 0,
     panelW,
     collapsed: panel.classList.contains('collapsed'),
     panelVisible: getComputedStyle(panel).display !== 'none' && panelW > 60,
@@ -260,6 +277,64 @@ def main():
                 if m["panelW"] > 60 and m["panelW"] < 240:
                     fail("日志栏宽度 {}px 过窄（内容会被挤压）".format(m["panelW"]))
 
+                # 6'. issue #68：requests 异常必须收成「默认折叠的详情」。
+                #     判据：详情块存在、默认折叠、且折叠态文字高度只有一行
+                #     （展开后该段异常在 400px 宽栏里必然折成 ≥ 3 行）。
+                if m.get("detailCount", 0) == 0:
+                    fail("面板没有渲染任何折叠详情块（issue #68 的详情行未被认领）")
+                elif m["detailCollapsed"] != m["detailCount"]:
+                    fail("详情块默认未折叠（{}/{} 折叠）".format(
+                        m["detailCollapsed"], m["detailCount"]))
+                elif m["detailMaxTextH"] > 24:
+                    fail("折叠态详情仍占 {}px 高（应在 1 行内，约 ≤24px）".format(
+                        m["detailMaxTextH"]))
+
+                # 6''. 「详情」必须点得开：展开后原文完整可见、不横向溢出。
+                #      折叠只是默认态，用户排查问题时仍要能拿到 requests 原文。
+                if m["detailCount"] > 0:
+                    expand_err = page.evaluate('''() => {
+                      const box = document.getElementById('log');
+                      const det = box.querySelector('.log-detail.collapsed');
+                      if (!det) return 'no-collapsed-detail';
+                      const btn = det.querySelector('.log-detail-toggle');
+                      if (!btn) return 'no-toggle';
+                      btn.click();
+                      const t = det.querySelector('.log-detail-text');
+                      const br = box.getBoundingClientRect();
+                      const tr = t.getBoundingClientRect();
+                      const cs = getComputedStyle(t);
+                      return {
+                        label: btn.textContent,
+                        aria: btn.getAttribute('aria-expanded'),
+                        stillCollapsed: det.classList.contains('collapsed'),
+                        textH: Math.round(tr.height),
+                        overflowRight: Math.round(tr.right - (br.right - 8)),
+                        overflowX: box.scrollWidth - box.clientWidth,
+                        whiteSpace: cs.whiteSpace,
+                      };
+                    }''')
+                    if expand_err == 'no-collapsed-detail' or expand_err == 'no-toggle':
+                        fail("折叠详情缺少可点的「详情」按钮（{}）".format(expand_err))
+                    else:
+                        if expand_err["stillCollapsed"] or expand_err["aria"] != "true":
+                            fail("点「详情」后未展开（collapsed={} aria={}）".format(
+                                expand_err["stillCollapsed"], expand_err["aria"]))
+                        if expand_err["label"] != "收起":
+                            fail("展开后按钮文案未变为「收起」：{}".format(expand_err["label"]))
+                        if expand_err["whiteSpace"] == "nowrap":
+                            fail("展开后详情仍被 nowrap 截断，原文不可读")
+                        if expand_err["overflowRight"] > 1 or expand_err["overflowX"] > 0:
+                            fail("展开后的详情横向溢出（右溢 {}px / 日志区 {}px）".format(
+                                expand_err["overflowRight"], expand_err["overflowX"]))
+                        if expand_err["textH"] <= 24:
+                            fail("展开后详情仍只有一行（{}px），原文没显示出来".format(
+                                expand_err["textH"]))
+                    # 收起，避免影响后续视口断言的可复现性
+                    page.evaluate("()=>{var d=document.querySelector('#log .log-detail');"
+                                  "if(d){var t=d.querySelector('.log-detail-toggle');"
+                                  "if(t&&t.textContent==='收起')t.click();}}")
+                    m["detailExpandable"] = True
+
                 # 7. 宽屏（常驻栏）日志栏必须真的落在视口内
                 #    （窄屏首屏是「关闭的抽屉」，由下方点 FAB 后的断言覆盖）
                 if not narrow and not m["panelInViewport"]:
@@ -338,9 +413,12 @@ def main():
         print(json.dumps({"problems": problems, "report": report}, ensure_ascii=False, indent=2))
     else:
         for m in report:
-            print("{:<28} 栏宽 {:<4} 日志区高 {:<5} 行数 {:<3} 视口内 {:<3} 折行 {:<3} 最新 {}".format(
+            print("{:<28} 栏宽 {:<4} 日志区高 {:<5} 行数 {:<3} 视口内 {:<3} 折行 {:<3} "
+                  "详情 {}/{}折叠 最新 {}".format(
                 m["label"], m["panelW"], m["boxH"], m["lineCount"],
-                m["inViewLines"], m["wrappedCount"], "是" if m["atBottom"] else "否"))
+                m["inViewLines"], m["wrappedCount"],
+                m.get("detailCollapsed", 0), m.get("detailCount", 0),
+                "是" if m["atBottom"] else "否"))
         print()
         if problems:
             print("发现 {} 处问题：".format(len(problems)))

@@ -902,7 +902,8 @@ async function transferTmdbSelection(){
   }
   if(!tasks.length){showToast('未找到选中项',false);return}
   // 清空日志（日志面板常驻，无需切换页面即可看到转存进度）
-  logBefore=[]; getId('log').textContent='';
+  logBefore=[]; logDetails={}; logDetailOpen={}; logDetailAuto={};
+  getId('log').textContent='';
   addLog('[开始转存 TMDB 选中内容]');
   // 3.1 统一 loading 态：异步期间禁点防重复提交
   var tBtn=getId('tmdbTransferBtn');
