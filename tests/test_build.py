@@ -302,12 +302,29 @@ def test_settings_page_has_jump_nav(dist):
     )
 
 
-def test_settings_group_headers_have_description(dist):
-    """分组头需含「名称 + 说明」，避免只有一行标题导致的信息量不足。"""
+def test_settings_sections_have_anchors(dist):
+    """issue #75：设置页取消可见的分组边框后，分区语义必须由锚点 + chips 承载。
+
+    旧实现用 `<details class="settings-group">` 把卡片包成 4 个可见分组，
+    分组宽度随卡片数在 1 列 / 2 列间跳动，是「有一些高，有一些低」的根因。
+    取消分组样式后，用户仍需要能定位到某个分区 —— 因此必须同时满足：
+      1. 4 个分区锚点存在（id 与 chips 的 data-target 一一对应）；
+      2. 锚点**不占网格位**（否则会在统一网格里多占一行，把页面顶高）；
+      3. 每个锚点后面确实跟着一张卡（否则跳转会落在空处）。
+    """
     css, _ = _extract(dist)
-    for cls in (".set-group-ic", ".set-group-name", ".set-group-desc", ".set-group-badge"):
-        assert cls in css, "缺少分组头样式 {}".format(cls)
-    assert dist.count('class="set-group-desc"') >= 4, "分组说明缺失（应覆盖 4 个分组）"
+    assert ".set-anchor" in css, "缺少分区锚点样式"
+    anchor_block = re.search(r"\.set-anchor\{(.*?)\}", css, re.S)
+    assert anchor_block, "未找到 .set-anchor 样式块"
+    assert "position:absolute" in anchor_block.group(1).replace(" ", ""), (
+        "分区锚点必须脱离网格排布（absolute）：否则它会作为一个空网格项占掉一整行")
+    for gid in ("setGroupSource", "setGroupTransfer", "setGroupPath", "setGroupAuth"):
+        assert 'id="{}"'.format(gid) in dist, "缺少分区锚点 {}".format(gid)
+        assert 'data-target="{}"'.format(gid) in dist, "分区索引未覆盖 {}".format(gid)
+    # 每个锚点后面必须紧跟一张设置卡
+    for gid in ("setGroupSource", "setGroupTransfer", "setGroupPath", "setGroupAuth"):
+        m = re.search(r'<span class="set-anchor" id="{}"[^>]*></span>\s*<div class="card">'.format(gid), dist)
+        assert m, "锚点 {} 后未紧跟设置卡，chips 跳转会落在空处".format(gid)
 
 
 def test_settings_savebar_replaces_empty_card(dist):
@@ -327,19 +344,29 @@ def test_settings_savebar_replaces_empty_card(dist):
     )
 
 
-def test_settings_cards_equal_height(dist):
-    """同一行卡片必须等高（此前 343/303/214 参差，底部留白不一致）。"""
+def test_settings_cards_uniform_width_and_actions(dist):
+    """issue #75：所有设置卡必须同宽，动作位在卡内贴底。
+
+    旧实现同屏出现 660px 与 1400px 两种卡宽（分组宽度随卡片数跳变），
+    以及 154px 与 290px 两种卡高（分组边框等高拉伸）。现在统一为**一层**网格：
+    卡片宽度只由列轨道决定，因此同视口下必然同宽。
+    """
     css, _ = _extract(dist)
     compact = re.sub(r"\s+", "", css)
-    assert "align-items:stretch" in compact, "设置网格未做等高拉伸"
-    assert ".settings-group.settings-grid>.card{display:flex;flex-direction:column}" in compact, (
-        "缺少设置卡片 flex 纵向布局（底部动作位依赖该布局）"
+    # 卡片是纵向 flex，动作位靠 margin-top:auto 贴底（卡内既有字段又有按钮时，
+    # 按钮不会浮在中间）。
+    assert ".settings-flat>.card{width:100%;margin:0;display:flex;flex-direction:column" in compact, (
+        "设置卡片缺少 flex 纵向布局（底部动作位依赖该布局）"
     )
-    assert ".settings-group.settings-grid>.card>.set-card-actions{margin-top:auto}" in compact, (
-        "卡片动作位未贴底，同行卡片底部留白不一致"
+    assert ".settings-flat>.card>.set-card-actions{margin-top:auto}" in compact, (
+        "卡片动作位未贴底：卡片里既有字段又有按钮时按钮会浮在中间"
     )
-    # 单卡分组需限制卡片宽度，避免巨型单卡
-    assert "--set-card-max" in css, "单卡分组缺少宽度上限令牌"
+    # 网格轨道必须均分（auto-fit/minmax(..,1fr)）：卡片宽度只由轨道决定。
+    grid = re.search(r"\.settings-flat\{(.*?)\}", css, re.S).group(1).replace(" ", "")
+    assert "display:grid" in grid, "设置项必须用一层网格铺排"
+    assert "grid-template-columns:repeat(auto-fit,minmax(340px,1fr))" in grid, (
+        "卡片轨道未均分：卡片宽度会随内容跳变（「有一些高，有一些低」的根因）"
+    )
 
 
 def test_settings_field_hints_present(dist):
@@ -359,62 +386,46 @@ def test_settings_declares_missing_lock_icon(dist):
     assert not missing, "产物引用了未定义的图标：{}".format(missing)
 
 
-def test_settings_groups_pack_side_by_side(dist):
-    """issue #15：分组不得再纵向独占整行。
+def test_settings_flat_grid_replaces_group_chrome(dist):
+    """issue #75：设置页不得再出现可见的分组容器（它是布局不一致的根因）。
 
-    基线：.settings-groups 是 flex 纵向单列，1440px 容器下每个分组独占一行，
-    组内单卡被 auto-fit 拉到 1340px，页面高 1756px、空白占比约 72%。
+    基线：`.settings-groups` 是外层双列网格，分组按卡片数在 span 1 / 2 间跳变，
+    于是同屏既有 660px 卡（半宽分组里的）又有 1400px 卡（整行分组里的）；
+    组内 `.settings-grid` 又与分组边框等高拉伸。两层结构是「有一些高、
+    有一些低」的直接来源。修法：拆成**一层**统一卡片网格，分组只留锚点。
     """
     css, _ = _extract(dist)
     compact = re.sub(r"\s+", "", css)
-    groups = re.search(r"\.settings-groups\{(.*?)\}", css, re.S)
-    assert groups, "未找到 .settings-groups 样式块"
-    block_css = groups.group(1).replace(" ", "")
-    assert "display:grid" in block_css, (
-        ".settings-groups 必须用 grid 才能让分组并排，flex 纵向单列是其独占整行的根因"
+    # 旧的两层结构选择器必须清干净，否则会与新网格叠加、把卡片再次压窄/拉宽
+    assert ".settings-group" not in compact, "旧的分组样式（.settings-group）仍有残留"
+    assert ".settings-groups" not in compact, "旧的分组容器样式（.settings-groups）仍有残留"
+    # DOM 里也不得再有分组容器 / 折叠头
+    assert 'class="settings-group"' not in dist, "DOM 仍渲染分组容器"
+    assert "set-group-name" not in dist and "set-group-badge" not in dist, (
+        "DOM 仍渲染分组头（名称 / 徽标）"
     )
-    assert "flex-direction:column" not in block_css, (
-        ".settings-groups 回退成了 flex 纵向单列（分组会再次独占整行）"
-    )
-    assert compact.count("grid-template-columns:minmax(0,1fr)minmax(0,1fr)") >= 1, (
-        ".settings-groups 未声明双列轨道，分组无法并排"
-    )
-    # 分组自身必须是网格容器，否则组内 grid-template-columns 不生效。
-    # 注意 .settings-group 有多个样式块（边框块在前），必须遍历全部再判定。
-    group_blocks = re.findall(r"\.settings-group\{(.*?)\}", css, re.S)
-    assert group_blocks, "未找到 .settings-group 样式块"
-    assert any("display:grid" in b.replace(" ", "") for b in group_blocks), (
-        "<details class=\"settings-group\"> 默认 block，必须显式声明 display:grid"
-    )
-    # summary 必须横跨整组，否则会被当作网格子项塞进第一列
-    assert ".settings-group>summary{grid-column:1/-1}" in compact, (
-        "分组折叠头未横跨整组，会被当成网格子项塞进第一列"
+    # 新结构：一层网格 + 4 个分区锚点
+    assert 'class="settings-grid settings-flat"' in dist, "缺少统一卡片网格容器"
+    assert dist.count('class="set-anchor"') == 4, (
+        "分区锚点数量应为 4（数据源 / 转存服务 / 转存路径 / 认证与缓存）"
     )
 
 
 def test_settings_cards_not_force_equal_height(dist):
-    """issue #15：同行卡片不得被强行等高。
+    """issue #15 / #75：同行卡片不得被强行等高。
 
-    基线：「搜索服务」内容 149px，与 241px 的「TMDB 数据源」同行被 stretch
-    拉到同高 337px，底部空出 202px。等高拉伸必须去掉，改为按内容高度排布。
+    基线：「搜索服务」内容 149px，与 245px 的「TMDB 数据源」同行被 stretch
+    拉到同高，底部空出 90px+。等高拉伸必须去掉，改为按内容高度排布
+    （`.settings-flat{align-items:start}`）。
     """
     css, _ = _extract(dist)
-    compact = re.sub(r"\s+", "", css)
-    assert ".settings-group.settings-grid{align-items:start}" in compact, (
-        "卡片仍被 align-items:stretch 强行等高（短卡会被撑出整块空白）"
+    grid = re.search(r"\.settings-flat\{(.*?)\}", css, re.S).group(1).replace(" ", "")
+    assert "align-items:start" in grid, (
+        "统一网格未声明 align-items:start：卡片会被拉伸等高，短卡撑出整块空白"
     )
-    assert ".settings-group.settings-grid{align-items:stretch}" not in compact, (
-        "align-items:stretch 未清除干净，等高会再次撑出空白"
+    assert "align-items:stretch" not in grid, (
+        "统一网格仍在强拉等高，短卡会被撑出空白"
     )
-    # 卡片宽度上限必须用 max-width 表达，不能写进 minmax 上界
-    assert "max-width:var(--set-card-max" in compact, (
-        "卡片缺少 max-width 宽度上限"
-    )
-    assert "minmax(300px,var(--set-card-max" not in compact.replace(" ", ""), (
-        "卡片宽度上限被写进 minmax 上界，会把轨道钉死、同组卡片退回纵向堆叠"
-    )
-
-
 def test_settings_fields_two_column_on_wide_cards(dist):
     """宽卡（单列铺满）时字段走两列 —— 把「留空不修改」等提示占的纵向空间收掉。"""
     css, _ = _extract(dist)
@@ -423,6 +434,9 @@ def test_settings_fields_two_column_on_wide_cards(dist):
     assert dist.count('class="set-fields"') >= 5, "字段容器未覆盖设置页各卡片"
     assert ".set-fields{display:grid;grid-template-columns:minmax(0,1fr)" in compact, (
         "缺少 .set-fields 基础（单列）样式"
+    )
+    assert "container-type:inline-size;container-name:settings-card" in compact, (
+        "设置卡未声明具名容器，容器查询无法命中"
     )
     assert "@containersettings-card" in compact, (
         "缺少按卡片宽度切换字段列数的容器查询（卡片内两列依赖它）"
@@ -465,9 +479,9 @@ def test_settings_density_tokens_declared(dist):
     # 标签与提示必须真的引用令牌，而不是把旧值写死
     assert "font-size:var(--set-label-fs)" in compact, "字段标签未引用密度令牌"
     assert "font-size:var(--set-hint-fs)" in compact, "字段提示未引用密度令牌"
-    assert ".settings-group.set-fields>.form-group{margin-bottom:var(--set-field-gap)}" \
+    assert ".settings-flat.set-fields>.form-group{margin-bottom:var(--set-field-gap)}" \
         in compact, "卡片内字段间距未引用密度令牌"
-    assert ".settings-group.card>.card-title{margin-bottom:var(--set-field-gap)}" \
+    assert ".settings-flat.card>.card-title{margin-bottom:var(--set-field-gap)}" \
         in compact, (
         "卡片标题下间距未与字段间距同值：同一条竖线上两个数字不一致，"
         "正是「密度不一致」的直观来源")

@@ -635,18 +635,17 @@
           <button type="button" class="set-jump-chip" data-target="setGroupAuth" onclick="jumpToSettingsGroup('setGroupAuth', this)">认证与缓存</button>
         </nav>
 
-        <div class="settings-groups">
-          <!-- 数据源 -->
-          <details class="settings-group" id="setGroupSource" open>
-            <summary>
-              <span class="set-group-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-search"/></svg></span>
-              <span class="set-group-text">
-                <span class="set-group-name">数据源</span>
-                <span class="set-group-desc">资源搜索与影视元数据来源</span>
-              </span>
-              <span class="set-group-badge">2 项</span>
-            </summary>
-            <div class="settings-grid">
+        <!-- 设置项：统一卡片网格（issue #75）
+             原实现是「分组 <details> + 组内网格」两层结构：分组宽度随卡片数在
+             1 列 / 2 列之间跳动，组内卡片又被分组边框等高拉伸 —— 同一屏里因此出现
+             660px 与 1400px 两种卡宽、154px 与 290px 两种卡高，短卡下方大片纯空白
+             （用户原话「有一些高，有一些低」）。
+             现改为**一层**统一网格：所有卡片同宽、同内边距、按内容自然高度紧密排布；
+             分组语义交由顶部 chips + 分区锚点承载（不再渲染可见的分组边框）。 -->
+        <div class="settings-grid settings-flat">
+
+          <!-- ===== 数据源：资源搜索与影视元数据来源 ===== -->
+          <span class="set-anchor" id="setGroupSource" aria-hidden="true"></span>
               <div class="card">
                 <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-search"/></svg> 搜索服务</div>
                 <div class="set-fields">
@@ -662,20 +661,9 @@
                   <div class="form-hint">前往上方 API Key 链接申请密钥。国内网络访问 api.tmdb.org 常被干扰（TLS 握手失败），若榜单无法加载，请填写代理地址（如 Clash / V2Ray 的 HTTP 代理）。</div>
                 </div>
               </div>
-            </div>
-          </details>
 
-          <!-- 转存服务 -->
-          <details class="settings-group" id="setGroupTransfer" open>
-            <summary>
-              <span class="set-group-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-transfer"/></svg></span>
-              <span class="set-group-text">
-                <span class="set-group-name">转存服务</span>
-                <span class="set-group-desc">QAS 接口地址与访问凭据</span>
-              </span>
-              <span class="set-group-badge">1 项</span>
-            </summary>
-            <div class="settings-grid">
+          <!-- ===== 转存服务：QAS 接口地址与访问凭据 ===== -->
+          <span class="set-anchor" id="setGroupTransfer" aria-hidden="true"></span>
               <div class="card">
                 <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-transfer"/></svg> 转存服务</div>
                 <div class="set-fields">
@@ -716,20 +704,9 @@
                   </details>
                 </div>
               </div>
-            </div>
-          </details>
 
-          <!-- 转存路径 -->
-          <details class="settings-group" id="setGroupPath" open>
-            <summary>
-              <span class="set-group-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg></span>
-              <span class="set-group-text">
-                <span class="set-group-name">转存路径</span>
-                <span class="set-group-desc">三类转存目标的保存目录</span>
-              </span>
-              <span class="set-group-badge">3 项</span>
-            </summary>
-            <div class="settings-grid">
+          <!-- ===== 转存路径：三类转存目标的保存目录 ===== -->
+          <span class="set-anchor" id="setGroupPath" aria-hidden="true"></span>
               <div class="card">
                 <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg> 转存路径</div>
                 <div class="set-fields">
@@ -740,20 +717,9 @@
                   <div class="form-hint">路径均须以 <code>/</code> 开头；留空则使用默认值。</div>
                 </div>
               </div>
-            </div>
-          </details>
 
-          <!-- 认证与缓存 -->
-          <details class="settings-group" id="setGroupAuth" open>
-            <summary>
-              <span class="set-group-ic"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-lock"/></svg></span>
-              <span class="set-group-text">
-                <span class="set-group-name">认证与缓存</span>
-                <span class="set-group-desc">管理后台登录凭据与缓存维护</span>
-              </span>
-              <span class="set-group-badge">2 项</span>
-            </summary>
-            <div class="settings-grid">
+          <!-- ===== 认证与缓存：管理后台登录凭据与缓存维护 ===== -->
+          <span class="set-anchor" id="setGroupAuth" aria-hidden="true"></span>
               <div class="card">
                 <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-lock"/></svg> 管理认证</div>
                 <div class="set-fields">
@@ -768,10 +734,7 @@
                   <button class="btn btn-outline btn-sm" id="refreshDoubanBtn" onclick="refreshDoubanCache()">刷新豆瓣缓存</button>
                 </div>
               </div>
-            </div>
-          </details>
         </div>
-
         <div class="settings-savebar" role="group" aria-label="保存设置">
           <div class="settings-savebar-text">
             <div class="settings-savebar-title">保存配置</div>

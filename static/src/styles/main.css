@@ -1081,28 +1081,37 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .set-jump-chip.active{color:var(--accent);border-color:var(--accent);background:var(--accent-wash)}
 .set-jump-chip:focus-visible{outline:none;box-shadow:var(--focus-ring)}
 
-/* ===== 设置分组折叠 ===== */
-.settings-group{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;background:var(--card);scroll-margin-top:16px}
-.settings-group>summary{display:flex;align-items:center;gap:11px;padding:13px 16px;
-  cursor:pointer;list-style:none;user-select:none;transition:background var(--transition-fast)}
-.settings-group>summary::-webkit-details-marker{display:none}
-.settings-group>summary:hover{background:var(--card-2)}
-/* 分组图标：给定尺寸的圆形徽标，避免裸 svg 依赖全局尺寸 */
-.set-group-ic{width:30px;height:30px;border-radius:var(--radius-sm);flex-shrink:0;
-  display:flex;align-items:center;justify-content:center;
-  background:var(--accent-wash);color:var(--accent)}
-.set-group-ic svg{width:17px;height:17px}
-.set-group-text{display:flex;flex-direction:column;gap:2px;min-width:0}
-.set-group-name{font-size:var(--fs-lg);font-weight:600;color:var(--text);font-family:var(--font-display);line-height:1.25}
-.set-group-desc{font-size:var(--fs-sm);color:var(--text3);line-height:1.35;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.set-group-badge{margin-left:auto;flex-shrink:0;font-size:var(--fs-xs);font-weight:600;color:var(--text3);
-  padding:3px 9px;border-radius:999px;background:var(--card-2);border:1px solid var(--border);font-family:var(--font-display)}
-.settings-group>summary::after{content:'';flex-shrink:0;width:8px;height:8px;margin-left:6px;
-  border-right:2px solid var(--text3);border-bottom:2px solid var(--text3);
-  transform:rotate(45deg);transition:transform var(--transition-fast)}
-.settings-group:not([open])>summary::after{transform:rotate(-45deg)}
-.settings-group>.settings-grid{margin:0;padding:16px 16px 4px}
+/* ===== 设置项：统一卡片网格（issue #75） ===== */
+/* 历史包袱：此前是「分组 <details> + 组内网格」两层结构。
+   分组宽度随卡片数在 1 列 / 2 列之间跳动（660px 卡 vs 1400px 卡同屏），
+   组内卡片又被分组边框等高拉伸（154px 卡被拉到 290px），
+   于是同一屏里既有两种卡宽又有两种卡高，短卡下方大片纯空白
+   —— 用户原话「当前的设置项太乱了，有一些高，有一些低」。
+   改为**一层**统一网格：所有卡片同宽、同内边距、按内容自然高度紧密排布。
+   分组不再渲染可见边框，分组语义由顶部 chips + 分区锚点承载。 */
+.settings-flat{
+  position:relative;
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(340px,1fr));
+  gap:var(--set-field-gap) 12px;
+  align-items:start;              /* 卡片按自身内容高度排布，不互相拉伸 */
+  margin-top:4px;
+}
+.settings-flat>.card{
+  width:100%;margin:0;             /* 网格已给间距，卡片自身不再带 margin-bottom */
+  display:flex;flex-direction:column;
+  /* 具名容器：卡片宽 ≥600px 时字段改走两列（见下方 @container 查询）。
+     用容器查询而非媒体查询，是因为「卡宽」才是字段能否铺两列的决定因素：
+     同一视口下不同列数会得到不同卡宽，媒体查询表达不了。 */
+  container-type:inline-size;container-name:settings-card;
+}
+/* 分区锚点：不可见、不占位、不参与网格排布，仅作为 chips 跳转与滚动高亮的目标。
+   放在统一网格里必须显式脱离布局，否则会被当成一个空网格项占掉一格。 */
+.set-anchor{position:absolute;width:0;height:0;overflow:hidden;pointer-events:none;
+  scroll-margin-top:96px}
+/* 锚点会 absolute 定位，容器需建立包含块，否则锚点会跑到 .content 上，
+   chips 的 scrollIntoView 目标偏移 —— settings-flat 已是 grid（相对定位容器） */
+
 
 /* 设置卡内的可折叠子分区（如「转存服务」卡里的「媒体库文件源（OpenList）」）：
    用细分隔线 + 标题把两组字段分开；默认收起以遵守设置页高度门禁（issue #15）。 */
@@ -1140,92 +1149,31 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .ol-selfcheck.ol-ok{color:var(--green);border-left:2px solid var(--green-border);padding-left:8px}
 .ol-selfcheck.ol-fail{color:var(--red);border-left:2px solid var(--red-border);padding-left:8px}
 
-/* ===== 设置页：分组并排（消灭「卡片被拉到容器宽 + 同行空白」） ===== */
-/* 问题（issue #15）：分组是 flex 纵向单列，容器 1440px 宽时每个分组独占整行，
-   分组内 1 张卡被 auto-fit 拉到 1340px；「搜索服务」内容仅 149px 高，
-   却与 254px 高的「TMDB 数据源」等高（flex stretch），单卡留下 106px 纯空白。
-   实测 2560px 视口下设置页 1756px 高，约 72% 是空白。
-   修法：分组按内容宽度并排（外层 2 列），组内再按内容宽度决定 1~3 列，
-   并按内容高度分配尺寸，而不是按容器宽度。 */
-.settings-groups{
-  display:grid;gap:14px;margin-top:4px;align-items:start;
-  grid-template-columns:minmax(0,1fr) minmax(0,1fr);
-}
-/* 分组：<details> 默认 block，margin 归零避免并排布局下错位。
-   注意 `display` 必须显式声明成 grid，且只给**单列**模板 —— 之前把
-   auto-fit/minmax(300px) 写在分组上，会把 summary 与 .settings-grid
-   当成两个可并排的网格子项，卡片被塞进 350px 窄列（实测更糟）。
-   组内多列由子元素 .settings-grid 自己负责。 */
-.settings-group{
-  grid-column:span 1;margin:0;
-  display:grid;grid-template-columns:minmax(0,1fr);
-}
-/* 内容多的分组（2 张卡）横跨整行，组内卡片并排 —— 两张卡各自都放得下；
-   内容少的分组（单卡）只占半行，另一半交给下一个分组，不再留空。
-   注意：外层固定 2 列，因此 span 只允许 1 / 2，超过会被浏览器截断为整行。 */
-.settings-group:has(.settings-grid>.card:nth-child(2)){grid-column:1/-1}
-/* 折叠头（summary）必须横跨整个分组，否则会被当成网格子项塞进第一列 */
-.settings-group>summary{grid-column:1/-1}
-/* 组内卡片：列宽上限用 max-width 表达，**不能**写进 minmax 的上界 ——
-   写了会把每列轨道钉死在 660px，878px 容器里只能放下 1 列，两卡反而退回纵向堆叠。
-   正确做法：轨道用 auto-fit/minmax(300px,1fr) 均分，再用卡片的 max-width 限制跨度。 */
-.settings-group>.settings-grid{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
-.settings-group>.settings-grid>.card{width:100%;max-width:var(--set-card-max,660px);
-  container-type:inline-size;container-name:settings-card}
-
-/* 卡片内字段容器：默认单列；卡片宽度 ≥600px（宽卡单列铺排）时由容器查询改为两列，
+/* ===== 设置页：卡片内字段容器与纵向节奏 ===== */
+/* 字段容器默认单列；卡片宽 ≥600px 时由容器查询改为两列（见下方 @container），
    把「留空不修改」这类提示占掉的纵向空间收掉，同时不再出现 640px 宽的空输入框。 */
-.settings-group .set-fields{display:grid;grid-template-columns:minmax(0,1fr);gap:0 18px;align-content:start}
-.settings-group .set-fields>.form-group{min-width:0}
+.settings-flat>.card>.set-fields,
+.set-sub .set-fields{display:grid;grid-template-columns:minmax(0,1fr);gap:0 18px;align-content:start}
+.settings-flat .set-fields>.form-group{min-width:0}
 /* 两列表段时让奇数个字段的最后一项横跨整行：否则末尾会空出半格，
-   与相邻卡片的等高拉伸叠在一起，形成一片纯空白。 */
-.settings-group .set-fields>.form-group:last-child:nth-child(odd){grid-column:1/-1}
+   与相邻字段错开，形成「空槽」观感。 */
+.settings-flat .set-fields>.form-group:last-child:nth-child(odd){grid-column:1/-1}
 /* 提示占满整行，避免被拆到两列时与相邻字段错位 */
-.settings-group .set-fields>.form-hint{grid-column:1/-1;margin-top:var(--set-hint-mt)}
+.settings-flat .set-fields>.form-hint{grid-column:1/-1;margin-top:var(--set-hint-mt)}
 
 /* 卡片内字段的纵向节奏（issue #61「设置页显示密度不一致」）：
-   原本由**通用**的 .form-group{mb:14px} 决定，但它同时服务登录页/弹层，
-   于是在卡片（内边距只有 var(--card-pad)，9~14px）里显得过松 ——
-   「密集的框 + 稀疏的内容」，每张设置卡都要滚动，且 3 字段卡与 1 字段卡的
-   松紧观感不一致。这里把「卡片内」的节奏单独收敛成令牌：
-   字段→字段与标题→首字段用同一个值（组间 = 组内，不再 12px 紧挨 14px），
-   标签→输入框 4px、提示→标签 4px。所有值随密度（宽松/标准/紧凑）联动。 */
-.settings-group .set-fields>.form-group{margin-bottom:var(--set-field-gap)}
-/* 卡片标题与首字段同宽（组间 = 组内）：标题原本 mb:12px、字段间距 14px，
-   同一条竖线上两个数字不一致，正是「密度不一致」的直观来源。 */
-.settings-group .card>.card-title{margin-bottom:var(--set-field-gap)}
+   字段→字段与标题→首字段用同一个值，标签→输入框 4px、提示→标签 4px。
+   所有值随密度（宽松/标准/紧凑）联动，保证每张卡的松紧观感一致。 */
+.settings-flat .set-fields>.form-group{margin-bottom:var(--set-field-gap)}
+.settings-flat .card>.card-title{margin-bottom:var(--set-field-gap)}
 /* 子分区（如「媒体库文件源（OpenList）」）内部同理 */
 .set-sub .set-fields>.form-group{margin-bottom:var(--set-field-gap)}
-/* 「连接自检」是子分区里独立成行的小动作，按空行的一半紧贴上一个字段
-   （原本 12px，与相邻的 14px 字段间距几乎一样，读起来像另一个字段开始）。 */
+/* 「连接自检」是子分区里独立成行的小动作，按空行的一半紧贴上一个字段。 */
 .set-sub .set-fields>.set-card-actions{margin-top:calc(var(--set-field-gap) / 2)}
 
-/* 单卡分组：组宽 > 单卡上限时会留下右侧空白（1024px 下「转存服务」= 984px 组
-   里放 660px 的卡）。此类分组放开宽度上限，让卡片铺满组宽 —— 字段由容器查询
-   自动铺成两列，纵向更短，也不会出现偏置观感。 */
-.settings-group:has(> .settings-grid > .card:only-child){--set-card-max:100%}
-/* 多卡分组（如「数据源」两卡并排）：轨道下界 300px —— 容器 ≥632px 即可并排；
-   容器更窄时 auto-fit 自动退回单列，卡片吃满宽度（字段随之走两列）。
-   注意下界不能取 440px：878px 容器（1440px 视口）会因差 18px 判不出两列，
-   退回单列后页面反而高出 130px。 */
-.settings-group:has(> .settings-grid > .card:nth-child(2))>.settings-grid{
-  grid-template-columns:repeat(auto-fit,minmax(300px,1fr));
-}
-
-/* 卡片高度：**不再**用 align-items:stretch 强行等高。
-   并排的两张卡内容量差一倍（149px vs 338px）时，等高会把短卡撑出 202px 纯空白
-   —— 这正是 issue #15 的主要观感问题。改为按内容高度排布（start + 行高自适应），
-   卡片自身仍是纵向 flex，底部动作位在「同一张卡内」靠 margin-top:auto 贴底。 */
-/* 同组内多行卡片的行距与组内字段间距同值（issue #61）：
-   原本卡片间距走 gap:16px、字段间距 14px，而卡片内边距只有 12px ——
-   卡与卡之间比卡到自己的内容还宽，「密度不一致」的观感来源之一。 */
-.settings-group>.settings-grid{gap:var(--set-field-gap) 16px}
-.settings-group .settings-grid{align-items:start}
-.settings-group .settings-grid>.card{display:flex;flex-direction:column}
-.settings-group .settings-grid>.card>.set-card-actions{margin-top:auto}
-/* 卡片里的字段区在卡片被行高拉长时（短卡与高卡同行）吃掉多余高度，
-   让内边距上下均衡，而不是全部堆在底部形成一块空白。 */
-.settings-group .settings-grid>.card>.set-fields{flex:1 1 auto;align-content:start}
+/* 卡片底部动作位在卡内贴底：卡片里既有输入字段又有按钮（如「缓存维护」）时，
+   按钮不该浮在中间 —— 没有它，卡片被同排更高的卡拉长后按钮会悬在半空。 */
+.settings-flat>.card>.set-card-actions{margin-top:auto}
 
 /* ===== 设置页：保存条（替换原来「一张空卡 + 右下按钮」） ===== */
 /* 注意：不使用 position:sticky 悬停方案——实测在 1200/1280/1024 三档下，
@@ -1783,40 +1731,29 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 }
 
 /* ===== 设置页响应式：断点统一到全局 1500 / 1350 / 1200 / 1024 / 640 ===== */
-/* 分组并排的下限：容器容不下「3 列标准块」时退到整行，避免分组内出现单列窄卡；
-   分组内再按 auto-fit 自行决定 1~3 列。 */
+/* 统一卡片网格的列数下界固定 340px：低于此值时两列会把输入框压到 300px 以下。
+   注意这里**不**再按「分组」分档 —— issue #75 后设置页只有一层网格，
+   分档只会让卡宽在不同视口间跳变（那正是用户看到的「有一些高，有一些低」）。 */
 @media(max-width:1500px){
-  .settings-groups{grid-template-columns:minmax(0,1fr)}
-  .settings-group{grid-column:1/-1}
-}
-/* 主列被日志栏挤压时，单卡 300px 起步会让卡片内部 label 与输入框过窄，
-   此时让 auto-fit 按容器宽度决定列数，而不是硬性单列（硬性单列会把卡片
-   拉成 900px+ 的巨型单卡，反而制造新的空白）。 */
-@media(max-width:1200px){
-  .settings-group .settings-grid{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+  .settings-flat{grid-template-columns:repeat(auto-fit,minmax(340px,1fr))}
 }
 @media(max-width:1024px){
-  /* 侧栏亦收起，主列最宽；两列更省纵向滚动 */
-  .settings-group .settings-grid{grid-template-columns:repeat(auto-fit,minmax(280px,1fr))}
+  /* 侧栏收起，主列更宽；下界降到 300px 让两列仍能并排（更省纵向滚动） */
+  .settings-flat{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
 }
-/* 宽卡（单列占满）时字段本身改为两列铺排：纵向更短，且两侧仍被 max-width 限宽。
+/* 宽卡（单列占满）时字段本身改为两列铺排：纵向更短，且两侧仍被卡片宽度限住。
    窄卡（多列并排，卡宽 < 600px）保持单列字段，避免输入框被压到 200px 以下。 */
 @container settings-card (min-width: 600px){
-  .settings-group>.settings-grid>.card>.set-fields{grid-template-columns:1fr 1fr}
+  .settings-flat>.card>.set-fields{grid-template-columns:1fr 1fr}
 }
 @media(max-width:640px){
   /* 移动端密度必须与桌面端**成比例地**放宽（issue #61）：
-     卡片网格内边距 16px、卡片内边距 12px、字段标签/提示 13px。
+     卡片内边距 12px、字段标签/提示 13px。
      桌面端是 13px 卡片内边距 + 12px 标签（比例 0.92），移动端 12px + 13px
      反而更松 —— 同一张卡在手机上比在桌面上还「散」。 */
   :root{--set-label-fs:var(--fs-base);--set-hint-fs:var(--fs-base);
         --set-field-gap:var(--card-pad)}
-  .settings-groups{grid-template-columns:minmax(0,1fr)}
-  .settings-group{grid-column:1/-1;grid-template-columns:minmax(0,1fr)}
-  .settings-group .settings-grid{grid-template-columns:1fr;padding:var(--card-pad)}
-  .settings-group>summary{padding:12px 14px;gap:9px}
-  .set-group-desc{white-space:normal}
-  .set-group-badge{display:none}
+  .settings-flat{grid-template-columns:1fr;gap:var(--card-pad)}
   .set-jump{
     gap:6px;margin-bottom:12px;
     overflow-x:auto;flex-wrap:nowrap;

@@ -112,7 +112,15 @@ function jumpToSettingsGroup(id, chip){
   var group = document.getElementById(id);
   if(!group) return;
   if(group.tagName === 'DETAILS') group.open = true;
-  var target = group.querySelector('.settings-grid') || group;
+  // issue #75：分组不再是可见的 <details> 容器，而是统一卡片网格里的一个锚点
+  // （<span class="set-anchor">）。锚点自身零尺寸，滚动目标取它**紧随其后的
+  // 那张卡**（即该分区首张卡），否则 scrollIntoView 会停在锚点处、看不到任何内容。
+  var target = group;
+  if(group.classList && group.classList.contains('set-anchor')){
+    var n = group.nextElementSibling;
+    while(n && !(n.classList && n.classList.contains('card'))) n = n.nextElementSibling;
+    target = n || group;
+  }
   var reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   try{
     target.scrollIntoView({ behavior: reduce ? 'auto' : 'smooth', block: 'start' });
@@ -151,16 +159,28 @@ function initSettingsJumpSpy(){
   if(!chips.length) return;
   var byId = {};
   chips.forEach(function(c){ byId[c.getAttribute('data-target')] = c; });
-  var groups = Object.keys(byId).map(function(id){ return document.getElementById(id); }).filter(Boolean);
-  if(!groups.length) return;
+  // issue #75：分区锚点是零尺寸的 <span>，IntersectionObserver 永远不会认为它
+  // 可见。因此观察的是锚点**紧随其后的首张卡**，再把该卡映射回 chip。
+  // 卡片改用 dataset 记住归属（不用 id：id 要留给锚点做 getElementById 跳转）。
+  var watch = [];
+  Object.keys(byId).forEach(function(id){
+    var anchor = document.getElementById(id);
+    if(!anchor) return;
+    var n = anchor.nextElementSibling;
+    while(n && !(n.classList && n.classList.contains('card'))) n = n.nextElementSibling;
+    if(n){ n.dataset.setSection = id; watch.push(n); }
+  });
+  if(!watch.length) return;
   _setJumpSpy = new IntersectionObserver(function(entries){
     if(_setJumpSpyPaused()) return;
     var visible = entries.filter(function(e){ return e.isIntersecting; })
       .sort(function(a, b){ return a.boundingClientRect.top - b.boundingClientRect.top; });
     var top = visible[0] || entries[entries.length - 1];
-    if(top && byId[top.target.id]) setSettingsJumpActive(byId[top.target.id]);
+    if(top && byId[top.target.dataset.setSection]) {
+      setSettingsJumpActive(byId[top.target.dataset.setSection]);
+    }
   }, { root: document.querySelector('.content') || null, rootMargin: '-10% 0px -70% 0px', threshold: 0 });
-  groups.forEach(function(g){ _setJumpSpy.observe(g); });
+  watch.forEach(function(g){ _setJumpSpy.observe(g); });
 }
 
 // 2) 保存条「有未保存改动」提示：让保存动作与改动建立可见关联

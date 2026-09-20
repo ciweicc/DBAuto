@@ -240,7 +240,7 @@ MEASURE = r"""
     return {closedH, openH, openInputH, openInVp, openHit: hit,
             closedInVp, closedHit, rootH, rootHit, rootInVp};
   })();
-  const cards = [...document.querySelectorAll('#tabSettings .settings-grid > .card')]
+  const cards = [...document.querySelectorAll('#tabSettings .settings-flat > .card')]
     .map((c, i) => {
       const r = c.getBoundingClientRect();
       const fields = c.querySelector('.set-fields');
@@ -253,11 +253,22 @@ MEASURE = r"""
         title: (c.querySelector('.card-title') || {}).textContent || '',
       };
     });
-  const groups = [...tab.querySelectorAll('.settings-group')].map(g => {
-    const r = g.getBoundingClientRect();
-    return {id: g.id, w: Math.round(r.width), h: Math.round(r.height),
-      x: Math.round(r.left), y: Math.round(r.top)};
+  // issue #75：分区不再是可见容器，只剩锚点。这里量的是「统一网格的列数」与
+  // 「每张卡的宽度是否同宽」—— 卡片宽度一致才是「设置项不再有一些高有一些低」
+  // 的可量化证据。
+  const grid = tab.querySelector('.settings-flat');
+  const gridR = grid ? grid.getBoundingClientRect() : null;
+  const gridStyle = grid ? getComputedStyle(grid) : null;
+  const gridCols = gridStyle
+    ? gridStyle.gridTemplateColumns.split(' ').filter(Boolean).length : 0;
+  const anchors = [...tab.querySelectorAll('.set-anchor')].map(a => {
+    const r = a.getBoundingClientRect();
+    // 锚点必须脱离排布：零尺寸（或至少不占网格单元格）
+    return {id: a.id, w: Math.round(r.width), h: Math.round(r.height)};
   });
+  const groups = gridR ? [{id: 'settings-flat', w: Math.round(gridR.width),
+      h: Math.round(gridR.height), x: Math.round(gridR.left),
+      y: Math.round(gridR.top)}] : [];
   // ---------------------------------------------------------------
   // 卡片内密度（issue #61）：把「密度令牌算出来是多少」原样量出来。
   // 只量计算样式与几何，不做判断 —— 判断留在 Python 侧，
@@ -265,7 +276,7 @@ MEASURE = r"""
   const px = (v) => Math.round(parseFloat(v) * 100) / 100;
   const setFields = [...tab.querySelectorAll('.set-fields')];
   const density = (() => {
-    const card = tab.querySelector('.settings-group .card');
+    const card = tab.querySelector('.settings-flat > .card');
     const title = card && card.querySelector(':scope > .card-title');
     const label = setFields.length ? setFields[0].querySelector('label') : null;
     const hint = tab.querySelector('.form-group .form-hint') ||
@@ -291,9 +302,11 @@ MEASURE = r"""
       subHintFs: subHint ? gs(subHint, 'fontSize') : null,
       subGroupMb: subFields && subFields.querySelector('.form-group')
         ? px(getComputedStyle(subFields.querySelector('.form-group')).marginBottom) : null,
-      // 参考线：同一卡片里本来就已经统一的字号（分组说明 / 卡片标题说明）
-      groupDescFs: tab.querySelector('.set-group-desc')
-        ? gs(tab.querySelector('.set-group-desc'), 'fontSize') : null,
+      // 参考线（issue #75）：分组说明（.set-group-desc）随分组边框一起移除，
+      // 它原本是「同卡密度」的比较基准。现改为以**字段标签**为基准：
+      // 同一张卡里的标签、提示（含子分区）必须落在同一条字号线上 ——
+      // 这正是 issue #61 要守住的自洽性，且不再依赖任何分组级元素。
+      groupDescFs: label ? gs(label, 'fontSize') : null,
       cardTitleFs: title ? gs(title, 'fontSize') : null,
     };
   })();
@@ -371,6 +384,8 @@ MEASURE = r"""
   return {
     cards,
     groups,
+    gridCols,
+    anchors,
     density,
     fieldRows,
     tabH: Math.round(tab.getBoundingClientRect().height),
@@ -504,6 +519,30 @@ def main():
                     fail("设置页没有渲染出任何卡片")
                     page.close()
                     continue
+
+                # issue #75：设置项必须「一致性」——同一视口下所有卡片同宽。
+                # 旧实现同屏出现 660px 与 1400px 两种卡宽（分组宽度随卡片数跳变）、
+                # 154px 与 290px 两种卡高（分组边框等高拉伸），用户原话
+                # 「当前的设置项太乱了，有一些高，有一些低」。
+                # 统一网格后卡片宽度只由列轨道决定，必然同宽：宽度极差 >1px 即为回归。
+                widths = [c["w"] for c in m["cards"]]
+                if widths and (max(widths) - min(widths)) > 1:
+                    worst = sorted(widths)
+                    fail("设置卡宽度不一致（{}~{}px，极差 {}px）："
+                         "设置项应同宽，「有一些高，有一些低」正是由此而来".format(
+                             worst[0], worst[-1], worst[-1] - worst[0]))
+
+                if m.get("anchors") is not None:
+                    if len(m["anchors"]) != 4:
+                        fail("分区锚点应为 4 个，实际 {} 个".format(len(m["anchors"])))
+                    for a in m["anchors"]:
+                        if a["w"] > 0 and a["h"] > 0:
+                            fail("分区锚点「{}」占了 {}x{}px："
+                                 "它必须脱离网格排布，否则会多占一整行".format(
+                                     a["id"], a["w"], a["h"]))
+
+                if m.get("gridCols", 0) < 1:
+                    fail("未找到统一卡片网格 .settings-flat")
 
                 if m["docOverflowX"] > 0:
                     fail("文档横向溢出 {}px".format(m["docOverflowX"]))
@@ -808,8 +847,10 @@ def main():
         for m in report:
             if "cards" in m:
                 blanks = ", ".join(str(c["blank"]) for c in m["cards"])
-                print("{:<26} 页高 {:<6} 卡片底部空白 [{}]".format(
-                    m["label"], m["tabH"], blanks))
+                ws = [c["w"] for c in m["cards"]]
+                print("{:<26} 页高 {:<6} {}列 卡宽 {}, 底部空白 [{}]".format(
+                    m["label"], m["tabH"], m.get("gridCols", "?"),
+                    "{}-{}".format(min(ws), max(ws)) if ws else "-", blanks))
             elif "kind" in m:
                 print("{:<26} 归类 {!r} 阶段 {!r} 面板 {} 结论高 {}"
                       .format(m["label"], m.get("kind", ""), m.get("stage", ""),
