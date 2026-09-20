@@ -1525,7 +1525,7 @@ def test_adv_legend_is_not_fieldset_legend(dist):
     main_css = _read(MAIN_CSS)
     block = main_css[main_css.index(".tmdb-adv-legend{"):]
     block = block[:block.index("}")]
-    assert "display:flex" in block, "标题行不再是 flex 行，图标/标题/胶囊无法基线对齐"
+    assert "display:flex" in block, "标题行不再是 flex 行，图标/标题无法基线对齐"
 
 
 def test_discovery_dom_script_asserts_adv_legend_overflow():
@@ -1541,12 +1541,34 @@ def test_discovery_dom_script_asserts_adv_legend_overflow():
     assert float(m.group(1)) <= 0.5, (
         "MAX_LEGEND_OVERFLOW 被放宽到 {}：旧版实测溢出 15px，放宽阈值等于放行回归".format(
             m.group(1)))
-    assert "legendOverflow" in src and "hintOverflow" in src, "缺少标题/胶囊溢出测量"
+    assert "legendOverflow" in src and "hintOverflow" in src, "缺少标题溢出测量"
     # 正数即「溢出到内容盒之上」，判定必须比上限严格
     assert "legendOverflow\"] > MAX_LEGEND_OVERFLOW" in src, "标题溢出断言丢失"
-    assert "hintOverflow\"] > MAX_LEGEND_OVERFLOW" in src, "胶囊溢出断言丢失"
     assert "contentTop" in src and "borderTopWidth" in src and "paddingTop" in src, \
         "内容盒顶边的计算口径丢失（必须含边框 + 内边距）"
+
+def test_adv_hint_removed(dist):
+    """回归（issue #57 追问）：高级筛选标题旁的「仅「发现」榜单有效」提示不得回来。
+
+    用户截图指着 `.tmdb-adv-hint` 说「这个提示有点多余了」：高级筛选的排序 /
+    评分 / 年份 / 平台 / 类型本来就只作用于本模块的 TMDB 结果，再挂一句
+    「仅「发现」榜单有效」既解释了不存在的歧义，又在标题行里多出一个胶囊。
+    与同类改动一致，这里既删 DOM / 样式，也留下防复发门禁。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert "tmdb-adv-hint" not in body, "body.html 里的「仅「发现」榜单有效」提示未删除"
+    assert "榜单有效" not in body, "body.html 仍留有「…榜单有效」措辞"
+    assert "tmdb-adv-hint" not in dist, "产物里仍有 .tmdb-adv-hint（需重跑 build.sh）"
+
+    main_css = _read(MAIN_CSS)
+    assert ".tmdb-adv-hint" not in main_css, "main.css 里的 .tmdb-adv-hint 规则未删除"
+
+    # 走查脚本必须留 A8 断言（DOM 计数 + 可见文本双判据），否则回归无人拦
+    src = _read(os.path.join(_ROOT, "scripts", "check_tmdb_filters_dom.py"))
+    assert "advHintCount" in src, "走查脚本缺少 advHintCount 探针"
+    assert ".tmdb-adv-hint" in src, "走查脚本不再检查冗余提示是否回归"
+    assert "榜单有效" in src, "走查脚本缺少对「…榜单有效」措辞的断言"
+
 
 def test_library_tab_wired(dist):
     """回归（issue #27）：媒体库页必须完整接线。

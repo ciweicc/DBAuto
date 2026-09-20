@@ -256,17 +256,16 @@
               </div>
             </div>
 
-            <!-- 高级筛选（仅「发现」榜单有效）：排序 / 评分 / 年份 / 平台 / 类型。
+            <!-- 高级筛选：排序 / 评分 / 年份 / 平台 / 类型（作用于 TMDB 自身榜单/发现结果）。
                  与本模块同名的 #tmdbAdv 是这些控件的表单语义开关：
                  折叠时置 disabled，避免 Tab 键走进不可见控件。
                  标题用 div 而非 legend：legend 在 UA 样式里被提到 fieldset 边框上排版，
-                 会与面板上边框重叠（标题/胶囊被线切开），改用 div 后回到内边距流内。
+                 会与面板上边框重叠（标题被线切开），改用 div 后回到内边距流内。
                  无障碍名由 role=group + aria-label 承担。 -->
             <fieldset class="tmdb-adv" id="tmdbAdv" role="group" aria-label="高级筛选">
               <div class="tmdb-adv-legend">
                 <svg class="tmdb-fcap-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/><line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/><line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/><line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/></svg>
                 <span class="tmdb-fcap-title">高级筛选</span>
-                <span class="tmdb-adv-hint">仅「发现」榜单有效</span>
               </div>
               <div class="tmdb-filter-bar">
                 <div class="tmdb-filter-group">

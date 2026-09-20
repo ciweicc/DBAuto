@@ -1,3 +1,26 @@
+## [当前] 移除「仅「发现」榜单有效」提示：高级筛选标题行回归单一标题（issue #57 追问）
+
+> 用户原话：「这个提示有点多余了」——截图箭头指着高级筛选标题旁的胶囊
+> `.tmdb-adv-hint`。
+
+**为什么算多余**：高级筛选的排序 / 评分 / 年份 / 流媒体平台 / 类型本来就只作用于
+本模块的 TMDB 结果，不存在「另一个榜单」会被误伤。这句话解释的是一个不存在的
+歧义，副作用却是在标题行里多挂一个胶囊，把「高级筛选」这一行拆成了两段语义。
+
+**改法**：直接删 —— 不止删 DOM。
+
+| 位置 | 改动 |
+| --- | --- |
+| `static/src/body.html` | 删掉 `<span class="tmdb-adv-hint">`；注释同步去掉「胶囊」措辞 |
+| `static/src/styles/main.css` | 删掉 `.tmdb-adv-hint{...}` 规则（唯一引用点已消失） |
+| `scripts/check_tmdb_filters_dom.py` | 新增 A8 断言：`.tmdb-adv-hint` 计数必须为 0、底卡可见文本不得含「榜单有效」；原 `hintOverflow` 探针改为「一旦不为 None 即失败」 |
+| `tests/test_build.py` | 新增静态门禁 `test_adv_hint_removed`（源码 / 产物 / CSS / 走查脚本四处同查） |
+
+**验证证据**：
+- `python -m pytest tests/ -q` → **477 passed**
+- `python scripts/check_tmdb_filters_dom.py --serve` → **9 组视口 0 处问题**（A7 标题行溢出仍为 0px）
+- `python -m ruff check .` 全绿；`python scripts/check_contrast.py` 18 组全通过
+- **断言有牙齿**：把提示加回产物 → 走查每组视口报 2 处（计数 + 文本）、单测挂 2 条；删掉即恢复 0 处
 ## [当前] 设置页字段标签变成项目外链：TMDB 官网链接搬到 API Key 上（issue #57）
 
 > 用户原话：「红色箭头指向的文字分别对应它们的项目 GitHub 地址，然后 TMDB 官网那个
