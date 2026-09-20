@@ -8,11 +8,13 @@ async function startTransfer(){
   var tasks = getSelectedTasks('tabManual');
   if(!tasks.length){showToast('请至少选择一个榜单',false);return}
   var limit = parseInt(document.getElementById('limit').value)||5;
+  // issue #68 追问：筛选控件与「转存设置」共用同一份（filterRating/filterSort/filterYear*），
+  // 不再有 manualFilter* 这一套重复 DOM。
   var filters = {
-    min_rating: parseFloat(document.getElementById('manualFilterRating').value)||0,
-    sort_by: document.getElementById('manualFilterSort').value,
-    year_from: parseInt(document.getElementById('manualFilterYearFrom').value)||0,
-    year_to: parseInt(document.getElementById('manualFilterYearTo').value)||0
+    min_rating: parseFloat(document.getElementById('filterRating').value)||0,
+    sort_by: document.getElementById('filterSort').value,
+    year_from: parseInt(document.getElementById('filterYearFrom').value)||0,
+    year_to: parseInt(document.getElementById('filterYearTo').value)||0
   };
   // 提前清空日志，避免 SSE 早期日志被竞态清除（日志面板常驻，无需切换显隐）
   logBefore=[]; logDetails={}; logDetailOpen={}; logDetailAuto={};

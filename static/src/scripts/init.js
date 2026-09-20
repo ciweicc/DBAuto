@@ -18,7 +18,8 @@ async function init(){
   initOverviewViewport();
   try{ C = await apiGet('/api/categories'); }
   catch(e){ showToast('认证失败，请重新登录', false); setTimeout(function(){ location.href = '/login.html'; }, 1500); return; }
-  parseCategories(); parseSchedCats(); loadSchedule(); loadExecHistory();
+  // issue #68 追问：分类 chips 只剩一份（在「转存」页），旧的定时分类渲染已随合并删除
+  parseCategories(); loadSchedule(); loadExecHistory();
   checkRunningStatus(); loadDashboard();
   switchTab(currentTab);
   // 发现区常驻概览页：首屏就绪后按需初始化（渲染海报墙与筛选选项）。

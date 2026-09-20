@@ -26,6 +26,7 @@ python scripts/check_library_dom.py --serve  # 媒体库顺序/加载反馈/缓�
 python scripts/check_qas_keys_dom.py --serve # QAS 任务表键盘选择走查（改任务表后必跑）
 python scripts/check_qas_view_dom.py --serve # QAS 任务表列表/卡片视图切换走查（改任务表后必跑）
 python scripts/check_login_dom.py --serve    # 登录页真实合成对比度/磨砂/色带走查（改登录页后必跑）
+python scripts/check_transfer_schedule_dom.py --serve # 转存页/定时任务管理走查（改转存页后必跑）
 ```
 
 > `scripts/check_overview_dom.py` 需要 playwright + chromium；缺少时会以退出码 0
@@ -42,6 +43,11 @@ python scripts/check_login_dom.py --serve    # 登录页真实合成对比度/�
 > （点卡片 / Ctrl+A / Shift+←→ / 空格 / Esc）、↑↓ 在网格里让位给浏览器滚动、
 > 筛选与分页在两种布局下一致、卡片高度与路径折行（卡片存在的意义）、
 > 偏好写进 `qas_view` 且与媒体库的 `lib_view` 不串味。
+> `scripts/check_transfer_schedule_dom.py` 覆盖「转存」页（含合并进来的定时任务管理）：
+> 导航里不再有独立的「定时」页、分类 chips 与筛选控件**只有一份**（重复 DOM 已消除）、
+> 定时任务管理控件齐全（启用开关 / 时间 / 下次执行 / 立即执行 / 检测目录）、
+> 「下次执行」按「时间 / 未启用 / 计算失败」三态显示、勾选榜单确被写进保存请求、
+> 点「立即执行」发出的 run_now 请求**带 section**（此前概览页漏传，按钮点了必 400）。
 > `scripts/check_qas_keys_dom.py` 覆盖 QAS 任务表的键盘选择：Ctrl+A 只勾**当前
 > 可见行**（筛选/分页后不越界）、Shift+↑↓ 可扩可缩且不吞掉先前选择、↑↓ 到页末
 > 接着翻页、焦点在搜索框里时全部放行。它还会验证两张表的快捷键**归属**：

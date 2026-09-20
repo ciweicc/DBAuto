@@ -85,8 +85,8 @@ var CMD_LIST = [
   {title:'前往 概览', icon:'icon-dashboard', hint:'首页', run:function(){ switchTab('overview'); }},
   // issue #14：TMDB 不再是独立页面，命令面板的「前往 TMDB 发现」= 滚到概览页的发现区
   {title:'前往 TMDB 发现', icon:'icon-tmdb', hint:'概览页内浏览 / 转存影视', run:function(){ jumpToDiscovery(); }},
-  {title:'前往 转存', icon:'icon-send', hint:'手动转存', run:function(){ switchTab('manual'); }},
-  {title:'前往 定时', icon:'icon-clock', hint:'定时任务', run:function(){ switchTab('schedule'); }},
+  // issue #68 追问：「转存」与「定时」已合并为一页，命令面板的「前往 定时」也随之收敛
+  {title:'前往 转存', icon:'icon-send', hint:'转存 / 定时任务管理', run:function(){ switchTab('manual'); }},
   {title:'前往 历史', icon:'icon-check-circle', hint:'执行历史', run:function(){ switchTab('history'); }},
   {title:'前往 设置', icon:'icon-settings', hint:'系统配置', run:function(){ switchTab('settings'); }},
   {title:'开始转存（转存页）', icon:'icon-transfer', hint:'Ctrl/⌘ + Enter', run:function(){ if(currentTab==='manual'){ var s=document.getElementById('stopBtn'); if(!(s&&s.style.display!=='none')) startTransfer(); } }},

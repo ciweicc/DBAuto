@@ -1031,7 +1031,8 @@ def test_tmdb_merged_into_overview_single_page(dist):
         "产物仍引用旧页面容器 #pageTmdb"
 
     ov_start = body.index('id="pageOverview"')
-    ov_end = body.index("<!-- ===== 手动转存 ===== -->")
+    # issue #68 追问后，「转存」页注释随合并改名（原「手动转存」）
+    ov_end = body.index("<!-- ===== 转存")
     overview = body[ov_start:ov_end]
     assert 'id="tmdbPanel"' in overview, "发现分区 #tmdbPanel 不在概览页内"
     for node in ('id="tmdbGrid"', 'id="tmdbFilters"', 'id="tmdbSelBar"',
@@ -1050,7 +1051,8 @@ def test_tmdb_merged_into_overview_single_page(dist):
     # 且导航内容与预期完全一致（issue #27：新增「媒体库」并置于「历史」之前，
     # 与媒体库页内「网盘文件置顶」的优先级一致，共 6 项）。
     assert "tmdb" not in navs, "底部导航不应包含 tmdb"
-    assert navs == ["overview", "manual", "schedule", "library", "history", "settings"], \
+    # issue #68 追问：「转存」与「定时」两页合并，schedule 不再是导航目的地（6 项 → 5 项）
+    assert navs == ["overview", "manual", "library", "history", "settings"], \
         "底部导航项与预期不一致: {}".format(navs)
 
 

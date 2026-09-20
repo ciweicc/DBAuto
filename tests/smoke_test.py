@@ -69,9 +69,9 @@ with sync_playwright() as p:
     print("app grid columns:", page.eval_on_selector(".app", "el => getComputedStyle(el).gridTemplateColumns"))
 
     # 页面 id 映射与 tabs.js 的 PAGE_IDS 一致（概览=pageOverview，其余 tabXxx）
+    # issue #68 追问：「转存」与「定时」合并为一页，不再有 tabSchedule
     tabs = [("overview", "pageOverview"), ("manual", "tabManual"),
-            ("schedule", "tabSchedule"), ("history", "tabHistory"),
-            ("settings", "tabSettings")]
+            ("history", "tabHistory"), ("settings", "tabSettings")]
     results = {}
     for t, pid in tabs:
         page.click(f'.side-nav-item[data-tab="{t}"]')

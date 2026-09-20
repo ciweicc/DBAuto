@@ -395,6 +395,18 @@ input[type="radio"]:focus-visible{outline:2px solid var(--accent);outline-offset
 .sched-row{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
 .sched-row:last-child{margin-bottom:0}
 
+/* 定时任务管理（issue #68 追问：原「定时」页并入「转存」页） */
+.sched-job{padding-top:10px;border-top:1px solid var(--border)}
+.sched-job:first-of-type{padding-top:0;border-top:0}
+.sched-job+.sched-job{margin-top:12px}
+.sched-job-name{font-weight:600;color:var(--text);min-width:84px}
+/* 下次执行时间：与时间选择器同行、靠右对齐，是「这条定时任务会什么时候跑」的唯一可见答案 */
+.sched-next{margin-left:auto;font-size:var(--fs-sm);color:var(--text2);font-variant-numeric:tabular-nums}
+.sched-next b{color:var(--text);font-weight:600}
+@media (max-width:560px){
+  .sched-next{margin-left:0}
+}
+
 /* Filter */
 .filter-tabs{display:flex;gap:6px;margin-bottom:12px}
 .filter-tab{padding:5px 12px;border-radius:var(--radius-sm);border:1px solid var(--border);
