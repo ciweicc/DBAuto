@@ -505,7 +505,13 @@ input[type="radio"]:focus-visible{outline:2px solid var(--accent);outline-offset
 .section-title{font-size:var(--fs-xs);color:var(--text3);font-weight:700;margin:18px 0 10px;text-transform:uppercase;letter-spacing:1px;
   font-family:var(--font-display);display:flex;align-items:center;gap:8px}
 .section-title::before{content:'';width:6px;height:6px;border-radius:50%;background:var(--accent)}
-.form-group{margin-bottom:14px}.form-group label{display:block;font-size:var(--fs-base);color:var(--text2);margin-bottom:6px;font-weight:600;font-family:var(--font-display)}
+.form-group{margin-bottom:14px}
+/* 字段标签/提示的密度由令牌决定（issue #61）：
+   卡片内原本是「12px 内边距 + 13px 标签 + 6px 标签间距 + 12px 字段间距」，
+   与卡片矩形本身的密度不成比例；改为统一走 --set-* 令牌后，
+   设置卡、登录页、任务弹层等所有带 .form-group 的表单保持一致，
+   且能随「宽松/标准/紧凑」密度切换一起变化。 */
+.form-group label{display:block;font-size:var(--set-label-fs);color:var(--text2);margin-bottom:var(--set-label-mb);font-weight:600;font-family:var(--font-display)}
 
 /* P1 password visibility toggle */
 .pwd-wrap{position:relative;display:flex;align-items:center}
@@ -921,7 +927,7 @@ input[type="radio"]:focus-visible{outline:2px solid var(--accent);outline-offset
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms !important;animation-iteration-count:1 !important;transition-duration:.01ms !important}50%{opacity:.45}}
 
-/* ===== 密度切换（宽松 / 标准 / 紧凑）：主要影响 TMDB 资源网格列数 =====
+/* ===== 密度切换（宽松 / 标准 / 紧凑） =====
    显式声明「标准」档的密度令牌，保证标准档在用户先切到宽松/紧凑再切回时复位。 */
 html[data-density="standard"]{
   --card-pad:12px;
@@ -935,12 +941,40 @@ html[data-density="comfortable"]{
   --space-lg:16px;
   --space-xl:22px;
 }
+/* 紧凑档统一压到 --fs-sm(12px)：卡片矩形、标签、提示三者必须一起变小。
+   token 写成 var(--fs-sm) 而不是字面量 12px —— 紧凑档把 --fs-base 改成 12px，
+   若这里写 13px，标签反而会**比**标准档更大（issue #61 实测踩到过）。 */
 html[data-density="compact"]{
   --card-pad:9px;
   --space-md:8px;
   --space-lg:12px;
   --space-xl:16px;
   --fs-base:12px;
+}
+
+/* ===== 卡片内密度：三档联动（issue #61） =====
+   「密度」若只管卡片矩形（--card-pad）与网格列数，卡片**内部**就完全不受影响：
+   用户点「紧凑」，卡片外框缩了、里面的标签与间距纹丝不动，
+   于是「密度设置不起作用 / 各处松紧不一致」。这里把卡片内节奏一起接管：
+     宽松：卡片内边距 14px，标签/提示维持 12px（--fs-sm，与标准档一致）；
+     标准：同上，卡片内边距 12px；
+     紧凑：卡片内边距 9px，标签/提示与字段间距同步收紧。
+   桌面端统一 12px 也让**同一卡片内**的标签、提示、卡片标题说明、分组说明
+   落在同一条字号线上（13/12/12/12 的参差正是用户看到的「密度不一致」）。 */
+html[data-density]{
+  --set-label-fs: var(--fs-sm);
+  --set-label-mb: 4px;
+  --set-hint-fs: var(--fs-sm);
+  --set-hint-mt: 4px;
+  --set-field-gap: 12px;
+}
+html[data-density="comfortable"]{
+  --set-field-gap: 13px;
+}
+html[data-density="compact"]{
+  --set-label-mb: 3px;
+  --set-hint-mt: 3px;
+  --set-field-gap: 10px;
 }
 
 /* TMDB 资源密度：每屏可见海报数量（桌面端；移动端保留响应式列数） */
@@ -1051,7 +1085,7 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 .set-sub-badge{margin-left:auto;padding:1px 7px;border-radius:999px;font-size:11px;font-weight:600;
   border:1px solid var(--border);background-color:var(--field-bg);color:var(--text3)}
 .set-sub-badge.on{color:var(--green);border-color:var(--green-border);background-color:var(--green-wash)}
-.set-sub .set-fields{margin-top:10px}
+.set-sub .set-fields{margin-top:var(--set-field-gap)}
 
 /* 同一行两字段（设置页高度有硬门禁：字段各占一行会把整页顶过上限）。
    用网格而不是 flex：两列表格标签 + 输入框能各自对齐，不会因标签长短而错位。 */
@@ -1062,7 +1096,7 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
 @media (max-width:560px){.form-group-inline{grid-template-columns:1fr;gap:6px}}
 
 /* ===== 设置页：字段提示与卡片动作位 ===== */
-.form-hint{font-size:var(--fs-sm);color:var(--text3);line-height:1.5;margin-top:6px}
+.form-hint{font-size:var(--set-hint-fs);color:var(--text3);line-height:1.5;margin-top:var(--set-hint-mt)}
 .form-hint a{color:var(--accent);text-decoration:none}
 .form-hint a:hover{text-decoration:underline}
 .form-hint code{font-family:var(--mono);font-size:var(--fs-xs);
@@ -1115,7 +1149,24 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
    与相邻卡片的等高拉伸叠在一起，形成一片纯空白。 */
 .settings-group .set-fields>.form-group:last-child:nth-child(odd){grid-column:1/-1}
 /* 提示占满整行，避免被拆到两列时与相邻字段错位 */
-.settings-group .set-fields>.form-hint{grid-column:1/-1;margin-top:2px}
+.settings-group .set-fields>.form-hint{grid-column:1/-1;margin-top:var(--set-hint-mt)}
+
+/* 卡片内字段的纵向节奏（issue #61「设置页显示密度不一致」）：
+   原本由**通用**的 .form-group{mb:14px} 决定，但它同时服务登录页/弹层，
+   于是在卡片（内边距只有 var(--card-pad)，9~14px）里显得过松 ——
+   「密集的框 + 稀疏的内容」，每张设置卡都要滚动，且 3 字段卡与 1 字段卡的
+   松紧观感不一致。这里把「卡片内」的节奏单独收敛成令牌：
+   字段→字段与标题→首字段用同一个值（组间 = 组内，不再 12px 紧挨 14px），
+   标签→输入框 4px、提示→标签 4px。所有值随密度（宽松/标准/紧凑）联动。 */
+.settings-group .set-fields>.form-group{margin-bottom:var(--set-field-gap)}
+/* 卡片标题与首字段同宽（组间 = 组内）：标题原本 mb:12px、字段间距 14px，
+   同一条竖线上两个数字不一致，正是「密度不一致」的直观来源。 */
+.settings-group .card>.card-title{margin-bottom:var(--set-field-gap)}
+/* 子分区（如「媒体库文件源（OpenList）」）内部同理 */
+.set-sub .set-fields>.form-group{margin-bottom:var(--set-field-gap)}
+/* 「连接自检」是子分区里独立成行的小动作，按空行的一半紧贴上一个字段
+   （原本 12px，与相邻的 14px 字段间距几乎一样，读起来像另一个字段开始）。 */
+.set-sub .set-fields>.set-card-actions{margin-top:calc(var(--set-field-gap) / 2)}
 
 /* 单卡分组：组宽 > 单卡上限时会留下右侧空白（1024px 下「转存服务」= 984px 组
    里放 660px 的卡）。此类分组放开宽度上限，让卡片铺满组宽 —— 字段由容器查询
@@ -1133,6 +1184,10 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
    并排的两张卡内容量差一倍（149px vs 338px）时，等高会把短卡撑出 202px 纯空白
    —— 这正是 issue #15 的主要观感问题。改为按内容高度排布（start + 行高自适应），
    卡片自身仍是纵向 flex，底部动作位在「同一张卡内」靠 margin-top:auto 贴底。 */
+/* 同组内多行卡片的行距与组内字段间距同值（issue #61）：
+   原本卡片间距走 gap:16px、字段间距 14px，而卡片内边距只有 12px ——
+   卡与卡之间比卡到自己的内容还宽，「密度不一致」的观感来源之一。 */
+.settings-group>.settings-grid{gap:var(--set-field-gap) 16px}
 .settings-group .settings-grid{align-items:start}
 .settings-group .settings-grid>.card{display:flex;flex-direction:column}
 .settings-group .settings-grid>.card>.set-card-actions{margin-top:auto}
@@ -1720,9 +1775,15 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   .settings-group>.settings-grid>.card>.set-fields{grid-template-columns:1fr 1fr}
 }
 @media(max-width:640px){
+  /* 移动端密度必须与桌面端**成比例地**放宽（issue #61）：
+     卡片网格内边距 16px、卡片内边距 12px、字段标签/提示 13px。
+     桌面端是 13px 卡片内边距 + 12px 标签（比例 0.92），移动端 12px + 13px
+     反而更松 —— 同一张卡在手机上比在桌面上还「散」。 */
+  :root{--set-label-fs:var(--fs-base);--set-hint-fs:var(--fs-base);
+        --set-field-gap:var(--card-pad)}
   .settings-groups{grid-template-columns:minmax(0,1fr)}
   .settings-group{grid-column:1/-1;grid-template-columns:minmax(0,1fr)}
-  .settings-group .settings-grid{grid-template-columns:1fr;padding:12px 12px 2px}
+  .settings-group .settings-grid{grid-template-columns:1fr;padding:var(--card-pad)}
   .settings-group>summary{padding:12px 14px;gap:9px}
   .set-group-desc{white-space:normal}
   .set-group-badge{display:none}

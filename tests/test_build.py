@@ -436,6 +436,73 @@ def test_settings_fields_two_column_on_wide_cards(dist):
     )
 
 
+def test_settings_density_tokens_declared(dist):
+    """issue #61：卡片内密度必须由一个令牌组统一决定，不能再散落各处。
+
+    用户报的是「设置页显示密度不一致」：卡片外框走 --card-pad（9~14px），
+    卡片**内部**却是 13px 标签 + 6px 标签间距 + 14px 字段间距 + 12px 卡片标题间距，
+    一组数字对不上；同时「宽松/标准/紧凑」密度切换只改卡片外边距，
+    点「紧凑」后卡里的标签纹丝不动 —— 密度设置形同虚设。
+    """
+    css = dist
+    for token in ("--set-label-fs", "--set-label-mb", "--set-field-gap",
+                  "--set-hint-fs", "--set-hint-mt"):
+        assert token in css, "缺少卡片内密度令牌 {}".format(token)
+    compact = re.sub(r"\s+", "", css)
+    # 三个密度档都必须显式声明这些令牌：只写标准档的话，
+    # 用户先切宽松再切回标准时令牌不会复位（--fs-base 那条注释踩过同样的坑）。
+    for density in ("comfortable", "compact"):
+        # 产物里的 CSS 会被压缩成 html[data-density=comfortable]（引号被去掉），
+        # 且同一选择器可出现多个块（卡片矩形 / 卡片内密度分属不同小节），
+        # 因此要把该档的**所有**块拼起来判定。
+        blocks = re.findall(
+            r"html\[data-density=['\"]?" + density + r"['\"]?\]\{(.*?)\}",
+            css, re.S)
+        assert blocks, "未找到 {!r} 密度档样式块".format(density)
+        joined = "".join(blocks)
+        assert "--set-field-gap" in joined, (
+            "{!r} 密度档未声明卡片内密度令牌：切档后卡片内部不会跟着变".format(density))
+    # 标签与提示必须真的引用令牌，而不是把旧值写死
+    assert "font-size:var(--set-label-fs)" in compact, "字段标签未引用密度令牌"
+    assert "font-size:var(--set-hint-fs)" in compact, "字段提示未引用密度令牌"
+    assert ".settings-group.set-fields>.form-group{margin-bottom:var(--set-field-gap)}" \
+        in compact, "卡片内字段间距未引用密度令牌"
+    assert ".settings-group.card>.card-title{margin-bottom:var(--set-field-gap)}" \
+        in compact, (
+        "卡片标题下间距未与字段间距同值：同一条竖线上两个数字不一致，"
+        "正是「密度不一致」的直观来源")
+    # 旧值不得残留：标签与提示的 6px 间距必须已被令牌取代。
+    # （`.form-group{margin-bottom:14px}` 仍保留给登录页 / 弹层等非卡片表单；
+    #   卡片内由 .settings-group 选择器用令牌覆盖，见上面的断言。）
+    assert "color:var(--text2);margin-bottom:6px;font-weight:600" not in compact, (
+        "字段标签的 6px 间距残留（旧值）")
+    assert "line-height:1.5;margin-top:6px}" not in compact, (
+        "字段提示的 6px 间距残留（旧值）")
+
+
+def test_settings_mobile_density_keeps_proportion(dist):
+    """移动端密度必须与桌面端成比例，不能比桌面还松（issue #61）。"""
+    css = dist
+    # 产物会被压成单行，按「媒体查询起到下一个 @media / 文末」取块。
+    blocks = re.findall(r"@media\(max-width:640px\)\{(.*?)(?=@media|$)", css, re.S)
+    assert blocks, "未找到移动端媒体查询"
+    block = "\n".join(blocks)
+    assert "--set-label-fs" in block and "--set-hint-fs" in block, (
+        "移动端未放宽卡片内密度令牌：手机上标签反而比桌面更小，"
+        "与卡片内边距（12px）不成比例")
+
+
+def test_settings_dom_script_asserts_density(dist):
+    """走查脚本必须真的断言卡片内密度自洽与「空字段槽」。"""
+    body = _read(os.path.join(_ROOT, "scripts", "check_settings_dom.py"))
+    assert "同卡密度不一致" in body, "走查脚本未断言同一张卡内的字号/间距自洽"
+    assert "网格空出整整一行" in body or "空出了格子" in body, (
+        "走查脚本未断言「空字段槽」（列数与字段数不匹配时网格空出一整行）")
+    assert "labelToCtrl" in body, "走查脚本未断言「标签必须压着自己的控件」"
+    assert "density" in body and "fieldRows" in body, (
+        "走查脚本未把密度与字段几何纳入度量")
+
+
 def test_settings_dom_script_present(dist):
     """设置页空白度量脚本必须落库，且可被 JSON 化的机器人报告消费。"""
     path = os.path.join(_ROOT, "scripts", "check_settings_dom.py")

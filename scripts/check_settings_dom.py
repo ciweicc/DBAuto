@@ -13,7 +13,14 @@
   3. 文档 / 内容区不得出现横向溢出（并排分组时容易踩到轨道溢出）；
   4. 每张卡片的字段区宽度必须 ≥260px（并排后卡片被压窄会让输入框不可用）；
   5. 卡片宽度不得超过 700px（超宽视口下卡片被拉到容器宽，label 与输入框
-     相距过远，读起来累）。
+     相距过远，读起来累）；
+  6. **卡片内密度必须自洽**（issue #61「设置页显示密度不一致」）：
+     同一张卡里，卡片标题说明 / 字段标签 / 字段提示必须落在同一条字号线上，
+     字段间距与卡片标题间距必须是同一个值；控件永远压着它自己的标签，
+     非相邻字段之间不得出现「空字段槽」式的空洞（实测踩到过：一组 2 列
+     排布的字段之后，走两列布局的 3 字段卡里第 3 个字段被排到第 1 行，
+     第 2 行整行留空 86px）。这些只有渲染后能量化 —— 静态扫描只能证明
+     令牌被引用，证明不了它算出来是同一批数字。
 
 依赖：playwright + chromium（与 scripts/check_overview_dom.py 同依赖），
   pip install playwright && python -m playwright install chromium
@@ -128,6 +135,13 @@ MAX_WIDE_TAB_H = 1500
 # 宽卡宽度上限：单卡分组铺满组宽是**有意为之**（字段靠容器查询铺两列，纵向最短），
 # 所以这里只拦「并排卡被拉得过宽」——多卡分组的卡片。
 MAX_MULTI_CARD_W = 700
+# issue #61：同列内「字段底边 → 下一个字段顶边」的净空，不得超过
+# 「字段间距 + 一行标签」（间距 ≤13px，标签行 ≤18px）。
+# 之所以拿标签行做余量：偶数个字段走两列排布时，下一行的字段顶边
+# 必然落在上一行**含标签在内**的底边之下，这个差值天然就是「间距 + 标签行」，
+# 属正常节奏。真正要抓的是「网格空了一整行」——那会让净空变成
+# 「间距 + 标签行 + 一整个字段」，实测 86~100px。
+MAX_FIELD_HOLE = 34
 
 MEASURE = r"""
 () => {
@@ -244,9 +258,121 @@ MEASURE = r"""
     return {id: g.id, w: Math.round(r.width), h: Math.round(r.height),
       x: Math.round(r.left), y: Math.round(r.top)};
   });
+  // ---------------------------------------------------------------
+  // 卡片内密度（issue #61）：把「密度令牌算出来是多少」原样量出来。
+  // 只量计算样式与几何，不做判断 —— 判断留在 Python 侧，
+  // 便于报错信息里直接给出数值证据。
+  const px = (v) => Math.round(parseFloat(v) * 100) / 100;
+  const setFields = [...tab.querySelectorAll('.set-fields')];
+  const density = (() => {
+    const card = tab.querySelector('.settings-group .card');
+    const title = card && card.querySelector(':scope > .card-title');
+    const label = setFields.length ? setFields[0].querySelector('label') : null;
+    const hint = tab.querySelector('.form-group .form-hint') ||
+                 tab.querySelector('.set-fields > .form-hint');
+    const group = setFields.length ? setFields[0].querySelector('.form-group') : null;
+    const sub = tab.querySelector('.set-sub');
+    const gs = (el, k) => el ? getComputedStyle(el)[k] : null;
+    // 子分区（OpenList）里的标签/提示也要量：它是**同一个卡**里的第二组字段，
+    // 两组的字号/间距若不同，用户看到的就是「一张卡里两种密度」。
+    const subFields = sub ? sub.querySelector('.set-fields') : null;
+    const subLabel = subFields ? subFields.querySelector('label') : null;
+    const subHint = subFields ? subFields.querySelector('.form-hint') : null;
+    return {
+      cardPad: card ? px(getComputedStyle(card).paddingTop) : null,
+      cardTitleMb: title ? px(getComputedStyle(title).marginBottom) : null,
+      groupFs: group ? gs(group, 'fontSize') : null,
+      groupMb: group ? px(getComputedStyle(group).marginBottom) : null,
+      labelFs: label ? gs(label, 'fontSize') : null,
+      labelMb: label ? px(getComputedStyle(label).marginBottom) : null,
+      hintFs: hint ? gs(hint, 'fontSize') : null,
+      hintMt: hint ? px(getComputedStyle(hint).marginTop) : null,
+      subLabelFs: subLabel ? gs(subLabel, 'fontSize') : null,
+      subHintFs: subHint ? gs(subHint, 'fontSize') : null,
+      subGroupMb: subFields && subFields.querySelector('.form-group')
+        ? px(getComputedStyle(subFields.querySelector('.form-group')).marginBottom) : null,
+      // 参考线：同一卡片里本来就已经统一的字号（分组说明 / 卡片标题说明）
+      groupDescFs: tab.querySelector('.set-group-desc')
+        ? gs(tab.querySelector('.set-group-desc'), 'fontSize') : null,
+      cardTitleFs: title ? gs(title, 'fontSize') : null,
+    };
+  })();
+  // 字段容器的底部净空：与卡片空白同口径 —— 容器底边减「最后一个字段内容」
+  // 的底边。只取有文本或输入控件的元素，避免把布局占位算成内容。
+  const fieldsTrailingBlank = (f) => {
+    const fr = f.getBoundingClientRect();
+    let bottom = fr.top;
+    f.querySelectorAll('*').forEach(e => {
+      const cs = getComputedStyle(e);
+      if (cs.display === 'none' || cs.visibility === 'hidden') return;
+      if (inCollapsedDetails(e)) return;
+      const isInput = e.tagName === 'INPUT' || e.tagName === 'TEXTAREA' ||
+                      e.tagName === 'BUTTON';
+      if (!e.textContent.trim() && !isInput) return;
+      const b = e.getBoundingClientRect().bottom;
+      if (b > bottom) bottom = b;
+    });
+    return Math.round(fr.bottom - bottom);
+  };
+  // 字段容器的「空槽」度量（issue #61）：逐行看有没有放不满的行。
+  //   排除项：
+  //     - 折叠中的子分区（details.set-sub 未展开）：它的内容不参与布局，
+  //       一数就会把「已配置时默认收起」的正常形态判成空洞；
+  //     - 横跨整行的字段：它自己独占一行，本来就不参与列填充。
+  //   判断「横跨整行」用的是元素真实宽度（等于容器宽），而不是读 grid-column：
+  //   Chrome 把 `grid-column:1/-1` 序列化成 gridColumnStart="1"、gridColumnEnd="-1"，
+  //   按字符串做 endswith('-1') 会把**所有**自动排布的元素误判成跨列（实测踩到）。
+  const gridSlots = (f) => {
+    const rects = [];
+    const fields = [...f.querySelectorAll(':scope .form-group')];
+    const colCount = getComputedStyle(f).gridTemplateColumns.split(' ').filter(Boolean).length;
+    const fw = f.getBoundingClientRect().width;
+    fields.forEach(e => {
+      if (inCollapsedDetails(e)) return;
+      // 单列容器里不存在「空槽」：每个字段各占一行是它的正常形态。
+      if (colCount < 2) return;
+      const r = e.getBoundingClientRect();
+      if (r.width <= 0 || r.height <= 0) return;
+      if (fw - r.width <= 2) return;              // 横跨整行
+      rects.push({top: Math.round(r.top), left: Math.round(r.left)});
+    });
+    return {rects, fields: rects.length, colCount};
+  };
+  const fieldRows = setFields.map(f => {
+    const g = gridSlots(f);
+    return {
+    cardW: Math.round(f.closest('.card').getBoundingClientRect().width),
+    cols: g.colCount,
+    rects: g.rects,
+    fields: g.fields,
+    trailingBlank: fieldsTrailingBlank(f),
+    children: [...f.children].map(e => {
+      const r = e.getBoundingClientRect();
+      const lab = e.tagName === 'LABEL' ? e : e.querySelector(':scope > label');
+      const ctrl = e.querySelector(':scope > input, :scope > select, :scope > textarea, ' +
+                                ':scope > .pwd-wrap, :scope > .form-group-inline');
+      const cr = ctrl ? ctrl.getBoundingClientRect() : null;
+      const lr = lab ? lab.getBoundingClientRect() : null;
+      return {
+        cls: e.className,
+        top: Math.round(r.top), bottom: Math.round(r.bottom),
+        left: Math.round(r.left), right: Math.round(r.right),
+        isHint: e.className.indexOf('form-hint') >= 0,
+        h: Math.round(r.height), w: Math.round(r.width),
+        fs: px(getComputedStyle(e).fontSize),
+        mb: px(getComputedStyle(e).marginBottom),
+        ctrlH: cr ? Math.round(cr.height) : null,
+        labelH: lr ? Math.round(lr.height) : null,
+        labelToCtrl: (lr && cr) ? Math.round(cr.top - lr.bottom) : null,
+      };
+    }),
+    };
+  });
   return {
     cards,
     groups,
+    density,
+    fieldRows,
     tabH: Math.round(tab.getBoundingClientRect().height),
     viewportH: window.innerHeight,
     docOverflowX: document.documentElement.scrollWidth - window.innerWidth,
@@ -389,6 +515,73 @@ def main():
                     fail("卡片「{}」底部空白 {}px（上限 {}px）".format(
                         worst["title"].strip() or "#{}".format(worst["i"]),
                         worst["blank"], MAX_CARD_BLANK))
+
+                # 6. 卡片内密度必须自洽（issue #61）。
+                #    用户报的是「设置页显示密度不一致」：卡片外框是密是疏
+                #    由 --card-pad 决定，而卡片内部的标签/提示/间距原本各走各的
+                #    （13/12/12px 三种字号 + 14/12/6px 三种间距），同一张卡里
+                #    数字对不上，观感就是「一块紧一块松」。
+                #    这里断言的不是「某个具体像素值」，而是**自洽**：
+                #    同一张卡里的标签与提示同字号、与卡片自身说明同字号，
+                #    字段间距与卡片标题间距同值。这样将来调令牌不会误伤，
+                #    而把任意一处改回旧值都会立刻被抓住。
+                d = m.get("density") or {}
+                ref = d.get("groupDescFs")
+                if ref:
+                    for key, name in (("labelFs", "字段标签"), ("hintFs", "字段提示")):
+                        if d.get(key) and d[key] != ref:
+                            fail("同卡密度不一致：{} 字号 {} ≠ 卡片说明字号 {}".format(
+                                name, d[key], ref))
+                    for key, name in (("subLabelFs", "子分区标签"),
+                                      ("subHintFs", "子分区提示")):
+                        if d.get(key) and d[key] != ref:
+                            fail("同卡密度不一致：{} 字号 {} ≠ 卡片说明字号 {}".format(
+                                name, d[key], ref))
+                if d.get("cardTitleMb") is not None and d.get("groupMb") is not None:
+                    if d["cardTitleMb"] != d["groupMb"]:
+                        fail("同卡密度不一致：卡片标题下间距 {}px ≠ 字段间距 {}px".format(
+                            d["cardTitleMb"], d["groupMb"]))
+                if d.get("subGroupMb") is not None and d.get("groupMb") is not None:
+                    if d["subGroupMb"] != d["groupMb"]:
+                        fail("同卡密度不一致：子分区字段间距 {}px ≠ 主字段间距 {}px".format(
+                            d["subGroupMb"], d["groupMb"]))
+                # 标签→控件：标签必须压着自己的输入框（间距 ≤ 8px）。
+                # 曾经标签 mb:6px 与字段 mb:14px 几乎 1:2，视线分不清
+                # 「这个标签属于谁」。
+                for rows in m.get("fieldRows", []):
+                    for ch in rows["children"]:
+                        if ch.get("labelToCtrl") is not None and ch["labelToCtrl"] > 8:
+                            fail("字段「{}」标签与其控件相距 {}px（> 8px）："
+                                 "标签归属不清，密度发散".format(
+                                     (ch["cls"] or "?").split(" ")[0], ch["labelToCtrl"]))
+                # 「空字段槽」：容器能放的下限格数（行数 × 列数）**大于**实际字段数时，
+                # 网格末尾必然空出至少一整行（实测「转存路径」4 字段走 2 列 → 空一行 86px）。
+                # 只数字段本身，不数提示/按钮：提示与动作位占的格子是**有意为之**
+                # （它们各自横跨整行），把它们算进去会把正常卡片误判成有空洞。
+                # 也不数折叠中的子分区：折叠态下它的内容不参与布局，
+                # 一数就会把「已配置时默认收起」的正常形态判成空洞。
+                for rows in m.get("fieldRows", []):
+                    if not rows.get("fields") or rows.get("cols", 1) < 2:
+                        continue
+                    # 逐行判定：除最后一行外，其余每行都必须放满。
+                    # 只有末行允许不满（那是排布的必然结果，观感正常）。
+                    # 「空出一整行」正是从这里来的：一旦某张卡的列数与字段数
+                    # 不匹配（例如 3 字段卡碰上 2 列网格且末字段没跨行），
+                    # 中间就会有一行完全是空的 —— 而空行之后还有字段，
+                    # 于是那一行既没有内容也不是有意留白。
+                    by_row = {}
+                    for r in rows["rects"]:
+                        by_row.setdefault(round(r["top"] / 4), []).append(r)
+                    row_keys = sorted(by_row)
+                    colCount = rows["cols"]
+                    for rk in row_keys[:-1]:
+                        if len({round(r["left"] / 4) for r in by_row[rk]}) < colCount:
+                            fail("字段容器第 {} 行只放了 {} / {} 个字段："
+                                 "列数与字段数不匹配，网格在中间空出了格子".format(
+                                     row_keys.index(rk) + 1,
+                                     len({round(r["left"] / 4) for r in by_row[rk]}),
+                                     colCount))
+                            break
 
                 # 折叠子分区（如「媒体库文件源（OpenList）」）：
                 # 折叠是为了守住设置页高度门禁（issue #15），但绝不能变成「配不了」。

@@ -173,6 +173,26 @@
   /* Card inner padding */
   --card-pad: 12px;
 
+  /* ===== 卡片内密度令牌（issue #61） =====
+     「设置页显示密度不一致」的根因：卡片内的纵向节奏被写在各处，卡片标题
+     （14px/600 + margin-bottom:12px）、字段标签（13px/600 + margin-bottom:6px）、
+     提示文字（12px/400 + margin-top:6px）三处都偏松，而卡片矩形本身很密
+     （--card-pad 只有 9~14px）。密集的框 + 稀疏的内容 = 每张设置卡都要滚，
+     且不同卡片（3 字段 vs 1 字段）松紧不一。
+
+     这里把「卡片内」的密度收敛成一组令牌，与卡片矩形的密度一起调：
+     标签/提示取 --fs-sm(12px)、标签→输入框 4px、字段→字段 12px、
+     提示→自己的标签 4px。桌面端的实际密度由 `html[data-density]` 覆盖
+     （宽松/标准 13px、紧凑 12px），移动端媒体查询再放宽回 13px ——
+     「密度设置」必须真的改密度，而不是只改卡片外边距（见 main.css 同名分节）。
+     取值对应「表单控件与卡片密度成比例」：iPhone 分组表单视觉密度约 0.44，
+     本项目取 12/(12+12) = 0.5。 */
+  --set-label-fs: var(--fs-sm);
+  --set-label-mb: 4px;
+  --set-field-gap: 12px;
+  --set-hint-fs: var(--fs-sm);
+  --set-hint-mt: 4px;
+
   /* Spacing */
   --space-xs: 4px;
   --space-sm: 8px;
