@@ -1,3 +1,37 @@
+## [当前] 媒体库加载提示改指 OpenList：不再说「正在等 QAS 响应」（issue #57）
+
+> 用户原话（配截图）：「为什么还是要等待 QAS 响应」。
+
+**这是什么问题**
+
+issue #57 已把「网盘文件」模块的目录数据源收敛为**只走 OpenList**
+（PR #60），但**加载态文案漏改**：媒体库加载时仍然显示
+「已用 0.3s，正在等 QAS 响应…（超过 8s 会自动失败可重试）」。
+
+用户据此去查 QAS —— 而 QAS 根本不在浏览链路上。这一帧文案不是「措辞不准」，
+它把排查方向直接指错：看到「等 QAS」的人会去看 QAS 配置/日志，
+真正在等的是 OpenList。
+
+**改了什么**
+
+- `static/src/scripts/library.js`：加载提示两处（首帧 `_libLoadingHtml`
+  与计时器 `hintTimer`）由「正在等 QAS 响应」改为「正在等 OpenList 响应」；
+  注释里的举例文案同步更新。
+- **没改接口名**：`/api/qas/library` 是历史遗留的路径名，后端早就用 OpenList
+  回答它（见 `media_library.list_library_entries`）。改名会影响前端契约与
+  缓存键，不在本次范围。
+
+**验证证据**
+
+- 静态门禁：`tests/test_build.py::test_library_loading_hint_names_openlist_not_qas`
+  —— 源码与**产物**（先还原 `\uXXXX` 转义）都必须出现「正在等 OpenList 响应」、
+  不得出现「正在等 QAS 响应」。
+- DOM 走查：`scripts/check_library_dom.py --serve` 的「慢接口」一节新增断言 ——
+  加载提示必须点明 OpenList、不得再提 QAS。
+- `python -m pytest tests/ -q` → **475 passed**；`ruff check .` 全绿。
+- **断言有牙齿**：把文案改回「正在等 QAS 响应」重跑 →
+  单测失败 1 条、DOM 走查报 2 处；改回即全绿。
+
 ## [当前] 设置页显示密度收敛：卡片内节奏由一个令牌组统一决定（issue #61）
 
 > 用户原话：「当前设置页的显示密度不一致」。

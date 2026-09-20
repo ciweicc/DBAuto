@@ -603,9 +603,9 @@ def main():
             log2 = []
             page = browser.new_page(viewport={"width": 1440, "height": 900})
             page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")
-            # 目录接口「永不返回」：模拟 QAS 卡死
+            # 目录接口「永不返回」：模拟 OpenList 卡死
             def hang(route):
-                """目录接口「永不响应」，模拟 QAS 卡死（其余接口走正常桩）。
+                """目录接口「永不响应」，模拟 OpenList 卡死（其余接口走正常桩）。
 
                 注意：这里**不能** sleep 后再 fulfill —— Playwright 的 route 回调
                 会阻塞驱动进程，超时会直接把 runtime 写挂（实测 EPIPE）。
@@ -631,6 +631,16 @@ def main():
             early = page.evaluate(MEASURE)
             if not early.get("loadingHint") or "已用" not in early["loadingHint"]:
                 problems.append("[慢接口] 请求发出后没有可读的加载反馈（hint={!r}）".format(
+                    early.get("loadingHint")))
+            # issue #57：网盘文件模块的目录数据源只剩 OpenList，
+            # 加载提示**必须**指向真正在等的那一方。若仍写「正在等 QAS 响应」，
+            # 用户会去查一个已经不在链路上的服务（这正是 issue #57 的复现截图）。
+            if "QAS" in (early.get("loadingHint") or ""):
+                problems.append("[慢接口] 加载提示仍在说「等 QAS 响应」（hint={!r}）："
+                                "数据源已是 OpenList，会把人引向查不到的链路".format(
+                                    early.get("loadingHint")))
+            if "OpenList" not in (early.get("loadingHint") or ""):
+                problems.append("[慢接口] 加载提示未点明在等的是 OpenList（hint={!r}）".format(
                     early.get("loadingHint")))
 
             # 前端的软超时 8s + 少量余量 → 12s 内必须失败可重试
