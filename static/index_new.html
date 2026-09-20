@@ -32,7 +32,11 @@
   <symbol id="icon-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></symbol>
   <symbol id="icon-cloud-download" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m8 17 4 4 4-4"/></symbol>
   <symbol id="icon-movie" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><line x1="7" y1="3" x2="7" y2="21"/><line x1="17" y1="3" x2="17" y2="21"/><line x1="3" y1="7" x2="21" y2="7"/><line x1="3" y1="17" x2="21" y2="17"/></symbol>
-  <symbol id="icon-tmdb" viewBox="0 0 24 24"><rect x="2.5" y="4.5" width="19" height="15" rx="4.5" fill="none" stroke="currentColor" stroke-width="2"/><text x="12" y="15" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="8.5" font-weight="700" letter-spacing="0.3" fill="currentColor">tmdb</text></symbol>
+  <!-- TMDB 图标（issue #57 追问「TMDB的图标糊成一坨了」）：
+       原实现是把文字 tmdb 塞进 24 视口 —— <use> 引用时会整体缩放，
+       6.5px 的正文在 16~18px 的图标位上直接糊成一坨（既依赖字体，也无法矢量化）。
+       改为纯矢量路径：圆角徽标 + 实心「T」，任何尺寸都清晰，且不依赖用户字体。 -->
+  <symbol id="icon-tmdb" viewBox="0 0 24 24"><rect x="2" y="4" width="20" height="16" rx="4.5" fill="none" stroke="currentColor" stroke-width="2"/><path d="M6.4 8.6h11.2v2.3h-4.45V16.4h-2.3V10.9H6.4z" fill="currentColor"/></symbol>
   <symbol id="icon-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/></symbol>
   <symbol id="icon-tv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></symbol>
   <symbol id="icon-music" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></symbol>
@@ -932,7 +936,7 @@
 
 <script>
 // ===== DBAuto frontend bundle =====
-// hash:d6b04e14fa40
+// hash:559c6a88518d
 // 由 build.sh 拼接生成（模块化源文件合并为单文件）。
 // 注意：不使用 IIFE 包裹。页面大量使用内联 onclick/onchange 事件处理器，
 // 这些处理器在全局作用域查找被调用的函数；若包进 IIFE 会导致函数不可见、按钮点击失效。
