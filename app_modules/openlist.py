@@ -1006,18 +1006,24 @@ def reconcile_tasks(tasks, root="/", max_depth=RECONCILE_MAX_DEPTH,
                     max_dirs=RECONCILE_MAX_DIRS):
     """QAS 任务 ↔ 网盘实际内容 对账（issue #27 追问的「同时管理任务条目」）。
 
-    只读操作，不修改任何东西：结论用于在媒体库页给用户提示
+    本身是只读操作，不修改任何东西：结论用于在媒体库页给用户提示
     「这条任务在网盘上已经找不到对应内容了」，避免任务每天空转。
+    （删失效任务走 delete_tasks，由用户在对账结果里显式勾选并发起 —— 这里
+    只负责把每条结论的 `index` 定位信息带出去，绝不自己动手删。）
 
     返回 {
-      "success", "checked", "missing": [{taskname, savepath, reason}],
-      "unverified": [{taskname, savepath}],
+      "success", "checked",
+      "missing": [{index, taskname, savepath, reason}],
+      "unverified": [{index, taskname, savepath}],
       "orphans": [{dir, name}], "scanned_dirs": n, "truncated": bool, "message"
     }
       - missing：**已核对且确实对不上**的任务（目录不存在 / 目录里没同名条目）；
       - unverified：savepath 不在本次扫描范围内的任务 —— 单独列出，不混进
         missing。把「没扫到」当「不存在」是这类对账功能最常见的误报来源；
-      - orphans：网盘上有目录但没有任何任务指向它（这类只提示，不删）。
+      - orphans：网盘上有目录但没有任何任务指向它（这类只提示，不删）；
+      - index：任务在本次入参 tasklist 中的下标。它**只对同一次对账 + 同一次
+        删除请求有效**（中间若有别的写入，下标会移位）—— 前端因此把「对账」
+        与「删除」串在同一次交互里，删完立刻重跑对账。
 
     扫描范围刻意受限（max_depth / max_dirs）：网盘根下可能有上千个目录，
     「对账」不该变成一次全盘扫描 —— 那正是用户抱怨的「慢」。
@@ -1057,9 +1063,13 @@ def reconcile_tasks(tasks, root="/", max_depth=RECONCILE_MAX_DEPTH,
     missing = []
     unverified = []
     claimed = set()
-    for t in (tasks or []):
+    for t_index, t in enumerate(tasks or []):
         if not isinstance(t, dict):
             continue
+        # index 是任务在**本次入参 tasklist** 中的下标，随每条结论一起返回：
+        # 前端「一键批量删除失效任务」要凭它精确定位（savepath 可能被手工改过、
+        # 多条任务也可能撞同一个 savepath），拿名字去撞整表正是这类功能最容易
+        # 删错的地方。
         sp, parent = _task_savepath_dir(t)
         tail = sp.rstrip("/").split("/")[-1]
         if sp in present_by_dir:
@@ -1069,7 +1079,8 @@ def reconcile_tasks(tasks, root="/", max_depth=RECONCILE_MAX_DEPTH,
             if _match_task_dir(t, names)[0]:
                 claimed.add(hit_dir)
                 continue
-            missing.append({"taskname": t.get("taskname", ""),
+            missing.append({"index": t_index,
+                            "taskname": t.get("taskname", ""),
                             "savepath": t.get("savepath", ""),
                             "reason": "网盘对应目录中未找到同名条目"
                                       "（任务可能已失效或内容被手工删除）"})
@@ -1082,16 +1093,19 @@ def reconcile_tasks(tasks, root="/", max_depth=RECONCILE_MAX_DEPTH,
                 claimed.add(parent)
                 continue
             if tail and tail not in pnames and not _match_task_dir(t, pnames)[0]:
-                missing.append({"taskname": t.get("taskname", ""),
+                missing.append({"index": t_index,
+                                "taskname": t.get("taskname", ""),
                                 "savepath": t.get("savepath", ""),
                                 "reason": "网盘上找不到该任务的保存目录（目录已被删除或改名）"})
                 continue
-            missing.append({"taskname": t.get("taskname", ""),
+            missing.append({"index": t_index,
+                            "taskname": t.get("taskname", ""),
                             "savepath": t.get("savepath", ""),
                             "reason": "网盘对应目录中未找到同名条目"
                                       "（任务可能已失效或内容被手工删除）"})
             continue
-        unverified.append({"taskname": t.get("taskname", ""),
+        unverified.append({"index": t_index,
+                           "taskname": t.get("taskname", ""),
                            "savepath": t.get("savepath", "")})
 
     # 3. 孤立目录：有内容却没有任何任务指向它（只提示，不自动删）

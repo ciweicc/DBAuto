@@ -2369,11 +2369,71 @@ def test_task_audit_distinguishes_unverified_from_missing():
     js = _read(os.path.join(_JS_DIR, "library.js"))
     assert "unverified" in js, "前端未展示「未核对」分类"
     assert "不代表失效" in js, "前端未说明「未核对」的语义"
-    # 只读：前端不得给对账配删除入口
+    # 对账动作本身仍然只读：**跑对账**这条路径里不得出现任何删除调用
+    # （issue #74 的删除是用户在对账结果上显式勾选后另行发起的，不是对账的副作用）。
     audit_fn = js[js.index("async function runTaskAudit("):]
     audit_fn = audit_fn[:audit_fn.index("\nvar AUDIT_HINT")]
     for banned in ("doDelete", "deleteOne", "/api/qas/delete"):
         assert banned not in audit_fn, "对账路径出现破坏性操作（应为只读巡检）"
+
+
+def test_audit_batch_delete_is_guarded(dist):
+    """回归（issue #74）：失效任务一键批量删除必须「只对 missing 开口 + 必须确认」。
+
+    删除是这个模块里唯一的破坏性入口，而它开在一个「本来就容易误报」的
+    结论旁边（对账）。四条必须同时成立的约束：
+
+      1. 删除入口**只挂在 missing 组**：unverified / orphans 不得出现勾选框；
+      2. 勾选态与实际请求**同源**：请求里的 (taskname, savepath) 来自结论本身，
+         不是下标 —— 下标在中途任何一次写操作后都会移位；
+      3. 必须有确认弹窗（`confirmThen`），且确认文案复述要删什么；
+      4. 删完必须重跑对账（旧结论对应的是改动前的 tasklist）。
+    """
+    js = _read(os.path.join(_JS_DIR, "library.js"))
+
+    # 1. 只有 missing 渲染勾选框：勾选框只出现在 missing 那段渲染里
+    missing_block = js[js.index("if(missing.length){"):]
+    missing_block = missing_block[:missing_block.index("if(orphans.length){")]
+    assert "data-audit-key" in missing_block, "失效任务组缺少勾选框"
+    for other in ("orphans", "unverified"):
+        blk = js[js.index("if(%s.length){" % other):]
+        blk = blk[:blk.index("</div></div>';") + 20]
+        assert "data-audit-key" not in blk, \
+            "「{}」组出现了勾选框：它不是「已确认失效」，不该有删除入口".format(other)
+
+    # 2. 请求带的是 (taskname, savepath)，键与后端 delete_tasks 的定位键同源
+    del_fn = js[js.index("async function deleteSelectedAuditTasks("):]
+    del_fn = del_fn[:del_fn.index("\nvar AUDIT_HINT") if "\nvar AUDIT_HINT" in del_fn
+                    else len(del_fn)]
+    assert "taskname: m.taskname, savepath: m.savepath" in del_fn, \
+        "批量删除未回传 (taskname, savepath)：后端无法精确命中，会整批拒绝或误删"
+    # 勾选键必须是纯数字下标：控制字符当 HTML 属性会被解析成 U+FFFD，
+    # 写进去和读回来对不上，勾了等于没勾（走查实测：点删除时「已选 2 条」一条没删）。
+    assert 'data-audit-key="' + "'" + ' + i +' in js, "勾选框未用下标作 key"
+    assert "auditKey(" not in js, "勾选键又回到「拼接字符串」的实现（属性读回会损坏）"
+    assert "confirmThen(" in del_fn, "批量删除缺少确认弹窗（破坏性且不可逆）"
+    assert "await runTaskAudit()" in del_fn, "删除后未重跑对账：旧结论对应的是改动前的任务表"
+
+    # 3. 走查脚本与产物
+    chk = _read(os.path.join(_ROOT, "scripts", "check_library_dom.py"))
+    assert "auditDelBtn" in chk and "auditSelAll" in chk, "走查脚本未覆盖对账批量删除"
+    for tok in ("auditDelBtn", "deleteSelectedAuditTasks", "auditToggleAll"):
+        assert tok in dist, "产物未包含对账批量删除（需重跑 build.sh）"
+
+
+def test_reconcile_result_carries_index_for_precise_delete():
+    """回归（issue #74）：对账结论要带上 index，供前端精确定位要删的任务。
+
+    index 是任务在**本次入参 tasklist** 中的下标。前端拿它做勾选键的兜底
+    （正常路径用 taskname+savepath），两者都不靠「重新解析 DOM 再猜」。
+    """
+    ol = _read(os.path.join(_ROOT, "app_modules", "openlist.py"))
+    assert "enumerate(tasks or [])" in ol, "对账未按下标遍历任务"
+    # missing 有三条结论路径（目录型 / 作品目录型 / 目录已不存在）+ unverified 一条
+    assert ol.count('"index": t_index') == 4, \
+        "missing / unverified 的每条结论都应带 index（append 处数量对不上）"
+    assert "下标在中途任何一次写操作后都会移位" in ol or "下标会移位" in ol, \
+        "index 的时效性未写明：它是「本次对账」的下标，写操作后会失效"
 
 
 def test_openlist_settings_subsection_is_collapsible(dist):

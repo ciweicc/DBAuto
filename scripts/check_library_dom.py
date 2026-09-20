@@ -132,12 +132,16 @@ STUBS = {
 _AUDIT = {
     "success": True,
     "checked": 6,
+    # index 与真实接口同口径（issue #74）：前端拿它做勾选键的兜底，
+    # 桩数据缺了它，走查就测不到「键由结论派生」这条契约。
     "missing": [
-        {"taskname": "已失效的作品", "savepath": "/影视/电影",
+        {"index": 1, "taskname": "已失效的作品", "savepath": "/影视/电影",
+         "reason": "网盘对应目录中未找到同名条目（任务可能已失效或内容被手工删除）"},
+        {"index": 4, "taskname": "另一个失效的作品", "savepath": "/影视/剧集",
          "reason": "网盘对应目录中未找到同名条目（任务可能已失效或内容被手工删除）"},
     ],
     "unverified": [
-        {"taskname": "范围外的任务", "savepath": "/别的地方/目录"},
+        {"index": 5, "taskname": "范围外的任务", "savepath": "/别的地方/目录"},
     ],
     "orphans": [{"dir": "/影视/无人管的目录", "name": "无人管的目录"}],
     "scanned_dirs": 4,
@@ -348,8 +352,14 @@ def _start_server():
     return httpd
 
 
-def _route(route, requests_log, slow_seconds=None):
-    """统一桩路由；slow_seconds 只作用于 /api/qas/library（模拟 QAS 卡住）。"""
+def _route(route, requests_log, slow_seconds=None, delete_task_bodies=None):
+    """统一桩路由；slow_seconds 只作用于 /api/qas/library（模拟 QAS 卡住）。
+
+    delete_task_bodies：可选列表，收集 /api/qas/delete_tasks 的请求体
+    （issue #74 走查要核对「发出去删的是哪几条」）。
+    """
+    if delete_task_bodies is None:
+        delete_task_bodies = []
     url = route.request.url
     if "/api/" not in url:
         return route.fallback()
@@ -376,6 +386,15 @@ def _route(route, requests_log, slow_seconds=None):
     elif path == "/api/openlist/tasks/audit":
         requests_log.append(time.time())
         body = dict(_AUDIT)
+    elif path == "/api/qas/delete_tasks":
+        # 记录请求体：走查要断言「发出去删的是哪几条」（键必须来自对账结论，
+        # 不是重新解析 DOM 猜出来的）。
+        requests_log.append(time.time())
+        try:
+            delete_task_bodies.append(route.request.post_data_json or {})
+        except Exception:
+            delete_task_bodies.append({})
+        body = {"success": True, "deleted": 2, "failed": 0, "results": [], "tasks": []}
     elif path == "/api/tmdb/match":
         # 前端已不调这个接口；若又有人在卡片里加回海报匹配，这里会记录到请求日志，
         # 走查末尾的「无图」断言就会把它暴露出来。
@@ -718,7 +737,8 @@ def main():
             # 巡检必须：能跑出「失效」，且「未核对」不得混进「失效」。
             page = browser.new_page(viewport={"width": 1440, "height": 900})
             page.add_init_script("try{localStorage.setItem('auth_token','t')}catch(e){}")
-            page.route("**/*", lambda r: _route(r, []))
+            audit_dels = []
+            page.route("**/*", lambda r: _route(r, [], delete_task_bodies=audit_dels))
             page.goto(URL, wait_until="load", timeout=20000)
             page.evaluate("()=>switchTab('library')")
             page.wait_for_timeout(1200)
@@ -754,11 +774,23 @@ def main():
                 orphansChips: [...box.querySelectorAll('.audit-chip')].length,
                 countText: (document.getElementById('auditCount')||{}).textContent || '',
                 hasRetry: !!box.querySelector('button'),
-                deleteBtns: box.querySelectorAll('.btn-danger').length,
+                // issue #74：失效组有「删除所选」，但**默认禁用**（未勾选时不能点），
+                // 且「未核对 / 孤儿目录」两组不得出现勾选框与删除按钮。
+                delBtnDisabled: (document.getElementById('auditDelBtn')||{}).disabled,
+                selCountText: (document.getElementById('auditSelCount')||{}).textContent || '',
+                checkboxes: box.querySelectorAll('input[data-audit-key]').length,
+                delBtnInMissingOnly: (function(){
+                  const m = groups.find(g => titleOf(g).includes('失效'));
+                  const others = groups.filter(g => g !== m);
+                  return !!m && !!m.querySelector('.btn-danger') &&
+                         others.every(g => !g.querySelector('.btn-danger') &&
+                                           !g.querySelector('input[data-audit-key]'));
+                })(),
               };
             }""")
             report.append({"label": "任务对账(1440x900)", **{k: ad[k] for k in (
-                "missingRows", "orphansChips", "countText")}})
+                "missingRows", "orphansChips", "countText", "checkboxes",
+                "delBtnDisabled")}})
             if ad["missingRows"] < 1:
                 problems.append("[任务对账] 未渲染出「任务失效」行（巡检等于没做）")
             if not ad["badGroupExists"]:
@@ -774,9 +806,95 @@ def main():
             if "已核对" not in ad["countText"]:
                 problems.append("[任务对账] 计数未说明「已核对多少条」"
                                 "（{!r}）".format(ad["countText"]))
-            if ad["deleteBtns"]:
-                problems.append("[任务对账] 对账面板出现删除按钮："
-                                "巡检必须只读（自动清理会误删有效任务）")
+            # --- 3.8 失效任务一键批量删除（issue #74） ---
+            #
+            # 这是「跑对账」这一步之后，用户显式勾选再发起的动作。四条断言：
+            #   1. 默认禁用（没勾选就删 = 一次误点删掉整批）；
+            #   2. 删除按钮与勾选框**只在失效组**内（未核对 / 孤儿目录不给入口）；
+            #   3. 勾选后计数与按钮可用性同步（屏幕态与逻辑态一致）；
+            #   4. 发出去的请求带的是 (taskname, savepath)，来自结论本身。
+            if ad["checkboxes"] != ad["missingRows"]:
+                problems.append("[任务对账] 勾选框数量({})与失效行数({})不一致".format(
+                    ad["checkboxes"], ad["missingRows"]))
+            if not ad["delBtnDisabled"]:
+                problems.append("[任务对账] 「删除所选」默认可用：未勾选时就能点，"
+                                "等于把整批失效任务暴露在一次误点上")
+            if not ad["delBtnInMissingOnly"]:
+                problems.append("[任务对账] 「未核对 / 孤儿目录」组出现了勾选框或删除按钮："
+                                "它们不是「已确认失效」，不该有删除入口")
+
+            page.evaluate("()=>auditToggleAll(true)")
+            page.wait_for_timeout(120)
+            ad2 = page.evaluate(r"""() => ({
+              selCount: (document.getElementById('auditSelCount')||{}).textContent || '',
+              disabled: (document.getElementById('auditDelBtn')||{}).disabled,
+              checked: [...document.querySelectorAll('#auditResult input[data-audit-key]')]
+                         .filter(e => e.checked).length,
+              allChecked: !!document.getElementById('auditSelAll').checked,
+              selected: Object.keys(window.auditSelected || {}).length,
+            })""")
+            report.append({"label": "对账全选(1440x900)", **ad2})
+            if ad2["checked"] != ad["checkboxes"] or ad2["selected"] != ad["checkboxes"]:
+                problems.append("[任务对账] 全选后屏幕勾选({})/逻辑集合({})与勾选框总数({})不一致"
+                                .format(ad2["checked"], ad2["selected"], ad["checkboxes"]))
+            if ad2["disabled"]:
+                problems.append("[任务对账] 全选后「删除所选」仍不可用：点不动")
+            if "已选" not in ad2["selCount"]:
+                problems.append("[任务对账] 全选后未显示已选计数")
+
+            # 取消勾选一条：计数与按钮必须跟着回落（屏幕态 ⇄ 逻辑态双向一致）
+            page.evaluate("()=>{const e=document.querySelector('#auditResult input[data-audit-key]');"
+                          "e.checked=false;auditToggleOne(e);}")
+            page.wait_for_timeout(120)
+            ad3 = page.evaluate(r"""() => ({
+              selCount: (document.getElementById('auditSelCount')||{}).textContent || '',
+              selected: Object.keys(window.auditSelected || {}).length,
+              allChecked: !!document.getElementById('auditSelAll').checked,
+            })""")
+            if ad3["selected"] != ad["checkboxes"] - 1 or "已选" not in ad3["selCount"]:
+                problems.append("[任务对账] 取消单条勾选后计数/集合未同步（{}）".format(ad3))
+
+            # 真点删除：确认弹窗必须先出现（不点确认不能发出请求）
+            page.evaluate("()=>{deleteSelectedAuditTasks();}")
+            page.wait_for_timeout(200)
+            modal_open = page.evaluate("()=>document.getElementById('confirmOverlay').classList.contains('show')")
+            modal_text = page.evaluate("()=>document.getElementById('confirmDesc').textContent || ''")
+            if not modal_open:
+                problems.append("[任务对账] 点「删除所选」未弹出确认框：删除不可逆，必须二次确认")
+            if "条任务" not in modal_text or "网盘里已转存的文件不受影响" not in modal_text:
+                problems.append("[任务对账] 确认框文案未复述要删什么/影响范围（{!r}）".format(modal_text[:60]))
+            if audit_dels:
+                problems.append("[任务对账] 确认框未关闭就已发出删除请求（越过了确认）")
+            # 走取消：不得发请求、勾选保留
+            page.evaluate("()=>resolveConfirm(false)")
+            page.wait_for_timeout(200)
+            if audit_dels:
+                problems.append("[任务对账] 取消确认后仍发出了删除请求（确认框形同虚设）")
+            sel_after_cancel = page.evaluate("()=>Object.keys(window.auditSelected||{}).length")
+            if sel_after_cancel != ad3["selected"]:
+                problems.append("[任务对账] 取消确认后勾选被清空（用户得从头再勾一遍）")
+
+            # 再走一遍并确认：请求体的键必须是 (taskname, savepath)，来自结论本身
+            page.evaluate("()=>{deleteSelectedAuditTasks();}")
+            page.wait_for_timeout(200)
+            page.evaluate("()=>resolveConfirm(true)")
+            page.wait_for_timeout(800)
+            if not audit_dels:
+                problems.append("[任务对账] 确认后未发出删除请求")
+            else:
+                sent = audit_dels[-1].get("tasks") or []
+                if len(sent) != ad3["selected"]:
+                    problems.append("[任务对账] 删除请求条数({})与已选({})不一致："
+                                    "多发/少发都是删错东西".format(len(sent), ad3["selected"]))
+                names = {t.get("taskname") for t in sent}
+                known = {m["taskname"] for m in _AUDIT["missing"]}
+                if not names or not names <= known:
+                    problems.append("[任务对账] 删除请求带了不属于失效结论的任务：{}".format(names))
+                for t in sent:
+                    if "taskname" not in t or "savepath" not in t:
+                        problems.append("[任务对账] 删除请求缺少 (taskname, savepath)："
+                                        "后端无法精确命中")
+                        break
             page.close()
 
             # --- 4/5. 缓存复用：进子目录再返回父目录，第二次必须 0 新请求且立即渲染 ---

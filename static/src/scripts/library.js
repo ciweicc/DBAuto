@@ -2668,21 +2668,32 @@ function deleteSelected(){
 // 看不到「这些任务在网盘上还有没有对应内容」，于是任务失效了也发现不了
 // （每天空跑一次，或者在日志里报失效链接，但用户看不出是哪条任务的问题）。
 //
-// 三条设计取向：
-//   1. **只读**：这里不给任何删除入口。巡检结论容易让人顺手点「清理」，
-//      而「网盘上暂时没扫到」不等于「这条任务没用了」—— 自动清理会误删有效任务。
-//      真要清理，用上面两条既有链路（都有确认弹窗）。
-//   2. **区分「未核对」与「失效」**：savepath 落在扫描范围外的任务单独列，
+// 四条设计取向：
+//   1. **删除只对「失效」开一个口子**（issue #74）：巡检结论容易让人顺手点「清理」，
+//      而「网盘上暂时没扫到」不等于「这条任务没用了」。因此只有 missing 这一组
+//      能勾选删除；unverified（未核对）与 orphans（网盘孤儿目录）仍然**只提示**
+//      —— 它们各自的语义决定了对它们动手就是在赌。
+//   2. **确认框里逐条复述要删什么**：删任务不可逆，且这是本项目里「一次删多条
+//      任务配置」的唯一入口，文案让用户能在按下确认前核对自己看没看错。
+//   3. **区分「未核对」与「失效」**：savepath 落在扫描范围外的任务单独列，
 //      不混进「失效」。否则用户会以为任务坏了，去删掉本来有效的配置。
-//   3. **说清扫描范围**：目录数 / 层数超限时明确标注「未覆盖全部目录」，
+//   4. **说清扫描范围**：目录数 / 层数超限时明确标注「未覆盖全部目录」，
 //      不能让用户以为「没报出来 = 全都正常」。
+
+// 最近一次对账的结论（单数据源）：勾选态与删除请求都以它为准，而不是重新解析
+// DOM —— 避免「屏幕上有这行、内部集合里没有」这类不一致。
+var auditState = { missing: [] };
+
+// 待删集合的键是**结论里的下标**，理由见 _auditFindEntry() 上方的说明。
+var auditSelected = {};
+
 async function runTaskAudit(){
   var box = document.getElementById('auditResult');
   var btn = document.getElementById('auditBtn');
   if(!box) return;
   if(btn){ btn.disabled = true; btn.classList.add('loading'); }
   box.innerHTML = '<div class="empty-state" style="padding:20px"><div class="empty-title">对账中...</div>' +
-    '<div class="empty-desc">正在读取网盘目录并与 QAS 任务逐条核对（最多下钻 ' + AUDIT_HINT + '，不会修改任何东西）</div></div>';
+    '<div class="empty-desc">正在读取网盘目录并与 QAS 任务逐条核对（最多下钻 ' + AUDIT_HINT + '，只读巡检，不会修改任何东西）</div></div>';
   try{
     var r = await libFetch('/api/openlist/tasks/audit?path=' + encodeURIComponent(libRoot()));
     if(!r.ok){
@@ -2708,6 +2719,10 @@ function _renderAuditError(message){
   var box = document.getElementById('auditResult');
   var cnt = document.getElementById('auditCount');
   if(cnt) cnt.textContent = '';
+  // 对账失败 = 没有可信的结论，勾选必须一并作废（否则用户会拿着一份
+  // 「上一次成功时的清单」去删当下的任务表）。
+  auditState = { missing: [] };
+  auditSelected = {};
   if(!box) return;
   box.innerHTML = '<div class="empty-state" style="padding:20px">' +
     '<div class="empty-title">对账失败</div>' +
@@ -2723,6 +2738,10 @@ function _renderAuditResult(d){
   var missing = d.missing || [];
   var unverified = d.unverified || [];
   var orphans = d.orphans || [];
+  // 每次渲染都按当前结论重建待删集合：上一轮的勾选对应的是**上一轮**的 tasklist，
+  // 直接沿用等于拿着陈旧下标去删（中间任何一次写操作都会让下标移位）。
+  auditState = { missing: missing };
+  auditSelected = {};
   if(cnt){
     var bits = ['已核对 ' + (d.checked || 0) + ' 条任务', '扫描 ' + (d.scanned_dirs || 0) + ' 个目录'];
     if(missing.length) bits.push('失效 ' + missing.length);
@@ -2747,10 +2766,23 @@ function _renderAuditResult(d){
     html += '<div class="audit-group audit-bad">' +
       '<div class="audit-group-title">任务失效 ' + missing.length + ' 条' +
       '<span class="audit-group-note">任务在网盘上找不到对应内容，可能每天空转</span></div>' +
+      // 操作条：勾选态与「删除所选」按钮的可用性必须由这里驱动，
+      // 否则用户会对着一个永远点不动的按钮猜为什么。
+      '<div class="audit-bar">' +
+      '<label class="lib-selectall"><input type="checkbox" id="auditSelAll"' +
+      ' onchange="auditToggleAll(this.checked)"> 全选失效任务</label>' +
+      '<span style="flex:1"></span>' +
+      '<span id="auditSelCount" class="audit-sel-count"></span>' +
+      '<button class="btn btn-sm btn-danger" id="auditDelBtn"' +
+      ' onclick="deleteSelectedAuditTasks()" disabled>删除所选任务</button>' +
+      '</div>' +
       '<div class="lib-table lib-table-audit">' +
-      '<div class="lib-row lib-head"><span>任务名</span><span>保存路径</span><span>结论</span></div>';
-    missing.forEach(function(m){
+      '<div class="lib-row lib-head"><span class="lib-cb"></span><span>任务名</span>' +
+      '<span>保存路径</span><span>结论</span></div>';
+    missing.forEach(function(m, i){
       html += '<div class="lib-row">' +
+        '<span class="lib-cb"><input type="checkbox" data-audit-key="' + i + '"' +
+        ' onchange="auditToggleOne(this)"></span>' +
         '<span class="lib-name" title="' + esc(m.taskname) + '">' + esc(m.taskname || '—') + '</span>' +
         '<span class="lib-sub" title="' + esc(m.savepath) + '">' + esc(m.savepath || '—') + '</span>' +
         '<span class="lib-sub" title="' + esc(m.reason) + '">' + esc(m.reason || '') + '</span>' +
@@ -2781,4 +2813,114 @@ function _renderAuditResult(d){
     html += '</div></div>';
   }
   box.innerHTML = html;
+}
+
+// ---------- 失效任务一键批量删除（issue #74） ----------
+//
+// 用户诉求：「失效任务一键批量删除」。上面那条只读巡检给出的 missing 清单，
+// 此前只能一条条挪到「任务列表」里手删 —— 而 missing 恰恰是**最容易一次出很多条**
+// 的结论（一次目录改名就能让一批任务同时失效）。
+//
+// 三条必须守住的约束（每一条都对应一种「看着能用、其实很危险」的实现）：
+//   1. **只有 missing 能删**。unverified 是「没扫到」，orphans 是「网盘上多出来的
+//      东西」，它们都不该有删除入口 —— 详见 runTaskAudit 上方的取向说明。
+//   2. **勾选状态与屏幕状态永远一致**：`auditSelected` 是逻辑态，DOM 上的
+//      `:checked` 是屏幕态。两者不一致就是 issue #68 那类「看着选了、删的时候没有」
+//      的 bug，所以操作条计数与按钮可用性**只由 auditSelected 派生**，
+//      而勾选框只由用户操作驱动，两边通过 _auditSyncBar 对齐。
+//   3. **删除请求带的是 (taskname, savepath)，不是下标**：见下面 items 的构造。
+
+// 勾选键是结论里的**下标**（渲染时写成纯数字属性，见 _renderAuditResult）。
+//
+// 刻意不用 `taskname + 分隔符 + savepath`：分隔符得是任务名里不会出现的字符，
+// 而控制字符（`\u0000` 之类）放进 **HTML 属性**会被解析成 U+FFFD —— 写进去是
+// `A\u0000/B`，`getAttribute` 读回来是 `A\uFFFD/B`，两边永远对不上，
+// 勾了等于没勾（本轮走查实测踩到：点「删除所选」时「已选 2 条」一条都没删）。
+// 下标是纯数字，当属性值绝对安全；它的时效性由「每次对账/失败都重建集合」兜住。
+function _auditFindEntry(key){
+  var list = auditState.missing || [];
+  var i = parseInt(key, 10);
+  return (i >= 0 && i < list.length) ? list[i] : null;
+}
+
+// 操作条与勾选框的唯一同步点。
+function _auditSyncBar(){
+  var n = Object.keys(auditSelected).length;
+  var label = document.getElementById('auditSelCount');
+  if(label) label.textContent = n ? '已选 ' + n + ' 条' : '';
+  var del = document.getElementById('auditDelBtn');
+  if(del) del.disabled = n === 0;
+  var all = document.getElementById('auditSelAll');
+  if(all){
+    var total = (auditState.missing || []).length;
+    all.checked = total > 0 && n === total;
+    all.indeterminate = n > 0 && n < total;
+  }
+}
+
+function auditToggleOne(el){
+  if(!el) return;
+  var key = el.getAttribute('data-audit-key');
+  if(key === null || key === '') return;
+  if(el.checked) auditSelected[key] = true;
+  else delete auditSelected[key];
+  _auditSyncBar();
+}
+
+function auditToggleAll(on){
+  auditSelected = {};
+  if(on){
+    (auditState.missing || []).forEach(function(m, i){ auditSelected[String(i)] = true; });
+  }
+  // 全选/全不选同样要回写每个勾选框：只改逻辑态会让「屏幕上一片没勾」和
+  // 「计数说已选 N 条」同时成立。
+  document.querySelectorAll('#auditResult input[data-audit-key]').forEach(function(el){
+    el.checked = on === true;
+  });
+  _auditSyncBar();
+}
+
+async function deleteSelectedAuditTasks(){
+  var keys = Object.keys(auditSelected);
+  if(!keys.length) return;
+  var items = [];
+  keys.forEach(function(k){
+    var m = _auditFindEntry(k);
+    if(!m) return;
+    // 只发 taskname + savepath：后端按这一对精确命中，任一目标找不到就整批不写回
+    // （见 media_library.delete_tasks，宁可不删也不误删）。
+    items.push({ taskname: m.taskname, savepath: m.savepath });
+  });
+  if(!items.length){
+    showToast('勾选的任务已不在当前对账结果里，请重新对账', false);
+    return;
+  }
+  // 确认框里逐条复述（最多列 8 条，其余折叠成计数）：删任务不可逆，
+  // 用户要在按下确认前能核对自己看没看错。
+  var shown = items.slice(0, 8).map(function(t){ return '· ' + (t.taskname || t.savepath); }).join('\n');
+  if(items.length > 8) shown += '\n… 以及另外 ' + (items.length - 8) + ' 条';
+  var confirmed = await confirmThen('删除失效任务',
+    '将从夸克自动转存中移除以下 ' + items.length + ' 条任务：\n\n' + shown + '\n\n' +
+    '只删除任务配置（分享链接/保存路径/匹配规则），网盘里已转存的文件不受影响。',
+    '删除', '取消');
+  if(!confirmed) return;
+
+  var btn = document.getElementById('auditDelBtn');
+  if(btn) btn.classList.add('loading');
+  try{
+    var res = await apiPost('/api/qas/delete_tasks', { tasks: items });
+    if(!res.success){
+      showToast(res.message || '删除失败，QAS 未做改动', false);
+      return;
+    }
+    showToast('已删除 ' + res.deleted + ' 条失效任务', true);
+    if(res.tasks){ qasTasks = res.tasks; qasSelected = {}; _renderQasTasks(); }
+    // 删完立刻重跑对账：结论与勾选都是对着**改动前**的 tasklist 算的，
+    // 留着旧结果会让用户以为「删了还在」。
+    await runTaskAudit();
+  }catch(e){
+    showToast('删除失败: ' + e.message, false);
+  }finally{
+    if(btn) btn.classList.remove('loading');
+  }
 }
