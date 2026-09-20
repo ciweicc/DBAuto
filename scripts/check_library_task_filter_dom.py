@@ -21,7 +21,10 @@ oninput 处理器」，但证明不了「输入之后表格真的只剩匹配行
   8. **全选只勾可见行**：筛选后 Ctrl+A（或点表头全选）不得勾上被筛掉的行；
   9. **删除确认文案写明作用域**：筛选生效时确认框必须复述筛选条件；
  10. 分页：切换每页条数后首屏行数受控，翻页不丢筛选条件；
- 11. 每页 ≤ 20 行时有界首屏；表格不被压扁，无横向溢出。
+ 11. 每页 ≤ 20 行时有界首屏；表格不被压扁，无横向溢出；
+ 12. **网盘删除操作条两个开关**（issue #57 追问「这个开关和旁边的开关风格保持一致」
+     + 「开关状态在设置后持久化保持状态」）：两者必须是同一套 .toggle 自绘开关
+     （几何一致、勾选态颜色可区分），且切换后刷新页面状态必须**原样还原**。
 
 依赖：playwright + chromium（与 scripts/check_library_dom.py 同依赖）。
 无依赖 / 无产物时以退出码 0 跳过（与其它走查脚本一致）。
@@ -184,6 +187,65 @@ MEASURE = r"""
     // 删除范围开关（issue #57）：默认必须关，且必须长在任务操作条里
     syncTasksChecked: q('#syncQasTasksChk') ? !!q('#syncQasTasksChk').checked : null,
     syncTasksInBar: !!document.querySelector('#qasActionBar #syncQasTasksChk'),
+    // 网盘删除操作条上的两个开关（issue #57 追问）：
+    //   「这个开关和旁边的开关风格保持一致」+「开关状态在设置后持久化保持状态」。
+    // 形态与持久化都只能在渲染后量：静态扫描看得出 class 名，看不出两者
+    // 是不是**同一套控件几何/交互**、也看不出刷新后状态还在不在。
+    libSync: (function(){
+      const bar = q('#libActionBar');
+      const hist = q('#syncHistoryChk');
+      const tasks = q('#syncQasTasksFromLibChk');
+      const box = el => { const r = el.getBoundingClientRect(); return {w: Math.round(r.width), h: Math.round(r.height)}; };
+      // 「同一个物种」的判定依据：两者都被 .toggle 包裹（自绘滑轨 + 隐藏 input），
+      // 且可视滑轨尺寸一致。原生 checkbox 的 .toggle 包裹不存在 —— 这正是要拦的回归。
+      const wrap = el => el ? el.closest('.toggle') : null;
+      const slider = el => { const t = wrap(el); return t ? t.querySelector('.slider') : null; };
+      return {
+        histChecked: hist ? !!hist.checked : null,
+        tasksChecked: tasks ? !!tasks.checked : null,
+        histHasToggle: !!wrap(hist),
+        tasksHasToggle: !!wrap(tasks),
+        histSlider: slider(hist) ? box(slider(hist)) : null,
+        tasksSlider: slider(tasks) ? box(slider(tasks)) : null,
+        histWrapClass: hist && hist.parentElement ? hist.parentElement.className : '',
+        tasksWrapClass: tasks && tasks.parentElement ? tasks.parentElement.className : '',
+        // 破坏性开关必须**在同一个操作条里**（勾选条目时才出现）
+        bothInBar: !!(bar && bar.contains(hist) && bar.contains(tasks)),
+        // 两个开关的可视滑轨颜色：勾选态必须可区分（历史=green，任务=warning/orange）。
+        // 坑：.slider 上有 `transition:background .25s`，改完 checked 立刻读 computed
+        // 只会拿到动画**起始帧**（= 未勾选色），断言会假失败。这里读色前先临时
+        // 摘掉 transition，读完还原 —— 拿到的是**终态**颜色。
+        histTrackChecked: (function(){
+          const h = q('#syncHistoryChk'), sl = slider(h);
+          if(!h || !sl) return '';
+          const was = h.checked;
+          h.checked = true;
+          const oldTr = sl.style.transition;
+          sl.style.transition = 'none';
+          void sl.offsetWidth;
+          const c = getComputedStyle(sl).backgroundColor;
+          sl.style.transition = oldTr;
+          h.checked = was;
+          return c;
+        })(),
+        tasksTrackChecked: (function(){
+          const t = q('#syncQasTasksFromLibChk'), sl = slider(t);
+          if(!t || !sl) return '';
+          const was = t.checked;
+          t.checked = true;
+          const oldTr = sl.style.transition;
+          sl.style.transition = 'none';
+          void sl.offsetWidth;
+          const c = getComputedStyle(sl).backgroundColor;
+          sl.style.transition = oldTr;
+          t.checked = was;
+          return c;
+        })(),
+        // 存储键（持久化的落点）：只读，不写
+        storedHistory: (function(){ try{ return localStorage.getItem('lib_sync_history'); }catch(e){ return 'ERR'; } })(),
+        storedTasks: (function(){ try{ return localStorage.getItem('lib_sync_tasks'); }catch(e){ return 'ERR'; } })(),
+      };
+    })(),
     pagerPos: q('#qasPagerPos') ? q('#qasPagerPos').textContent : '',
     prevDisabled: q('#qasPrev') ? q('#qasPrev').disabled : null,
     nextDisabled: q('#qasNext') ? q('#qasNext').disabled : null,
@@ -540,6 +602,115 @@ def main():
                 report.append({"stage": "viewport-{}".format(width),
                                "overflowX": s["overflowX"]})
                 sp.close()
+
+            # 11. 网盘删除操作条的两个开关（issue #57 追问）
+            #
+            # 用户原话：「这个开关和旁边的开关风格保持一致」+「开关状态在设置后
+            # 持久化保持状态」。落在 #libActionBar 上的两个开关：
+            #   #syncHistoryChk        同步清理转存历史（默认开）
+            #   #syncQasTasksFromLibChk 同步删除同名转存任务（默认关）
+            # 两类断言各自拦一种回归：
+            #   ① 形态：两者都必须是 .toggle 自绘开关（同一物种），几何一致 ——
+            #      否则又回到「一个是原生蓝方块、一个是滑轨」的视觉裂缝；
+            #   ② 持久化：切一下 → 状态进 localStorage → 刷新页面后**真的还原**。
+            #      只断言「写进了存储」不够：读回来的路径写错同样表现成「没持久化」。
+            sp = open_page()
+            sp.wait_for_timeout(400)
+            lib = sp.evaluate(MEASURE)["libSync"]
+            if not lib["bothInBar"]:
+                fail("两个删除联动开关不在同一个操作条（#libActionBar）里")
+            if lib["histChecked"] is not True:
+                fail("「同步清理转存历史」首次进入应默认开启（实际 %r）" % lib["histChecked"])
+            if lib["tasksChecked"] is not False:
+                fail("「同步删除同名转存任务」首次进入应默认关闭（实际 %r）"
+                     "—— 删任务不可逆" % lib["tasksChecked"])
+            # ① 形态一致：两者都必须被 .toggle 包裹，且滑轨几何相同
+            if not lib["histHasToggle"] or not lib["tasksHasToggle"]:
+                fail("两个开关形态不一致：.toggle 包裹缺失（历史=%r，任务=%r）"
+                     "—— 「这个开关和旁边的开关风格保持一致」未达成"
+                     % (lib["histHasToggle"], lib["tasksHasToggle"]))
+            elif lib["histSlider"] != lib["tasksSlider"]:
+                fail("两个开关的滑轨几何不一致：历史 %r vs 任务 %r"
+                     % (lib["histSlider"], lib["tasksSlider"]))
+            # 勾选态颜色必须可区分（历史 green、任务 warning）—— 否则「同形」会退化成「同貌」
+            if lib["histTrackChecked"] and lib["histTrackChecked"] == lib["tasksTrackChecked"]:
+                fail("两个开关勾选后颜色相同（%s）：破坏性开关失去了可辨识度"
+                     % lib["histTrackChecked"])
+            report.append({"stage": "lib-switch-style",
+                           "histSlider": lib["histSlider"], "tasksSlider": lib["tasksSlider"],
+                           "histTrack": lib["histTrackChecked"],
+                           "tasksTrack": lib["tasksTrackChecked"]})
+            sp.close()
+
+            # ② 持久化：切开关 → 刷新 → 状态必须还原
+            #
+            # 注意「切」的定义：必须**真的翻转**（point 一个看不见的默认值不会触发
+            # change，也就不会写存储）。所以这里每轮都把两个开关都点一下 ——
+            # 轮次①把历史关掉、任务打开；轮次②再点回去（历史打开、任务关掉），
+            # 两个极性都被覆盖到，且都能验证「刷新后还原」。
+            # 只断言「写进了存储」是不够的：读回来的路径写错，表现同样是没持久化。
+            pref = []
+            for round_no in (1, 2):
+                sp = open_page()
+                sp.wait_for_timeout(400)
+                # 从干净状态开始（走查独立可复跑），刷新让「无键 = 用默认值」生效
+                sp.evaluate("()=>{try{localStorage.removeItem('lib_sync_history');"
+                            "localStorage.removeItem('lib_sync_tasks')}catch(e){}}")
+                sp.reload(wait_until="load")
+                sp.evaluate("()=>switchTab('library')")
+                sp.wait_for_timeout(900)
+                base = sp.evaluate(MEASURE)["libSync"]
+                if base["storedHistory"] is not None or base["storedTasks"] is not None:
+                    fail("清理存储键后仍有残留（history=%r tasks=%r）—— 断言会受到上一轮污染"
+                         % (base["storedHistory"], base["storedTasks"]))
+                # 两个开关都翻转（点可见滑轨，真实用户点的也是它；
+                # .toggle 的 input 被 .slider 覆盖，playwright 的 check() 会因遮挡卡住）
+                for sel in ("#syncHistoryChk", "#syncQasTasksFromLibChk"):
+                    if not sp.query_selector(sel + " + .slider"):
+                        fail("%s 旁边没有 .slider —— 这个开关不是 .toggle 滑动开关"
+                             "（与旁边那个形态不一致）" % sel)
+                        continue
+                    sp.click(sel + " + .slider")
+                    sp.wait_for_timeout(150)
+                want = sp.evaluate(MEASURE)["libSync"]
+                exp_h = '1' if want["histChecked"] else '0'
+                exp_t = '1' if want["tasksChecked"] else '0'
+                # 翻转必须真的发生了（否则说明点在别处，后续断言会空转成假通过）
+                if want["histChecked"] is base["histChecked"] or \
+                        want["tasksChecked"] is base["tasksChecked"]:
+                    fail("点击滑轨未翻转开关状态（历史 %r→%r，任务 %r→%r）"
+                         % (base["histChecked"], want["histChecked"],
+                            base["tasksChecked"], want["tasksChecked"]))
+                if want["storedHistory"] != exp_h:
+                    fail("切换后「同步清理转存历史」写入存储的值不对（期望 %s，实际 %r）"
+                         % (exp_h, want["storedHistory"]))
+                if want["storedTasks"] != exp_t:
+                    fail("切换后「同步删除同名转存任务」写入存储的值不对（期望 %s，实际 %r）"
+                         % (exp_t, want["storedTasks"]))
+                # 关键一步：刷新页面，状态必须从存储还原（而不是回到 HTML 默认值）
+                sp.reload(wait_until="load")
+                sp.evaluate("()=>switchTab('library')")
+                sp.wait_for_timeout(900)
+                after = sp.evaluate(MEASURE)["libSync"]
+                if after["histChecked"] is not want["histChecked"]:
+                    fail("刷新后「同步清理转存历史」状态未保持（刷新前 %r，刷新后 %r）"
+                         % (want["histChecked"], after["histChecked"]))
+                if after["tasksChecked"] is not want["tasksChecked"]:
+                    fail("刷新后「同步删除同名转存任务」状态未保持（刷新前 %r，刷新后 %r）"
+                         % (want["tasksChecked"], after["tasksChecked"]))
+                pref.append({"stage": "lib-switch-persist-round{}".format(round_no),
+                             "before": {"history": base["histChecked"],
+                                        "tasks": base["tasksChecked"]},
+                             "afterClick": {"history": want["histChecked"],
+                                            "tasks": want["tasksChecked"]},
+                             "stored": {"history": want["storedHistory"],
+                                        "tasks": want["storedTasks"]},
+                             "afterReload": {"history": after["histChecked"],
+                                             "tasks": after["tasksChecked"]}})
+                sp.close()
+            for item in pref:
+                report.append(item)
+
 
             browser.close()
     finally:

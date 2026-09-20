@@ -1845,12 +1845,23 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   border-top:1px solid var(--border);flex-wrap:wrap}
 /* 破坏性联动开关（issue #57）：它是**默认关闭**的附加动作，不能长得和
    「同步清理转存历史」一样 —— 后者误勾只是少删一条历史，前者误勾会连带
-   删掉 QAS 任务表里的条目。因此这里用 warning 色 + 前缀符号把它标出来。
+   删掉 QAS 任务表里的条目。
+   形态（issue #57 追问「这个开关和旁边的开关风格保持一致」）：
+   原来是原生 checkbox，并排放在「同步清理转存历史」的滑动开关边上，
+   一眼就是两个物种（一个系统蓝方块、一个自绘滑轨）。现在**本体复用 .toggle**，
+   与左边的开关同形同尺寸同交互；破坏性语义改由配色承担：
+   滑轨用 warning 色 + 文案也上 warning 色，不再靠「换个控件长相」来区分。
    窄屏（≤900px）允许换行，靠 .lib-actionbar 的 flex-wrap 兜住，
    不允许出现横向溢出（走查脚本会量）。 */
-.lib-danger-opt{display:flex;align-items:center;gap:5px;font-size:12.5px;
+.lib-danger-opt{display:flex;align-items:center;gap:8px;font-size:12.5px;
   color:var(--warning,var(--text2));cursor:pointer;white-space:nowrap}
-.lib-danger-opt input{accent-color:var(--warning,var(--accent));cursor:pointer}
+.lib-danger-opt-txt{color:var(--warning,var(--text2))}
+/* 复用 .toggle 本体，只覆盖滑轨配色：勾上时是 warning 而不是 green，
+   让它和「同步清理转存历史」（green）在**颜色**上仍然一眼可分。 */
+.lib-danger-opt .toggle .slider{background:var(--track)}
+.lib-danger-opt .toggle input:checked+.slider{background:var(--warning,var(--accent));
+  box-shadow:0 0 0 3px var(--orange-wash-strong)}
+.lib-danger-opt input{cursor:pointer}
 @media(max-width:600px){.lib-danger-opt{white-space:normal}}
 /* 键盘选择提示（issue #53）：快捷键必须「看得见」才有人用。
    放在目录栏右端，窄屏收起（触屏没有这些键）。 */

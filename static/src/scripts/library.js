@@ -171,6 +171,61 @@ function _migrateLibPrefs(){
   libDensity = (d === 'compact') ? 'compact' : 'comfortable';
 }
 
+// ---------- 删除联动开关的持久化（issue #57 追问） ----------
+//
+// 用户原话：「这个开关和旁边的开关风格保持一致 … 并且开关状态在设置后
+// 持久化保持状态」。指的是网盘删除操作条上那两个开关：
+//   #syncHistoryChk          「同步清理转存历史」（默认开）
+//   #syncQasTasksFromLibChk  「同步删除同名转存任务」（默认关）
+//
+// 三条约束：
+//   1. **只持久化用户的显式选择**：首次进入（存储里没有键）时保留 HTML 里的
+//      `checked` 默认值 —— 历史开关默认开、任务开关默认关。默认值属于
+//      「安全策略」，不能被一条陈旧的存储值悄悄改掉。
+//   2. **读失败/写失败都要能退回默认**：localStorage 在隐私模式会抛异常，
+//      不能让一次读写异常把整页初始化打断（原有视图偏好也是这个口径）。
+//   3. **键独立**：两个开关互不影响，以后加第三个开关也不用迁移。
+var LIB_SYNC_HISTORY_KEY = 'lib_sync_history';       // '1' | '0'
+var LIB_SYNC_TASKS_KEY = 'lib_sync_tasks';           // '1' | '0'
+
+// 读一个「开关偏好」：返回 true/false，缺失或非法时返回 null（= 用 HTML 默认值）。
+function _readLibSyncPref(key){
+  try{
+    var v = localStorage.getItem(key);
+    if(v === '1') return true;
+    if(v === '0') return false;
+  }catch(e){}
+  return null;
+}
+
+function _writeLibSyncPref(key, on){
+  try{ localStorage.setItem(key, on ? '1' : '0'); }catch(e){}
+}
+
+// 从存储还原两个开关。**只在存储里有值时才覆盖 DOM** ——
+// 没有键时保持 HTML 的默认值不动，这是「默认关」这条安全策略的唯一来源。
+function _restoreLibSyncPrefs(){
+  var h = document.getElementById('syncHistoryChk');
+  if(h){
+    var hv = _readLibSyncPref(LIB_SYNC_HISTORY_KEY);
+    if(hv !== null) h.checked = hv;
+  }
+  var t = document.getElementById('syncQasTasksFromLibChk');
+  if(t){
+    var tv = _readLibSyncPref(LIB_SYNC_TASKS_KEY);
+    if(tv !== null) t.checked = tv;
+  }
+}
+
+// 开关的 onchange 落点：把当前状态写进存储。
+// 两个开关共用（body.html 里 onchange="saveLibSyncPrefs()"）。
+function saveLibSyncPrefs(){
+  var h = document.getElementById('syncHistoryChk');
+  if(h) _writeLibSyncPref(LIB_SYNC_HISTORY_KEY, !!h.checked);
+  var t = document.getElementById('syncQasTasksFromLibChk');
+  if(t) _writeLibSyncPref(LIB_SYNC_TASKS_KEY, !!t.checked);
+}
+
 // 布局与密度的**唯一**落点：写存储 → 更新控件文案 → 原地重渲染当前目录。
 // 传 opts.save=false 时不写存储（用在「从存储初始化」这条路径上）。
 function _applyLibView(opts){
@@ -397,6 +452,10 @@ function loadLibraryPage(){
   _migrateLibPrefs();
   _updateLibViewBtn();
   _updateLibDensityBtn();
+  // 删除联动开关的持久化（issue #57 追问）：进页时把上次的选择还原回去。
+  // 放在这里而不是 DOMContentLoaded，是因为操作条是随目录渲染的 ——
+  // 但开关本体在静态 body 里就有，所以此处一定取得到元素。
+  _restoreLibSyncPrefs();
   // 首次进入且尚未导航过时，落到设置里的「媒体库根目录」。
   // （libPath 在脚本加载期就已初始化为当时的 libRoot，此处覆盖为最新配置）
   loadLibrary(libPath);
