@@ -15,8 +15,11 @@
      卡片宽度必须真的变窄、单位面积（每行网格）的可见条目数必须真的增加
      （这是「密度」的定义）；
   2. 再点一次回到舒适，几何必须回到原样（开关可逆，不是单向的）；
-  3. 紧凑密度下**键盘选择仍生效**：Ctrl+A 全选、Shift+↓ 连选、当前行虚线标记
-     （紧凑视图仍是 .lib-card，不能因为加密就把这套语义丢掉）；
+  3. 紧凑密度下**键盘选择仍生效**：Ctrl+A 全选、Shift+方向键连选、当前行虚线标记
+     （紧凑视图仍是 .lib-card，不能因为加密就把这套语义丢掉）。
+     注意方向键按布局各取所属的一对：本脚本走的是**卡片视图**（网格，顺序是左右），
+     所以是 Shift+←/→；用 ↑↓ 会去滚页面，断言会变成假失败（issue #68 修的就是
+     这条路径——媒体库的卡片视图此前根本没有左右方向键）；
   4. 紧凑密度下**修改时间仍在**（issue #27 用户明确要过），只是降了字号；
   5. 布局 × 密度**互不覆盖**：切到列表视图再切回卡片视图，密度档位必须还在
      （两维各自独立）；列表视图本身也要能带着密度偏好回来；
@@ -304,17 +307,18 @@ def main():
                         sk["checked"], sk["cardCount"]))
                 page.keyboard.press("Escape")
                 page.wait_for_timeout(150)
-                page.keyboard.press("ArrowDown")
-                page.keyboard.press("ArrowDown")
+                # 本段跑在卡片视图（网格）：方向键是 ←→，↑↓ 让位给浏览器滚动。
+                page.keyboard.press("ArrowRight")
+                page.keyboard.press("ArrowRight")
                 page.wait_for_timeout(150)
                 sd = st()
                 if sd["curCount"] != 1 or sd["curBorderStyle"] != "dashed":
                     fail("紧凑密度下「当前行」标记丢失（cur={} border={!r}）".format(
                         sd["curCount"], sd["curBorderStyle"]))
-                page.keyboard.press("Shift+ArrowDown")
+                page.keyboard.press("Shift+ArrowRight")
                 page.wait_for_timeout(150)
                 if st()["checked"] != 2:
-                    fail("紧凑密度下 Shift+↓ 连选失效（checked={}）".format(st()["checked"]))
+                    fail("紧凑密度下 Shift+方向键连选失效（checked={}）".format(st()["checked"]))
                 page.keyboard.press("Escape")
                 page.wait_for_timeout(120)
 

@@ -14,11 +14,16 @@
 
   1. Ctrl/⌘+A          → 全选，逐行勾选框 DOM 属性同步（不是只改了内部对象）
   2. Esc                → 清空，且表头全选回到未勾、不再半选
-  3. Shift+↓ / Shift+↑  → 从锚点连选一段（「小部分范围选择」）
-  4. ↑/↓ + 空格          → 移动当前行并勾选；当前行有可见的「虚线框」标记
+  3. Shift+方向键        → 从锚点连选一段（「小部分范围选择」），可扩可缩
+  4. 方向键 + 空格        → 移动当前行并勾选（真切换：第二次按下必须取消）；
+                           当前行有可见的「虚线框」标记
   5. Ctrl/⌘+点击         → 逐个增减（累加式多选）
   6. Shift+点击          → 从锚点连选到该行
-  7. 卡片 / 列表两种视图  → 上述行为一致（两套 DOM 必须给同一套语义）
+  7. 卡片 / 列表两种视图  → 同一套语义，**方向键按视觉方向各取所属的一对**：
+                           列表视图（表格，顺序是上下）= ↑↓；
+                           卡片视图（网格，顺序是左右）= ←→，
+                           此时 ↑↓ 让位给浏览器滚动。
+                           这与任务表卡片视图的口径逐字一致（见 _qasKeydown）。
   8. 越界              → 光标停在边界不回绕（否则 Shift 连选会瞬间全选）
 
 依赖：playwright + chromium（与 scripts/check_library_dom.py 同依赖）。
@@ -191,6 +196,13 @@ def main():
                 def fail(msg):
                     problems.append("[{}] {}".format(label, msg))
 
+                # 方向键的「前一张 / 后一张」按视觉方向取：
+                # 列表视图是表格（上下顺序）→ ↑↓；卡片视图是网格（左右顺序）→ ←→。
+                # 卡片视图默认也是这个脚本的主场景，所以必须由 view 决定，
+                # 不能写死一个 —— 旧版本写死 ↑↓，在卡片视图下它会去滚页面，
+                # 于是「Shift 连选」的断言在那条路径上从来没被真正执行过。
+                PREV, NEXT = ("ArrowLeft", "ArrowRight") if view == "card" else ("ArrowUp", "ArrowDown")
+
                 s0 = st()
                 if s0["rows"] < 8:
                     fail("目录行数异常（{} 行），后面的断言不可信".format(s0["rows"]))
@@ -234,18 +246,18 @@ def main():
                 if s["delDisabled"] is not True:
                     fail("清空后「删除所选」未回到禁用态")
 
-                # 3. ↑↓ 移动当前行 + Space 勾选（「当前行」必须有可见标记）
-                page.keyboard.press("ArrowDown")
-                page.keyboard.press("ArrowDown")
+                # 3. 方向键移动当前行 + Space 勾选（「当前行」必须有可见标记）
+                page.keyboard.press(NEXT)
+                page.keyboard.press(NEXT)
                 page.wait_for_timeout(150)
                 s = st()
                 if s["curCount"] != 1:
                     fail("方向键未标出唯一的「当前行」（{} 个）".format(s["curCount"]))
                 if s["curBorderStyle"] != "dashed":
                     fail("「当前行」没有虚线框标记（border-style={!r}）—— "
-                         "用户看不出 ↑↓ 会从哪一行开始".format(s["curBorderStyle"]))
+                         "用户看不出方向键会从哪一行开始".format(s["curBorderStyle"]))
                 if s["checked"] != 0:
-                    fail("纯 ↑↓ 不应改变选择（checked={}）".format(s["checked"]))
+                    fail("纯移动方向键不应改变选择（checked={}）".format(s["checked"]))
                 top_key = s["curKey"]
                 page.keyboard.press(" ")
                 page.wait_for_timeout(120)
@@ -262,17 +274,17 @@ def main():
                 # 4. Shift+↓ 从锚点连选一段（issue 原文的「小部分范围选择」）
                 page.evaluate("()=>libClearSelection()")
                 page.wait_for_timeout(80)
-                page.keyboard.press("ArrowDown")        # 第 1 行
-                page.keyboard.press("ArrowDown")        # 第 2 行：锚点在此
-                page.keyboard.press("ArrowDown")        # 第 3 行：焦点在此
+                page.keyboard.press(NEXT)        # 第 1 行
+                page.keyboard.press(NEXT)        # 第 2 行：锚点在此
+                page.keyboard.press(NEXT)        # 第 3 行：焦点在此
                 page.wait_for_timeout(120)
-                page.keyboard.press("Shift+ArrowDown")
-                page.keyboard.press("Shift+ArrowDown")
+                page.keyboard.press("Shift+" + NEXT)
+                page.keyboard.press("Shift+" + NEXT)
                 page.wait_for_timeout(150)
                 s = st()
-                # 第 3 行按了两次 Shift+↓ → 覆盖第 3、4、5 行共 3 行
+                # 第 3 行按了两次 Shift+方向键 → 覆盖第 3、4、5 行共 3 行
                 if s["checked"] != 3:
-                    fail("Shift+↓ 连选应为 3 行，实际 {} 行（keys={}）".format(
+                    fail("Shift+方向键连选应为 3 行，实际 {} 行（keys={}）".format(
                         s["checked"], s["checkedKeys"]))
                 if s["curCount"] != 1:
                     fail("Shift 连选后应只有唯一的「当前行」（{} 个）".format(s["curCount"]))
@@ -283,16 +295,22 @@ def main():
                                "count": s["countText"]})
 
                 # 4b. Shift+↑ 应缩回（不是只增不减）
-                page.keyboard.press("Shift+ArrowUp")
+                page.keyboard.press("Shift+" + PREV)
                 page.wait_for_timeout(150)
                 if st()["checked"] != 2:
-                    fail("Shift+↑ 未把选区缩回 2 行（checked={}）".format(st()["checked"]))
+                    fail("Shift+反向键未把选区缩回 2 行（checked={}）".format(st()["checked"]))
 
-                # 4c. 越界不回绕：已经在第一行时再按 ↑，选区不得跳到末尾
+                # 4c. 越界不回绕：已经在第一行时再按反向键，选区不得跳到末尾
                 page.evaluate("()=>libClearSelection()")
                 page.wait_for_timeout(80)
+                # libClearSelection() 会把「当前行」标记也清掉（这是对的，见它的
+                # 注释），所以先用一次正向键把光标建起来，再一路按反向键撞边界
+                # —— 否则一上来就按反向键，光标从「没有」直接变成第 1 行，
+                # 撞不到边界，「停在第一行」这条断言等于没测（本轮实测踩到）。
+                page.keyboard.press(NEXT)
+                page.wait_for_timeout(80)
                 for _ in range(n + 3):
-                    page.keyboard.press("ArrowUp")
+                    page.keyboard.press(PREV)
                 page.wait_for_timeout(100)
                 s = st()
                 first_key = page.evaluate(
@@ -301,12 +319,12 @@ def main():
                     " #libList .lib-table .lib-row:not(.lib-head)');"
                     "return r ? r.getAttribute('data-key') : null}")
                 if s["curKey"] != first_key:
-                    fail("↑ 到顶后回绕了（cur={}，应停在第一行 {}）".format(
+                    fail("到边界后回绕了（cur={}，应停在第一行 {}）".format(
                         s["curKey"], first_key))
-                page.keyboard.press("Shift+ArrowUp")
+                page.keyboard.press("Shift+" + PREV)
                 page.wait_for_timeout(100)
                 if st()["checked"] > 1:
-                    fail("在首行按 Shift+↑ 竟选出了多行（回绕导致）")
+                    fail("在首行按 Shift+反向键竟选出了多行（回绕导致）")
 
                 # 5. Ctrl/⌘+点击：逐个增减（累加式多选）
                 page.evaluate("()=>libClearSelection()")
@@ -339,12 +357,24 @@ def main():
                     fail("Shift+点击未从锚点连选（checked={}，期望 4：第 2~5 行）".format(
                         s["checked"]))
 
-                # 7. Ctrl/⌘+↑↓：移动当前行但不改变选择
+                # 7. Ctrl/⌘+方向键：移动当前行但不改变选择。
+                #    卡片视图里 ↑↓ 让位给浏览器滚动（与任务表同口径），
+                #    所以这一条只在列表视图断言；卡片视图改断言「让位」本身。
                 before = st()["checked"]
-                page.keyboard.press("Control+ArrowDown")
-                page.wait_for_timeout(120)
-                if st()["checked"] != before:
-                    fail("Ctrl+↑↓ 不应改变选择（{} -> {}）".format(before, st()["checked"]))
+                if view == "list":
+                    page.keyboard.press("Control+" + NEXT)
+                    page.wait_for_timeout(120)
+                    if st()["checked"] != before:
+                        fail("Ctrl+方向键不应改变选择（{} -> {}）".format(before, st()["checked"]))
+                else:
+                    cur_before = st()["curKey"]
+                    page.keyboard.press("ArrowDown")
+                    page.wait_for_timeout(120)
+                    if st()["curKey"] != cur_before:
+                        fail("卡片视图下 ↑↓ 不应移动「当前行」（那是浏览器滚动的位置）")
+                    if st()["checked"] != before:
+                        fail("卡片视图下 ↑↓ 不应改变选择（{} -> {}）".format(
+                            before, st()["checked"]))
 
                 # 8. Shift 扩选不得吞掉用户自己攒的选择（文件管理器语义）。
                 #    这是最容易被写成「纯覆盖」的一条：先 Ctrl 点 2 个、再 Shift 扩一段，

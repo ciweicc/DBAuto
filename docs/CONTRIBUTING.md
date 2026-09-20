@@ -47,7 +47,8 @@
   python scripts/check_log_panel_dom.py --serve  # 日志栏可见性 / 定位最新 / 折行缩进
   python scripts/check_settings_dom.py --serve   # 设置页卡片底部空白 / 页高 / 横向溢出
   python scripts/check_library_dom.py --serve    # 媒体库顺序 / 加载反馈 / 快速失败 / 缓存
-  python scripts/check_library_keys_dom.py --serve  # 媒体库键盘选择（Ctrl+A / Shift 范围 / ↑↓）
+  python scripts/check_library_keys_dom.py --serve  # 媒体库键盘选择（Ctrl+A / Shift 范围 / 方向键）
+  python scripts/check_library_selection_dom.py --serve  # 媒体库选中/取消选中（点勾选框 / 点行 / Ctrl+点击 / 空格 / Esc / Shift 连选）
   python scripts/check_qas_keys_dom.py --serve   # QAS 任务表键盘选择（同上 + 可见行范围 / 翻页 / 输入框让路）
   python scripts/check_qas_view_dom.py --serve   # QAS 任务表「列表 / 卡片」视图切换（入口 / 选择语义 / 持久化 / 几何）
   ```

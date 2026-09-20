@@ -1844,7 +1844,7 @@ function _libTableHtml(){
       ' onkeydown="libRowKeydown(' + jsArg(it._key) + ', event)">' +
       // 行本身就带 tabindex/onclick：键盘用户不必逐个 Tab 进勾选框，
       // Shift/Ctrl+点击的范围与增选语义也与卡片视图完全一致。
-      '<span class="lib-cb"><input type="checkbox" aria-label="选择 ' + esc(it.name) + '" onchange="toggleLibSelect(' + jsArg(it._key) + ', this.checked)"></span>' +
+      '<span class="lib-cb"><input type="checkbox" aria-label="选择 ' + esc(it.name) + '" onchange="_libCheckboxChanged(' + jsArg(it._key) + ', this, event)"></span>' +
       '<span class="lib-name">' +
         (it.dir
           ? '<a href="javascript:void(0)" onclick="enterDir(' + jsArg(it.name) + ')"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:-3px;margin-right:4px"><use href="#icon-folder"/></svg>' + esc(it.name) + '</a>'
@@ -1930,7 +1930,9 @@ function _libCardShell(it, kind){
   return '<div class="lib-card lib-card-' + kind + '" data-key="' + esc(it._key) + '" data-name="' + esc(it.name) + '"' +
       ' tabindex="0" onclick="libCardClick(' + jsArg(it._key) + ', event)" onkeydown="libRowKeydown(' + jsArg(it._key) + ', event)">' +
     '<label class="lib-card-cb" title="选择该' + (it.dir ? '文件夹' : '文件') + '">' +
-      '<input type="checkbox" aria-label="选择 ' + esc(it.name) + '" onchange="toggleLibSelect(' + jsArg(it._key) + ', this.checked)">' +
+      // onchange 走 _libCheckboxChanged（**不是** toggleLibSelect）：见它的注释 ——
+      // 普通点击是「点击冒泡到行」与「勾选框 onchange」两件事，必须幂等归一。
+      '<input type="checkbox" aria-label="选择 ' + esc(it.name) + '" onchange="_libCheckboxChanged(' + jsArg(it._key) + ', this, event)">' +
     '</label>' +
     '<span class="lib-card-icon" aria-hidden="true">' +
       _libCardIconSvg(kind) +
@@ -2051,6 +2053,42 @@ function toggleLibSelect(key, on){
   var it = findEntry(key);
   if(!it) return;
   if(on) libSelected[key] = it; else delete libSelected[key];
+  updateLibActionBar();
+}
+
+// 勾选框的 onchange —— 整个媒体库唯一的「勾选态写入口」。
+//
+// 为什么不能直接叫 toggleLibSelect：一次<label>/勾选框的普通点击会同时触发
+// **两件事** ——
+//   1. 行上的 onclick → libCardClick（已选则取消）；
+//   2. 勾选框的 onchange（浏览器已经把框翻过来了）。
+// 两者的执行顺序随事件类型而变（点勾选框时 onchange 先于冒泡到行的 click；
+// 键盘空格触发的是先 click 后 onchange），所以**两边都必须幂等**。
+//
+// 幂等的做法不是「两边各猜一次状态」（issue #68 的成因：libCardClick 猜
+// 「普通点击 = 选中」，于是「再点一次取消」永远不会发生），而是只认一件事：
+// **DOM 上那个勾选框当前是不是勾的**。它就是用户眼睛看到的状态。
+// 于是：
+//   * 点勾选框取消 → click 把 libSelected 删掉，onchange 再删一次（幂等）；
+//   * 键盘空格（焦点在框上时浏览器自己翻）→ 同样以框的实际状态为准。
+function _libCheckboxChanged(key, box, ev){
+  // 停止冒泡：勾选框是「切换这一行」的入口，行点击负责的单选/多选/范围
+  // 语义在这里只会打架（两者都以 DOM 状态为准时会互相翻转）。任务表那边的
+  // 勾选框则是靠「普通点击 = 只选中该行」与本函数对齐，见 qasRowClick。
+  if(ev && ev.stopPropagation) ev.stopPropagation();
+  libKeyScope = 'lib';
+  // 「点过哪张表，快捷键作用在哪张表」也可能因**键盘切换勾选框**触发
+  // （focusin 在 init.js 里挂的是 libScopeFromEvent），这里不重复判定；
+  // 但焦点在别的输入框里时不要动媒体库的选择（与 _libKeydown 同规格守卫）。
+  var tg = (ev && ev.target && ev.target.tagName) || '';
+  if(tg && tg !== 'INPUT' && tg !== 'LABEL') return;
+  var it = findEntry(key);
+  if(!it) return;
+  var on = !!(box && box.checked);
+  if(on) libSelected[key] = it; else delete libSelected[key];
+  // 勾选行动锚点（文件管理器同款）：随后 Shift+点击/Shift+↑↓ 从这里起算。
+  libRangeBase = null;
+  libSelectAnchor = _libRowIdxOfKey(key, libRowEls());
   updateLibActionBar();
 }
 
@@ -2299,11 +2337,30 @@ function libClearSelection(){
   if(all) all.checked = false;
   // 锚点必须一起清掉，否则再按 Shift+↑ 会从「上一次的位置」重新选出一段，
   // 而用户刚看到的是「已清空」。范围基线同理（它记的是「上一次选区」）。
+  //
+  // 还要把「当前行」焦点标记也抹掉：Esc 之后列表里**不应该**再留着虚线框
+  // —— 它会被读成「当前行还在这儿、Shift 就是从它开始」。
+  // （走查实测：清空后直接按空格，_libFocusIdx 仍命中旧焦点，
+  // 于是「按空格想选当前第一行」选出来的是清空前的那一行。）
+  libFocusKey = null;
   libSelectAnchor = null; libRangeBase = null;
+  var rows = libRowEls();
+  for(var i = 0; i < rows.length; i++) rows[i].classList.remove('lib-current');
 }
 
-// 鼠标：Shift+点击 = 从锚点连选到该行；Ctrl/⌘+点击 = 逐个增减。
-// 普通点击沿用原行为（点一下勾一个），锚点随之移动。
+// 鼠标：Shift+点击 = 从锚点连选到该行；Ctrl/⌘+点击 = 逐个增减；
+// 普通点击 = **切换该行**（已选中再点一下 = 取消选中）。
+//
+// 「普通点击 = 切换」这一条是与**任务表（qasRowClick）刻意保留的差异**：
+//   * 任务表的行里没有 <label>，点行空白处不触发任何原生行为，所以那边
+//     「普通点击 = 只选中这一行」是唯一说得通的选择；
+//   * 媒体库的卡片是 <label> 包着 checkbox（勾选框本身也带 onchange），
+//     浏览器**已经**替我们翻转了勾选框。所以这里必须做的是「让 libSelected
+//     与屏幕上那个勾选框一致」，而不是再按另一套规则改写它 ——
+//     后者会让「点勾选框想取消」变成「点几次都还是选中」（issue #68，实测复现）。
+//
+// 旧实现的写法是 `var on = multi ? !libSelected[key] : true;` ——
+// 普通点击永远置为 true，于是「再点一次取消」在媒体库里根本不存在。
 function libCardClick(key, ev){
   ev = ev || {};
   var rows = libRowEls();
@@ -2322,29 +2379,44 @@ function libCardClick(key, ev){
     _libSelectRange(libSelectAnchor, idx, rows);
     return;
   }
-  // 单选 / 多选切换：浏览器在被标记为「普通点击」时会自行翻转 checkbox，
-  // 所以这里只同步状态，不再手动改 checked（否则会翻两次）。
+  // 单选 / 多选切换：普通点击与 Ctrl/⌘+点击在这里**是同一件事** ——
+  // 都走「按当前勾选态取反」，不再按修饰键分岔（分岔正是旧实现的 bug：
+  // 普通点击被硬写成 true，等于没有「取消」这条路）。
+  // 点击目标是勾选框本身时，浏览器已经翻好了 DOM，取反读到的就是新状态，
+  // 结果幂等；Ctrl/⌘+点击走 libListMouseDown 的 preventDefault 分支
+  // （不触发原生翻转），取反同样得出正确状态。
   var it = findEntry(key);
-  var on = multi ? !libSelected[key] : true;
+  var on = !libSelected[key];
   if(on && it) libSelected[key] = it; else delete libSelected[key];
   // 新锚点意味着「新的一段范围」：旧基线必须作废，否则下一次 Shift 会拿
   // 上一次的范围去减，减出谁也预料不到的结果。
   libRangeBase = null;
-  // Ctrl/⌘+点击走的是 libListMouseDown 的 preventDefault 分支（不触发原生翻转），
-  // 所以这里同样得自己回写勾选框；普通点击则「浏览器已经翻好了」，回写是幂等的。
+  // 回写勾选框：普通点击时「浏览器已经翻好了」，这次回写是幂等的；
+  // Ctrl/⌘+点击时不回写就会「操作条说已选 1 项、勾选框却是空的」。
   _libSyncCheckboxes(rows);
   updateLibActionBar();
   libSelectAnchor = idx;
 }
 
-// 行上的 keydown：Shift+↑↓ / Ctrl+↑↓ 属于「范围选择」，必须在这里拦下来：
-// 卡片里的 checkbox 一旦拿到焦点，浏览器的 Space 会自己翻转它，
-// 而我们在 document 上再处理一次就会翻两次（勾了又取消）。
-// （列表视图的 <a> 同样会吞掉空格键，所以两种视图都拦。）
+// 行上的 keydown。**空实现，而且必须存在**。
+//
+// 行元素从最早一版起就挂着 onkeydown="libRowKeydown(...)"，这里保留这个名字
+// 有两个不可省的理由：
+//   1. HTML 里挂着它。删掉函数体留下调用会报 ReferenceError（更糟：内联属性里
+//      的异常会打断同一元素上后续的处理）；
+//   2. 它是**历史行为的显式墓碑**：这一行原来是
+//      `if(ArrowUp/ArrowDown || Space) _libKeydown(ev);` —— 行内**自己**调了一次
+//      `_libKeydown`，同一个按键又被 document 上的全局处理器（init.js）
+//      调了一次，于是每一次「按空格勾选」都翻两次，净效果 = 什么都没发生。
+//      issue #68「选中后无法取消」在键盘路径上的表现就是这个：不是取消机制
+//      坏了，而是**每一次切换都被翻回去了**（本轮用事件日志实测：
+//      一次 keydown → `_libKeydown` 被调用两次、返回 [true, true]）。
+//
+// 所以：按键只由 document 上那一处理一次（_libKeydown 自己带
+// `currentTab` / 焦点守卫），行内不再重复分发。范围选择（Shift+↑↓）与空格
+// 都在 _libKeydown 里，语义不变。
 function libRowKeydown(key, ev){
-  if(!ev) return;
-  if(ev.key === 'ArrowUp' || ev.key === 'ArrowDown'){ _libKeydown(ev); return; }
-  if(ev.key === ' ' || ev.key === 'Spacebar'){ _libKeydown(ev); }
+  return;
 }
 
 // 返回 true = 这个键已经被媒体库的选择逻辑吃掉了（init.js 据此提前 return）。
@@ -2379,8 +2451,10 @@ function _libKeydown(e){
     libClearSelection();
     return true;
   }
-  // Ctrl/⌘+↑↓：移动当前行但不改变选择（文件管理器里用来「看看但不选」）
-  if(mod && (k === 'ArrowUp' || k === 'ArrowDown')){
+  // Ctrl/⌘+↑↓：移动当前行但不改变选择（文件管理器里用来「看看但不选」）。
+  // 卡片视图里 ↑↓ 让位给浏览器滚动（理由见下面的 ↑↓ 分支），
+  // 这个组合键同理 —— 否则「想滚页面」会变成「当前行乱跳」。
+  if(mod && (k === 'ArrowUp' || k === 'ArrowDown') && libView !== 'card'){
     e.preventDefault();
     var step = (k === 'ArrowDown') ? 1 : -1;
     libFocusRow(focus + step);
@@ -2388,7 +2462,11 @@ function _libKeydown(e){
     libRangeBase = null;      // 移动了当前行 = 开始新一段范围
     return true;
   }
-  if(k === 'ArrowUp' || k === 'ArrowDown'){
+  // ↑↓ 的语义：**列表视图**是「上一行 / 下一行」（表格视觉顺序是上下）。
+  // 卡片视图是网格，视觉顺序是左右 —— 那时 ↓ 应该是「往下看」，交给浏览器
+  // 滚动才是用户按下它时想要的（这也与任务表卡片视图的口径逐字一致，
+  // 见 _qasKeydown 的 `qasView !== 'card'`）。
+  if((k === 'ArrowUp' || k === 'ArrowDown') && libView !== 'card'){
     e.preventDefault();
     var ns = (k === 'ArrowDown') ? focus + 1 : focus - 1;
     if(ns < 0 || ns > rows.length - 1) return true;   // 到边界就停住（不回绕）
@@ -2402,6 +2480,27 @@ function _libKeydown(e){
       _libSelectRange(anchor, ni, rows);
     }else{
       libSelectAnchor = ni;
+    }
+    return true;
+  }
+  // ←→（卡片视图）：网格里的「上一张 / 下一张」。
+  //
+  // 与任务表卡片视图（_qasKeydown 的 ArrowLeft/ArrowRight 分支）**逐条同构**：
+  // 同一段逻辑，只是把步长来源从「上下」换成「左右」。少了这一支，
+  // 卡片视图下 Shift+←/→ 什么都不会发生 —— 而卡片视图正是默认视图，
+  // 也就是说「范围选择」在主视图里等于不存在（issue #68 走查实测到的缺口；
+  // 任务表那边早就补上了，媒体库这边漏了）。
+  if((k === 'ArrowLeft' || k === 'ArrowRight') && libView === 'card'){
+    e.preventDefault();
+    var hstep = (k === 'ArrowRight') ? 1 : -1;
+    var hns = focus + hstep;
+    if(hns < 0 || hns > rows.length - 1) return true;   // 到边界停住（不回绕）
+    libFocusRow(hns);
+    var hni = _libFocusIdx(rows);
+    if(e.shiftKey){
+      _libSelectRange(anchor, hni, rows);
+    }else{
+      libSelectAnchor = hni;
     }
     return true;
   }
