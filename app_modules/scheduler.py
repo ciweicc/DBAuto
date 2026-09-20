@@ -65,14 +65,14 @@ def _warmup_douban(tasks):
     task_key = tuple(sorted((t.get("path", ""), t.get("type", "")) for t in tasks))
     if _douban_warmed_up_for == task_key:
         return
-    log("预热豆瓣数据...")
+    log("预热豆瓣数据...", panel=False)
     for tk in tasks:
         try:
             get_douban_list(tk.get("path", ""), tk.get("type", ""), 20)
         except Exception as e:
             log("豆瓣预热失败 {}: {}".format(tk.get("path", ""), e))
     _douban_warmed_up_for = task_key
-    log("豆瓣数据预热完成")
+    log("豆瓣数据预热完成", panel=False)
 
 def _run_scheduled_transfer():
     try:
