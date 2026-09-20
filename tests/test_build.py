@@ -1652,6 +1652,29 @@ def test_library_fetch_has_short_budget():
         "重试循环内未检查中止状态，可能在中止后继续发起新请求"
 
 
+def test_library_loading_hint_names_openlist_not_qas(dist):
+    """回归（issue #57）：媒体库加载提示必须指向 OpenList，不得再写「等 QAS 响应」。
+
+    用户复现：网盘文件模块数据源已改为**只走 OpenList**（PR #60），
+    但加载态文案仍写着「正在等 QAS 响应…」。用户据此去查 QAS，
+    而 QAS 根本不在这条链路上 —— 这是一句把人引向错误方向的提示。
+
+    判据：库源码与构建产物里，加载提示的两处文案都必须说 OpenList；
+    且**任何**用户可见的「等 QAS 响应」都不允许残留。
+    """
+    def _decoded(text):
+        """产物把非 ASCII 与空格都转成了 \\uXXXX 转义，先还原再判定。"""
+        return re.sub(r"\\u([0-9a-fA-F]{4})",
+                      lambda m: chr(int(m.group(1), 16)), text)
+
+    for label, text in (("源码", _read(os.path.join(_JS_DIR, "library.js"))),
+                        ("产物", _decoded(dist))):
+        assert "正在等 QAS 响应" not in text, \
+            "{} 里仍在写「正在等 QAS 响应」：数据源已是 OpenList，会误导排查方向".format(label)
+        assert "正在等 OpenList 响应" in text, \
+            "{} 的加载提示未点明在等 OpenList".format(label)
+
+
 def test_qas_task_delete_wired(dist):
     """回归（issue #27 跟进）：QAS 任务条目必须能在媒体库页删除。
 

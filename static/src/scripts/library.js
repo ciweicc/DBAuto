@@ -38,7 +38,7 @@
 //    → 目录请求与任务请求**并行**发起，互不阻塞（先渲染先到的）；
 //      同一目录按 TTL 复用最近一次响应（翻进子目录再返回不再打网络）。
 // 3. 根因三：缺少进度反馈，无法区分「慢」与「死了」。
-//    → 显式 loading 状态 + 时间轴提示（「已用 3.2s，正在等 QAS 响应…」）。
+//    → 显式 loading 状态 + 时间轴提示（「已用 3.2s，正在等 OpenList 响应…」）。
 // 4. 渲染保持增量不变：加载中/错误/空态用静态 HTML 一次性赋值，不走多次重排。
 
 // 5. 选择操作要能用键盘完成（issue #53：「选中效率太低了，没有批量全选和小部分
@@ -1387,7 +1387,7 @@ function _libRememberRows(n){
 function _libLoadingHtml(t0){
   var s = ((Date.now() - t0) / 1000).toFixed(1);
   var html = '<div class="lib-loading">' +
-    '<div class="lib-loading-hint" id="libLoadingHint">已用 ' + s + 's，正在等 QAS 响应…' +
+    '<div class="lib-loading-hint" id="libLoadingHint">已用 ' + s + 's，正在等 OpenList 响应…' +
     '（超过 ' + (LIB_REQ_TIMEOUT/1000) + 's 会自动失败可重试）</div>' +
     '<div class="lib-grid lib-grid-skeleton" aria-hidden="true">';
   var n = _libSkeletonRows();
@@ -1451,7 +1451,7 @@ async function loadLibrary(path, opts){
   var hintTimer = setInterval(function(){
     var el = document.getElementById('libLoadingHint');
     if(!el){ clearInterval(hintTimer); return; }
-    el.textContent = '已用 ' + ((Date.now() - t0) / 1000).toFixed(1) + 's，正在等 QAS 响应…（超过 ' + (LIB_REQ_TIMEOUT/1000) + 's 会自动失败可重试）';
+    el.textContent = '已用 ' + ((Date.now() - t0) / 1000).toFixed(1) + 's，正在等 OpenList 响应…（超过 ' + (LIB_REQ_TIMEOUT/1000) + 's 会自动失败可重试）';
   }, 250);
 
   try{
