@@ -588,6 +588,40 @@ def test_reconcile_reports_missing_content():
     assert "未找到同名条目" in r["missing"][0]["reason"]
 
 
+def test_reconcile_entries_carry_tasklist_index():
+    """issue #74：每条结论都要带上任务在入参 tasklist 里的下标。
+
+    前端「一键批量删除失效任务」用它做勾选键的兜底与「这条结论对应哪条任务」的
+    定位。**不能靠前端重新解析 DOM 或按名字再搜一遍**：同名任务、被手工改过
+    savepath 的任务会让那种做法定位到别的一条。
+
+    同时锁住时效性：下标只在「同一次对账 → 同一次删除」之间有效。
+    """
+    tasks = [
+        {"taskname": "示例作品A", "savepath": "/影视/电影"},     # 0 命中（目录里有它）
+        {"taskname": "已删掉的作品", "savepath": "/影视/电影"},  # 1 失效
+        {"taskname": "范围外的", "savepath": "/别处/目录"},      # 2 未核对
+    ]
+    r = _audit(tasks, _DIRS)
+    assert r["checked"] == 2, "前两条应已核对"
+    assert [(m["taskname"], m["index"]) for m in r["missing"]] == [("已删掉的作品", 1)]
+    assert [(u["taskname"], u["index"]) for u in r["unverified"]] == [("范围外的", 2)]
+
+    # 下标必须指向**入参列表**里的那一条，且只在这一次结论内有效
+    assert tasks[r["missing"][0]["index"]]["taskname"] == "已删掉的作品"
+
+
+def test_reconcile_index_points_at_the_right_task_when_names_repeat():
+    """同名同路径的两条任务：下标必须各自独立，前端才能只删勾中的那一条。"""
+    tasks = [
+        {"taskname": "同一个名字", "savepath": "/影视/电影"},
+        {"taskname": "同一个名字", "savepath": "/影视/电影"},
+    ]
+    r = _audit(tasks, _DIRS)
+    idx = [m["index"] for m in r["missing"]]
+    assert idx == [0, 1], "同名任务的 index 未各自独立，前端会删错那一条"
+
+
 def test_reconcile_does_not_match_parent_container_name():
     """回归（实测抓出的真 bug）：不得拿 savepath 末段去和父目录条目比。
 

@@ -604,7 +604,8 @@
         <!-- 任务对账（issue #27 追问：「我同时需要管理夸克自动转存的自动任务条目的需求」）
              引入 OpenList 后拿到的能力：拿文件侧的真相去核对任务侧 —— 哪些任务在网盘上
              已经找不到对应内容（每天空转），哪些目录有内容却没人管。
-             **只报不改**：删除仍走上面两条既有链路，这里不给任何破坏性入口。 -->
+             删除入口只有一处（issue #74）：巡检出的「任务失效」可勾选后一键批量删除
+             （带确认弹窗）；「未核对」与「孤儿目录」仍只提示 —— 对它们动手就是在赌。 -->
         <div class="card">
           <div class="card-title" style="justify-content:space-between">
             <span>任务对账 <span id="auditCount" style="color:var(--text3);font-weight:400"></span></span>
@@ -614,7 +615,7 @@
           </div>
           <div style="color:var(--text2);font-size:12px;margin-bottom:8px">
             拿网盘上<strong>实际存在的内容</strong>去核对 QAS 任务：列出「任务失效」（任务找不到对应内容）与「有内容但无人管」两类。
-            只读巡检，不会自动删任何东西；要清理请用上面的任务 / 文件删除入口。
+            对账本身只读；<strong>「任务失效」可勾选后一键批量删除</strong>（会弹确认框，只删任务配置，网盘文件不受影响）。
           </div>
           <div id="auditResult"><div class="empty-state" style="padding:20px"><div class="empty-title">尚未对账</div><div class="empty-desc">点右上角「开始对账」</div></div></div>
         </div>
