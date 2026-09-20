@@ -513,6 +513,10 @@ input[type="radio"]:focus-visible{outline:2px solid var(--accent);outline-offset
    且能随「宽松/标准/紧凑」密度切换一起变化。 */
 .form-group label{display:block;font-size:var(--set-label-fs);color:var(--text2);margin-bottom:var(--set-label-mb);font-weight:600;font-family:var(--font-display)}
 
+/* issue #57：设置页标签可指向项目官网/GitHub，做成蓝色超链接 */
+.form-group label a{color:var(--accent);text-decoration:none;font-weight:600}
+.form-group label a:hover{text-decoration:underline}
+
 /* P1 password visibility toggle */
 .pwd-wrap{position:relative;display:flex;align-items:center}
 .pwd-wrap input{flex:1;padding-right:40px}

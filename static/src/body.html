@@ -656,16 +656,16 @@
               <div class="card">
                 <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-search"/></svg> 搜索服务</div>
                 <div class="set-fields">
-                  <div class="form-group"><label for="cfg_pansou">PanSou 地址</label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"><div class="form-hint">用于搜索网盘资源，需填写可访问的完整地址</div></div>
+                  <div class="form-group"><label for="cfg_pansou"><a href="https://github.com/fish2018/pansou" target="_blank" rel="noopener">PanSou 地址</a></label><input type="text" id="cfg_pansou" placeholder="http://192.168.1.1:8080"><div class="form-hint">用于搜索网盘资源，需填写可访问的完整地址</div></div>
                 </div>
               </div>
               <div class="card">
                 <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-movie"/></svg> TMDB 数据源</div>
                 <div class="set-fields">
-                  <div class="form-group"><label for="cfg_tmdb_api_key">API Key</label><div class="pwd-wrap"><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div></div>
+                  <div class="form-group"><label for="cfg_tmdb_api_key"><a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">API Key</a></label><div class="pwd-wrap"><input type="password" id="cfg_tmdb_api_key" placeholder="留空不修改，从 themoviedb.org 获取"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div></div>
                   <div class="form-group"><label for="cfg_tmdb_base_url">API 地址（可选）</label><input type="text" id="cfg_tmdb_base_url" placeholder="留空自动切换 api.tmdb.org / api.themoviedb.org"></div>
                   <div class="form-group"><label for="cfg_tmdb_proxy">代理（可选）</label><input type="text" id="cfg_tmdb_proxy" placeholder="如 http://127.0.0.1:7890，留空则直连"></div>
-                  <div class="form-hint">前往 <a href="https://www.themoviedb.org/settings/api" target="_blank" rel="noopener">TMDB 官网</a> 申请 API Key。国内网络访问 api.tmdb.org 常被干扰（TLS 握手失败），若榜单无法加载，请填写代理地址（如 Clash / V2Ray 的 HTTP 代理）。</div>
+                  <div class="form-hint">前往上方 API Key 链接申请密钥。国内网络访问 api.tmdb.org 常被干扰（TLS 握手失败），若榜单无法加载，请填写代理地址（如 Clash / V2Ray 的 HTTP 代理）。</div>
                 </div>
               </div>
             </div>
@@ -685,7 +685,7 @@
               <div class="card">
                 <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-transfer"/></svg> 转存服务</div>
                 <div class="set-fields">
-                  <div class="form-group"><label for="cfg_qas">QAS 地址</label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"><div class="form-hint">接收转存指令的 QAS 服务地址</div></div>
+                  <div class="form-group"><label for="cfg_qas"><a href="https://github.com/Cp0204/quark-auto-save" target="_blank" rel="noopener">QAS 地址</a></label><input type="text" id="cfg_qas" placeholder="http://192.168.1.1:5005"><div class="form-hint">接收转存指令的 QAS 服务地址</div></div>
                   <div class="form-group"><label for="cfg_qas_token">QAS Token</label><div class="pwd-wrap"><input type="password" id="cfg_qas_token" placeholder="留空不修改"><button type="button" class="pwd-toggle" onclick="togglePwd(this)" aria-label="显示密码" title="显示密码"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-eye"/></svg></button></div><div class="form-hint">用于鉴权，留空表示保持现有 Token 不变</div></div>
                   <!-- OpenList（issue #27 追问）：与 QAS 同卡展示，不新增一张设置卡 ——
                        设置页高度有硬门禁（超宽视口 ≤1500px），多一张卡会在部分视口
@@ -703,7 +703,7 @@
                       <span class="set-sub-badge" id="openlistSubBadge">未配置</span>
                     </summary>
                     <div class="set-fields">
-                      <div class="form-group"><label for="cfg_openlist">OpenList 地址</label><input type="text" id="cfg_openlist" placeholder="http://192.168.1.1:5244"></div>
+                      <div class="form-group"><label for="cfg_openlist"><a href="https://github.com/OpenListTeam/OpenList" target="_blank" rel="noopener">OpenList 地址</a></label><input type="text" id="cfg_openlist" placeholder="http://192.168.1.1:5244"></div>
                       <!-- 鉴权（issue #47：「把 OpenList 用户名密码验证的功能去掉，只保留令牌验证」）：
                            账号 / 密码输入已移除。删掉它们不只是「少两个框」——
                            两种凭据并存时，用户必须自己判断「我到底在用哪一种」，

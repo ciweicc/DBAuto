@@ -1,3 +1,29 @@
+## [当前] 设置页字段标签变成项目外链：TMDB 官网链接搬到 API Key 上（issue #57）
+
+> 用户原话：「红色箭头指向的文字分别对应它们的项目 GitHub 地址，然后 TMDB 官网那个
+> 蓝色字跳转不要了，移动到 TMDB 数据源的 API Key 文字上，变成蓝色超链接。」
+
+按图里四处箭头，给设置页字段标签挂上对应项目地址：
+
+| 标签 | 目标 |
+| --- | --- |
+| PanSou 地址 | `https://github.com/fish2018/pansou` |
+| API Key（TMDB 数据源） | `https://www.themoviedb.org/settings/api` |
+| QAS 地址 | `https://github.com/Cp0204/quark-auto-save` |
+| OpenList 地址 | `https://github.com/OpenListTeam/OpenList` |
+
+同一处字段原先在提示文案里有「前往 [TMDB 官网](...) 申请 API Key」的蓝字，
+现在**搬走**到 API Key 标签本身，提示文案改成「前往上方 API Key 链接申请密钥」——
+一个字段只有一个跳转目标，不再出现「标签旁一个、提示里又一个」。
+
+样式上新增 `.form-group label a`：走 `--accent`（即蓝色超链接）、
+`hover` 加下划线；`target="_blank" rel="noopener"` 避免抢走当前页。
+对比度沿用 `--accent` 既有取值（明暗两套均已过 `scripts/check_contrast.py`）。
+
+回归保护：`tests/test_build.py::test_settings_field_links_point_to_projects`
+断言四处链接的地址、`target/rel`、标签外链样式，且「TMDB 官网」旧文字链不再出现、
+TMDB 申请页链接全页唯一。
+
 ## [当前] 删除联动开关：与旁边的开关同形，且状态持久化（issue #57 追问）
 
 > 用户原话：「这个开关和旁边的开关风格保持一致」，并「开关状态在设置后持久化保持状态」。
