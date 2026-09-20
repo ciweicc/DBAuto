@@ -1,3 +1,51 @@
+## [当前] 「转存」与「定时」两页合并为单页，并补齐定时任务管理（issue #68 追问）
+
+> 用户原话：「考量这两个页面整合的可能性，另外加入定时任务管理的功能，
+> 然后将这两个页面重复的内容进行整合」。
+
+**重复是逐字重复的 DOM**，不是「长得像」：
+
+| 内容 | 「转存」页 | 「定时」页 |
+| --- | --- | --- |
+| 分类 chips | `catsMovie` / `catsTV` / `catsVariety` | `schedCatsMovie` / … |
+| 最低评分 / 排序 / 年份 | `manualFilterRating` / `manualFilterSort` / `manualFilterYear*` | `filterRating` / `filterSort` / `filterYear*` |
+| 上限 | `#limit` | `#schedLimit` |
+
+同一件事要在两个页面各配一遍，还得靠一个「同步到定时任务」按钮把两者对齐。
+
+**合并后**：
+
+- 分类与筛选**只有一份**（在「转存」页），既是「立即转存」的输入，也是「定时转存」的输入。
+  点一下 chip 即 `autoSaveSchedule()` —— 改一处等于同时改了两处，
+  于是「同步到定时任务」按钮连同 `syncToSchedule()` 一起删除（它已无对象可同步）。
+- 新增页内卡片**「定时任务管理」**：定时转存 / 定时失效检测各自一行，
+  含启用开关、执行时间、**下次执行时间**（`#schedTNext` / `#schedENext`）、
+  **立即执行**按钮，以及失效检测的目录列表。
+  「下次执行」按三态显示：`时间` / `未启用` / `计算失败` ——
+  只显示一个「—」会让「没开」和「时间算错了」看起来一样。
+- 导航从 6 项收敛到 5 项：概览 / 转存 / 媒体库 / 历史 / 设置；
+  `PAGE_IDS` / `PAGES` / `BOTTOM_NAV` / 侧栏 / 底栏 / 命令面板六处一起摘掉 `schedule`。
+
+**顺手修掉一个既有 bug**（合并后必然暴露）：`runScheduleNow()` 此前发
+`{action:'run_now'}` 却**不带 `section`**，而后端 `run_now` 分支要求
+`section ∈ {transfer, expired_check}` —— 概览页那个「立即执行」按钮点了必然 400，
+只是没人把「点了没反应」和「少传一个字段」联系起来。现在带 `section`，
+两个入口（概览页 / 定时任务管理）分别触发 transfer / expired_check。
+
+**实测证据**：
+
+- `python3 -m pytest tests/ -q` → **493 passed**（新增 `tests/test_merge_pages.py` 7 条断言：
+  分类与筛选 DOM 唯一、`#tabSchedule` 与导航项已消失、定时任务管理控件齐全、
+  `run_now` 必带 `section`、`schedule.js` 只读写合并后的 DOM、产物与源同步）。
+- `ruff check .` 全绿。
+- `python3 scripts/check_transfer_schedule_dom.py --serve`（脚本落库）：
+  真实浏览器 + 接口桩，1440x900 与 390x844 两组视口各 0 处问题 ——
+  导航 5 项无「定时」、分类 chips 与筛选各仅一份、两张定时任务卡、
+  启用的显示 `09-21 02:00`、停用的显示 `未启用`、勾选榜单确被写进保存请求、
+  `run_now` 请求带 `section`。
+- 既有走查无回归：`check_overview_dom.py`（9 组视口）、`check_settings_dom.py`（12 组）、
+  `check_log_panel_dom.py`（10 组）、`check_library_dom.py` 全部 0 处问题。
+
 ## [当前] 执行日志信息密度：一个标题只留一条终态行，中间态不进面板（issue #68）
 
 > 用户原话：「执行日志的日志信息密度太低了。大部分是信息重复或者信息无用的内容。」

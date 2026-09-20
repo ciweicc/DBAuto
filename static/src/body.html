@@ -64,7 +64,6 @@
     <nav class="side-nav" role="tablist">
       <button class="side-nav-item active" role="tab" aria-selected="true" data-tab="overview" onclick="switchTab('overview')" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-dashboard"/></svg>概览</button>
       <button class="side-nav-item" role="tab" aria-selected="false" data-tab="manual" onclick="switchTab('manual')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>转存</button>
-      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="schedule" onclick="switchTab('schedule')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-clock"/></svg>定时</button>
       <button class="side-nav-item" role="tab" aria-selected="false" data-tab="history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg>历史</button>
       <button class="side-nav-item" role="tab" aria-selected="false" data-tab="library" onclick="switchTab('library')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg>媒体库</button>
       <button class="side-nav-item" role="tab" aria-selected="false" data-tab="settings" onclick="switchTab('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-settings"/></svg>设置</button>
@@ -336,8 +335,20 @@
         </section>
       </section>
 
-      <!-- ===== 手动转存 ===== -->
+      <!-- ===== 转存（手动 + 定时任务管理，issue #68 追问：两页合并） =====
+           合并动机：原「转存」页与「定时」页各自的分类 chips（电影/电视剧/综艺）、
+           筛选（最低评分/排序/年份范围/上限）是**逐字重复的两份 DOM**，
+           同一件事要在两个页面各配一遍，用户在 A 页改完再去 B 页改。
+           现在：分类与筛选**只有一份**，既是「立即转存」的输入，也是「定时转存」的输入；
+           定时相关的东西（启用开关 / 执行时间 / 下次执行 / 立即执行 / 失效检测目录）
+           收敛进本页的「定时任务管理」卡片。 -->
       <section class="page" id="tabManual">
+        <div class="page-head">
+          <h1>转存</h1>
+          <p>勾选榜单 → 立即转存，或交给定时任务按点执行。分类与筛选只配一次，两种执行方式共用。</p>
+        </div>
+
+        <!-- 榜单选择：手动与定时共用的唯一一份分类 chips -->
         <div class="card movie">
           <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-movie"/></svg> 电影</div>
           <div id="catsMovie"></div>
@@ -350,68 +361,16 @@
           <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg> 综艺</div>
           <div id="catsVariety"></div>
         </div>
-        <div class="card">
-          <div class="row">
-            <span style="color:var(--text2)">每次最多</span>
-            <input type="number" id="limit" value="5" min="1" max="50">
-            <span style="color:var(--text2)">条</span>
-            <button class="btn btn-primary" id="startTransferBtn" onclick="startTransfer()" title="开始转存（Ctrl/⌘ + Enter）">开始转存</button>
-            <button class="btn btn-outline btn-sm" onclick="checkExpired()">检测失效链接</button>
-            <button class="btn btn-outline btn-sm" style="margin-left:auto" onclick="syncToSchedule()">同步到定时任务</button>
-          </div>
-          <div class="sched-row" style="margin-top:10px">
-            <span style="color:var(--text2)">最低评分</span>
-            <input type="range" id="manualFilterRating" min="0" max="10" step="0.5" value="0" oninput="updateManualFilterRating()">
-            <span id="manualFilterRatingVal" style="width:30px;text-align:right;color:var(--accent)">0</span>
-          </div>
-          <div class="sched-row">
-            <span style="color:var(--text2)">排序方式</span>
-            <select id="manualFilterSort" class="select">
-              <option value="rating">按评分</option>
-              <option value="year">按年份</option>
-            </select>
-          </div>
-          <div class="sched-row">
-            <span style="color:var(--text2)">年份范围</span>
-            <input type="number" id="manualFilterYearFrom" placeholder="起始" min="1900" max="2100" class="input-sm">
-            <span style="color:var(--text3)">-</span>
-            <input type="number" id="manualFilterYearTo" placeholder="结束" min="1900" max="2100" class="input-sm">
-          </div>
-        </div>
-      </section>
 
-      <!-- ===== 定时任务 ===== -->
-      <section class="page" id="tabSchedule">
-        <div class="sched-status-bar" id="schedStatusBar">
-          <span>上次转存：<b id="schedLastTransfer">-</b></span>
-          <span>上次检测：<b id="schedLastExpired">-</b></span>
-        </div>
-        <div class="card">
-          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-movie"/></svg> 电影</div>
-          <div id="schedCatsMovie"></div>
-        </div>
-        <div class="card">
-          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-tv"/></svg> 电视剧</div>
-          <div id="schedCatsTV"></div>
-        </div>
-        <div class="card">
-          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg> 综艺</div>
-          <div id="schedCatsVariety"></div>
-        </div>
+        <!-- 转存设置：上限 + 筛选，手动与定时共用 -->
         <div class="card">
           <div class="card-title">转存设置</div>
           <div class="sched-row">
-            <label class="toggle"><input type="checkbox" id="schedTOn" aria-label="启用定时转存" onchange="autoSaveSchedule()"><span class="slider"></span></label>
-            <span style="color:var(--text2)">启用</span>
-            <span style="color:var(--text2);margin-left:8px">上限</span>
-            <input type="number" id="schedLimit" value="5" min="1" max="50" onchange="autoSaveSchedule()">
+            <span style="color:var(--text2)">每次最多</span>
+            <input type="number" id="limit" value="5" min="1" max="50" onchange="autoSaveSchedule()">
             <span style="color:var(--text2)">条</span>
-            <span style="color:var(--text2);margin-left:8px">时间</span>
-            <select id="schedTHour" onchange="autoSaveSchedule()" class="select"></select>
-            <span style="color:var(--text3)">:</span>
-            <select id="schedTMin" onchange="autoSaveSchedule()" class="select"></select>
           </div>
-          <div class="sched-row" style="margin-top:8px">
+          <div class="sched-row">
             <span style="color:var(--text2)">最低评分</span>
             <input type="range" id="filterRating" min="0" max="10" step="0.5" value="0" oninput="updateFilterRating(); autoSaveSchedule()">
             <span id="filterRatingVal" style="width:30px;text-align:right;color:var(--accent)">0</span>
@@ -429,24 +388,50 @@
             <span style="color:var(--text3)">-</span>
             <input type="number" id="filterYearTo" placeholder="结束" min="1900" max="2100" onchange="autoSaveSchedule()" class="input-sm">
           </div>
-        </div>
-        <div class="card">
-          <div class="card-title">失效检测</div>
-          <div class="sched-row">
-            <label class="toggle"><input type="checkbox" id="schedEOn" aria-label="启用定时失效检测" onchange="autoSaveSchedule()"><span class="slider"></span></label>
-            <span style="color:var(--text2)">启用</span>
-            <span style="color:var(--text2);margin-left:8px">时间</span>
-            <select id="schedEHour" onchange="autoSaveSchedule()" class="select"></select>
-            <span style="color:var(--text3)">:</span>
-            <select id="schedEMin" onchange="autoSaveSchedule()" class="select"></select>
+          <div class="sched-row" style="margin-top:14px">
+            <button class="btn btn-primary" id="startTransferBtn" onclick="startTransfer()" title="开始转存（Ctrl/⌘ + Enter）">开始转存</button>
+            <button class="btn btn-outline btn-sm" onclick="checkExpired()">检测失效链接</button>
           </div>
-          <div id="expiredDirList" style="margin-top:10px"></div>
-          <button class="btn btn-outline btn-sm" style="margin-top:8px;border-style:dashed" onclick="addExpiredDir()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加目录</button>
+        </div>
+
+        <!-- 定时任务管理：启用开关 / 执行时间 / 下次执行 / 立即执行 -->
+        <div class="card">
+          <div class="card-title"><svg class="ic" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-clock"/></svg> 定时任务管理</div>
+
+          <div class="sched-status-bar" id="schedStatusBar">
+            <span>上次转存：<b id="schedLastTransfer">-</b></span>
+            <span>上次检测：<b id="schedLastExpired">-</b></span>
+          </div>
+
+          <div class="sched-job">
+            <div class="sched-row">
+              <label class="toggle"><input type="checkbox" id="schedTOn" aria-label="启用定时转存" onchange="autoSaveSchedule()"><span class="slider"></span></label>
+              <span class="sched-job-name">定时转存</span>
+              <span style="color:var(--text2);margin-left:8px">时间</span>
+              <select id="schedTHour" onchange="autoSaveSchedule()" class="select"></select>
+              <span style="color:var(--text3)">:</span>
+              <select id="schedTMin" onchange="autoSaveSchedule()" class="select"></select>
+              <span class="sched-next">下次：<b id="schedTNext">-</b></span>
+              <button class="btn btn-outline btn-sm" onclick="runScheduleNow('transfer')" title="立即执行一次定时转存">立即执行</button>
+            </div>
+          </div>
+
+          <div class="sched-job">
+            <div class="sched-row">
+              <label class="toggle"><input type="checkbox" id="schedEOn" aria-label="启用定时失效检测" onchange="autoSaveSchedule()"><span class="slider"></span></label>
+              <span class="sched-job-name">定时失效检测</span>
+              <span style="color:var(--text2);margin-left:8px">时间</span>
+              <select id="schedEHour" onchange="autoSaveSchedule()" class="select"></select>
+              <span style="color:var(--text3)">:</span>
+              <select id="schedEMin" onchange="autoSaveSchedule()" class="select"></select>
+              <span class="sched-next">下次：<b id="schedENext">-</b></span>
+              <button class="btn btn-outline btn-sm" onclick="runScheduleNow('expired_check')" title="立即执行一次失效检测">立即执行</button>
+            </div>
+            <div id="expiredDirList" style="margin-top:10px"></div>
+            <button class="btn btn-outline btn-sm" style="margin-top:8px;border-style:dashed" onclick="addExpiredDir()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:inline;vertical-align:middle;margin-right:4px"><use href="#icon-plus"/></svg>添加检测目录</button>
+          </div>
         </div>
       </section>
-
-      
-
       <!-- ===== 执行历史 ===== -->
       <section class="page" id="tabHistory">
         <div class="card">
@@ -868,10 +853,6 @@
     <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('manual')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>
       <span>转存</span>
-    </button>
-    <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('schedule')">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-      <span>定时</span>
     </button>
     <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('library')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg>

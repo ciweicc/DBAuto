@@ -448,15 +448,28 @@ function jumpToDiscovery(){
 
 /**
  * 立即运行定时任务
+ *
+ * section 必传：后端 /api/schedule 的 run_now 分支要求 section ∈ {transfer, expired_check}，
+ * 不传会直接 400（「触发失败」）。此前概览页的「立即执行」就没传，按钮实际从未生效过
+ * —— 概览页按钮按语义固定走 transfer（「立即执行一次定时转存」）。
+ * 合并页的两个「立即执行」按钮分别传 transfer / expired_check。
  */
-async function runScheduleNow(){
-  // 3.1 统一 loading 态
-  var btn=document.getElementById('runNowBtn');
+async function runScheduleNow(section){
+  section = section || 'transfer';
+  // 两个入口共用：概览页是 #runNowBtn，合并后的转存页按 section 各自一个
+  var btn = section === 'transfer'
+    ? document.getElementById('runNowBtn')
+    : null;
   if(btn)btn.classList.add('loading');
   try{
-    await apiPost('/api/schedule', {action:'run_now'});
-    showToast('已触发定时任务', true);
-    loadOverviewPage();
+    var d = await apiPost('/api/schedule', {action:'run_now', section:section});
+    if(d && d.success === false){
+      showToast(d.message || '触发失败', false);
+      return;
+    }
+    showToast(section === 'transfer' ? '已触发定时转存' : '已触发失效检测', true);
+    if(currentTab === 'overview') loadOverviewPage();
+    else if(currentTab === 'manual') loadSchedule();
   }catch(e){
     showToast('触发失败: ' + (e.message || '未知错误'), false);
   }finally{
