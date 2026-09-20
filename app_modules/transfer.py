@@ -170,7 +170,7 @@ def _get_qas_client():
         _qas_thread_local.client = QASClient(cfg.qas, cfg.qas_token, timeout=10)
         _qas_thread_local.version = _qas_client_version
         with _qas_client_lock:
-            log("QAS Client 创建，token 长度: {}".format(len(cfg.qas_token or "")))
+            log("QAS Client 创建，token 长度: {}".format(len(cfg.qas_token or "")), panel=False)
     return _qas_thread_local.client
 
 def reset_qas_client():
@@ -756,7 +756,7 @@ def build_transfer_tasks(tasks_config, filters=None):
 def _search_single_task(task, batch_tag=None):
     title = task["title"]
     try:
-        log("搜索: {}".format(title), tag=batch_tag)
+        log("搜索: {}".format(title), tag=batch_tag, panel=False)
         sr = search_pansou(title)
         return task, sr, None
     except Exception as e:
@@ -816,7 +816,7 @@ def run_transfer(task_list, limit):
                     continue
             pending_tasks.append(task)
 
-        log("待搜索任务: {} 条，并发数: {}".format(len(pending_tasks), SEARCH_CONCURRENCY))
+        log("待搜索任务: {} 条，并发数: {}".format(len(pending_tasks), SEARCH_CONCURRENCY), panel=False)
 
         search_results = {}
         search_errors = {}
@@ -882,13 +882,13 @@ def run_transfer(task_list, limit):
                     ok, _msg = validate_share_link(u)
                 except Exception as e:
                     # 校验不可信（QAS 抖动/超时/连接被重置）→ 保守保留，仅告警
-                    log("链接校验异常(不可信,保守保留): {} ({})".format(u, e), tag=batch_tag)
+                    log("链接校验异常(不可信,保守保留): {} ({})".format(u, e), tag=batch_tag, panel=False)
                     ok = True
                 if ok:
                     valid_sr.append(item)
                 else:
                     # 服务确认链接失效 → 硬跳过，避免转存空文件夹
-                    log("跳过失效链接: {} -> {}".format(item.get("title", title), u), tag=batch_tag)
+                    log("跳过失效链接: {} -> {}".format(item.get("title", title), u), tag=batch_tag, panel=False)
             if not valid_sr:
                 log("全部候选链接失效: {}".format(title), tag=batch_tag)
                 with transfer_lock:
@@ -896,11 +896,14 @@ def run_transfer(task_list, limit):
                 return {"title": title, "status": "expired", "msg": "all_links_invalid", "category": category}
 
             chosen = valid_sr[0]
-            log("找到: {}".format(chosen.get("note", title)), tag=batch_tag)
+            log("找到: {}".format(chosen.get("note", title)), tag=batch_tag, panel=False)
             pattern = VIDEO_SUB
             replace = TV_REPLACE if category == "tv" else ""
             res = add_and_run(title, chosen.get("url", ""), "{}/{}".format(savepath, title), pattern, replace)
-            log("  {}".format(res["msg"]), tag=batch_tag)
+            # 终态只留一行：原来这里是「找到: <候选标题>」+「  <QAS 原始 msg>」两行，
+            # 候选标题跟标题本身几乎一样、QAS 的 msg 又不带标题，两行合起来看不出"谁成功了"。
+            # 现在合并成「标题：结果」，一个标题一行（issue #68）。
+            log("{}：{}".format(title, res["msg"]), tag=batch_tag)
             tmdb_id = task.get("tmdb_id") or _resolve_tmdb_id(title, category)
             info = {"date": datetime.now(LOCAL_TZ).strftime("%Y-%m-%d"),
                     "status": res["status"], "category": category, "tmdb_id": tmdb_id}

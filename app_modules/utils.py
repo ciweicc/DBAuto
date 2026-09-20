@@ -1,5 +1,5 @@
 # utils.py — HTTP 工具、日志、SSE 广播、加密工具、通用缓存
-import json, logging, logging.handlers, time, hashlib, hmac, base64, os, random
+import json, logging, logging.handlers, re, time, hashlib, hmac, base64, os, random
 import requests
 from collections import deque
 from threading import Lock, local
@@ -159,7 +159,20 @@ def setup_logging():
 
 logger = setup_logging()
 
-def log(msg, tag=None):
+# —— 面板日志的"信息密度"过滤（issue #68）——
+# 面板日志的问题不是"行太长"，而是"行太多且互相重复"：
+# 用户搜一部电影会看到「搜索: X」「找到: X 的候选标题」「转存成功」「 转存成功」
+# 四条在说同一件事，而读日志文件的人又确实需要全程留痕。
+#
+# 因此把"面板"当成**进度条**而不是"日志文件"：
+#   * 纯内部实现的噪声（缓存预热、并发度、把参数回显一遍）不进面板，
+#     但仍写 logger，`data/app.log` 里一条不少；
+#   * 一个标题只留一条终态结论行（成功/跳过/失败），中间态不进面板。
+# 谁被过滤了就写在这里，避免以后有人凭感觉再往 log() 里塞噪声。
+_PANEL_DROP = (re.compile(r"^待搜索任务: \d+ 条，并发数"),)
+
+
+def log(msg, tag=None, panel=True):
     """记录一条日志并广播到 SSE / 前端进度面板。
 
     Args:
@@ -168,14 +181,21 @@ def log(msg, tag=None):
             提供时日志行格式变为 "[HH:MM:SS][TAG] msg"（标签转大写、去除内部空格），
             便于在混合日志流中区分来源；为 None 时保持原 "[HH:MM:SS] msg" 格式，
             向后兼容所有旧调用方。
+        panel: 是否同时投递到前端「执行日志」面板（默认 True）。
+            置 False 表示"只写日志文件，不上面板"——用于过滤实现细节类噪声。
     """
     ts = time.strftime("%H:%M:%S")
     if tag:
         tag_label = tag.upper().replace(" ", "")
         line = "[{}][{}] {}".format(ts, tag_label, msg)
+    # 无 tag 时面板行与文件行一致；带 tag 时面板用同一行（后端 tag 已足够定位来源）
     else:
         line = "[{}] {}".format(ts, msg)
     logger.info(msg)
+    if not panel:
+        return
+    if any(rx.search(msg) for rx in _PANEL_DROP):
+        return
     log_progress.append(line)
     sse_broadcast("log", {"line": line})
 
