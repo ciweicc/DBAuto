@@ -67,3 +67,97 @@ def test_one_terminal_line_per_title():
     lines = [x for x in _panel_lines() if "流浪地球" in x]
     assert len(lines) == 1
     assert "转存成功" in lines[0]
+
+
+# ---------------------------------------------------------------- 折叠详情（issue #68 追问）
+# 第一轮把「行数」压下去了，但**行本身**仍把整段 requests 异常糊在面板上，
+# 视觉上折成 5–6 行。这里把「异常原文必须从主行里剥出来」钉成断言。
+_EXC = "HTTPConnectionPool(host='192.168.5.55', port=8080): Read timed out. (read timeout=20)"
+
+
+def test_exception_text_is_split_off_the_main_line():
+    """`主行: 异常原文` 必须拆成「主行 + 详情」，主行不带异常原文。"""
+    clear_progress()
+    log("PanSou 重试: {}".format(_EXC))
+    lines = _panel_lines()
+    assert len(lines) == 2, "应为主行 + 详情行两行，实际 {}".format(lines)
+    main, detail = lines
+    assert _EXC not in main, "主行里仍带着整段异常：{}".format(main)
+    assert _EXC in detail, "详情里没拿到完整异常原文：{}".format(detail)
+
+
+def test_bare_exception_line_gets_a_readable_main_line():
+    """整条就是一段异常（旧调用没给主行）时，也要有一句能读的主行。"""
+    clear_progress()
+    log(_EXC)
+    main = _panel_lines()[0]
+    assert "HTTPConnectionPool" not in main
+    assert "请求失败" in main, main
+
+
+def test_explicit_detail_is_supported():
+    """显式 `detail=` 时主行保持干净，detail 进第二行。"""
+    clear_progress()
+    log("HTTP POST 超时放弃（已重试 3 次）", detail=_EXC)
+    lines = _panel_lines()
+    assert len(lines) == 2
+    assert lines[0].endswith("HTTP POST 超时放弃（已重试 3 次）")
+    assert _EXC in lines[1]
+
+
+def test_plain_message_with_colon_is_not_treated_as_detail():
+    """普通句子里的冒号不能被误当成「主行: 详情」。"""
+    clear_progress()
+    for msg in ("TMDB: 未配置 api_key", "转存完成: 3 条", "共获取 20 条"):
+        clear_progress()
+        log(msg)
+        lines = _panel_lines()
+        assert len(lines) == 1, "{} 被误拆成 {}".format(msg, lines)
+        assert msg in lines[0]
+
+
+def test_plain_long_message_is_not_hidden_into_detail():
+    """没有结构化异常的长句只是被截短显示，**不能**整句塞进详情里藏起来。"""
+    clear_progress()
+    log("一个不带任何异常的普通长句" * 20)
+    lines = _panel_lines()
+    assert len(lines) == 1, "普通长句不该产生详情行：{}".format(len(lines))
+    assert "…" in lines[0], "长句应被截短（前端有 title 展示全文）"
+
+
+def test_exception_detail_still_written_to_file_log():
+    """折叠只影响面板，`data/app.log` 里异常原文必须完整保留。"""
+    clear_progress()
+    written = []
+    orig_info = utils.logger.info
+    utils.logger.info = lambda m: written.append(m)
+    try:
+        log("PanSou 重试: {}".format(_EXC))
+    finally:
+        utils.logger.info = orig_info
+    assert any(_EXC in w for w in written), written
+
+
+def test_progress_pairs_main_with_detail_for_backfill():
+    """progress 必须自足（SSE 断连时靠它回填）：详情行紧跟主行，可成对认领。"""
+    clear_progress()
+    log("A 事件")
+    log("B 事件", detail=_EXC)
+    log("C 事件")
+    lines = _panel_lines()
+    assert len(lines) == 4, lines
+    # 前端按「下一行是否以 `本行`: 开头」认领详情（见 scripts/check_log_density.py
+    # 的 _split_pairs 与前端 log.js 的 detailFor）。
+    assert not lines[1].startswith(lines[0] + ": "), "A 事件不该被认成带详情"
+    assert lines[2].startswith(lines[1] + ": "), "B 的详情必须紧跟 B 的主行"
+    assert _EXC in lines[2]
+    assert not lines[3].startswith(lines[2] + ": "), "C 事件不该被认成带详情"
+
+
+def test_blocking_panel_drop_patterns():
+    """第二轮新增的面板黑名单：QAS 缓存行、失效检测目录范围。"""
+    clear_progress()
+    log("QAS: 12 个任务已缓存")
+    log("失效检测目录范围: ['/影视']")
+    log("搜索: 流浪地球")
+    assert _panel_lines() == []

@@ -885,9 +885,11 @@ def test_log_panel_pins_to_latest(dist):
     （最旧一行），最新日志在数屏之外 —— 表现为「日志无法显示完全」。
     """
     log_js = _read(os.path.join(_JS_DIR, "log.js"))
-    # renderLog / applyLogSearch 都必须回到末尾
-    render = log_js[log_js.index("function renderLog"):log_js.index("function appendLine")]
-    assert "scrollTop=el.scrollHeight" in render.replace(" ", ""), "renderLog 未定位到最新"
+    # renderLog / applyLogSearch 都必须回到末尾。
+    # 注意：渲染逻辑在 issue #68 抽到了 renderRows（renderLog 只是它的薄封装），
+    # 所以断言要跟着行为走，别钉在某个函数名上。
+    render = log_js[log_js.index("function renderRows"):log_js.index("function markWrap")]
+    assert "scrollTop=el.scrollHeight" in render.replace(" ", ""), "渲染后未定位到最新"
     search = log_js[log_js.index("function applyLogSearch"):log_js.index("function updateLogHint")]
     assert "scrollTop" in search, "搜索后未定位滚动位置"
     # 折行标记 + 续行缩进
@@ -3737,3 +3739,55 @@ def test_tmdb_icon_is_vector_not_text(dist):
     assert dist.count('href="#icon-tmdb"') >= 2, "产物未包含 TMDB 图标的使用位点"
     assert ">tmdb</text>" not in dist, "产物仍残留 <text>tmdb</text> 版本（需重跑 build.sh）"
     assert 'id="icon-tmdb"' in dist, "产物缺少重建后的 icon-tmdb"
+
+
+def test_log_detail_is_collapsible(dist):
+    """issue #68 追问：面板上的异常原文必须收进可折叠的「详情」，不能占主行。
+
+    背景：第一轮把「行数」压下去后，单条 requests 异常仍以主行形式糊在面板上，
+    视觉上折成 5–6 行。本轮把它拆成「主行 + 详情」，详情默认折叠。
+    这里钉住四件事，避免以后被无意改回去：
+      1. 源码/产物里都有折叠详情块与「详情」按钮（样式 + 行为）；
+      2. 详情的配对规则与后端同源（`主行: ` 前缀），且**不按奇偶位**认领 ——
+         progress 会被 deque 裁掉队首，奇偶位假设会错配；
+      3. 折叠态用 overflow/ellipsis 收成一行（否则整段异常把日志区撑出横向滚动，
+         这条是实测踩到的：`check_log_panel_dom.py` 曾报「横向溢出 191px」）；
+      4. 展开态跨重渲染保留（切筛选/搜索不该把用户展开的原文收回去）。
+    """
+    log_js = _read(os.path.join(_JS_DIR, "log.js"))
+    main_css = _read(MAIN_CSS)
+    html = dist  # fixture 已把产物内容读好了，别再过一层 _read
+
+    for fn in ("function attachDetail", "function toggleLogDetail",
+               "function looksLikeDetail", "function addProgressLogs", "function logRows"):
+        assert fn in log_js, "缺少 {}".format(fn)
+
+    # 1) 详情块 + 按钮
+    assert "log-detail" in main_css and "log-detail-toggle" in main_css, \
+        "缺少折叠详情的样式"
+    assert ".log-detail.collapsed .log-detail-text" in main_css, \
+        "缺少折叠态样式"
+    # 3) 折叠态必须能省略号收尾（flex 子项要 min-width:0，否则不收缩）
+    detail_text = [l for l in main_css.splitlines() if "log-detail-text{flex" in l.replace(" ", "")]
+    assert detail_text, "详情文本缺少 flex/min-width 声明"
+    assert "min-width:0" in detail_text[0].replace(" ", ""), \
+        "详情文本未设 min-width:0，折叠态不会收缩（会横向溢出）"
+    # CSS 规则可能折成多行，按「从选择器到下一个 } 」整段取
+    ci = main_css.index(".log-detail.collapsed .log-detail-text")
+    collapsed_rule = main_css[ci:main_css.index("}", ci)].replace(" ", "")
+    assert "text-overflow:ellipsis" in collapsed_rule, "折叠态未用省略号收尾"
+    assert "overflow:hidden" in collapsed_rule, "折叠态未裁剪溢出内容"
+
+    # 2) 配对规则与后端同源、且不依赖奇偶位
+    assert "indexOf(lines[i]+': ')" in log_js or "indexOf(lines[i] + ': ')" in log_js or \
+        "lines[i]+': '" in log_js, "回填未按「主行: 详情」前缀配对"
+    assert "i+=2" not in log_js.replace(" ", ""), \
+        "回填仍按奇偶位配对（progress 会被裁掉队首，必然错配）"
+
+    # 4) 展开态保留：toggleLogDetail 写 logDetailOpen，attachDetail 读取它
+    assert "logDetailOpen[detailLine]" in log_js and (
+        "logDetailOpen[detailLine]===undefined" in log_js.replace(" ", "")
+    ), "attachDetail 未读取展开态（重渲染会把展开的详情收回去）"
+
+    # 产物里同样要有（构建必须真的带上这些改动）
+    assert "log-detail-toggle" in html, "构建产物缺少折叠详情（未重建？）"

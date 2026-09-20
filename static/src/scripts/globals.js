@@ -2,6 +2,16 @@
 var C = {}, currentTab = 'overview', execHistoryData = [], execHistoryFilter = 'all';
 var expiredDirEntries = [], autoSaveTimer = null, logPollTimer = null;
 var logBefore = [], logFilter = 'all', logPaused = false;
+// 折叠详情（issue #68 二次追问）：面板上一行异常会被折成 5–6 行。
+// 后端把行拆成「主行 + 详情」，这里默认只渲染主行，点「详情」才展开。
+// 条数不是重点，「能一眼扫完一屏、需要时又能拿到原文」才是。
+var logDetails = {}, logDetailOpen = {}, LOG_DETAIL_MAX = 300;
+// 由「搜索命中详情」自动展开的详情：清空关键词时要收回去，
+// 但不能连带把用户自己点开的那些也收掉。
+var logDetailAuto = {};
+// 详情行与主行成对写进 progress（progress 是 SSE 断连时的回填源），
+// 用「行号奇偶」认领：偶数索引 = 主行，奇数索引 = 它的详情。
+// 详情行 → 它挂在哪条主行下面（只用于人工排查；认领本身靠「紧跟主行」的顺序）
 var logPollInterval = 0;
 var sseConnected = false;
 var LOG_BEFORE_MAX = 500;

@@ -195,7 +195,7 @@ def init_qas_cache():
             if attempt < 2:
                 time.sleep(3)
             else:
-                log("QAS 初始化错误: {}".format(e))
+                log("QAS 初始化错误", panel=False, detail=str(e))
 
 def is_in_qas(name):
     with _qas_cache_lock:
@@ -255,10 +255,10 @@ def search_pansou(keyword, category="movie"):
         except Exception as e:
             last_err = e
             if attempt == 0:
-                log("PanSou 重试: {}".format(e))
+                log("PanSou 重试", detail="keyword={} | {}".format(keyword, e))
                 time.sleep(1.5)
             else:
-                log("PanSou 错误: {}".format(e))
+                log("PanSou 搜索失败: {}".format(keyword), detail=str(e))
     # 不再静默 return []，抛出让调用方把真实原因透传到执行历史
     raise RuntimeError("PanSou 搜索失败 ({}): {}".format(keyword, last_err)) from last_err
 
@@ -287,9 +287,9 @@ def add_and_run(title, shareurl, savepath, pattern="", replace=""):
     try:
         ok, msg = validate_share_link(shareurl)
         if not ok:
-            log("链接预校验未通过(仍尝试转存): {} ({})".format(shareurl, msg))
+            log("链接预校验未通过(仍尝试转存): {}".format(title), detail="{} | {}".format(shareurl, msg))
     except Exception as e:
-        log("链接校验异常(放行): {}".format(e))
+        log("链接校验异常(放行): {}".format(title), detail="{} | {}".format(shareurl, e))
     client = _get_qas_client()
     add_res = client.add_task(title, shareurl, savepath, pattern, replace)
     if not add_res.get("success"):
@@ -760,7 +760,7 @@ def _search_single_task(task, batch_tag=None):
         sr = search_pansou(title)
         return task, sr, None
     except Exception as e:
-        log("搜索异常 {}: {}".format(title, e), tag=batch_tag)
+        log("{}：搜索异常".format(title), tag=batch_tag, detail=str(e))
         return task, [], str(e)
 
 def run_transfer(task_list, limit):
@@ -837,7 +837,7 @@ def run_transfer(task_list, limit):
                         sse_broadcast("transfer_progress", dict(transfer_status))
                 except Exception as e:
                     task = future_map[future]
-                    log("搜索任务异常 {}: {}".format(task["title"], e))
+                    log("{}：搜索任务异常".format(task["title"]), tag=batch_tag, detail=str(e))
                     search_results[task["title"]] = []
                     search_errors[task["title"]] = str(e)
                     with transfer_lock:
@@ -863,7 +863,7 @@ def run_transfer(task_list, limit):
             if not sr:
                 err = search_errors.get(title)
                 if err:
-                    log("搜索失败: {} ({})".format(title, err), tag=batch_tag)
+                    log("{}：搜索失败".format(title), tag=batch_tag, detail=str(err))
                     return {"title": title, "status": "search_failed", "msg": err, "category": category}
                 log("未找到: {}".format(title), tag=batch_tag)
                 with transfer_lock:
@@ -882,7 +882,7 @@ def run_transfer(task_list, limit):
                     ok, _msg = validate_share_link(u)
                 except Exception as e:
                     # 校验不可信（QAS 抖动/超时/连接被重置）→ 保守保留，仅告警
-                    log("链接校验异常(不可信,保守保留): {} ({})".format(u, e), tag=batch_tag, panel=False)
+                    log("链接校验异常(不可信,保守保留): {}".format(u), tag=batch_tag, panel=False, detail=str(e))
                     ok = True
                 if ok:
                     valid_sr.append(item)
@@ -937,7 +937,7 @@ def run_transfer(task_list, limit):
                 results.append(r)
     except Exception as e:
         error_msg = str(e)
-        log("转存异常: {}".format(e), tag=batch_tag)
+        log("转存异常", tag=batch_tag, detail=str(e))
         results.append({"title": "异常中断", "status": "error", "msg": error_msg})
     finally:
         with transfer_lock:

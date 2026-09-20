@@ -15,7 +15,8 @@ async function startTransfer(){
     year_to: parseInt(document.getElementById('manualFilterYearTo').value)||0
   };
   // 提前清空日志，避免 SSE 早期日志被竞态清除（日志面板常驻，无需切换显隐）
-  logBefore=[]; document.getElementById('log').textContent='';
+  logBefore=[]; logDetails={}; logDetailOpen={}; logDetailAuto={};
+  document.getElementById('log').textContent='';
   addLog('[开始转存]');
   playSound('click');
   setBtnLoading('startTransferBtn',true);

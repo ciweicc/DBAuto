@@ -169,35 +169,151 @@ logger = setup_logging()
 #     但仍写 logger，`data/app.log` 里一条不少；
 #   * 一个标题只留一条终态结论行（成功/跳过/失败），中间态不进面板。
 # 谁被过滤了就写在这里，避免以后有人凭感觉再往 log() 里塞噪声。
-_PANEL_DROP = (re.compile(r"^待搜索任务: \d+ 条，并发数"),)
+_PANEL_DROP = (
+    re.compile(r"^待搜索任务: \d+ 条，并发数"),
+    re.compile(r"^搜索: "),
+    re.compile(r"^QAS: \d+ 个任务已缓存$"),
+    re.compile(r"^失效检测目录范围: "),
+)
+
+# —— 面板的"详情行"（issue #68 二次追问：密度仍然太低）——
+# 第一轮过滤后每标题只剩一条终态行，但**行本身**仍然把一整段 requests 异常
+# 糊在面板上，并且被视觉折成 5–6 行：
+#
+#   [20:46:56] HTTP POST 超过重试预算，放弃: HTTPConnectionPool(host='19
+#   2.168.5.55', port=8080): Read timed out. (read timeout=20)
+#   [20:46:56] PanSou 重试: HTTPConnectionPool(host='192.168.5.55', ...
+#
+# 这两行是同一件事的两条流水，且用户能读的只有前半句。后端在这里把行拆成
+# 「主行 + detail」，前端默认只渲染主行（计数进进度区），点「详情」才展开 ——
+# 这样面板上一次 1 条任务的转存从 7 行压缩到 3 行。
+_DETAIL_MARKERS = (
+    "HTTPConnectionPool",
+    "HTTPSConnectionPool",
+    "Max retries exceeded",
+    "Read timed out",
+    "ConnectTimeout",
+    "ConnectionError",
+    "ProtocolError",
+    "RemoteDisconnected",
+    "SSLError",
+    "JSONDecodeError",
+    "Traceback (most recent call last)",
+)
+
+# "主行: 详情" 的分隔符。要求**分隔符前后都有内容、且冒号后紧跟空格**：
+#   * "TMDB: 未配置 api_key"   → ": " 前面只有 4 个字符，是产物标签不是主行，
+#                                整条留作主行（这里用一个最小主行长度卡住）；
+#   * "PanSou 重试: HTTPCon..." → 切成 ("PanSou 重试", "HTTPCon...")。
+_DETAIL_SPLIT = re.compile(r"(?<=\S)\s*: \s*")
+_MIN_MAIN_LEN = 8
 
 
-def log(msg, tag=None, panel=True):
+def _is_detail(text):
+    """整段文本是否只是一个「详情」（不该占面板一行）。"""
+    for mk in _DETAIL_MARKERS:
+        if mk in text:
+            return True
+    # 只有一层括号的纯参数回显，例如 "(timeout)"
+    return bool(re.match(r"^[\(\[].*[\)\]]$", text.strip()))
+
+
+def _split_detail(msg):
+    """把一条日志拆成 (主行, 详情)。
+
+    返回 detail 为 None 表示这条日志本身就是主行。
+    只切**第一处**分隔符：详情里再出现冒号（`... (read timeout=20)`）留在 detail 里，
+    避免把一句人话切碎。
+    """
+    if not msg:
+        return msg, None
+    # 1) 整条就是一段异常/参数 → 整条降级为详情，主行由调用方另外给
+    if _is_detail(msg):
+        return None, msg
+    # 2) "主行: 详情" —— 只切第一处
+    m = _DETAIL_SPLIT.search(msg)
+    if m:
+        main, rest = msg[:m.start()].strip(), msg[m.end():].strip()
+        # 分隔符前太短（如 "TMDB"）说明这是产物标签而不是「主行: 详情」
+        if len(main) >= _MIN_MAIN_LEN and rest:
+            return main, rest
+    return msg, None
+
+
+def _shorten(text, limit=120):
+    """把一段异常文本压成一行可读的主行（详情完整地留在 detail 里）。"""
+    text = re.sub(r"\s+", " ", text or "").strip()
+    if len(text) <= limit:
+        return text
+    return text[:limit - 1].rstrip() + "…"
+
+
+def log(msg, tag=None, panel=True, detail=None):
     """记录一条日志并广播到 SSE / 前端进度面板。
 
     Args:
-        msg: 日志正文。
+        msg: 日志正文（**面板主行**的正文）。
         tag: 可选的来源/批次标签（如 "TMDB"、"TRANSFER#ab12cd"）。
             提供时日志行格式变为 "[HH:MM:SS][TAG] msg"（标签转大写、去除内部空格），
             便于在混合日志流中区分来源；为 None 时保持原 "[HH:MM:SS] msg" 格式，
             向后兼容所有旧调用方。
         panel: 是否同时投递到前端「执行日志」面板（默认 True）。
             置 False 表示"只写日志文件，不上面板"——用于过滤实现细节类噪声。
+        detail: 可选的完整细节（如 requests 的整段异常）。前端默认**折叠**，
+            点「详情」才展开；`data/app.log` 里无论折叠与否都是完整原文。
+            不传时按 `"主行: 详情"` 的写法自动拆分（见 `_split_detail`），
+            这样 `log("PanSou 重试: {}".format(e))` 这种旧调用会被自动压成一行。
     """
+
     ts = time.strftime("%H:%M:%S")
-    if tag:
-        tag_label = tag.upper().replace(" ", "")
-        line = "[{}][{}] {}".format(ts, tag_label, msg)
-    # 无 tag 时面板行与文件行一致；带 tag 时面板用同一行（后端 tag 已足够定位来源）
-    else:
-        line = "[{}] {}".format(ts, msg)
-    logger.info(msg)
+    tag_label = tag.upper().replace(" ", "") if tag else None
+
+    def _fmt(text):
+        return "[{}][{}] {}".format(ts, tag_label, text) if tag_label \
+            else "[{}] {}".format(ts, text)
+
+    # —— 文件日志：完整原文 + 完整 detail，一条不少 ——
+    logger.info(msg if detail is None else "{} | {}".format(msg, detail))
+
     if not panel:
         return
     if any(rx.search(msg) for rx in _PANEL_DROP):
         return
+
+    if detail is None:
+        # 未显式给 detail：先按 "主行: 详情" 自动拆（兼容旧调用写法）
+        main, auto_detail = _split_detail(msg)
+        if main is not None:
+            short, detail = _shorten(main), auto_detail
+        elif auto_detail is not None:
+            # 整条就是一段异常（没有可读主行）：给一个可读主行，原文进详情
+            short, detail = "请求失败（可展开详情）", msg
+        else:
+            # 长句但没有结构化详情：不是异常，绝不塞进「详情」里藏起来，
+            # 只是把 progress/SSE 里那条主行截短（前端有 title 展示全文）。
+            short, detail = _shorten(msg), None
+    else:
+        short = _shorten(msg)
+
+    line = _fmt(short)
     log_progress.append(line)
-    sse_broadcast("log", {"line": line})
+    if not detail:
+        # 普通一行：SSE 与 progress 用同一条文本，前端断连回填时两边一致。
+        sse_broadcast("log", {"line": line})
+        return
+
+    # 带详情：progress 里主行 + 详情行成对出现，SSE 用一条事件发出去
+    # （progress 是 SSE 断连时的降级回填源，必须自足）。
+    # 详情行沿用 "主行: 详情" 的写法，前端按 `detailAttachesTo` 认领成折叠块；
+    # 进度区（成功/失败计数）读的是 transfer_status.stats，不会被这里影响。
+    detail_line = "{}: {}".format(_fmt(short), _flatten(detail))
+    log_progress.append(detail_line)
+    sse_broadcast("log", {"line": line, "detail": detail_line, "summary": line})
+
+
+def _flatten(text):
+    """详情里的换行/连续空白压平：一条 detail 折成 5–6 行就失去"折叠"的意义了。"""
+    return re.sub(r"\s+", " ", text or "").strip()
 
 _sse_thread_local = local()
 
@@ -287,11 +403,11 @@ def http_get(url, timeout=None, referer=None, retries=3):
             can_retry = attempt < retries - 1 and _http_retryable(e)
             within_budget = (time.monotonic() - start) < HTTP_RETRY_TOTAL
             if can_retry and within_budget:
-                log("HTTP GET 重试 {}: {}".format(attempt + 1, e))
+                log("HTTP GET 重试 {}".format(attempt + 1), detail="GET {} | {}".format(url, e))
                 time.sleep(_http_backoff(attempt))
             else:
                 if _http_retryable(e) and not within_budget:
-                    log("HTTP GET 超过重试预算，放弃: {}".format(e))
+                    log("HTTP GET 超时放弃（已重试 {} 次）".format(attempt + 1), detail="GET {} | {}".format(url, e))
                 raise
 
 def http_post(url, data, timeout=None, retries=3):
@@ -307,11 +423,11 @@ def http_post(url, data, timeout=None, retries=3):
             can_retry = attempt < retries - 1 and _http_retryable(e)
             within_budget = (time.monotonic() - start) < HTTP_RETRY_TOTAL
             if can_retry and within_budget:
-                log("HTTP POST 重试 {}: {}".format(attempt + 1, e))
+                log("HTTP POST 重试 {}".format(attempt + 1), detail="POST {} | {}".format(url, e))
                 time.sleep(_http_backoff(attempt))
             else:
                 if _http_retryable(e) and not within_budget:
-                    log("HTTP POST 超过重试预算，放弃: {}".format(e))
+                    log("HTTP POST 超时放弃（已重试 {} 次）".format(attempt + 1), detail="POST {} | {}".format(url, e))
                 raise
 
 def http_post_stream(url, data, timeout=None):
