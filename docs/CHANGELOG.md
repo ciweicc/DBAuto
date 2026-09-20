@@ -38,6 +38,67 @@
   Windows / macOS / 390px 三套场景，同时校验**屏幕状态**（焦点在哪、面板开没开、
   输入框里有没有多出 k、徽标几何与可见性）。
   当前结果：**23/23 通过**。
+## [当前] QAS 任务卡片：同一行等高、路径不再被截断（issue #75 追问）
+
+> 用户在设置页改完之后又发了一张 QAS 任务卡片的截图（红框圈出相邻两张卡），
+> 原话：「资源条目高度不一致」。
+
+### 根因：卡片里那条「可以折任意行」的路径被钉死在 2 行
+
+上一轮（issue #57）给任务卡路径加的是「固定 2 行」：
+
+```css
+.lib-card-task .lib-card-path{white-space:normal;overflow-wrap:anywhere;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+```
+
+「固定行数」带来两个**同源**、截图里一眼可见的坏处：
+
+1. **同一行的卡片不等高**：路径 1 行放得下的卡只有「名称 + 1 行」，
+   放不下的是「名称 + 2 行」，同一行里 51px 与 67px 并排（实测极差 16px），
+   底边参差、网格看起来是斜的；
+2. **2 行还不够的路径被截成省略号**（实测 8 条里 2 条）——
+   同一条路径有的完整、有的带「…」。
+
+还有一层被上一层盖住的成因：父级 `.lib-grid` 是 `align-items:start`，
+网格**不拉伸**同一行的卡。媒体库那张卡需要它（按内容逐张收边），
+但任务卡一旦路径折成 3 行，`start` 就让同一行出现 51 / 67 / 84 / 100px
+四种高度、底边参差 49px（走查实测）。
+
+### 修法：路径真折完 + 同行拉伸齐高
+
+- `.lib-card-task .lib-card-path` 去掉 `-webkit-line-clamp`，保留
+  `white-space:normal;overflow-wrap:anywhere` —— 长路径真折完，卡片按内容生长；
+- `.lib-grid-tasks` 加 `align-items:stretch` —— 同一行的卡被拉到**该行最高**的
+  那张，短卡多出的高度是留白，长卡的信息一行不裁。
+
+行的「一高一矮」在**跨行**出现是正常的：卡里装得下的信息本来就该多占一点高度。
+
+### 验证
+
+`scripts/check_qas_view_dom.py` 新增两条断言（issue #75）：
+
+- **`rowSpread`**：同一行卡片的**底边**极差 ≤2px（量底边而不是高度 ——
+  底边对齐才是用户看到的「网格歪没歪」）；
+- **`pathClipped`**：没有一张卡的路径被省略号截掉。
+
+判别力对照（把 CSS 改回旧实现后跑同一条走查）：
+
+| 实现 | 同一行底边极差 | 路径被截断 |
+| --- | --- | --- |
+| 旧（clamp:2 + align-items:start） | 16 / 49 / 99 / 116px | 2~3 张 |
+| 新（自然折行 + stretch） | **0px** | **0 张** |
+
+夹具刻意用**内联 `-webkit-line-clamp:unset`** 造参差，这样同一条断言在
+「旧 CSS / 新 CSS」两种实现下都能触发 —— 只换文本的话旧 clamp 会把卡压回
+2 行、夹具直接失效，断言退化成「测不了」（实测踩到过）。
+
+`tests/test_build.py::test_qas_view_switch_entry_and_source_of_truth` 同步
+从「断言 line-clamp:2」改为「断言不 clamp + 网格 stretch」。
+
+其它：`pytest tests/ -q` → 510 passed；`ruff check .` 全过；
+`check_contrast.py` 18 组全达标；概览 / 媒体库 / QAS 键盘 / QAS 视图 /
+转存 / 日志栏 / 设置 各走查脚本全部 0 处问题。
 
 ## [当前] 设置页：设置项统一为同一宽度（issue #75）
 

@@ -3791,12 +3791,23 @@ def test_qas_view_switch_entry_and_source_of_truth(dist):
     assert "qasView !== 'card'" in kd, \
         "↑↓ 未按布局让位（卡片视图下抢 ↑↓ = 用户想滚页面却看到当前行乱跳）"
 
-    # 5. 样式：任务卡允许路径折两行（卡片视图存在的意义是「看得见信息」）
+    # 5. 样式：任务卡路径**按内容自然折行**，且同一行卡片被拉齐到等高
+    #    （issue #75「资源条目高度不一致」）
     assert ".lib-card-task .lib-card-path{" in css, "缺少任务卡的路径样式"
     task_css = css[css.index(".lib-card-task .lib-card-path{"):]
     task_css = task_css[:task_css.index("}")]
-    assert "line-clamp:2" in task_css and "white-space:normal" in task_css, \
+    assert "white-space:normal" in task_css and "overflow-wrap:anywhere" in task_css, \
         "任务卡路径未折行（单行省略会把最能确认身份的前缀切掉）"
+    # 固定行数（-webkit-line-clamp）会让「1 行装得下」与「2 行才装得下」的卡
+    # 在同一行里差一行高，也就是 issue #75 的截图；路径必须真折完、不设行数上限。
+    assert "line-clamp" not in task_css, \
+        "任务卡路径被固定行数截断（issue #75：同行卡片高度不一致 + 长路径被省略）"
+    # 任务网格必须拉伸同一行的卡到等高（父级 .lib-grid 是 align-items:start）
+    assert ".lib-grid-tasks{" in css, "缺少任务网格样式"
+    grid_css = css[css.index(".lib-grid-tasks{"):]
+    grid_css = grid_css[:grid_css.index("}")]
+    assert "align-items:stretch" in grid_css, \
+        "任务网格未拉伸同行卡片（align-items:start 会让长路径的卡把底边顶歪）"
 
     # 6. 产物已重建
     for token in ("qasViewBtn", "toggleQasView", "qasViewMode", "_qasCardHtml",

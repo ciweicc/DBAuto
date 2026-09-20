@@ -24,6 +24,11 @@
   5. 卡片视图下筛选 / 分页 / 每页条数与列表视图一致（作用范围仍是可见行）；
   6. **卡片高度足够放下任务名与转存路径**：高度必须高于列表行高，
      路径不折行、不被 1 行截断（issue 的核心是「看得见信息」）；
+  6b. **同一行的卡片等高、路径不被截断**（issue #75「资源条目高度不一致」）：
+     网格里同一行的卡底边必须在同一条水平线上（极差 ≤2px），且没有一张卡的
+     转存路径被省略号截掉。这一条**必须专门造出「一长一短」的形态**再量 ——
+     真实数据里短的短、长的长，但等高断言在「所有卡一样高」的数据上恒为真
+     （实测：夹具没造出参差时这条断言永远通过，等于没测）；
   7. 两种布局都无横向溢出；窄视口下也成立；
   8. 偏好写进 localStorage（qas_view），刷新后仍在；
      且**不串味**（媒体库的 lib_view 不被改写、QAS 的 qas_view 不被媒体库改写）。
@@ -205,6 +210,31 @@ MEASURE = r"""
       return p.scrollHeight - p.clientHeight > 2;
     })(),
     cardHSpread: (function(){
+      const hs = cards.map(c => Math.round(c.getBoundingClientRect().height));
+      return hs.length ? Math.max.apply(null, hs) - Math.min.apply(null, hs) : 0;
+    })(),
+    // issue #75：**同一行**的卡片是否等高。量的是「每张卡的底边」而不是高度 ——
+    // 底边对齐才是用户看到的「网格歪没歪」，高度相同但基线错位同样会露馅。
+    // 按 top 分组：同一 top 的卡视为同一行（网格行内 top 必然一致）。
+    rowSpread: (function(){
+      const byRow = {};
+      cards.forEach(c => {
+        const b = c.getBoundingClientRect();
+        const t = Math.round(b.top);
+        byRow[t] = byRow[t] || [];
+        byRow[t].push(Math.round(b.bottom));
+      });
+      const rows = Object.keys(byRow).map(t => byRow[t]);
+      if (!rows.length) return 0;
+      return Math.max.apply(null, rows.map(r =>
+        Math.max.apply(null, r) - Math.min.apply(null, r)));
+    })(),
+    rowCount: (function(){
+      const ts = new Set(cards.map(c => Math.round(c.getBoundingClientRect().top)));
+      return ts.size;
+    })(),
+    rowFullSpread: (function(){
+      // 整屏卡片的高度极差（跨行也要收在一个合理范围内，防止某张卡把网格拉爆）
       const hs = cards.map(c => Math.round(c.getBoundingClientRect().height));
       return hs.length ? Math.max.apply(null, hs) - Math.min.apply(null, hs) : 0;
     })(),
@@ -417,21 +447,41 @@ def main():
             # 这里只报「短任务名也被截断」——实测就是卡片里标题列被右侧操作列挤没了。
             if s3["shortNameClipped"]:
                 fail("卡片里短任务名也被截断（标题列被右侧操作列挤没了）")
-            # 真实数据下卡片会参差（长任务名 + 长路径把第一张卡撑高）。
-            # 这条走查**主动造出那个形态**再量：不造的话所有卡片等高，
-            # 「勾选框对齐」这条断言永远为真 —— 等于没测（实测：去掉对齐规则后
-            # 在等高卡片上跑，走查仍然 0 处问题）。
+            # 「勾选框对齐」这条断言要求卡片**真的参差**才有意义：所有卡一样高时
+            # 它恒为真（实测：去掉对齐规则后在等高卡片上跑，走查仍然 0 处问题）。
+            #
+            # issue #75 之后，任务网格里「同一行」的卡片会被拉伸到该行最高 ——
+            # 也就是说同行的卡**必然等高**，参差只会出现在**不同行之间**。
+            # 所以这里造「跨行参差」：把第一张卡的路径撑到 3 行以上，
+            # 它所在那一行整体变高，与其它行形成高度差。
+            # 夹具：把第一张卡的路径换成**必然折 3 行以上**的长路径，并用内联样式
+            # 解除可能存在的行数上限 —— 内联 `-webkit-line-clamp:unset` 让夹具
+            # 在「旧 CSS（clamp:2）/ 新 CSS（无 clamp）」两种实现下都能造出参差。
+            # 不这么做的话（只换文本），旧 CSS 的 clamp 会把它压回 2 行，
+            # 夹具直接失效、断言退化成「测不了」，判别力就没了。
             page.evaluate(
-                "()=>{const cs=[...document.querySelectorAll('#qasTaskList .lib-card')];"
-                "if(!cs.length)return;"
-                "cs[0].querySelector('.lib-card-title').textContent='X';"
-                "cs[0].querySelector('.lib-card-path').textContent='Y';}")
+                """() => {
+                  const cs = [...document.querySelectorAll('#qasTaskList .lib-card')];
+                  if (!cs.length) return;
+                  const p = cs[0].querySelector('.lib-card-path');
+                  if (!p) return;
+                  p.textContent =
+                    '/影视/电视剧/一条很长的路径用来把第一张卡所在的那一行整体撑高/'
+                    + '再长一点再长一点再长一点再长一点再长一点再长一点';
+                  p.style.webkitLineClamp = 'unset';
+                  p.style.display = 'block';
+                }""")
             page.wait_for_timeout(250)
             s3h = st()
             if s3h["cardHSpread"] < 10:
-                fail("走查夹具失效：造出「一高一矮」两张卡之后高度差只有 {}px，"
-                     "后面的「勾选框对齐」断言在等高卡片上恒为真".format(
-                         s3h["cardHSpread"]))
+                fail("走查夹具失效：把第一张卡的路径撑到 3 行之后，整屏卡片高度"
+                     "极差只有 {}px，「勾选框对齐」断言在等高卡片上恒为真"
+                     .format(s3h["cardHSpread"]))
+            # 真正要断言的：**同一行**的卡必须底边齐（这是 issue #75 的核心）
+            if s3h["rowSpread"] > 2:
+                fail("同一行的卡片底边不齐（极差 {}px）：长路径的卡把该行撑高后，"
+                     "同行的短卡没有跟着拉伸，看上去就是「网格排歪了」"
+                     .format(s3h["rowSpread"]))
             if s3h["cbTopSpread"] > 2:
                 fail("参差卡片（高低差 {}px）的勾选框不在同一条水平线上"
                      "（偏移极差 {}px）：多行卡片里勾选框垂直居中会悬在名称与路径"
@@ -441,7 +491,47 @@ def main():
                            "pathLines": s3["pathLines"],
                            "pathClipped": s3["pathClipped"],
                            "cardHSpread": s3h["cardHSpread"],
+                           "rowSpread": s3h["rowSpread"],
                            "cbTopSpread": s3h["cbTopSpread"]})
+
+            # ---- 6b. 同一行的卡片等高、路径不被截断（issue #75）---------------
+            # 先量**真实数据**：每张卡按内容自然撑高，长的长、短的短都没关系，
+            # 但同一行必须等底。这一条只能在这里量（夹具把某张卡改成 'X'/'Y'
+            # 之后就只剩「一高一矮两张卡」，真实参差形态被覆盖掉了）。
+            if s3["pathClipped"]:
+                fail("卡片里仍有转存路径被省略号截断（{} 张）：issue #75 的"
+                     "「条目高度不一致」有一半就是路径被 clamp 截断"
+                     .format(s3["pathClipped"]))
+            # 专门造出「同一行一长一短」：第一张卡的路径加长到必然折 3 行以上。
+            # 不造的话，等宽同数据的卡片高度天然一致，这条断言恒为真 —— 等于没测。
+            page.evaluate(
+                """() => {
+                  const cs = [...document.querySelectorAll('#qasTaskList .lib-card')];
+                  if (cs.length < 2) return;
+                  const p = cs[0].querySelector('.lib-card-path');
+                  if (!p) return;
+                  p.textContent =
+                    '/影视/电视剧/这是一条非常非常长的路径用来把这张卡撑到三行以上/'
+                    + '再长一点再长一点再长一点再长一点再长一点再长一点再长一点';
+                  p.style.webkitLineClamp = 'unset';
+                  p.style.display = 'block';
+                }""")
+            page.wait_for_timeout(300)
+            s_eq = st()
+            if s_eq["rowSpread"] > 2:
+                fail("同一行的卡片底边不齐（极差 {}px）：网格里长路径的卡把该行"
+                     "撑高之后，短卡没有跟着拉伸，看上去是「网格排歪了」——"
+                     "这正是 issue #75 的截图。修复方向：任务网格用 "
+                     "align-items:stretch（.lib-grid-tasks），路径不 clamp"
+                     .format(s_eq["rowSpread"]))
+            if s_eq["cardHSpread"] < 10:
+                fail("走查夹具失效：把第一张卡的路径撑到 3 行之后，整屏卡片高度"
+                     "极差只有 {}px —— 「同一行等高」的断言在所有卡一样高的数据上"
+                     "恒为真，测不出参差问题".format(s_eq["cardHSpread"]))
+            report.append({"stage": "card-equal-row", "rowSpread": s_eq["rowSpread"],
+                           "rows": s_eq["rowCount"],
+                           "cardHSpread": s_eq["cardHSpread"],
+                           "pathClipped": s3["pathClipped"]})
 
             # ---- 7. 卡片视图下筛选 / 分页 / 每页条数与列表视图一致 --------------
             page.select_option("#qasPageSize", "10")
