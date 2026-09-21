@@ -81,6 +81,70 @@
   `check_search_dropdown_surface_dom.py`（18 项）、
   `check_search_kbd_dom.py`（23 项）无回归。
 
+## [当前] 盘搜链路审计：自动转存 / TMDB 转存 也有「清单被丢掉」的问题（issue #88 追问）
+
+> 用户追问原文：「自动转存和TMDB转存也有类似的pansou问题吗」
+
+先把问题拆开。搜索页那条「类似 pansou 问题」指的不是「搜索页修了、别处没修」，
+而是**那条数据通道在别处是否也被丢掉**。审计结论分两层：
+
+### 一、候选来源：三条链路是**同一条**
+
+`GET /api/search`、自动转存（`run_transfer → _search_single_task`）、
+失效修复（`fix_expired_tasks`）**共用 `transfer.search_pansou()`**。
+TMDB 转存没有自己的搜索实现，`transferTmdbSelection()` 把选中项打包成
+同样的 task 交给 `POST /api/transfer`，走的就是自动转存那条管线。
+所以「自动转存与 TMDB 转存各有一处类似问题」这个判断不成立 ——
+它们是**同一个**问题，只是入口不同。
+
+### 二、差异在消费方式：分享文件清单被丢掉
+
+搜索页把 QAS `get_share_detail` 的 `data.list` 归一化成
+`{total, video_count, episodes, files[]}`（`share_preview` 模块，issue #88 主线修的）。
+而两条自动链路只调 `validate_share_link()` 取一个 `success` 布尔：
+
+| 链路 | 共用 PanSou 搜索 | 消费分享文件清单 | 可见视频数/集数 | 候选挑选 | 搜索关键词 |
+| --- | --- | --- | --- | --- | --- |
+| 搜索页 | ✅ | ✅ | ✅ | 用户手动选 | 用户输入 |
+| 自动转存 | ✅ | ❌（只取 success） | ❌ | `valid_sr[0]` | 纯标题 |
+| 失效修复 | ✅ | ❌ | ❌ | `sr[0]`（先选后校验） | 纯任务名 |
+| TMDB 转存 | ✅（复用同一管线） | ❌ | ❌ | `valid_sr[0]` | 纯标题（TMDB id 只用于去重） |
+
+三条后果：
+
+1. **集数在自动链路上不可见**。搜到「只到第 8 集」的包也照转，用户要到
+   媒体库翻目录才发现 —— 正是 issue #88 要消灭的试错成本，只是换了个入口；
+2. **多条候选时等于按返回顺序赌**。`valid_sr[0]` 取第一条通过校验的候选，
+   现成的「视频文件数」这种廉价择优依据没有被用；
+3. **TMDB 一侧多一层**。`_resolve_tmdb_id()` 解析出的 id 只进历史去重，
+   不参与选候选；搜索关键词仍是纯标题（不带年份/季数），
+   电影/剧集同名只能靠 PanSou 排序。
+
+### 本轮交付（只做审计，不改行为）
+
+行为改动应当是独立一轮（改成按 `video_count` 择优、并在日志里报候选集数），
+本轮先把「已经丢掉的能力」变成可复跑证据：
+
+- 新增 `tests/test_pansou_auto_flows.py`（8 项）：钉住三条链路共用同一次搜索、
+  自动链路只读 success、`valid_sr[0]` / `sr[0]` 的挑选语义、TMDB id 只去重、
+  搜索关键词无年份/季数；
+- 新增 `scripts/audit_pansou_flows.py`：一条命令输出上面那张对照表
+  （`--json` 供机器读），纯静态 + 纯函数，不联网、不打上游、不需要 playwright；
+- `tests/test_build.py` 加 `test_pansou_flow_audit_is_committed`：
+  脚本与结论性测试必须落库，结论不得静默漂移。
+
+### 验证
+
+- `pytest tests/ -q` → **567 passed**（新增 9 项）；
+- `ruff check .` → All checks passed；
+- `python3 scripts/audit_pansou_flows.py` → 三条自动链路 `消费分享文件清单: False`、
+  `可见视频数/集数: False / False`；
+- **反向验证两组**（确认断言真的会红）：
+  1. 让 `validate_share_link` 顺手消费 `share_preview`（即「自动链路也接上清单」）
+     → `test_pansou_auto_flows.py` **2 failed**；
+  2. 把 `chosen = valid_sr[0]` 改成按 `video_count` 择优
+     → **1 failed**（`test_auto_transfer_picks_first_candidate_without_completeness`）。
+
 ## [当前] 集数不再藏在展开里，也不再被年份骗（issue #88 二次反馈）
 
 > 用户原话（带截图）：「还是无法显示里面有多少集」。
