@@ -4152,6 +4152,8 @@ def test_tmdb_placeholder_is_self_contained(dist):
     assert "'<div class=\"tmdb-no-poster\">'" in js, "占位层结构被改动，请同步更新本断言"
     # 尺寸必须由 .tmdb-no-poster 自己负责
     assert ".tmdb-no-poster{" in css, "缺少 .tmdb-no-poster 样式"
+    # 注意：产物里还有 `.tmdb-card:hover .tmdb-no-poster{transform:...}` 这样的
+    # 复合选择器，索引时必须定位到「占位层自身的规则」——用 display:flex 起头。
     rule = css[css.index(".tmdb-no-poster{display:flex"):]
     rule = rule[:rule.index("}")]
     assert "aspect-ratio:2/3" in rule, (
@@ -4163,9 +4165,17 @@ def test_tmdb_placeholder_is_self_contained(dist):
     # 3. 图标尺寸必须在 CSS 里钉死
     icon_rule = css[css.index(".tmdb-no-poster-icon{"):]
     icon_rule = icon_rule[:icon_rule.index("}")]
-    assert "width:64px" in icon_rule and "height:64px" in icon_rule, (
+    # 尺寸取值本身可以调（issue #86 从 64px 收成 52px），但必须「CSS 里写死并且
+    # 与 HTML 的 width/height 属性一致」，否则又会回到「属性当建议值」的老问题。
+    _w = re.search(r"width:(\d+)px", icon_rule)
+    _h = re.search(r"height:(\d+)px", icon_rule)
+    assert _w and _h, (
         ".tmdb-no-poster-icon 未在 CSS 里钉死宽高：只靠 HTML 的 width/height 属性时，"
         "个别引擎会把 svg 压成非等比小块并锚在左上角（issue #82 的形态）"
+    )
+    assert ('width="%s"' % _w.group(1)) in js and ('height="%s"' % _h.group(1)) in js, (
+        "占位图标 CSS 尺寸与 HTML 的 width/height 属性不一致：两个来源打架时，"
+        "宿主引擎按哪个缩放就成了隐式约定（issue #82 的形态）"
     )
     assert "flex:0 0 auto" in icon_rule or "flex-shrink:0" in icon_rule, (
         ".tmdb-no-poster-icon 可被压缩：flex 容器变窄时图标会被挤扁"
@@ -4178,13 +4188,85 @@ def test_tmdb_placeholder_is_self_contained(dist):
         "占位图标 svg 未声明 preserveAspectRatio：宿主引擎可能不按 xMidYMid 缩放"
     )
 
+
+# ------------------------------------------------ TMDB 占位卡观感（issue #86）
+def test_tmdb_placeholder_looks_intentional(dist):
+    """静态防复发（issue #86「占位符太丑」）：
+
+    用户在 issue #82 的几何修复之后仍然抱怨「大量海报加载失败，而且加载失败时的
+    占位符太丑」。「丑」由三个可静态钉住的量决定，真实渲染值由
+    scripts/check_tmdb_placeholder_dom.py 在 8 组视口/主题下量：
+
+      1. 底色不得写死一组颜色 —— 必须全部走 --tmdb-poster-* 令牌，
+         否则深浅主题里必有一套配色是错的（旧版就是深色专用的蓝紫渐变，
+         在浅色主题下变成整屏最重的色块）；
+      2. 底色不得是「带彩度的品牌色」 —— 旧版 #1a1a2e→#0f3460 的 HSV 彩度
+         0.43，而页面底 #0d0d10 只有 0.19，整屏看过去是一块「异色补丁」。
+         这里把「起手色必须落在中性区间」写死（彩度 ≤ 0.30）；
+      3. 图标不得被压暗（旧版 opacity:.35 在深底上几乎看不见），
+         标题不得带描边阴影（在浅色主题下糊成一圈灰晕）。
+    """
+    css, _ = _extract(dist)
+    js = _read(os.path.join(_JS_DIR, "tmdb.js"))
+
+    # 1. 观感参数必须全部由令牌驱动
+    for tok in ("--tmdb-poster-bg", "--tmdb-poster-grid", "--tmdb-poster-glow",
+                "--tmdb-poster-ink"):
+        assert tok in dist, (
+            "设计令牌 {} 缺失：占位观感必须由令牌驱动，深浅主题各配一套，"
+            "不得在 CSS 里写死颜色".format(tok)
+        )
+    # 同理：产物里还有 `.tmdb-card:hover .tmdb-no-poster{transform:...}`，
+    # 索引要落在占位层自身的规则上（display:flex 起头）。
+    np_rule = css[css.index(".tmdb-no-poster{display:flex"):]
+    np_rule = np_rule[:np_rule.index("}")]
+    assert "var(--tmdb-poster-bg" in np_rule, (
+        ".tmdb-no-poster 的底色没有走 --tmdb-poster-bg："
+        "深浅主题里必有一套配色是错的（issue #86 的成因）"
+    )
+
+    # 2. 底色必须是中性色（彩度 ≤ 0.30），不能是带彩度的品牌色
+    import re as _re
+    m = _re.search(r"--tmdb-poster-bg:\s*linear-gradient\([^)]*?#([0-9a-fA-F]{6})", dist)
+    assert m, "取不到 --tmdb-poster-bg 的起手色，令牌写法可能被改动"
+    _hex = m.group(1)
+    _rgb = [int(_hex[i:i + 2], 16) / 255.0 for i in (0, 2, 4)]
+    _mx, _mn = max(_rgb), min(_rgb)
+    _chroma = (_mx - _mn) / _mx if _mx else 0.0
+    assert _chroma <= 0.30, (
+        "--tmdb-poster-bg 的起手色 #{} 彩度 {:.2f}（>0.30）："
+        "页面底 #0d0d10 是近中性色，带彩度的瓦片会读成一块「异色补丁」——"
+        "这正是 issue #86 里「占位符太丑」的第一层".format(_hex, _chroma)
+    )
+
+    # 3. 图标不得被压暗、标题不得带描边阴影
+    icon_rule = css[css.index(".tmdb-no-poster-icon{"):]
+    icon_rule = icon_rule[:icon_rule.index("}")]
+    assert "opacity:.35" not in icon_rule and "opacity:0.35" not in icon_rule, (
+        "图标又被压到 opacity .35：在深色瓦片上几乎看不见（issue #86）"
+    )
+    title_rule = css[css.index(".tmdb-no-poster-title{"):]
+    title_rule = title_rule[:title_rule.index("}")]
+    assert "text-shadow" not in title_rule, (
+        "占位标题又加回了 text-shadow：浅色主题下会糊成一圈灰晕（issue #86）"
+    )
+
+    # 4. 「加载失败」必须与「本来没封面」区分开，并且先重试再降级
+    assert "data-tmdbRetry" in js, (
+        "封面图加载失败时没有再试一次：瞬时抖动会被直接当成「没有封面」，"
+        "用户白白少一张海报（issue #86「大量海报加载失败」）"
+    )
+    assert "tmdb-poster-failed" in js, (
+        "加载失败没有在 DOM 上留标记：走查无法区分「图挂了」与「本来没封面」"
+    )
+
     # 4. 标题居中
     title_rule = css[css.index(".tmdb-no-poster-title{font-size"):]
     title_rule = title_rule[:title_rule.index("}")]
     assert "-webkit-line-clamp" in title_rule, (
         ".tmdb-no-poster-title 缺少行数收敛：长标题会把图标挤出可视区"
     )
-    assert "text-align:center" in rule or "align-items:center" in rule, (
+    assert "text-align:center" in np_rule or "align-items:center" in np_rule, (
         ".tmdb-no-poster 未居中内容"
     )
 
