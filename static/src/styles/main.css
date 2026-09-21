@@ -952,20 +952,32 @@ input[type="radio"]:focus-visible{outline:2px solid var(--accent);outline-offset
   display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:700;z-index:2}
 .tmdb-poster{width:100%;aspect-ratio:2/3;object-fit:cover;background:rgba(255,255,255,.03);display:block;transition:transform .3s var(--ease-standard);-webkit-user-drag:none;user-select:none}
 .tmdb-card:hover .tmdb-poster,.tmdb-card:hover .tmdb-no-poster{transform:scale(1.05)}
-/* 无封面占位：深色渐变背景 + 半透明大图标 + 居中标题，观感更统一 */
-.tmdb-no-poster{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;
-  width:100%;aspect-ratio:2/3;box-sizing:border-box;padding:14px;
-  background:var(--tmdb-poster-bg, linear-gradient(135deg,#1a1a2e 0%,#16213e 50%,#0f3460 100%));
-  color:var(--text2);text-align:center;user-select:none}
+/* 无封面占位（issue #86 重做）：
+   旧版是「深蓝紫斜向渐变 + opacity .35 的 64px 图标 + 带黑描边的标题」，
+   在深色页面上是一块异色补丁、图标淡到几乎看不见、标题的 text-shadow
+   在浅色主题下还会糊成一团灰边。现在改成与主题同色系的中性底：
+   柔和渐变 + 极淡的胶片格纹 + 一枚径向光斑，图标与标题都取
+   「可读但不抢眼」的中间调（--tmdb-poster-ink），并且不再有描边阴影。 */
+.tmdb-no-poster{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:0;
+  width:100%;aspect-ratio:2/3;box-sizing:border-box;padding:16px;position:relative;overflow:hidden;
+  background:var(--tmdb-poster-bg, linear-gradient(168deg,#1b1e29 0%,#111319 100%));
+  color:var(--tmdb-poster-ink, var(--text2));text-align:center;user-select:none}
+/* 胶片格纹（::before）与径向光斑（::after）：纯装饰、不吃指针事件，
+   都用绝对定位铺在底上，图标/标题靠 z-index 压在上层。 */
+.tmdb-no-poster::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:var(--tmdb-poster-grid, none)}
+.tmdb-no-poster::after{content:'';position:absolute;left:-25%;top:8%;width:150%;height:56%;
+  border-radius:50%;pointer-events:none;background:var(--tmdb-poster-glow, none)}
 /* 图标尺寸在 CSS 里钉死：只靠 HTML 的 width/height 属性时，
    个别引擎（旧 WebKit / 内置浏览器 / 带 UA 样式的宿主）会把属性当建议值，
    SVG 于是被压成非等比的小方块并贴到容器左上角 —— 就是 issue #82 截图里
    「图标缩在左上、标题却居中」的形态。显式宽高 + 不参与收缩，任何引擎都一致。 */
-.tmdb-no-poster-icon{width:64px;height:64px;flex:0 0 auto;align-self:center;
-  display:block;opacity:.35;color:var(--text2)}
-.tmdb-no-poster-title{font-size:var(--fs-sm);font-weight:600;line-height:1.4;color:var(--text);max-width:92%;
-  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
-  text-shadow:0 1px 3px rgba(0,0,0,.55)}
+.tmdb-no-poster-icon{width:52px;height:52px;flex:0 0 auto;align-self:center;
+  display:block;position:relative;z-index:1;opacity:1;color:var(--tmdb-poster-ink, var(--text2))}
+.tmdb-no-poster-title{font-size:var(--fs-sm);font-weight:600;line-height:1.45;max-width:90%;
+  position:relative;z-index:1;margin-top:12px;
+  color:var(--tmdb-poster-ink, var(--text));
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
 .tmdb-poster-wrap{overflow:hidden;position:relative}
 .tmdb-poster-wrap::after{content:'';position:absolute;bottom:0;left:0;right:0;height:60px;
   background:linear-gradient(transparent,rgba(0,0,0,.8));pointer-events:none}

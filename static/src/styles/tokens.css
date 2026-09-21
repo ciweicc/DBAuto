@@ -76,8 +76,16 @@
   --gradient-brand-hover: linear-gradient(135deg, color-mix(in srgb, var(--accent) 85%, #fff), color-mix(in srgb, var(--accent2) 85%, #fff));
   --gradient-btn: linear-gradient(135deg, #0071e3, var(--accent2));
 
-  /* 无封面占位背景（OPT-38）：深色主题下的渐变 */
-  --tmdb-poster-bg: linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%);
+  /* 无封面占位（issue #86）：与主题同色系的中性渐变 + 装饰参数。
+     旧的 #1a1a2e→#0f3460 是「深蓝紫」品牌色，贴在 #0d0d10 的页面上像一块
+     异色补丁；换成近中性冷灰后，占位卡读起来是「这张卡还没有封面」而不是
+     「这里坏了一块」。 */
+  --tmdb-poster-bg: linear-gradient(168deg, #191b21 0%, #101318 100%);
+  --tmdb-poster-grid: repeating-linear-gradient(0deg, transparent 0 26px, rgba(255,255,255,.028) 26px 27px),
+                      repeating-linear-gradient(90deg, transparent 0 26px, rgba(255,255,255,.028) 26px 27px);
+  --tmdb-poster-glow: radial-gradient(closest-side, rgba(10,132,255,.16), transparent 100%);
+  --tmdb-poster-ink: rgba(255,255,255,.70);
+  --tmdb-poster-ink-soft: rgba(255,255,255,.42);
 
   /* Grid + glow background */
   --grid-size: 40px;
@@ -278,8 +286,13 @@
 
   --gradient-btn: linear-gradient(135deg, #0066d6, var(--accent2));
 
-  /* 无封面占位背景（OPT-38）：浅色主题下的渐变 */
-  --tmdb-poster-bg: linear-gradient(135deg, #eef0f5 0%, #e3e7f0 50%, #d7def0 100%);
+  /* 无封面占位（issue #86）：浅色主题下的同色系中性渐变 */
+  --tmdb-poster-bg: linear-gradient(168deg, #e9edf5 0%, #dbe1ee 100%);
+  --tmdb-poster-grid: repeating-linear-gradient(0deg, transparent 0 26px, rgba(0,0,0,.030) 26px 27px),
+                      repeating-linear-gradient(90deg, transparent 0 26px, rgba(0,0,0,.030) 26px 27px);
+  --tmdb-poster-glow: radial-gradient(closest-side, rgba(10,132,255,.12), transparent 100%);
+  --tmdb-poster-ink: rgba(0,0,0,.60);
+  --tmdb-poster-ink-soft: rgba(0,0,0,.42);
 
   --shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.22);
   --shadow-sm: 0 4px 14px -8px rgba(0, 0, 0, 0.18);

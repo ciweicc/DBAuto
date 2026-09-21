@@ -94,7 +94,15 @@ var TMDB_NEAR_BOTTOM_PX = 900;       // 接近底部的触发距离（越大越�
 var TMDB_APPEND_COOLDOWN_MS = 1500;  // 一次成功追加加载完成后的最小冷却时间
 var TMDB_BACK_TOP_THRESHOLD = 600;   // “回到顶部”按钮出现的滚动阈值（.content scrollTop，单位 px）
 
-// 无封面占位卡片的 HTML：渐变底 + 半透明大图标 + 居中标题。
+// 无封面占位卡片的 HTML：主题同色系的柔和底 + 一枚图标 + 居中标题。
+//
+// issue #86「占位符太丑」：旧配色是 #1a1a2e→#0f3460 的深蓝紫斜向渐变，
+// 与页面底色（--bg #0d0d10）不是一个色系，整屏看过去像贴了块异色补丁；
+// 图标 opacity 只有 .35，实际接近不可见；标题还带一层黑描边阴影，在浅色
+// 主题下变成一圈灰晕。现在底色/格纹/光斑/墨色全部走设计令牌
+// （--tmdb-poster-*），深浅主题各自配套；图标放大到 52px 且不再压暗，
+// 标题去掉描边。装饰层（格纹、光斑）由 CSS 的 ::before/::after 负责，
+// 这里只输出语义结构，保证占位层与真实 <img> 的 DOM 层级一致。
 //
 // issue #82「占位图错乱」：占位层此前复用 .tmdb-poster，而那条规则是为
 // <img> 写的（width:100% + aspect-ratio:2/3 + object-fit:cover + display:block）。
@@ -108,19 +116,49 @@ var TMDB_BACK_TOP_THRESHOLD = 600;   // “回到顶部”按钮出现的滚动�
 function tmdbNoPosterHtml(title){
   var safeTitle = esc(title || '');
   return '<div class="tmdb-no-poster">'
-    + '<svg class="tmdb-no-poster-icon" width="64" height="64" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-movie"/></svg>'
+    + '<svg class="tmdb-no-poster-icon" width="52" height="52" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-movie"/></svg>'
     + '<span class="tmdb-no-poster-title">' + safeTitle + '</span>'
     + '</div>';
 }
 
-// 封面图加载失败时的兜底：用富占位替换 <img>，并尽量从卡片 DOM 中取出标题。
+// 封面图加载失败时的兜底。
+//
+// issue #86「大量海报加载失败」分两类，必须分开处理，否则会把「网络抖动」
+// 也一并钉死成占位卡：
+//   1. 该条目本来就没有 poster_path（后端返回空 poster）→ 直接渲染占位，
+//      根本不会走到这里（见 tmdbCardHtml）；
+//   2. poster_path 失效 / 图片服务抖动 / 被中间层拦掉 → 走到这里。
+// 第 2 类里，瞬时的 CDN 抖动**重试一次就能救回来**，而重试成本极低。
+// 因此：先在同一张 <img> 上重试一次（加 cache-buster 绕开失败缓存），
+// 再失败才换占位卡 —— 这一条把「偶尔加载失败」和「真的没有封面」区分开了。
+//
+// data-tmdbRetry 记在 img 自身的 dataset 上（不是全局 Map），这样卡片被
+// 重渲染/替换后计数自然归零，不会出现「某个 URL 永久只许失败一次」的残留。
+var TMDB_POSTER_RETRY = 1;
+
 function tmdbPosterFallback(img){
+  var url = '';
+  try{ url = img.getAttribute('src') || ''; }catch(e){ url = ''; }
+
+  // 第一跳：同一张图重试一次（只对 http(s) 生效，data: URL 重试无意义）
+  var tries = 0;
+  try{ tries = parseInt(img.getAttribute('data-tmdbRetry') || '0', 10) || 0; }catch(e){ tries = 0; }
+  if(tries < TMDB_POSTER_RETRY && /^https?:/i.test(url)){
+    img.setAttribute('data-tmdbRetry', String(tries + 1));
+    // origin 的 onerror 已经触发过；这里换成新 URL 再试，失败会再次进入本函数
+    img.setAttribute('src', url + (url.indexOf('?') < 0 ? '?' : '&') + 'tmdb_retry=1');
+    return;
+  }
+
+  // 第二跳：真的取不到图 —— 换成占位卡，并把「是加载失败」这件事记在卡片上，
+  // 供走查脚本与用户区分「无封面」和「图挂了」。
   var title = '';
   try{
     var card = img.closest ? img.closest('.tmdb-card') : null;
     if(card){
       var tEl = card.querySelector('.tmdb-title');
       if(tEl) title = tEl.textContent || (tEl.innerText || '');
+      card.classList.add('tmdb-poster-failed');
     }
   }catch(e){ /* 取不到标题就只显示图标 */ }
   img.outerHTML = tmdbNoPosterHtml(title);
