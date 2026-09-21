@@ -30,6 +30,7 @@ python scripts/check_qas_view_dom.py --serve # QAS 任务表列表/卡片视图�
 python scripts/check_login_dom.py --serve    # 登录页真实合成对比度/磨砂/色带走查（改登录页后必跑）
 python scripts/check_transfer_schedule_dom.py --serve # 转存页/定时任务管理走查（改转存页后必跑）
 python scripts/check_search_kbd_dom.py --serve # 顶栏搜索框快捷键走查（改快捷键/顶栏后必跑）
+python scripts/check_share_detail_dom.py --serve # 搜索结果文件清单展开走查（改搜索结果/分享预览后必跑）
 python scripts/check_sidebar_dom.py --serve  # 侧边栏选中动效走查（改导航/侧边栏后必跑）
 python scripts/check_tmdb_placeholder_dom.py --serve # TMDB 无封面占位卡居中/同轴走查（改占位图后必跑）
 ```
@@ -75,6 +76,14 @@ python scripts/check_tmdb_placeholder_dom.py --serve # TMDB 无封面占位卡�
 > 东西（命令面板已挪到 `Ctrl/⌘ + /`）；徽标按平台显示（Windows 没有 ⌘ 键）；
 > 焦点在别的输入框里时按下要**跳过来且不留下字面 k**；窄视口下搜索框默认
 > `display:none`，按下必须先展开移动搜索层再聚焦，否则就是「按了没反应」。
+>
+> `scripts/check_share_detail_dom.py` 覆盖搜索结果的「文件清单」展开（issue #88：
+> 「搜出来点进去不能看集数全不全」）。它钉住的是「展开这件事真的发生了、且真的
+> 拿到了清单」：有链接的结果才给「文件」入口、**展开前零请求**（懒加载）、
+> 展开后真的渲染出文件行与体积、集号摘要真的**把缺口指出来**（缺 8、9）、
+> 再点一下真的收起、**二次展开零请求**（前端缓存）、失败态**带真实原因**
+> （静默空白会让人以为分享是空的）。反向验证：把集号摘要改成只显示条目数，
+> 它立刻红 1 项。
 >
 > `scripts/check_qas_keys_dom.py` 覆盖 QAS 任务表的键盘选择：Ctrl+A 只勾**当前
 > 可见行**（筛选/分页后不越界）、Shift+↑↓ 可扩可缩且不吞掉先前选择、↑↓ 到页末

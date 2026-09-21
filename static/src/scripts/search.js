@@ -118,13 +118,118 @@ function searchSetActive(i){
     var on = idx===i;
     o.classList.toggle('active', on);
     o.setAttribute('aria-selected', on ? 'true':'false');
-    if(on){ o.style.background='rgba(10,132,255,.08)'; o.style.paddingLeft='18px'; }
-    else { o.style.background=''; o.style.paddingLeft=''; }
+    var main = o.querySelector('.search-item-main') || o;
+    if(on){ main.style.background='rgba(10,132,255,.08)'; main.style.paddingLeft='18px'; }
+    else { main.style.background=''; main.style.paddingLeft=''; }
   });
   var opt=searchOptions[i];
   if(!opt.id) opt.id='search-opt-'+i;
   document.getElementById('searchInput').setAttribute('aria-activedescendant', opt.id);
   opt.scrollIntoView({block:'nearest'});
+}
+
+// ---------- 分享文件清单预览（issue #88）----------
+// 用户诉求：「搜索资源的功能搜出来点进去不能看集数全不全」。
+// 过去搜索结果只有一行标题 + 链接是否有效，想确认「是不是全集」只能先转存
+// 再去媒体库翻 —— 试错成本高。QAS 的 get_share_detail 本来就把分享根目录的
+// 文件清单拉回来了，只是被丢掉；这里把它展开给用户看。
+var searchDetailSeq = 0;
+
+// 集号摘要的后端文案：把「认出的集号 / 缺口」翻译成一句人话。
+// 刻意不下「是否全集」的结论（后端只回可观测量），措辞必须保持中性。
+function epSummaryText(res){
+  if(!res || !res.ok) return '';
+  if(!res.video_count) return '';
+  var ep = res.episodes || {};
+  var nums = ep.numbers || [];
+  if(nums.length < 2) return '共 ' + res.video_count + ' 个视频文件';
+  var txt = '共 ' + res.video_count + ' 个视频文件 · 检出集号 ' + nums[0] + '-' + nums[nums.length-1];
+  if(ep.continuous) txt += ' · 未见断档';
+  else txt += ' · 缺 ' + (ep.missing||[]).join('、');
+  return txt;
+}
+
+// 渲染文件清单面板内容（成功 / 空 / 失败三态）。
+function renderShareDetail(panel, res){
+  panel.textContent = '';
+  if(!res || !res.ok){
+    var err = document.createElement('div');
+    err.className = 'search-detail-msg';
+    err.textContent = (res && res.message) || '读取分享文件失败';
+    panel.appendChild(err);
+    return;
+  }
+  var files = res.files || [];
+  if(!files.length){
+    var empty = document.createElement('div');
+    empty.className = 'search-detail-msg';
+    empty.textContent = '这个分享里没有文件（可能是空的目录）';
+    panel.appendChild(empty);
+    return;
+  }
+  var sum = document.createElement('div');
+  sum.className = 'search-detail-sum';
+  sum.textContent = epSummaryText(res) || ('共 ' + res.total + ' 个条目');
+  panel.appendChild(sum);
+
+  var list = document.createElement('div');
+  list.className = 'search-detail-list';
+  files.forEach(function(f){
+    var row = document.createElement('div');
+    row.className = 'search-detail-row' + (f.dir ? ' is-dir' : '');
+    var name = document.createElement('span');
+    name.className = 'search-detail-name';
+    name.textContent = f.name;
+    name.title = f.name;
+    row.appendChild(name);
+    var meta = document.createElement('span');
+    meta.className = 'search-detail-size';
+    meta.textContent = f.dir ? '目录' : fmtSize(f.size);
+    row.appendChild(meta);
+    list.appendChild(row);
+  });
+  panel.appendChild(list);
+  if(res.truncated){
+    var more = document.createElement('div');
+    more.className = 'search-detail-msg';
+    more.textContent = '仅显示前 ' + files.length + ' 个，共 ' + res.total + ' 个';
+    panel.appendChild(more);
+  }
+}
+
+// 展开/收起一条搜索结果的文件清单。首次展开才请求（懒加载），二次展开走缓存。
+async function toggleShareDetail(btn){
+  var item = btn.closest('.search-item');
+  if(!item) return;
+  var panel = item.querySelector('.search-detail');
+  if(!panel) return;
+  if(panel.classList.contains('show')){
+    panel.classList.remove('show');
+    btn.textContent = '文件';
+    btn.setAttribute('aria-expanded','false');
+    return;
+  }
+  panel.classList.add('show');
+  btn.textContent = '收起';
+  btn.setAttribute('aria-expanded','true');
+  if(panel.dataset.loaded === '1') return;
+  var url = btn.dataset.url;
+  if(!url) return;
+  var seq = ++searchDetailSeq;
+  panel.textContent = '';
+  var loading = document.createElement('div');
+  loading.className = 'search-detail-msg';
+  loading.textContent = '正在读取文件清单…';
+  panel.appendChild(loading);
+  try{
+    var d = await apiGet('/api/share_detail?url=' + encodeURIComponent(url), 1);
+    if(seq !== searchDetailSeq) return;   // 已有新展开请求，丢弃过期回调
+    panel.dataset.loaded = '1';
+    renderShareDetail(panel, d);
+  }catch(e){
+    if(seq !== searchDetailSeq) return;
+    renderShareDetail(panel, {ok:false, message:'读取分享文件失败：' + (e.message||'网络错误')});
+  }
 }
 
 async function doSearch(){
@@ -168,6 +273,11 @@ async function doSearch(){
       item.setAttribute('role','option');
       item.setAttribute('id','search-opt-'+i);
       item.setAttribute('aria-selected','false');
+      // 主行：标题 / 来源 / 链接检测徽标 + 操作按钮。
+      // 高亮位移（searchSetActive 里的 paddingLeft）作用在这一层，
+      // 不能作用在 .search-item 上 —— 那样展开的文件清单会跟着一起缩进。
+      var main = document.createElement('div');
+      main.className = 'search-item-main';
       var infoDiv = document.createElement('div');
       infoDiv.style.cssText = 'flex:1;min-width:0';
       var titleDiv = document.createElement('div');
@@ -182,14 +292,34 @@ async function doSearch(){
       infoDiv.appendChild(titleDiv);
       infoDiv.appendChild(sourceDiv);
       infoDiv.appendChild(badge);
+      var actions = document.createElement('div');
+      actions.className = 'search-item-actions';
+      // 「文件」按钮：展开该分享的文件清单，用来判断集数全不全（issue #88）。
+      // 无链接的结果不给这个入口（没东西可预览）。
+      if(r.url){
+        var fileBtn = document.createElement('button');
+        fileBtn.className = 'btn btn-sm btn-outline search-detail-toggle';
+        fileBtn.type = 'button';
+        fileBtn.textContent = '文件';
+        fileBtn.dataset.url = r.url;
+        fileBtn.setAttribute('aria-expanded','false');
+        fileBtn.title = '查看分享里的文件清单（判断集数全不全）';
+        fileBtn.addEventListener('click', function(e){ e.stopPropagation(); toggleShareDetail(this); });
+        actions.appendChild(fileBtn);
+      }
       var btn = document.createElement('button');
       btn.className = 'btn btn-sm btn-primary';
       btn.textContent = '转存';
       btn.dataset.title = r.title;
       btn.dataset.url = r.url;
       btn.addEventListener('click', function(){ transferOne(this); });
-      item.appendChild(infoDiv);
-      item.appendChild(btn);
+      actions.appendChild(btn);
+      main.appendChild(infoDiv);
+      main.appendChild(actions);
+      item.appendChild(main);
+      var panel = document.createElement('div');
+      panel.className = 'search-detail';
+      item.appendChild(panel);
       el.appendChild(item);
       searchOptions.push(item);
       if(r.url){ checkItems.push({url:r.url, badge:badge, btn:btn, seq:seq}); }
