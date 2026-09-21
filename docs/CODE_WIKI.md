@@ -561,7 +561,9 @@ PanSou 搜索服务客户端。
 - `get_data()` - 获取所有任务数据
 - `get_share_detail(shareurl)` - 获取分享链接详情
   （其 `data.list` 的分页合并结果经 `share_preview.normalize_share_detail`
-  归一化后，由 `GET /api/share_detail` 暴露给搜索结果的「文件」按钮，issue #88）
+  归一化后，由 `GET /api/share_detail` 暴露给搜索结果的「文件」按钮，issue #88。
+  注意：该接口由前端**点开「文件」时才调用**，结果直出不做任何预热 ——
+  QAS 每次实查且严格限速，N 条结果预热 N 次会把首屏拖慢，见 issue #88 第五轮）
 - `add_task(taskname, shareurl, savepath, pattern, replace)` - 添加任务
 - `run_script_now(tasklist)` - 立即执行脚本
 - `run_script_now_stream(tasklist)` - 流式执行脚本

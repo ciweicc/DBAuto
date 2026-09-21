@@ -17,7 +17,7 @@
   1. 每条有链接的结果都带「文件」按钮；无链接的条目不给这个入口
   2. 未展开时面板不可见（不是「藏了一半」）
   3. 点击 → 面板展开、按钮变成「收起」、aria-expanded=true
-  4. 结果行不再显示任何集数推断（用户第三轮明确否掉；它也必须不占请求）
+  4. 结果行不再显示任何集数推断（用户明确否掉：识别不准；它也必须不占请求）
   5. 请求 URL 带了 url 参数（不带就是拿不到清单的假请求）
   6. 载入中先给反馈（不能是空白面板）
   7. 渲染出文件行（名称 + 体积/目录）+ 条目数摘要 + 截断提示
@@ -26,6 +26,9 @@
  10. 二次展开命中缓存：不再发第二个请求
  11. 展开后下拉高度不溢出窗口（面板不能把结果顶出视口）
  12. 链接检测走**一次批量请求**（逐条检测＝N 个请求，就是「慢」的来源）
+ 13. 清单**一条都不预热**：结果直出只带标题/来源/链接徽标，
+     展开那一条才发一次请求（上游请求数 1 + 1 + N → 1 + 1）
+ 14. 上游卡住（--slow）时结果行仍然先出 —— 首屏不等清单
 
 依赖：playwright + chromium（与其它走查脚本同依赖）。
 无依赖 / 无产物时以退出码 0 跳过（与其它走查脚本一致）。
@@ -43,6 +46,7 @@ import json
 import os
 import sys
 import threading
+import time
 import urllib.parse
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -70,18 +74,16 @@ def _batch_stub(urls):
             out[u] = {"valid": True, "checked": True, "message": "链接正常"}
     return {"success": True, "results": out}
 
-# 分享详情桩：12 集但缺 8、9 —— 正好覆盖「缺集要指出来」这条核心诉求
+# 分享详情桩：只给**原始清单**与可数计数，没有任何集号推断
+# （用户第五轮原话：「在日志里报出候选集数还是太麻烦了，因为有识别不准的情况」）。
 DETAIL_STUB = {
     "ok": True,
     "message": "",
-    "title": "某剧 - 全 12 集",
+    "title": "某剧",
     "total": 13,
     "video_count": 10,
     "dir_count": 1,
     "truncated": True,
-    # 后端会一并给出集号摘要（缺 8、9）——前端那句「缺 8、9」就靠它
-    "episodes": {"numbers": [1, 2, 3, 4, 5, 6, 7, 10, 11, 12],
-                 "missing": [8, 9], "continuous": False},
     "files": (
         [{"name": "某剧/", "dir": True, "size": 0, "fid": "d1", "type": "dir"}]
         + [{"name": "某剧.S01E{:02d}.mkv".format(i), "dir": False,
@@ -91,8 +93,7 @@ DETAIL_STUB = {
 }
 
 FAIL_STUB = {"ok": False, "message": "分享已失效", "files": [],
-             "total": 0, "video_count": 0, "dir_count": 0, "truncated": False,
-             "episodes": {"numbers": [], "missing": [], "continuous": False}}
+             "total": 0, "video_count": 0, "dir_count": 0, "truncated": False}
 
 STUBS = {
     "/api/categories": {"movie": [], "tv": [], "variety": []},
@@ -163,6 +164,9 @@ MEASURE = r"""
     btnExpanded: btn ? btn.getAttribute('aria-expanded') : null,
     dropdownRect: rect(dropdown),
     viewportH: window.innerHeight,
+    mainText: q('.search-item-main') ? q('.search-item-main').textContent.trim() : '',
+    hasLoading: qa('.search-detail-loading').length,
+    itemCount: qa('.search-item').length,
   };
 }
 """
@@ -178,6 +182,8 @@ def _route_factory(state):
             return route.fulfill(status=200, content_type="text/event-stream", body=b"")
         if path == "/api/search":
             state["search"] += 1
+            if state.get("slow"):
+                time.sleep(state["slow"])
             body = SEARCH_STUB
         elif path == "/api/check_links":
             state["check_batch"] += 1
@@ -202,6 +208,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--serve", action="store_true")
+    ap.add_argument("--slow", type=float, default=0.0,
+                    help="给 /api/search 桩加 N 秒延迟，用于度量「结果先出、清单后补」")
     args = ap.parse_args()
 
     if not os.path.isfile(DIST):
@@ -229,7 +237,7 @@ def main():
             problems.append("{}：{}".format(name, detail))
 
     state = {"search": 0, "detail": 0, "detail_urls": [], "force_fail": False,
-             "check_batch": 0, "check_single": 0, "check_urls": []}
+             "check_batch": 0, "check_single": 0, "check_urls": [], "slow": args.slow}
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(args=["--no-sandbox"], **_launch_kwargs())
@@ -245,16 +253,16 @@ def main():
             def ms(page):
                 return page.evaluate(MEASURE)
 
-            def search(page):
+            def search(page, extra=0):
                 page.evaluate(
                     "()=>{var i=document.getElementById('searchInput');"
                     "i.value='某剧';i.dispatchEvent(new Event('input',{bubbles:true}));}")
-                # onSearchInput 有 500ms 防抖
-                page.wait_for_timeout(900)
+                # onSearchInput 有 500ms 防抖；--slow 时再额外等上游
+                page.wait_for_timeout(900 + int(extra * 1000))
 
             # ---------------- 展开 / 收起 ----------------
             page = open_page(state)
-            search(page)
+            search(page, extra=args.slow)
             st = ms(page)
             ok("搜索结果渲染出条目", st["items"] >= 1, "items = {}".format(st["items"]))
             ok("有链接的结果带「文件」按钮（无链接的不给）",
@@ -283,11 +291,12 @@ def main():
                any("链接失效" in b for b in st["badges"])
                and any("链接正常" in b for b in st["badges"]),
                "badges = {}".format([b[-12:] for b in st["badges"]][:3]))
-            # 文件清单仍会预热（展开即用），但它是【并行】的，不阻塞检测渲染；
-            # 有链接的结果各预热一次，展开本身不再新增请求。
-            ok("展开前已预热两条结果的清单（懒加载仍成立）",
-               state["detail"] == 2,
-               "detail calls = {}（应为 2：两条有链接的结果各预热一次）".format(state["detail"]))
+            # 清单接口打的是 QAS 实查，慢且严格限速。
+            # 结果直出**只**带标题/来源/链接徽标：一条清单都不预热，
+            # 上游请求数从「1 + 1 + N」降到「1 + 1」。
+            ok("结果直出零清单请求（20 条结果不再打 20 次 QAS）",
+               state["detail"] == 0,
+               "detail calls = {}（应为 0：清单一律等用户点开）".format(state["detail"]))
             ok("按钮初始 aria-expanded=false",
                st["btnExpanded"] == "false", "aria-expanded = {!r}".format(st["btnExpanded"]))
             ok("按钮初始文案为「文件」", st["btnText"] == "文件",
@@ -311,8 +320,10 @@ def main():
                "btnText = {!r}".format(st["btnText"]))
             ok("展开后 aria-expanded=true", st["btnExpanded"] == "true",
                "aria-expanded = {!r}".format(st["btnExpanded"]))
-            ok("展开本身不再新增请求（清单已预热）", state["detail"] == 2,
-               "detail calls = {}（应为预热的 2 次，展开不多打）".format(state["detail"]))
+            # 点开才取数：这次展开**才是**第一个清单请求，且恰好一条
+            ok("点开才取数：展开请求恰好一条（不是 20 条）",
+               state["detail"] == 1,
+               "detail calls = {}（应为 1：只有被点开的那条）".format(state["detail"]))
             ok("请求 URL 带上了分享链接（不带＝拿不到清单）",
                state["detail_urls"] and "url=" in state["detail_urls"][0],
                "url = {}".format(state["detail_urls"][:1]))
@@ -329,6 +340,15 @@ def main():
             ok("摘要只报条目数/目录数/视频数（不做集数推断）",
                "条目" in st["summary"] and "集" not in st["summary"],
                "summary = {!r}".format(st["summary"]))
+            # 集号推断已被彻底移除（用户第五轮：「报候选集数太麻烦，
+            # 因为有识别不准的情况」）。钉住「响应体里没有、DOM 里也没有」。
+            ok("清单响应里不再带集号字段（episodes/missing）",
+               "episodes" not in json.dumps(DETAIL_STUB)
+               and not any("missing" in k for k in DETAIL_STUB),
+               "stub keys = {}".format(sorted(DETAIL_STUB)))
+            ok("面板里不再出现「共 N 集 / 缺 N」类断言",
+               "缺 " not in st["panelText"] and "共 12 集" not in st["panelText"],
+               "panelText = {!r}".format(st["panelText"][:60]))
             ok("摘要字号已提到 12px（旧版 11px）",
                st["sumFs"] == "12px", "sumFs = {!r}".format(st["sumFs"]))
             ok("截断提示存在（total > 显示数）",
@@ -355,15 +375,44 @@ def main():
             st = ms(page)
             ok("二次展开仍有内容（缓存可用）", st["rows"] == 11,
                "rows = {}".format(st["rows"]))
-            ok("二次展开不再发请求（前端缓存）", state["detail"] == 2,
-               "detail calls = {}（应仍为 2：只有预热的那两次）".format(state["detail"]))
+            ok("二次展开不再发请求（前端缓存）", state["detail"] == 1,
+               "detail calls = {}（应仍为 1：复用已取回的那份）".format(state["detail"]))
+            page.close()
+
+            # ---------------- 上游卡住时：结果先出 ----------------
+            # 用户体感的那句「搜索慢」，一半是等清单。用 3s 的 /api/search 桩
+            # 把上游卡住，量的是**两块内容各自的到达时刻**：
+            #   结果行（标题/来源/链接徽标）一到就渲染 → 用户马上能读、能转存；
+            #   文件清单不参与首屏 → 上游再慢也不拖慢结果。
+            state_slow = {"search": 0, "detail": 0, "detail_urls": [], "force_fail": False,
+                          "check_batch": 0, "check_single": 0, "check_urls": [],
+                          "slow": args.slow}
+            page = open_page(state_slow)
+            page.evaluate(
+                "()=>{var i=document.getElementById('searchInput');"
+                "i.value='某剧';i.dispatchEvent(new Event('input',{bubbles:true}));}")
+            # 500ms 防抖 + 搜索桩延迟（--slow）后稍等一点，结果行应已渲染
+            page.wait_for_timeout(500 + int(args.slow * 1000) + 700)
+            st_mid = ms(page)
+            if args.slow:
+                ok("上游卡住时结果行先到（不等清单）",
+                   st_mid["items"] >= 1 and st_mid["mainText"].startswith("某剧"),
+                   "items={} mainText={!r}".format(st_mid["items"], st_mid["mainText"][:30]))
+                ok("上游卡住时清单仍是零请求（不参与首屏）",
+                   state_slow["detail"] == 0,
+                   "detail calls = {}".format(state_slow["detail"]))
+            else:
+                ok("默认模式下结果行同样先到（不等清单）",
+                   st_mid["items"] >= 1,
+                   "items = {}".format(st_mid["items"]))
             page.close()
 
             # ---------------- 失败态 ----------------
             state_fail = {"search": 0, "detail": 0, "detail_urls": [], "force_fail": True,
-                          "check_batch": 0, "check_single": 0, "check_urls": []}
+                          "check_batch": 0, "check_single": 0, "check_urls": [],
+                          "slow": args.slow}
             page = open_page(state_fail)
-            search(page)
+            search(page, extra=args.slow)
             stf = ms(page)
             ok("失败态下结果行不出现集数推断（依旧不猜）",
                stf["epNodes"] == 0, "epNodes = {}".format(stf["epNodes"]))
