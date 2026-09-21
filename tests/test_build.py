@@ -4453,3 +4453,30 @@ def test_sidebar_dom_script_present(dist):
     for key in ("indRect", "activeRect", "indOn", "activeShadow",
                 "pulseCount", "indTransition", "indDuration"):
         assert key in body, "脚本未度量 {!r}（该场景会静默漏检）".format(key)
+
+
+def test_pansou_flow_audit_is_committed():
+    """盘搜链路审计（issue #88 追问）必须落库，且结论不被静默改掉。
+
+    用户问「自动转存和 TMDB 转存也有类似的 pansou 问题吗」——
+    审计的答案本身要可复跑，否则「下次又得重新排查一遍」。
+    同时钉住结论：两条自动链路**只取 success 布尔、丢弃分享文件清单**。
+    将来若真把清单接进自动链路，这里的断言会红 —— 那是我们要的提醒
+    （届时把断言改成「已接入」即可，而不是让它悄悄漂移）。
+    """
+    script = os.path.join(_ROOT, "scripts", "audit_pansou_flows.py")
+    assert os.path.isfile(script), "缺少 scripts/audit_pansou_flows.py"
+    src = _read(script)
+    for token in ("search_page", "auto_transfer", "fix_expired", "tmdb_transfer"):
+        assert token in src, "审计缺少链路 {!r}".format(token)
+    assert "--json" in src, "审计脚本缺少 --json 入口"
+
+    flow_test = os.path.join(_ROOT, "tests", "test_pansou_auto_flows.py")
+    assert os.path.isfile(flow_test), "缺少 tests/test_pansou_auto_flows.py"
+    t = _read(flow_test)
+    # 结论一：三条链路共用同一个 search_pansou（不是各写一套）
+    assert "def test_all_three_flows_share_one_pansou_search" in t
+    # 结论二：自动链路只读 success，不消费文件清单
+    assert "def test_auto_transfer_only_reads_success_flag_not_file_list" in t
+    # 结论三：TMDB 转存复用同一条管线，所以问题同源
+    assert "def test_tmdb_flow_reuses_auto_transfer_pipeline" in t
