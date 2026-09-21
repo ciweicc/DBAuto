@@ -260,17 +260,51 @@ body{
 }
 .search-dropdown.show{display:block;opacity:1;transform:translateY(0)}
 .search-dropdown .search-item{
-  display:flex;align-items:center;justify-content:space-between;
-  padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;
-  transition:background var(--transition-fast);
+  border-bottom:1px solid var(--border);
 }
 .search-dropdown .search-item:last-child{border-bottom:none}
-.search-dropdown .search-item:hover{background:var(--accent-wash);padding-left:18px}
+/* 主行：标题 / 来源 / 徽标 + 操作按钮。
+   高亮位移挂在主行上，展开的文件清单不会被一起缩进（issue #88）。 */
+.search-dropdown .search-item-main{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:10px 14px;cursor:pointer;
+  transition:background var(--transition-fast),padding-left var(--transition-fast);
+}
+.search-dropdown .search-item:hover .search-item-main{background:var(--accent-wash);padding-left:18px}
+.search-dropdown .search-item-actions{display:flex;align-items:center;gap:6px;flex-shrink:0}
 .search-dropdown .search-item .search-item-title{
   font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   font-size:var(--fs-base);color:var(--text);
 }
 .search-dropdown .search-item .search-item-source{font-size:var(--fs-xs);color:var(--text3);margin-top:2px}
+
+/* 搜索结果的文件清单（issue #88：「点进去不能看集数全不全」）。
+   面板挂在结果项下方，用 background 稍深的一层把它和主行区分开，
+   但**不**跟随主行的 hover 位移 —— 位移是「选中」的语义，不是「展开」的。 */
+.search-detail{display:none;padding:0 14px 10px;background:var(--card)}
+.search-detail.show{display:block}
+.search-detail-sum{
+  font-size:var(--fs-xs);color:var(--text2);padding:6px 0;
+  border-top:1px dashed var(--border);
+}
+.search-detail-list{
+  max-height:180px;overflow-y:auto;
+  border:1px solid var(--border);border-radius:var(--radius-sm);
+  background:var(--bg);
+}
+.search-detail-row{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:5px 10px;font-size:var(--fs-xs);border-bottom:1px solid var(--border);
+}
+.search-detail-row:last-child{border-bottom:none}
+.search-detail-row.is-dir .search-detail-name{color:var(--accent)}
+.search-detail-name{
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--text);
+}
+.search-detail-size{flex-shrink:0;color:var(--text3);font-variant-numeric:tabular-nums}
+.search-detail-msg{
+  font-size:var(--fs-xs);color:var(--text3);padding:6px 0;line-height:1.5;
+}
 
 /* 页面标题 + 设置页模块化网格 */
 .page-head{margin-bottom:18px}

@@ -4121,6 +4121,79 @@ def test_search_kbd_dom_script_present(dist):
     assert "UA_MAC" in body, "脚本未构造 macOS UA 场景"
 
 
+# ------------------------------------------------ 搜索结果文件清单（issue #88）
+def test_search_results_expose_share_file_list(dist):
+    """搜索结果必须能展开看该分享的文件清单（issue #88）。
+
+    用户原话「搜索资源的功能搜出来点进去不能看集数全不全」—— 交付的是
+    「每条结果一个可展开的清单 + 集号摘要」，不是在结果里塞一个数字。
+    """
+    search_js = _read(os.path.join(_JS_DIR, "search.js"))
+    main_css = _read(os.path.join(_SRC, "styles", "main.css"))
+
+    # 1. 每条结果都带「文件」按钮，且真的接了展开逻辑
+    assert "search-detail-toggle" in search_js, "搜索结果没有「文件」入口（等于没修）"
+    assert "toggleShareDetail" in search_js, "「文件」按钮没有对应动作"
+    # 无链接的结果不该给这个入口（没东西可预览）
+    i_btn = search_js.index("search-detail-toggle")
+    i_if = search_js.rindex("if(r.url)", 0, i_btn)
+    assert i_if < i_btn, "「文件」按钮未按 r.url 判空（无链接的结果会点出个空面板）"
+
+    # 2. 懒加载：展开才请求，收起不重复请求
+    assert "panel.dataset.loaded" in search_js, \
+        "未做「已加载」标记（每次展开都重打接口）"
+    i_toggle = search_js.index("async function toggleShareDetail")
+    fn = search_js[i_toggle:search_js.index("\nasync function doSearch", i_toggle)]
+    assert "/api/share_detail?url=" in fn, \
+        "展开时未请求 /api/share_detail?url=（拿不到清单的假请求）"
+    assert "searchDetailSeq" in fn, "展开请求未做过期丢弃（快速连点会串台）"
+
+    # 3. 三态都要有话说：载入中 / 失败带原因 / 空分享
+    assert "正在读取文件清单" in search_js, "展开时没有载入反馈（点了像没反应）"
+    assert "读取分享文件失败" in search_js, "失败态没有提示"
+    assert "没有文件" in search_js, "空分享没有提示（会渲染成空白）"
+
+    # 4. 集号摘要：只说可观测的（缺哪些集），不替用户下「是否全集」的结论
+    assert "epSummaryText" in search_js, "缺少集号摘要的渲染"
+    assert "缺 " in search_js or "缺' +" in search_js or "' · 缺" in search_js, \
+        "摘要没有指出缺口（这正是用户要判断的事）"
+    assert "episodes" in search_js, "摘要未读取后端集号字段"
+
+    # 5. 面板样式存在，且不跟随主行的高亮位移（展开≠选中）
+    assert ".search-detail{" in main_css, "文件清单面板无样式"
+    assert ".search-detail.show" in main_css, "面板没有展开态样式"
+    assert ".search-item-main" in main_css, \
+        "主行未拆出独立容器（高亮位移会把展开的清单一起缩进）"
+
+    # 6. 产物带上了这版逻辑
+    assert "toggleShareDetail" in dist and "search-detail-toggle" in dist, \
+        "构建产物缺少文件清单入口（改了 src 但没跑 build.sh？）"
+    assert "epSummaryText" in dist, "构建产物缺少集号摘要"
+
+
+def test_share_detail_dom_script_present(dist):
+    """文件清单展开链路的走查脚本必须落库。
+
+    「点下去面板真的展开、请求真的发出去了、缺集真的被指出来了、
+    再点一下真的收起来了」是渲染后才有的事实，静态扫描表达不了 ——
+    证据必须落成可复跑的脚本，而不是留在某次运行的 shell 历史里。
+    """
+    path = os.path.join(_ROOT, "scripts", "check_share_detail_dom.py")
+    assert os.path.isfile(path), "缺少 scripts/check_share_detail_dom.py"
+    body = _read(path)
+    assert "MEASURE" in body, "脚本未度量渲染后状态（只有逻辑断言＝什么都没验）"
+    assert "--json" in body and "--serve" in body, "脚本缺少 --json / --serve 入口"
+    assert "return 1 if problems else 0" in body, "脚本未在发现问题时返回非零退出码"
+    # 关键场景必须被覆盖，否则脚本会「绿着漏掉回归」
+    for scene in ("panelDisplay", "panelRect", "toggleCount", "btnExpanded",
+                  "rows", "summary", "dropdownRect"):
+        assert scene in body, "脚本未度量 {!r}（该场景会静默漏检）".format(scene)
+    # 懒加载（展开前零请求）与缓存（二次展开零请求）是这一轮的要点，必须有
+    assert "懒加载" in body, "脚本未验证懒加载（展开前不得打接口）"
+    assert "缓存" in body, "脚本未验证二次展开命中缓存"
+    assert "FAIL_STUB" in body, "脚本未构造失败态（失败静默=用户查不出原因）"
+
+
 # ------------------------------------------------ TMDB 无封面占位图（issue #82）
 def test_tmdb_placeholder_is_self_contained(dist):
     """回归（issue #82「占位图错乱」）：占位层不得复用 <img> 的尺寸类。

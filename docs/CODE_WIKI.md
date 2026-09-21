@@ -560,6 +560,8 @@ PanSou 搜索服务客户端。
 **方法**：
 - `get_data()` - 获取所有任务数据
 - `get_share_detail(shareurl)` - 获取分享链接详情
+  （其 `data.list` 的分页合并结果经 `share_preview.normalize_share_detail`
+  归一化后，由 `GET /api/share_detail` 暴露给搜索结果的「文件」按钮，issue #88）
 - `add_task(taskname, shareurl, savepath, pattern, replace)` - 添加任务
 - `run_script_now(tasklist)` - 立即执行脚本
 - `run_script_now_stream(tasklist)` - 流式执行脚本

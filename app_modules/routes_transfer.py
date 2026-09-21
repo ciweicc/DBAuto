@@ -11,6 +11,7 @@ from storage import load_history, save_history
 from utils import log, sse_broadcast, log_progress
 from validator import validate_string, validate_positive_int, validate_list, validate_task
 import link_check
+import share_preview
 
 # 链接检测已改为异步队列（link_check 模块）：/api/check_link 仅入队并立即返回任务状态，
 # 真正的 QAS get_share_detail 由固定 worker 池异步执行，请求线程零占用，
@@ -68,6 +69,23 @@ class TransferRouteMixin:
             except Exception as e:
                 log("搜索失败: {}".format(e))
                 self._send_json({"success": False, "message": str(e)}, 500)
+            return True
+
+        if route == "/api/share_detail":
+            # 分享文件清单预览（issue #88）：用户要判断一条盘搜结果「集数全不全」，
+            # 只能先转存再看，试错成本高。这里把 QAS get_share_detail 里本来就有的
+            # 文件列表归一化暴露出来，供搜索下拉展开查看。
+            params = self._get_query_params()
+            url = params.get("url", "").strip()
+            ok, msg = validate_string(url, min_len=1, max_len=500, allow_empty=False)
+            if not ok:
+                self._send_json({"ok": False, "message": "url: {}".format(msg)}, 400)
+                return True
+            try:
+                self._send_json(share_preview.preview_share(url))
+            except Exception as e:
+                log("分享预览异常: {}".format(e))
+                self._send_json({"ok": False, "message": str(e)}, 500)
             return True
 
         if route == "/api/check_link":
