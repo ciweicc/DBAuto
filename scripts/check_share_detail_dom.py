@@ -15,7 +15,8 @@
   1. 每条有链接的结果都带「文件」按钮；无链接的条目不给这个入口
   2. 未展开时面板不可见（不是「藏了一半」）
   3. 点击 → 面板展开、按钮变成「收起」、aria-expanded=true
-  4. 展开才发请求（懒加载）：点之前 /api/share_detail 调用数为 0
+  4. 不展开也看得见集数：结果行概览由一次预热请求填好（字号 >=12px、缺集标红）；
+     展开本身不再新增请求（懒加载仍成立）
   5. 请求 URL 带了 url 参数（不带就是拿不到清单的假请求）
   6. 载入中先给反馈（不能是空白面板）
   7. 渲染出文件行（名称 + 体积/目录）、集号摘要、截断提示
@@ -135,6 +136,11 @@ MEASURE = r"""
     dirRows: qa('.search-detail-row.is-dir').length,
     sizeCells: qa('.search-detail-size').length,
     summary: q('.search-detail-sum') ? q('.search-detail-sum').textContent.trim() : '',
+    epOverview: q('.search-item-ep') ? q('.search-item-ep').textContent.trim() : '',
+    epOverviewFs: q('.search-item-ep') ? getComputedStyle(q('.search-item-ep')).fontSize : '',
+    epOverviewColor: q('.search-item-ep') ? getComputedStyle(q('.search-item-ep')).color : '',
+    sumFs: q('.search-detail-sum') ? getComputedStyle(q('.search-detail-sum')).fontSize : '',
+    sumColor: q('.search-detail-sum') ? getComputedStyle(q('.search-detail-sum')).color : '',
     msg: q('.search-detail-msg') ? q('.search-detail-msg').textContent.trim() : '',
     btnText: btn ? btn.textContent.trim() : '',
     btnExpanded: btn ? btn.getAttribute('aria-expanded') : null,
@@ -232,9 +238,20 @@ def main():
                "toggleCount = {}（应恰好 1 个：另一条无链接）".format(st["toggleCount"]))
             ok("未展开时面板不可见", st["panelDisplay"] == "none",
                "panelDisplay = {!r}".format(st["panelDisplay"]))
-            ok("懒加载：展开前不得请求 /api/share_detail",
-               state["detail"] == 0,
-               "detail calls = {}".format(state["detail"]))
+            # 结果行会**预热**一次概览（issue #88 二次反馈：「不展开也要看得见有多少集」），
+            # 所以展开前允许恰好 1 次请求；关键是展开**本身**不再多发一次。
+            ok("展开前只做了一次概览预热（懒加载仍成立）",
+               state["detail"] == 1,
+               "detail calls = {}（应为 1：结果行概览预热）".format(state["detail"]))
+            ok("不展开就能看到集数概览（issue #88 二次反馈）",
+               st["epOverview"] and "集" in st["epOverview"],
+               "epOverview = {!r}".format(st["epOverview"]))
+            ok("概览字号不小于 12px（旧版 11px 实测看不见）",
+               st["epOverviewFs"] == "12px",
+               "epOverviewFs = {!r}".format(st["epOverviewFs"]))
+            ok("概览在有链接的结果上带出缺集信息",
+               "缺" in st["epOverview"] and "8" in st["epOverview"] and "9" in st["epOverview"],
+               "epOverview = {!r}".format(st["epOverview"]))
             ok("按钮初始 aria-expanded=false",
                st["btnExpanded"] == "false", "aria-expanded = {!r}".format(st["btnExpanded"]))
             ok("按钮初始文案为「文件」", st["btnText"] == "文件",
@@ -258,7 +275,7 @@ def main():
                "btnText = {!r}".format(st["btnText"]))
             ok("展开后 aria-expanded=true", st["btnExpanded"] == "true",
                "aria-expanded = {!r}".format(st["btnExpanded"]))
-            ok("发起了一次 /api/share_detail 请求", state["detail"] == 1,
+            ok("展开本身不再新增请求（概览已预热）", state["detail"] == 1,
                "detail calls = {}".format(state["detail"]))
             ok("请求 URL 带上了分享链接（不带＝拿不到清单）",
                state["detail_urls"] and "url=" in state["detail_urls"][0],
@@ -273,6 +290,8 @@ def main():
             ok("集号摘要指出缺集（8、9）",
                "缺" in st["summary"] and "8" in st["summary"] and "9" in st["summary"],
                "summary = {!r}（这一句就是用户要的「集数全不全」）".format(st["summary"]))
+            ok("集号摘要字号已提到 12px（旧版 11px）",
+               st["sumFs"] == "12px", "sumFs = {!r}".format(st["sumFs"]))
             ok("截断提示存在（total > 显示数）",
                "共" in st["msg"] and "13" in st["msg"],
                "msg = {!r}".format(st["msg"]))
@@ -305,6 +324,10 @@ def main():
             state_fail = {"search": 0, "detail": 0, "detail_urls": [], "force_fail": True}
             page = open_page(state_fail)
             search(page)
+            stf = ms(page)
+            ok("失败态下结果行概览有兜底文案（不是空白）",
+               stf["epOverview"] and "未知" in stf["epOverview"],
+               "epOverview = {!r}".format(stf["epOverview"]))
             page.click(".search-detail-toggle")
             page.wait_for_timeout(900)
             st = ms(page)

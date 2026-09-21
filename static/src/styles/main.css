@@ -297,8 +297,11 @@ body{
 .search-detail{display:none;padding:0 14px 10px;background:var(--hover-wash)}
 .search-detail.show{display:block}
 .search-detail-sum{
-  font-size:var(--fs-xs);color:var(--text2);padding:6px 0;
-  border-top:1px dashed var(--border);
+  /* 摘要曾用 --fs-xs(11px) + --text2，实测在浮层里几乎看不见 ——
+     issue #88 的二次反馈「还是无法显示里面有多少集」踩的就是这个。
+     这里提到 --fs-sm 并用主文字色，让「多少集 / 缺哪几集」一眼能读到。 */
+  font-size:var(--fs-sm);color:var(--text);padding:7px 0;
+  border-top:1px dashed var(--border);line-height:1.5;
 }
 .search-detail-list{
   /* 清单是「面板里的面板」：用实底而非 --bg —— --bg 是页面最底层色，
@@ -321,6 +324,15 @@ body{
 .search-detail-msg{
   font-size:var(--fs-xs);color:var(--text3);padding:6px 0;line-height:1.5;
 }
+
+/* 结果行上的「一行集数概览」（issue #88 二次反馈）：
+   不展开也要看得见有多少集。比徽标大一号、用等宽数字，缺口标红。 */
+.search-item-ep{
+  margin-top:3px;font-size:var(--fs-sm);color:var(--text2);
+  font-variant-numeric:tabular-nums;line-height:1.45;
+}
+.search-item-ep.is-weak{color:var(--text3)}
+.search-item-ep.is-gap{color:var(--orange)}
 
 /* 页面标题 + 设置页模块化网格 */
 .page-head{margin-bottom:18px}
