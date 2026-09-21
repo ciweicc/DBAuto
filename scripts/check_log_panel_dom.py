@@ -29,6 +29,18 @@
   python3 scripts/check_log_panel_dom.py            # 检查（失败非零退出）
   python3 scripts/check_log_panel_dom.py --json     # 机器可读报告
   python3 scripts/check_log_panel_dom.py --serve    # 自动起本地静态服务
+
+issue #96 追加（面板视觉重构）：
+  9. 圆圈进度必须**彻底删除**（`.ring-progress` / `#ringGradient` 全部消失）——
+     它与下方进度条表达同一件事，且圆环外的方形描边被误读成「输入框」；
+ 10. 进度只剩一条表达：细进度条 + 右侧百分比（`#progressPct`），
+     百分比文本必须存在且随进度更新；
+ 11. 面板标题必须是可读的「执行日志」（≥14px），不得只剩一个图标；
+ 12. 位置提示必须与日志区**同栏**（原来它独占一行，把日志框挤低一行）；
+ 13. 统计条必须按语义分色（成功/失败/跳过三色互不相同），
+     否则「跳过」与「已搜/共」同灰，扫一眼分不出组；
+ 14. 日志框顶栏必须有清空入口（长跑后旧日志不再只能靠滚动翻阅）。
+ 反向验证：把 `.ring-progress` 加回 DOM → 本脚本立刻红 10 项。
 """
 import argparse
 import functools
@@ -122,6 +134,23 @@ MEASURE = r"""
   });
   return {
     missing: false,
+    ringCount: document.querySelectorAll(
+      '.ring-progress, #ringProgress, #ringFill, #ringText, .ring-bg, .ring-fill').length,
+    ringGradientDefs: document.querySelectorAll('#ringGradient').length,
+    hasTitle: (() => { const t = q('.log-title'); return !!t && t.textContent.trim().length > 0; })(),
+    titleFs: (() => { const t = q('.log-title');
+      return t ? parseFloat(getComputedStyle(t).fontSize) : 0; })(),
+    subtitleText: q('#ringSubtitle') ? q('#ringSubtitle').textContent : null,
+    pctText: q('#progressPct') ? q('#progressPct').textContent : null,
+    clearBtn: !!q('.log-clear'),
+    statColor: (() => {
+      const pick = sel => { const e = q(sel); return e ? getComputedStyle(e).color : null; };
+      return {ok: pick('.progress-stat.is-ok span'), er: pick('.progress-stat.is-er span'),
+              sk: pick('.progress-stat.is-sk span')};
+    })(),
+    logBarHint: (() => { const h = q('#logHint'); if (!h) return null;
+      const r = h.getBoundingClientRect(); const b = q('#log').getBoundingClientRect();
+      return {text: h.textContent, aboveBox: Math.round(b.top - r.bottom)}; })(),
     detailCount: details.length,
     detailCollapsed: collapsedDetails.length,
     detailMaxTextH: detailTextH.length ? Math.max(...detailTextH) : 0,
@@ -277,6 +306,28 @@ def main():
                 if m["panelW"] > 60 and m["panelW"] < 240:
                     fail("日志栏宽度 {}px 过窄（内容会被挤压）".format(m["panelW"]))
 
+                # 5'. issue #96：圆圈进度必须彻底删除，且进度只剩一条表达。
+                if m.get("ringCount", 0) > 0:
+                    fail("面板仍有圆圈进度残留（{} 个 .ring-* 节点）".format(m["ringCount"]))
+                if m.get("ringGradientDefs", 0) > 0:
+                    fail("产物仍带 #ringGradient 渐变定义（圆环没删干净）")
+                if not m.get("hasTitle"):
+                    fail("面板缺少「执行日志」标题")
+                if m.get("titleFs", 0) < 14:
+                    fail("面板标题字号 {}px 偏小（应 ≥14px）".format(m.get("titleFs")))
+                if m.get("pctText") is None:
+                    fail("面板缺少百分比文本节点 #progressPct（进度无处可读）")
+                if not m.get("clearBtn"):
+                    fail("日志框顶栏缺少「清空」入口")
+                sb = m.get("logBarHint") or {}
+                if sb.get("aboveBox", 99) > 12:
+                    fail("位置提示未与日志区同栏（提示行与日志框之间空出 {}px）".format(
+                        sb.get("aboveBox")))
+                # 统计条语义色：成功=绿 / 失败=红 / 跳过=橙，且三者互不相同
+                cols = m.get("statColor") or {}
+                if len({v for v in cols.values() if v}) != 3:
+                    fail("统计条语义色未分色（ok/er/sk = {}）".format(cols))
+
                 # 6'. issue #68：requests 异常必须收成「默认折叠的详情」。
                 #     判据：详情块存在、默认折叠、且折叠态文字高度只有一行
                 #     （展开后该段异常在 400px 宽栏里必然折成 ≥ 3 行）。
@@ -381,6 +432,7 @@ def main():
                             fail("（折叠记忆用例）展开后未定位到最新一条")
                         if m2["visibleLines"] == 0:
                             fail("（折叠记忆用例）展开后一条日志都没有")
+
                     p2.close()
 
                 # 4'. 窄屏点 FAB 必须真正把抽屉打开到可视区

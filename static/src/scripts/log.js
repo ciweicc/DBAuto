@@ -251,6 +251,16 @@ function updateLogHint(mains){
   else hint.textContent = '历史记录 · 共 ' + n + ' 条';
 }
 
+// 清空面板（issue #96）：只清**当前视图**对应的渲染结果与行模型。
+// 之前没有清空入口，一次长跑之后旧日志会一直糊在面板上，只能靠滚动翻阅。
+function clearLog(){
+  logBefore=[]; logDetails={}; logDetailOpen={}; logDetailAuto={};
+  var el=document.getElementById('log');
+  if(el) el.textContent='';
+  updateLogHint(0);
+  showToast('已清空日志视图', true);
+}
+
 // 复制全部日志
 function copyAllLogs(){
   var text = logBefore.join('\n');
@@ -312,8 +322,9 @@ function updateProgress(stats){
   var total=(stats.total||0), done=(stats.ok||0)+(stats.skipped||0)+(stats.failed||0);
   var pct=total>0?Math.round(done/total*100):0;
   var fill=document.getElementById('progressFill');if(fill)fill.style.width=pct+'%';
-  var ringFill=document.getElementById('ringFill');
-  var ringText=document.getElementById('ringText');
+  // issue #96：圆圈进度已删除，百分比改由 .log-progress-pct 文本表达，
+  // 状态副标题保留在面板头（id 未变，避免影响其它引用）。
+  var pctEl=document.getElementById('progressPct');
   var ringSub=document.getElementById('ringSubtitle');
   // 增强进度区域
   var progWrap=document.getElementById('transferProgressWrap');
@@ -321,13 +332,7 @@ function updateProgress(stats){
   var progEta=document.getElementById('progressEta');
   var progCurrent=document.getElementById('progressCurrent');
   if(progWrap) progWrap.style.display = total>0 ? 'block' : 'none';
-  if(ringFill){
-    var circumference=2*Math.PI*18;
-    var offset=circumference-(pct/100)*circumference;
-    ringFill.style.strokeDasharray=circumference;
-    ringFill.style.strokeDashoffset=offset;
-  }
-  if(ringText)ringText.textContent=pct+'%';
+  if(pctEl)pctEl.textContent=pct+'%';
   if(ringSub){
     if(total>0){
       var elapsed = 0, elapsedStr = '', etaStr = '';

@@ -1,12 +1,5 @@
 <!-- Icons Sprite -->
 <svg style="display:none">
-  <defs>
-    <linearGradient id="ringGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" style="stop-color:#0a84ff"/>
-      <stop offset="50%" style="stop-color:#64d2ff"/>
-      <stop offset="100%" style="stop-color:#30d158"/>
-    </linearGradient>
-  </defs>
   <symbol id="icon-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></symbol>
   <symbol id="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></symbol>
   <symbol id="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="5"/><path d="M12 1v2"/><path d="M12 21v2"/><path d="m4.22 4.22 1.42 1.42"/><path d="m18.36 18.36 1.42 1.42"/><path d="M1 12h2"/><path d="M21 12h2"/><path d="m6.34 17.66 1.42-1.42"/><path d="m19.78 4.22-1.42-1.42"/></symbol>
@@ -758,32 +751,43 @@
       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
     </button>
     <div class="card log-card" id="logCard">
-      <div class="card-title" style="justify-content:space-between">
-        <div style="display:flex;align-items:center;gap:14px">
-          <div class="ring-progress" id="ringProgress">
-            <svg viewBox="0 0 44 44">
-              <circle class="ring-bg" cx="22" cy="22" r="18"/>
-              <circle class="ring-fill" cx="22" cy="22" r="18" id="ringFill"/>
-            </svg>
-            <div class="ring-text" id="ringText">0%</div>
-          </div>
-          <div>
-            <div style="font-size:15px;font-weight:700;font-family:var(--font-display)">执行日志</div>
-            <div style="font-size:12px;color:var(--text3);margin-top:2px" id="ringSubtitle">准备开始...</div>
-          </div>
+      <!-- 面板头（issue #96）：左侧只留「执行日志 + 状态副标题」，
+           主操作按钮在右。原实现把「46px 圆圈进度」塞在标题左边，
+           与下方进度条重复表达同一件事，且圆圈外的方形描边被用户当成
+           「红框里的怪东西」。圆环已删除，进度统一由 .log-progress 表达。 -->
+      <div class="log-head">
+        <div class="log-head-main">
+          <div class="log-title">执行日志</div>
+          <div class="log-subtitle" id="ringSubtitle">准备开始...</div>
         </div>
-        <div style="display:flex;gap:6px">
-          <button class="btn btn-sm btn-outline" id="soundBtn" onclick="toggleSound()" title="操作音效" aria-label="操作音效"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg></button>
-          <button class="btn btn-sm btn-danger" id="stopBtn" onclick="stopTransfer()" style="display:none">停止</button>
-          <button class="btn btn-sm btn-outline" id="pauseBtn" onclick="togglePause()" title="暂停/恢复日志滚动" aria-label="暂停或恢复日志滚动"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-pause"/></svg></button>
+        <div class="log-actions">
+          <button class="btn btn-sm btn-outline log-act" id="soundBtn" onclick="toggleSound()" title="操作音效" aria-label="操作音效"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-music"/></svg></button>
+          <button class="btn btn-sm btn-danger log-act" id="stopBtn" onclick="stopTransfer()" style="display:none">停止</button>
+          <button class="btn btn-sm btn-outline log-act" id="pauseBtn" onclick="togglePause()" title="暂停/恢复日志滚动" aria-label="暂停或恢复日志滚动"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><use href="#icon-pause"/></svg></button>
         </div>
       </div>
+      <!-- 统计条：成功/跳过/失败按语义色着色（原来只有「成功/失败」有色，
+           「跳过」与「已搜/共」同灰，四条数字视觉上分不出组）。 -->
       <div class="progress-stats">
         <div class="progress-stat">已搜 <span id="stSearched">0</span></div>
-        <div class="progress-stat"><span style="color:var(--green)">成功 <span id="stOK">0</span></span></div>
-        <div class="progress-stat">跳过 <span id="stSkip">0</span></div>
-        <div class="progress-stat"><span style="color:var(--red)">失败 <span id="stFail">0</span></span></div>
+        <div class="progress-stat is-ok"><span>成功 <span id="stOK">0</span></span></div>
+        <div class="progress-stat is-sk">跳过 <span id="stSkip">0</span></div>
+        <div class="progress-stat is-er"><span>失败 <span id="stFail">0</span></span></div>
         <div class="progress-stat">共 <span id="stTotal">0</span></div>
+      </div>
+      <!-- 进度（issue #96）：去掉圆圈，改成「细进度条 + 右侧百分比」一行，
+           原来「进度条（圆角胶囊，浅色主题下形似输入框）+ 两行文字」共占三行。
+           整块在未运行时隐藏（不再渲染一个 0 / 0 的空壳）。 -->
+      <div class="log-progress" id="transferProgressWrap" style="display:none">
+        <div class="log-progress-track">
+          <div class="log-progress-fill" id="progressFill"></div>
+        </div>
+        <div class="log-progress-pct" id="progressPct">0%</div>
+        <div class="log-progress-meta">
+          <span id="progressCount">0 / 0</span>
+          <span id="progressEta"></span>
+        </div>
+        <div class="log-progress-current" id="progressCurrent"></div>
       </div>
       <div class="log-search-row">
         <input type="text" id="logSearch" class="log-search" placeholder="搜索日志…" aria-label="搜索日志" oninput="filterLogSearch(this.value)">
@@ -794,16 +798,15 @@
         <span class="filter-tab" onclick="setLogFilter(this,'skip')">跳过</span>
         <span class="filter-tab" onclick="setLogFilter(this,'fail')">失败</span>
       </div>
-      <div class="transfer-progress-wrap" id="transferProgressWrap" style="display:none;margin:8px 0">
-        <div class="transfer-progress-bar"><div class="transfer-progress-fill" id="progressFill"></div></div>
-        <div class="transfer-progress-info">
-          <span id="progressCount">0 / 0</span>
-          <span id="progressEta"></span>
+      <!-- 日志区标题栏：行内提示（原来在日志区**上方**单独一行，把日志框挤低
+           一整行；issue #96 把它移进日志框顶栏，与动作按钮同行） -->
+      <div class="log-bar">
+        <span class="log-bar-hint" id="logHint">准备就绪</span>
+        <div class="log-bar-actions">
+          <button class="log-clear" onclick="clearLog()" title="清空当前视图" aria-label="清空当前视图">清空</button>
         </div>
-        <div class="transfer-progress-current" id="progressCurrent"></div>
       </div>
-      <div class="log-hint"><span id="logHint">准备就绪</span><span class="log-hint-tip">滚轮可翻阅 · 暂停可锁定当前视图</span></div>
-      <div class="log-box" id="log"><div class="empty-state" style="padding:32px 20px"><div class="empty-icon"><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-play"/></svg></div><div class="empty-title">准备就绪</div><div class="empty-desc">选择榜单并点击「开始转存」<br>进度和日志将会实时显示在这里</div></div></div>
+      <div class="log-box" id="log"><div class="empty-state" style="padding:28px 20px"><div class="empty-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><use href="#icon-play"/></svg></div><div class="empty-title">准备就绪</div><div class="empty-desc">选择榜单并点击「开始转存」<br>进度和日志将会实时显示在这里</div></div></div>
     </div>
   </aside>
 
