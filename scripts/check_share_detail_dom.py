@@ -29,6 +29,9 @@
  13. 清单**一条都不预热**：结果直出只带标题/来源/链接徽标，
      展开那一条才发一次请求（上游请求数 1 + 1 + N → 1 + 1）
  14. 上游卡住（--slow）时结果行仍然先出 —— 首屏不等清单
+ 15. **目录可点进下一层**（issue #88 四次反馈「还是看不到第二层目录的文件名称」）：
+     根目录只有一个文件夹时，点它必须发出**带 dir_fid 的请求**、并渲染出
+     里面的文件名与面包屑；点面包屑能回上级
 
 依赖：playwright + chromium（与其它走查脚本同依赖）。
 无依赖 / 无产物时以退出码 0 跳过（与其它走查脚本一致）。
@@ -90,6 +93,26 @@ DETAIL_STUB = {
             "size": 1024 * 1024 * 300, "fid": "f%d" % i, "type": "video"}
            for i in [1, 2, 3, 4, 5, 6, 7, 10, 11, 12]]
     ),
+}
+
+# 根目录桩：**只有一个文件夹**，正是用户截图里的场景（恶搞之家 目录）。
+ROOT_ONLY_DIR_STUB = {
+    "ok": True, "message": "", "title": "恶搞之家",
+    "total": 1, "video_count": 0, "dir_count": 1, "truncated": False,
+    "stoken": "tok-abc", "path": [],
+    "files": [{"name": "恶搞之家", "dir": True, "size": 0,
+               "fid": "a" * 32, "type": "dir"}],
+}
+
+# 进入上面那个文件夹后看到的清单：真正的视频文件在这里。
+SUBDIR_STUB = {
+    "ok": True, "message": "", "title": "恶搞之家",
+    "total": 3, "video_count": 3, "dir_count": 0, "truncated": False,
+    "stoken": "tok-abc",
+    "path": [{"fid": "a" * 32, "name": "恶搞之家"}],
+    "files": [{"name": "恶搞之家.S01E{:02d}.mkv".format(i), "dir": False,
+               "size": 1024 * 1024 * 300, "fid": "f%d" % i, "type": "video"}
+              for i in (1, 2, 3)],
 }
 
 FAIL_STUB = {"ok": False, "message": "分享已失效", "files": [],
@@ -165,6 +188,12 @@ MEASURE = r"""
     dropdownRect: rect(dropdown),
     viewportH: window.innerHeight,
     mainText: q('.search-item-main') ? q('.search-item-main').textContent.trim() : '',
+    // 可点击的目录行（有 caret）
+    clickableDirs: qa('.search-detail-row.is-dir .search-detail-caret').length,
+    crumbs: qa('.search-crumb').length,
+    crumbText: qa('.search-crumb').map(c => c.textContent.trim()).join(' / '),
+    detailRequests: performance.getEntriesByType('resource')
+      .filter(e => e.name.indexOf('/api/share_detail') >= 0).length,
     hasLoading: qa('.search-detail-loading').length,
     itemCount: qa('.search-item').length,
   };
@@ -193,7 +222,17 @@ def _route_factory(state):
         elif path == "/api/share_detail":
             state["detail"] += 1
             state["detail_urls"].append(route.request.url)
-            body = FAIL_STUB if state.get("force_fail") else DETAIL_STUB
+            if state.get("force_fail"):
+                body = FAIL_STUB
+            elif state.get("nested"):
+                # 带 dir_fid 的是「进子目录」，否则是根目录
+                if "dir_fid=" in url:
+                    state["dir_calls"] += 1
+                    body = SUBDIR_STUB
+                else:
+                    body = ROOT_ONLY_DIR_STUB
+            else:
+                body = DETAIL_STUB
         elif path == "/api/check_link":
             state["check_single"] += 1
             body = {"state": "done", "valid": True, "checked": True, "message": "链接正常"}
@@ -237,7 +276,8 @@ def main():
             problems.append("{}：{}".format(name, detail))
 
     state = {"search": 0, "detail": 0, "detail_urls": [], "force_fail": False,
-             "check_batch": 0, "check_single": 0, "check_urls": [], "slow": args.slow}
+             "check_batch": 0, "check_single": 0, "check_urls": [], "slow": args.slow,
+             "nested": False, "dir_calls": 0}
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(args=["--no-sandbox"], **_launch_kwargs())
@@ -379,6 +419,64 @@ def main():
                "detail calls = {}（应仍为 1：复用已取回的那份）".format(state["detail"]))
             page.close()
 
+            # ---------------- 子目录浏览（issue #88 四次反馈）----------------
+            # 场景复刻用户截图：分享根目录里**只有一个文件夹**，视频在里面。
+            # 若不能点进去，用户就永远只看到一行目录名 —— 这正是他第四次反馈的问题。
+            state_nested = {"search": 0, "detail": 0, "detail_urls": [],
+                            "force_fail": False, "check_batch": 0,
+                            "check_single": 0, "check_urls": [], "slow": 0.0,
+                            "nested": True, "dir_calls": 0}
+            page = open_page(state_nested)
+            search(page)
+            page.click(".search-detail-toggle")
+            page.wait_for_timeout(900)
+            st = ms(page)
+            ok("根目录只有一个文件夹时，清单显示该目录行",
+               st["dirRows"] == 1 and st["rows"] == 1,
+               "dirRows={} rows={}".format(st["dirRows"], st["rows"]))
+            ok("目录行可点击（带 caret）",
+               st["clickableDirs"] == 1,
+               "clickableDirs = {}".format(st["clickableDirs"]))
+            ok("根目录不显示面包屑（分享根无处可回）",
+               st["crumbs"] == 0, "crumbs = {}".format(st["crumbs"]))
+
+            # 点目录行 → 进入子目录
+            page.click(".search-detail-row.is-dir")
+            page.wait_for_timeout(900)
+            st = ms(page)
+            ok("点目录行发出了带 dir_fid 的请求",
+               state_nested["dir_calls"] >= 1,
+               "dir_calls = {}".format(state_nested["dir_calls"]))
+            ok("进目录请求确实带上了 dir_fid 参数",
+               any("dir_fid=" in u for u in state_nested["detail_urls"]),
+               "urls = {}".format([u[-44:] for u in state_nested["detail_urls"]][-2:]))
+            ok("进入后真的看到第二层的文件名称",
+               st["rows"] == 3 and any(n.endswith(".mkv") for n in st["names"]),
+               "rows={} names={}".format(st["rows"], st["names"][:3]))
+            ok("进入后出现面包屑（分享根 / 恶搞之家）",
+               st["crumbs"] >= 2 and "分享根" in st["crumbText"],
+               "crumbs={} text={!r}".format(st["crumbs"], st["crumbText"]))
+            ok("进入后摘要更新为子目录内容（3 个视频）",
+               "3" in st["summary"], "summary = {!r}".format(st["summary"]))
+            ok("进目录后下拉未被顶出视口",
+               bool(st["dropdownRect"]) and st["dropdownRect"]["y"] < st["viewportH"],
+               "dropdown={} viewportH={}".format(st["dropdownRect"], st["viewportH"]))
+
+            # 点面包屑「分享根」→ 回上级
+            root_before = st["detailRequests"]
+            page.click(".search-crumb")
+            page.wait_for_timeout(900)
+            st = ms(page)
+            ok("点面包屑「分享根」回到根目录（又只剩那个文件夹）",
+               st["dirRows"] == 1 and st["rows"] == 1,
+               "dirRows={} rows={}".format(st["dirRows"], st["rows"]))
+            ok("回上级再次请求了根目录",
+               st["detailRequests"] > root_before,
+               "detailRequests {} -> {}".format(root_before, st["detailRequests"]))
+            ok("回到根目录后面包屑消失",
+               st["crumbs"] == 0, "crumbs = {}".format(st["crumbs"]))
+            page.close()
+
             # ---------------- 上游卡住时：结果先出 ----------------
             # 用户体感的那句「搜索慢」，一半是等清单。用 3s 的 /api/search 桩
             # 把上游卡住，量的是**两块内容各自的到达时刻**：
@@ -386,7 +484,7 @@ def main():
             #   文件清单不参与首屏 → 上游再慢也不拖慢结果。
             state_slow = {"search": 0, "detail": 0, "detail_urls": [], "force_fail": False,
                           "check_batch": 0, "check_single": 0, "check_urls": [],
-                          "slow": args.slow}
+                          "slow": args.slow, "nested": False, "dir_calls": 0}
             page = open_page(state_slow)
             page.evaluate(
                 "()=>{var i=document.getElementById('searchInput');"
@@ -410,7 +508,7 @@ def main():
             # ---------------- 失败态 ----------------
             state_fail = {"search": 0, "detail": 0, "detail_urls": [], "force_fail": True,
                           "check_batch": 0, "check_single": 0, "check_urls": [],
-                          "slow": args.slow}
+                          "slow": args.slow, "nested": False, "dir_calls": 0}
             page = open_page(state_fail)
             search(page, extra=args.slow)
             stf = ms(page)

@@ -316,7 +316,33 @@ body{
   padding:5px 10px;font-size:var(--fs-xs);border-bottom:1px solid var(--border);
 }
 .search-detail-row:last-child{border-bottom:none}
+/* 目录行可点击（issue #88 四次反馈「还是看不到第二层目录的文件名称」）：
+   盘搜结果的根目录常只有一个文件夹，真正的视频在里面 —— 必须能点进去。
+   行本身给 hover 反馈 + 手型光标，再配一个 caret（›）明示「能进去」，
+   光靠文件名变色不足以让人意识到这是一层的入口。 */
+.search-detail-row.is-dir{cursor:pointer}
+.search-detail-row.is-dir:hover{background:var(--hover-wash)}
 .search-detail-row.is-dir .search-detail-name{color:var(--accent)}
+.search-detail-caret{
+  flex-shrink:0;color:var(--accent);font-size:var(--fs-sm);line-height:1;
+  margin-right:4px;
+}
+/* 面包屑：分享根 / 目录 / 子目录。点任意上一级可回退。 */
+.search-detail-crumbs{
+  display:flex;align-items:center;flex-wrap:wrap;gap:2px;
+  padding:6px 0 2px;font-size:var(--fs-xs);
+}
+.search-crumb{
+  background:none;border:none;padding:0 2px;margin:0;cursor:pointer;
+  color:var(--accent);font-size:var(--fs-xs);font-family:inherit;
+  max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.search-crumb:hover{text-decoration:underline}
+.search-crumb.is-current{
+  color:var(--text);cursor:default;font-weight:600;
+}
+.search-crumb.is-current:hover{text-decoration:none}
+.search-crumb-sep{color:var(--text3);padding:0 1px}
 .search-detail-name{
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;color:var(--text);
 }
