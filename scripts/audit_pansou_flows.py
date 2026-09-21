@@ -90,15 +90,17 @@ def build_report():
     findings = []
     for name in ("auto_transfer", "fix_expired", "tmdb_transfer"):
         f = flows[name]
-        if f["same_search"] and not f["sees_episodes"] and not f["sees_video_count"]:
+        if f["same_search"] and not f["sees_video_count"]:
             findings.append(
                 "{}：候选来自同一条 PanSou 搜索，但 QAS 分享文件清单被丢弃"
-                "（只取 success 布尔），「集数全不全」不可见；挑选 = {}。".format(
+                "（只取 success 布尔），「有多少个视频文件」不可见；挑选 = {}。".format(
                     name, f["candidate_pick"]))
 
+    # 集号推断已在 issue #88 第五轮整体删除（误报比不报更贵）：
+    # 三条链路能看到的「完整度」信号只剩可数的 video_count 一项。
     return {
         "probe_video_count": probe["video_count"],
-        "probe_episodes": probe["episodes"],
+        "probe_has_episodes": "episodes" in probe,
         "flows": flows,
         "findings": findings,
         "shared_search": _has(full_src, "def search_pansou("),
@@ -116,8 +118,8 @@ def main():
 
     print("== 盘搜链路审计（issue #88 追问）==")
     print("共用搜索实现 transfer.search_pansou():", rep["shared_search"])
-    print("归一化样例：video_count=%s episodes=%s" % (
-        rep["probe_video_count"], rep["probe_episodes"]))
+    print("归一化样例：video_count=%s（集号推断字段 episodes=%s）" % (
+        rep["probe_video_count"], rep["probe_has_episodes"]))
     print()
     for name, f in rep["flows"].items():
         print("[%s] %s" % (name, f["entry"]))

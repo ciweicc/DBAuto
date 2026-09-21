@@ -60,14 +60,15 @@ def test_auto_transfer_only_reads_success_flag_not_file_list():
     assert "list" not in src, "validate_share_link 不应消费文件清单（若消费了，本审计需重写）"
     assert "normalize_share_detail" not in src
 
-    # 归一化早已能给出「有多少视频文件 / 认到哪些集号」，能力是现成的
+    # 归一化早已能给出「有多少个视频文件」，能力是现成的
+    # （集号推断已在 issue #88 第五轮整体删除：误报比不报更贵）
     raw = {"success": True, "data": {"list": [
         {"file_name": "Show.S01E01.mkv", "size": 1},
         {"file_name": "Show.S01E03.mkv", "size": 1},
     ]}}
     out = share_preview.normalize_share_detail(raw)
     assert out["video_count"] == 2
-    assert out["episodes"]["missing"] == [2], "缺集是可观测的（搜索页已在用）"
+    assert "episodes" not in out, "集号推断不得回来（issue #88 第五轮）"
 
 
 def test_auto_transfer_picks_first_candidate_without_completeness():
@@ -75,7 +76,7 @@ def test_auto_transfer_picks_first_candidate_without_completeness():
     src = inspect.getsource(transfer.run_transfer)
     assert "chosen = valid_sr[0]" in src
     assert "video_count" not in src, "run_transfer 未按视频文件数择优"
-    assert "episodes" not in src, "run_transfer 未按集数缺口择优"
+    assert "episodes" not in src, "run_transfer 未按集数缺口择优（集号推断已删除）"
 
 
 def test_fix_expired_picks_first_candidate_even_unchecked():
