@@ -81,15 +81,43 @@ body{
 }
 .brand .brand-logo svg{width:16px;height:16px}
 .brand .brand-ver{font-size:var(--fs-xs);font-weight:500;color:var(--text3);margin-left:auto}
-.side-nav{display:flex;flex-direction:column;gap:2px}
+/* 侧边栏选中动效（issue #84：「侧边栏选项添加选中动态效果」）。
+   旧版只有一条静态的 .active 底色：切换页签是硬切（一帧之内旧项没、新项有），
+   用户看不出「选中的东西从哪挪到哪」。这里补三件事：
+
+   1. 选中底板 .side-nav-ind —— 一块**唯一**的滑动底板，由 JS 定位到当前选中项，
+      切换时用 transform 平滑滑过去（transform 走合成层，40px 高的小块几乎零成本）。
+      它只在就位（.ready）后 opacity:1，首帧不带过渡 —— 否则从顶部滑入会像动画故障。
+      底板被 JS 整体替换（更换）时会保留当前 top 作为下一次过渡的起点。
+   2. 选中瞬间的「落点」反馈 —— .side-btn-pulse 给图标一个一次性脉冲，
+      配合底板的位移让「选中」这件事有明确的落点。
+   3. 图标常态轻量动效 —— 只有当前选中项的图标常亮并轻微缩放，未选中项一律静止
+      （一排图标同时呼吸 = 视觉噪声，不是动效）。
+   全部动效都挂在 transform / opacity / box-shadow 上，不触发重排；
+   prefers-reduced-motion 下由文件末尾的全局规则统一压到 ~0，锚点/焦点/点击反馈照常。 */
+.side-nav{position:relative;display:flex;flex-direction:column;gap:2px}
+.side-nav-ind{
+  position:absolute;left:0;right:0;top:0;height:0;z-index:0;
+  border-radius:var(--radius-sm);border:1px solid var(--glass-border);
+  background:linear-gradient(90deg, rgba(10,132,255,.24), rgba(94,92,230,.10));
+  background:linear-gradient(90deg, color-mix(in srgb, var(--accent) 24%, transparent), color-mix(in srgb, var(--accent2) 10%, transparent));
+  box-shadow:inset 2px 0 0 0 var(--accent), var(--shadow-sm);
+  opacity:0;pointer-events:none;
+  /* 默认（无过渡）= 首帧定位；JS 读到首帧不匹配会补一帧打开过渡，避免从顶部滑入 */
+  transition:none;
+}
+.side-nav-ind.ready{opacity:1}
+.side-nav-ind.anim{transition:transform var(--transition-slow), height var(--transition-slow), opacity var(--transition-normal)}
 .side-nav-item{
+  position:relative;z-index:1;
   display:flex;align-items:center;gap:10px;width:100%;text-align:left;
   padding:9px 10px;border-radius:var(--radius-sm);border:1px solid transparent;
   background:transparent;color:var(--text2);font-size:var(--fs-base);font-weight:500;
   cursor:pointer;font-family:var(--font);
   transition:background var(--transition-fast),color var(--transition-fast),box-shadow var(--transition-fast);
 }
-.side-nav-item svg{width:18px;height:18px;flex-shrink:0;opacity:.85}
+.side-nav-item svg{width:18px;height:18px;flex-shrink:0;opacity:.85;
+  transition:opacity var(--transition-normal),transform var(--transition-slow),color var(--transition-normal)}
 .side-nav-item:hover{background:var(--card);color:var(--text)}
 .side-nav-item.active{
   background:linear-gradient(90deg, rgba(10,132,255,.24), rgba(94,92,230,.10));
@@ -97,6 +125,26 @@ body{
   color:var(--text);border-color:var(--glass-border);
   box-shadow:inset 2px 0 0 0 var(--accent), var(--shadow-sm);
 }
+/* 底板就位时退掉选中项自己的底色：两层叠加会变成一块过亮的实心块，
+   且旧项底色会瞬灭 —— 看起来就是「动效没生效」。 */
+.side-nav.ind-on .side-nav-item.active{
+  background:transparent;box-shadow:none;
+}
+/* 选中项图标常亮 + 轻微放大（动效落点） */
+.side-nav-item.active svg{opacity:1;transform:scale(1.06);color:var(--accent3)}
+/* 选中瞬间的一次性脉冲（JS 加 .side-btn-pulse，动画结束即移除） */
+.side-nav-item.side-btn-pulse svg{animation:sideNavPulse .42s cubic-bezier(.34,1.56,.64,1)}
+@keyframes sideNavPulse{
+  0%{transform:scale(1)}
+  45%{transform:scale(1.22)}
+  100%{transform:scale(1.06)}
+}
+/* 指针按下 / 键盘激活时的即时反馈 */
+.side-nav-item:active{transform:scale(.985)}
+.side-nav-item:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+/* 移动端抽屉：一打开就定位，滑动动画没有意义（且用户看不到过程） */
+.sidebar.drawer-no-anim .side-nav-ind,
+.sidebar.drawer-no-anim .side-nav-ind.anim{transition:none}
 .side-nav-sep{height:1px;background:var(--border);margin:8px 6px}
 .side-foot{margin-top:auto;padding:10px 8px 2px;font-size:var(--fs-xs);color:var(--text3);line-height:1.6}
 

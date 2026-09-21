@@ -32,6 +32,10 @@ function switchTab(tab){
     b.setAttribute('aria-selected', on ? 'true' : 'false');
     if(on) b.setAttribute('aria-current', 'page'); else b.removeAttribute('aria-current');
   });
+  // 选中动效（issue #84）：把唯一的滑动底板挪到新的选中项上，并给它的图标一次脉冲。
+  // 必须排在 aria/class 同步**之后** —— 底板定位依赖 `.active` 已就位。
+  // 这块以前是硬切（旧项底色瞬灭、新项瞬亮），加上底板后切换才是「看得见的一段位移」。
+  if(typeof _sideNavSync === 'function') _sideNavSync(false);
   // 底部导航联动（role=tab：同步 aria-selected，不再使用 aria-current）
   var navIdx = BOTTOM_NAV.indexOf(tab);
   document.querySelectorAll('.bottom-nav .nav-item').forEach(function(n, i){
@@ -136,3 +140,19 @@ function normalizeLogPanelForViewport(){
     toggleScrim(false);
   }
 }
+
+// ---- 侧边栏选中底板的生命周期（issue #84） ----
+// 窗口尺寸变化：侧边栏宽度在 1350 / 1200 / 1024 三个断点会变，底板几何必须重算，
+// 且重算时**不动画**（这不是用户操作，滑一段只会显得界面在抖）。
+var _sideNavResizeTimer = null;
+window.addEventListener('resize', function(){
+  if(_sideNavResizeTimer) clearTimeout(_sideNavResizeTimer);
+  _sideNavResizeTimer = setTimeout(function(){
+    _sideNavResizeTimer = null;
+    if(typeof _sideNavRefresh === 'function') _sideNavRefresh();
+  }, 120);
+});
+// 首屏：等一次布局完成后再定位（此刻侧边栏可能刚刚参与布局）
+window.addEventListener('load', function(){
+  if(typeof _sideNavRefresh === 'function') _sideNavRefresh();
+});

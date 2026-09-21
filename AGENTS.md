@@ -30,6 +30,7 @@ python scripts/check_qas_view_dom.py --serve # QAS 任务表列表/卡片视图�
 python scripts/check_login_dom.py --serve    # 登录页真实合成对比度/磨砂/色带走查（改登录页后必跑）
 python scripts/check_transfer_schedule_dom.py --serve # 转存页/定时任务管理走查（改转存页后必跑）
 python scripts/check_search_kbd_dom.py --serve # 顶栏搜索框快捷键走查（改快捷键/顶栏后必跑）
+python scripts/check_sidebar_dom.py --serve  # 侧边栏选中动效走查（改导航/侧边栏后必跑）
 python scripts/check_tmdb_placeholder_dom.py --serve # TMDB 无封面占位卡居中/同轴走查（改占位图后必跑）
 ```
 
@@ -58,6 +59,16 @@ python scripts/check_tmdb_placeholder_dom.py --serve # TMDB 无封面占位卡�
 > 定时任务管理控件齐全（启用开关 / 时间 / 下次执行 / 立即执行 / 检测目录）、
 > 「下次执行」按「时间 / 未启用 / 计算失败」三态显示、勾选榜单确被写进保存请求、
 > 点「立即执行」发出的 run_now 请求**带 section**（此前概览页漏传，按钮点了必 400）。
+> `scripts/check_sidebar_dom.py` 覆盖侧边栏的「选中动态效果」（issue #84：
+> 「侧边栏选项添加选中动态效果」）。它钉住的是「选中这件事必须看得见位移」：
+> 侧边栏里**恰有一块**滑动底板，切换时底板平滑滑到新项（用页面内 rAF 连续采样，
+> 判据是「位移途中出现过中间位置」，不是「等 120ms 再量一次」——
+> headless 下 rAF 会被节流，固定窗口会随机量到起点或终点）、
+> 切换瞬间新旧不同时亮、底板就位后选中项不再自绘底色（两层叠加会过亮）、
+> **首帧就站在正确位置**（否则一加载底板从列表顶部滑下来，像动画故障）、
+> 点击脉冲会被回收（恒亮=整排都在动）、窄屏抽屉里不做无意义动画。
+> 反向验证：把 `.side-nav-ind.anim` 的过渡摘掉，它会立刻红 2 项。
+>
 > `scripts/check_search_kbd_dom.py` 覆盖顶栏「资源搜索」框的快捷键（issue #78：
 > 「这个搜索框的快捷键是无效的」）。它钉住的是「提示长在谁身上、谁就得响应」：
 > 搜索框里的 `Ctrl+K` / `⌘K` 徽标按下后必须**聚焦这个搜索框**，而不是打开另一个

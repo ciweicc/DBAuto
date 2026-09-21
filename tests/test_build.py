@@ -696,8 +696,16 @@ def test_product_dist_has_no_duplicate_history_link(dist):
     """产物层面复核：整份产物中不再有「查看全部 / 打开历史」入口（收敛到左侧导航）。"""
     assert dist.count(">查看全部 →</button>") == 0, "产物里仍残留「查看全部」入口"
     assert "打开历史" not in dist, "产物里仍残留「打开历史」入口"
-    # 唯一出口：左侧导航的「历史」项
-    assert dist.count('data-tab="history"') == 1, "产物里左侧导航的「历史」项数量不为 1"
+    # 唯一出口：左侧导航的「历史」项。
+    #
+    # 这里统计的是**侧边栏**项，而不是全产物里 `data-tab="history"` 的出现次数：
+    # 底部导航（移动端）本来就有一项「历史」，issue #84 为「点过哪张表/哪个导航
+    # 就同步哪一份选中态」给底栏项也补了 data-tab，全产物计数因此变成 2。
+    # issue #78 的走查脚本（check_search_kbd_dom.py）早就同口径地断言过
+    # 「提示长在谁身上、谁就得响应」，此处对齐同一口径。
+    _scoped = dist[dist.index("class=\"side-nav\""):dist.index("class=\"bottom-nav\"")]
+    assert _scoped.count('data-tab="history"') == 1, \
+        "产物里左侧导航的「历史」项数量不为 1"
 
 
 def test_overview_recent_constant_columns_are_folded():
@@ -4197,4 +4205,75 @@ def test_tmdb_placeholder_dom_script_present(dist):
     # 关键判据必须都在，否则脚本会「绿着漏掉回归」
     for key in ("svgCxRel", "svgCyRel", "titleCxRel", "svgRatio",
                 "tileRatio", "sharesImgClass"):
+        assert key in body, "脚本未度量 {!r}（该场景会静默漏检）".format(key)
+
+
+def test_sidebar_selection_indicator_present(dist):
+    """issue #84：「侧边栏选中动态效果」的静态落点必须都在产物里。
+
+    这条只保证**结构存在**（底板节点、动效模块、过渡声明都在产物里）；
+    「点一下真的会滑」是渲染后的事实，由 scripts/check_sidebar_dom.py 负责。
+    """
+    # 1. 侧边栏里恰有一块底板（多块就会出现两个亮块）
+    assert dist.count('class="side-nav-ind"') == 1, "产物里侧边栏底板不是恰好一块"
+    assert 'class="side-nav"' in dist, "侧边栏容器结构被改动（底板定位依赖它）"
+
+    # 2. 底板与「选中态让位」的样式必须在
+    css, js = _extract(dist)
+    assert ".side-nav-ind{" in css, "产物样式缺少底板 .side-nav-ind"
+    assert ".side-nav.ind-on .side-nav-item.active" in css, (
+        "缺少「底板就位后选中项让出底色」的规则：两层叠加会过亮、旧项底色瞬灭"
+    )
+    # 3. 过渡必须真的挂在 transform 上，且首帧不得带过渡（否则会从顶部滑入）
+    assert ".side-nav-ind.anim{transition:transform" in css, (
+        "底板没有在 transform 上声明过渡（切换会退化成硬切）"
+    )
+
+    # 4. 动效模块的顶层函数必须进了产物
+    for fn in ("_sideNavMoveInd", "_sideNavSync", "_sideNavRefresh", "sideNavDrawerSync"):
+        assert fn in js, "产物缺少侧边栏动效实现 {}".format(fn)
+    # 5. 切换页签必须真的调用同步（否则底板永远停在首项上）
+    assert "_sideNavSync(" in js, "switchTab 未同步底板位置"
+
+
+def test_sidebar_motion_module_bundled():
+    """侧边栏动效模块必须进 build.sh 的构建清单（漏打包 = 动效静默消失）。"""
+    listed = _js_files_from_build_sh()
+    assert "sidenav" in listed, "sidenav.js 未加入 build.sh 的 JS_FILES"
+    assert os.path.isfile(os.path.join(_JS_DIR, "sidenav.js")), "缺少源码 sidenav.js"
+
+
+def test_sidebar_alt_digit_shortcut_promised_and_kept(dist):
+    """侧边栏项写了 Alt+N 就必须真的兑现（承诺与实现一致）。
+
+    issue #78 的教训：说明写在谁身上，响应就得落在谁身上。
+    本轮给侧边栏项补了 `title` / `aria-keyshortcuts`，若 init.js 里没有对应分支，
+    那就是又一次「提示长在这、按了没反应」。
+    """
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert body.count('aria-keyshortcuts="Alt+') == 5, (
+        "侧边栏 5 项都应声明 Alt+N 快捷键"
+    )
+    init = _read(os.path.join(_JS_DIR, "init.js"))
+    assert "e.altKey" in init and "Digit" in init, (
+        "侧边栏声明了 Alt+N，init.js 却没有对应分支（按了没反应）"
+    )
+
+
+def test_sidebar_dom_script_present(dist):
+    """侧边栏选中动效的 DOM 走查脚本必须落库。
+
+    「底板真的滑过去了吗 / 首帧有没有从顶部滑入 / 窄屏抽屉里有没有做无意义动画」
+    都是渲染后才有的事实，静态扫描表达不了（CSS 里写着 transition，
+    读代码是「对的」，但可能因为一次误摘 class 而完全不生效）。
+    """
+    path = os.path.join(_ROOT, "scripts", "check_sidebar_dom.py")
+    assert os.path.isfile(path), "缺少 scripts/check_sidebar_dom.py"
+    body = _read(path)
+    assert "MEASURE" in body, "脚本未度量渲染后几何（只有逻辑断言＝什么都没验）"
+    assert "--json" in body and "--serve" in body, "脚本缺少 --json / --serve 入口"
+    assert "return 1 if problems else 0" in body, "脚本未在发现问题时返回非零退出码"
+    # 关键判据必须都在，否则脚本会「绿着漏掉回归」
+    for key in ("indRect", "activeRect", "indOn", "activeShadow",
+                "pulseCount", "indTransition", "indDuration"):
         assert key in body, "脚本未度量 {!r}（该场景会静默漏检）".format(key)

@@ -51,7 +51,7 @@ CSS_CONTENT=$(minify "$CSS_TMP" css)
 # 依赖顺序：基础工具(auth/animation/theme/globals/sound) → UI 组件(toast/confirm/tabs/categories)
 #          → 业务模块(transfer/log/schedule/history/settings/tmdb/search/dashboard) → 入口(init)
 JS_FILES=(
-  auth animation theme globals sound toast confirm tabs categories
+  auth animation theme globals sound toast confirm sidenav tabs categories
   transfer log schedule history library settings tmdb search dashboard overview init
 )
 : > "$JS_TMP"
