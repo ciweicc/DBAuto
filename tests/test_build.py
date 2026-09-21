@@ -4111,3 +4111,90 @@ def test_search_kbd_dom_script_present(dist):
     # 平台差异（Windows 没有 ⌘ 键）与窄屏（搜索框 display:none）都要有
     assert "Meta+k" in body and "Control+k" in body, "脚本未区分 macOS ⌘K 与其它平台 Ctrl+K"
     assert "UA_MAC" in body, "脚本未构造 macOS UA 场景"
+
+
+# ------------------------------------------------ TMDB 无封面占位图（issue #82）
+def test_tmdb_placeholder_is_self_contained(dist):
+    """回归（issue #82「占位图错乱」）：占位层不得复用 <img> 的尺寸类。
+
+    原表现：用户截图里「鬼玩人：炼狱」的占位瓦片中，图标缩在左上角、标题却
+    居中，整块看上去歪了。根因是占位 div 同时挂了 .tmdb-poster 与
+    .tmdb-no-poster —— 前者是给 <img> 写的（width:100% + aspect-ratio:2/3 +
+    object-fit:cover + display:block），后者的 display:flex 把它覆盖掉，
+    而 aspect-ratio / object-fit 仍留在身上。两个单类选择器的优先级相同，
+    「谁负责尺寸、谁负责居中」就变成隐式约定；一旦引擎对 svg 的 width/height
+    属性理解不同，图标就会被压成非等比小块并锚在左上角。
+
+    这里做静态防复发（真实几何由 scripts/check_tmdb_placeholder_dom.py 负责，
+    6 组视口）：
+      1. 占位层只允许 .tmdb-no-poster 一个类，不得再挂 .tmdb-poster；
+      2. .tmdb-no-poster 自己必须撑出 2:3（与有封面的卡同高，同行不参差）；
+      3. 图标尺寸必须由 CSS 钉死（width/height + align-self/flex 不参与收缩），
+         不得只依赖 HTML 的 width/height 属性；
+      4. 标题必须居中（容器 text-align:center 且 align-items:center）。
+    """
+    js = _read(os.path.join(_JS_DIR, "tmdb.js"))
+    css, _ = _extract(dist)
+
+    # 1. 占位层不得复用 <img> 的尺寸类
+    assert 'class="tmdb-poster tmdb-no-poster"' not in js, (
+        "占位层又挂上了 .tmdb-poster（<img> 的尺寸类）："
+        "aspect-ratio/object-fit/display 的归属会回到隐式竞争，issue #82 复发"
+    )
+    assert "'<div class=\"tmdb-no-poster\">'" in js, "占位层结构被改动，请同步更新本断言"
+    # 尺寸必须由 .tmdb-no-poster 自己负责
+    assert ".tmdb-no-poster{" in css, "缺少 .tmdb-no-poster 样式"
+    rule = css[css.index(".tmdb-no-poster{display:flex"):]
+    rule = rule[:rule.index("}")]
+    assert "aspect-ratio:2/3" in rule, (
+        ".tmdb-no-poster 未自带 aspect-ratio:2/3：占位卡会与有封面的卡不同高，"
+        "同一行出现参差"
+    )
+    assert "width:100%" in rule, ".tmdb-no-poster 未占满瓦片宽度"
+
+    # 3. 图标尺寸必须在 CSS 里钉死
+    icon_rule = css[css.index(".tmdb-no-poster-icon{"):]
+    icon_rule = icon_rule[:icon_rule.index("}")]
+    assert "width:64px" in icon_rule and "height:64px" in icon_rule, (
+        ".tmdb-no-poster-icon 未在 CSS 里钉死宽高：只靠 HTML 的 width/height 属性时，"
+        "个别引擎会把 svg 压成非等比小块并锚在左上角（issue #82 的形态）"
+    )
+    assert "flex:0 0 auto" in icon_rule or "flex-shrink:0" in icon_rule, (
+        ".tmdb-no-poster-icon 可被压缩：flex 容器变窄时图标会被挤扁"
+    )
+    assert "align-self:center" in icon_rule, (
+        ".tmdb-no-poster-icon 未显式 align-self:center：图标居中会重新变成隐式约定"
+    )
+    # svg 自身也要声明 preserveAspectRatio，避免宿主 UA 样式改变缩放基准
+    assert "preserveAspectRatio" in js, (
+        "占位图标 svg 未声明 preserveAspectRatio：宿主引擎可能不按 xMidYMid 缩放"
+    )
+
+    # 4. 标题居中
+    title_rule = css[css.index(".tmdb-no-poster-title{font-size"):]
+    title_rule = title_rule[:title_rule.index("}")]
+    assert "-webkit-line-clamp" in title_rule, (
+        ".tmdb-no-poster-title 缺少行数收敛：长标题会把图标挤出可视区"
+    )
+    assert "text-align:center" in rule or "align-items:center" in rule, (
+        ".tmdb-no-poster 未居中内容"
+    )
+
+
+def test_tmdb_placeholder_dom_script_present(dist):
+    """占位图的 DOM 走查脚本必须落库。
+
+    issue #82 的结论（「图标真的居中、标题真的与图标同轴、瓦片真的还是 2:3」）
+    是渲染后才有的事实，静态扫描表达不了（CSS 里写着 center，读代码是「对的」）。
+    所以证据必须落成可复跑的脚本，而不是留在某次运行的 shell 历史里。
+    """
+    path = os.path.join(_ROOT, "scripts", "check_tmdb_placeholder_dom.py")
+    assert os.path.isfile(path), "缺少 scripts/check_tmdb_placeholder_dom.py"
+    body = _read(path)
+    assert "MEASURE" in body, "脚本未度量渲染后几何（只有逻辑断言＝什么都没验）"
+    assert "--json" in body and "--serve" in body, "脚本缺少 --json / --serve 入口"
+    assert "return 1 if problems else 0" in body, "脚本未在发现问题时返回非零退出码"
+    # 关键判据必须都在，否则脚本会「绿着漏掉回归」
+    for key in ("svgCxRel", "svgCyRel", "titleCxRel", "svgRatio",
+                "tileRatio", "sharesImgClass"):
+        assert key in body, "脚本未度量 {!r}（该场景会静默漏检）".format(key)

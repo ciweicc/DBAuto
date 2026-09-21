@@ -30,6 +30,7 @@ python scripts/check_qas_view_dom.py --serve # QAS 任务表列表/卡片视图�
 python scripts/check_login_dom.py --serve    # 登录页真实合成对比度/磨砂/色带走查（改登录页后必跑）
 python scripts/check_transfer_schedule_dom.py --serve # 转存页/定时任务管理走查（改转存页后必跑）
 python scripts/check_search_kbd_dom.py --serve # 顶栏搜索框快捷键走查（改快捷键/顶栏后必跑）
+python scripts/check_tmdb_placeholder_dom.py --serve # TMDB 无封面占位卡居中/同轴走查（改占位图后必跑）
 ```
 
 > `scripts/check_library_selection_dom.py` 覆盖媒体库的「选中 / 取消选中」：

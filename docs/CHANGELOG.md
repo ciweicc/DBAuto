@@ -1,3 +1,60 @@
+## [当前] 占位图错乱：占位层不再复用 <img> 的尺寸类（issue #82）
+
+> 用户原话：一张海报墙截图 + 红箭头指向「鬼玩人：炼狱」的占位卡 +
+> 「修复占位图错乱的问题」。
+
+### 现象：同一张占位卡里，图标在左、标题在中间
+
+把截图按像素量出来（2560×1392，卡宽 322）：
+
+| 元素 | 实测 x | 相对卡片中心 |
+|---|---|---|
+| 卡片 | 1560 → 1881（中心 1720.5） | — |
+| 标题 | 1694 → 1747（中心 **1720.5**） | **0.0px** ✅ 居中 |
+| 图标 | 1568 → 1615（中心 **1591.5**，宽 48、高 24） | **129px** ❌ 贴左边 |
+
+**图标和标题不在同一条竖轴上** —— 一个 flex-column 居中容器不可能产生这种结果。
+再加上图标是 48×24（非 1:1），说明它没拿到「居中 + 64×64」这两条。
+
+### 根因：两个单类选择器在抢同一块属性
+
+占位层此前写成 `class="tmdb-poster tmdb-no-poster"`：
+
+- `.tmdb-poster` 是**给 `<img>` 写的**：`width:100%` + `aspect-ratio:2/3` +
+  `object-fit:cover` + `display:block`；
+- `.tmdb-no-poster` 想把它变成 flex 容器：`display:flex` + `align-items:center`
+  + `justify-content:center`。
+
+两条都是单类选择器、优先级相同。`.tmdb-no-poster` 后出现，于是 `display:flex`
+生效，**但 `aspect-ratio` / `object-fit` / `width` 全都留在身上**。
+「谁负责尺寸、谁负责居中」于是成了隐式约定。当引擎对 SVG 的
+`width`/`height` **属性**理解不同（旧 WebKit / 宿主浏览器注入的 UA 样式把属性
+当建议值时），图标就被压成非等比小块并锚在容器左上角，而标题仍按 flex 居中 ——
+屏幕上就是截图里那个「歪掉」的占位卡。
+
+### 修法：把职责拆干净
+
+- 占位层只挂 `.tmdb-no-poster`，**不再复用 `<img>` 的尺寸类**；
+- `.tmdb-no-poster` 自己声明 `width:100%` + `aspect-ratio:2/3` + `box-sizing:border-box`
+  —— 与有封面的卡同高，同一行不参差；
+- `.tmdb-no-poster-icon` 在 **CSS 里钉死** `width/height:64px` +
+  `flex:0 0 auto` + `align-self:center` + `display:block`，不再只依赖 HTML 属性；
+- SVG 补 `preserveAspectRatio="xMidYMid meet"`，缩放基准不再由宿主 UA 决定；
+- hover 缩放规则补上 `.tmdb-no-poster`，占位卡与海报卡的反馈一致。
+
+### 验证
+
+- 新增 `scripts/check_tmdb_placeholder_dom.py`（6 组视口，含 5/4/3/2 列断点）：
+  逐条断言瓦片仍是 2:3、图标 1:1、图标与标题**都居中且同轴**（≤2px）、
+  内容垂直居中（0.35~0.65）、不得复用 `.tmdb-poster`。
+  **把类加回去 → 12 处问题**，改回来 → 0 处。
+- `tests/test_build.py` 新增两条静态防复发断言（源码层）。
+- `python -m pytest tests/ -q` → **516 passed**；
+  `ruff check .` 通过；`check_contrast.py` 18 组全达标；
+  `check_overview_dom.py --serve` 9 组视口 0 处问题。
+
+---
+
 ## [当前] 搜索框：⌘K 归还给搜索框本身（issue #78）
 
 > 用户原话：顶栏搜索框的截图 + 「这个搜索框的快捷键是无效的」。
