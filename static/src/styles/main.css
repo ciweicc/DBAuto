@@ -325,14 +325,10 @@ body{
   font-size:var(--fs-xs);color:var(--text3);padding:6px 0;line-height:1.5;
 }
 
-/* 结果行上的「一行集数概览」（issue #88 二次反馈）：
-   不展开也要看得见有多少集。比徽标大一号、用等宽数字，缺口标红。 */
-.search-item-ep{
-  margin-top:3px;font-size:var(--fs-sm);color:var(--text2);
-  font-variant-numeric:tabular-nums;line-height:1.45;
-}
-.search-item-ep.is-weak{color:var(--text3)}
-.search-item-ep.is-gap{color:var(--orange)}
+/* 结果行上不再有「集数概览」（issue #88 第三轮）：
+   用户明确说「不需要显示集数 —— 显示集数会做得非常复杂，而且故障率很高，
+   只需要显示这条链接里面的具体文件内容层级就可以了」。集号解析与其
+   DOM/CSS 一并移除：点「文件」看清单，判断权交回用户。 */
 
 /* 页面标题 + 设置页模块化网格 */
 .page-head{margin-bottom:18px}

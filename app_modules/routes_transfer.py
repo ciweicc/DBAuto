@@ -88,6 +88,26 @@ class TransferRouteMixin:
                 self._send_json({"ok": False, "message": str(e)}, 500)
             return True
 
+        if route == "/api/check_links":
+            # 批量链接检测（issue #88 第三轮「搜索速度实在有点慢」）。
+            # 逐条检测时每条结果一个上游请求；这里同一次搜索的链接合并成
+            # 尽量少的一次性请求（见 link_check.check_links_batch）。
+            # 这是同步请求：批量之后单次搜索的检测耗时从 N 次往返降为 1 次。
+            params = self._get_query_params()
+            raw = params.get("urls", "")
+            urls = [u.strip() for u in raw.split(",") if u.strip()]
+            ok, msg = validate_list(urls, max_len=20)
+            if not ok:
+                self._send_json({"success": False, "message": "urls: {}".format(msg)}, 400)
+                return True
+            try:
+                self._send_json({"success": True,
+                                 "results": link_check.check_links_batch(urls, source="pansou")})
+            except Exception as e:
+                log("批量链接检测异常: {}".format(e))
+                self._send_json({"success": False, "message": str(e)}, 500)
+            return True
+
         if route == "/api/check_link":
             # 仅入队：立即返回任务状态，不阻塞请求线程。真正检测由 link_check worker 池异步执行。
             # source 透传给 link_check：盘搜搜索结果链接应带 source=pansou，走 PanSou 校验；
