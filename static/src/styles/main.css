@@ -253,7 +253,16 @@ body{
 .search-wrapper{position:relative;flex:1;max-width:440px;z-index:var(--z-dropdown)}
 .search-dropdown{
   position:absolute;top:100%;left:0;right:0;margin-top:6px;
-  background:var(--card);border:1px solid var(--border2);border-radius:var(--radius);
+  /* 浮层面板必须比普通卡片更实（issue #90：「搜索结果和背景混在一起」）。
+     下拉是**脱离文档流、压在流动光斑之上**的浮层，但它此前复用了卡片底
+     --card（rgba 0.55）。卡片是「贴在同一背景上的容器」，0.55 只是让它更透；
+     浮层若也 0.55，则背后的网格线与漂移光斑会直接穿到文字下面 —— 读数被
+     背景噪声吃掉，条目看起来「糊」在页面上。
+     0.74 的 --glass-bg-strong 仍不够：实测下拉压在**亮斑**上时，背景色被抬到
+     50/255（暗色）与 ~150 的网格线仍能透出来 —— 正是「和背景混在一起」。
+     改用专用的 --glass-bg-overlay（0.94/0.95，「浮层底」）：仍保留磨砂，
+     但底衬压得住移动光斑，正文不再被背景噪声吃掉。 */
+  background:var(--glass-bg-overlay);border:1px solid var(--border2);border-radius:var(--radius);
   box-shadow:var(--shadow);max-height:320px;overflow-y:auto;
   z-index:var(--z-dropdown);display:none;opacity:0;transform:translateY(-6px);
   transition:opacity var(--transition-fast),transform var(--transition-fast);
@@ -281,16 +290,23 @@ body{
 /* 搜索结果的文件清单（issue #88：「点进去不能看集数全不全」）。
    面板挂在结果项下方，用 background 稍深的一层把它和主行区分开，
    但**不**跟随主行的 hover 位移 —— 位移是「选中」的语义，不是「展开」的。 */
-.search-detail{display:none;padding:0 14px 10px;background:var(--card)}
+/* 展开区**继承**面板底色（不叠第二层半透明）。
+   此前这里是 background:var(--card)，等于在 0.55 的面板里再铺一层 0.55，
+   合成后反而比面板更透，文件清单像是「往下漏了一块」。现在让主行/展开区
+   共用面板同一块实底，只靠 --hover-wash 轻底把展开区从主行区分开。 */
+.search-detail{display:none;padding:0 14px 10px;background:var(--hover-wash)}
 .search-detail.show{display:block}
 .search-detail-sum{
   font-size:var(--fs-xs);color:var(--text2);padding:6px 0;
   border-top:1px dashed var(--border);
 }
 .search-detail-list{
+  /* 清单是「面板里的面板」：用实底而非 --bg —— --bg 是页面最底层色，
+     放进半透明浮层里会形成一块比周围更暗的「挖空」，读起来像面板破了洞。
+     直接用主题实底令牌（深色 #22242c / 浅色 #fff），保证清单是实心的。 */
   max-height:180px;overflow-y:auto;
   border:1px solid var(--border);border-radius:var(--radius-sm);
-  background:var(--bg);
+  background:var(--field-bg);
 }
 .search-detail-row{
   display:flex;align-items:center;justify-content:space-between;gap:10px;

@@ -14,6 +14,11 @@
   /* Glass surfaces (translucent — frosted via backdrop-filter in main.css) */
   --glass-bg: rgba(22, 23, 28, 0.55);
   --glass-bg-strong: rgba(17, 18, 23, 0.74);
+  /* 浮层底（issue #90）：脱离文档流、压在流动光斑之上的浮层专用的「近乎实心」底。
+     0.55/0.74 是给「贴在同一背景上的容器」用的；浮层背后是**会移动的亮斑**，
+     那点透光会让正文被背景噪声吃掉（用户原话：「和背景混在一起」）。
+     仍保留磨砂（backdrop-filter 继续生效），但底衬要压住背景。 */
+  --glass-bg-overlay: rgba(15, 16, 20, 0.94);
   --glass-border: rgba(255, 255, 255, 0.14);
   --glass-border-strong: rgba(255, 255, 255, 0.22);
   --glass-hi: rgba(255, 255, 255, 0.16); /* inset top highlight for glass edges */
@@ -226,6 +231,8 @@
   /* Glass surfaces (lighter, multiply-blended orbs in main.css) */
   --glass-bg: rgba(255, 255, 255, 0.55);
   --glass-bg-strong: rgba(255, 255, 255, 0.78);
+  /* 浮层底（issue #90）：浅色主题同样需要压住背景（网格线/光斑在浅底上更显眼） */
+  --glass-bg-overlay: rgba(255, 255, 255, 0.95);
   --glass-border: rgba(255, 255, 255, 0.65);
   --glass-border-strong: rgba(255, 255, 255, 0.9);
   --glass-hi: rgba(255, 255, 255, 0.7);

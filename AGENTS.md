@@ -31,6 +31,7 @@ python scripts/check_login_dom.py --serve    # 登录页真实合成对比度/�
 python scripts/check_transfer_schedule_dom.py --serve # 转存页/定时任务管理走查（改转存页后必跑）
 python scripts/check_search_kbd_dom.py --serve # 顶栏搜索框快捷键走查（改快捷键/顶栏后必跑）
 python scripts/check_share_detail_dom.py --serve # 搜索结果文件清单展开走查（改搜索结果/分享预览后必跑）
+python scripts/check_search_dropdown_surface_dom.py --serve # 搜索结果下拉底衬实度走查（改搜索下拉/浮层底色后必跑）
 python scripts/check_sidebar_dom.py --serve  # 侧边栏选中动效走查（改导航/侧边栏后必跑）
 python scripts/check_tmdb_placeholder_dom.py --serve # TMDB 无封面占位卡居中/同轴走查（改占位图后必跑）
 ```
@@ -84,6 +85,14 @@ python scripts/check_tmdb_placeholder_dom.py --serve # TMDB 无封面占位卡�
 > 再点一下真的收起、**二次展开零请求**（前端缓存）、失败态**带真实原因**
 > （静默空白会让人以为分享是空的）。反向验证：把集号摘要改成只显示条目数，
 > 它立刻红 1 项。
+>
+> `scripts/check_search_dropdown_surface_dom.py` 覆盖搜索结果下拉的**底衬实度**
+> （issue #90：「搜索结果和背景混在一起」）。浮层专用底 `--glass-bg-overlay`
+> （0.94/0.95）必须就位：面板 alpha ≥0.90 且**等于该 token**（钉死不退回卡片底
+> 0.55 或强玻璃底 0.74）、展开区不再叠第二层半透明、文件清单是实底，
+> 外加**真实像素校验** —— 截一小条面板留白列，量亮度离散度（std ≤8）。
+> 「透了」是合成后的观感，这里把它量化成「面板 alpha」+「留白列的明暗起伏」。
+> 反向验证：把面板退回 `--card`，它立刻红 8 项，像素离散度从 3~4 涨到 18~21。
 >
 > `scripts/check_qas_keys_dom.py` 覆盖 QAS 任务表的键盘选择：Ctrl+A 只勾**当前
 > 可见行**（筛选/分页后不越界）、Shift+↑↓ 可扩可缩且不吞掉先前选择、↑↓ 到页末
