@@ -62,11 +62,12 @@
       <span class="brand-ver" id="headerVersion">v1.1.0</span>
     </div>
     <nav class="side-nav" role="tablist">
-      <button class="side-nav-item active" role="tab" aria-selected="true" data-tab="overview" onclick="switchTab('overview')" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-dashboard"/></svg>概览</button>
-      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="manual" onclick="switchTab('manual')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>转存</button>
-      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="history" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg>历史</button>
-      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="library" onclick="switchTab('library')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg>媒体库</button>
-      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="settings" onclick="switchTab('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-settings"/></svg>设置</button>
+      <span class="side-nav-ind" aria-hidden="true"></span>
+      <button class="side-nav-item active" role="tab" aria-selected="true" data-tab="overview" aria-keyshortcuts="Alt+1" title="概览（Alt+1）" onclick="switchTab('overview')" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-dashboard"/></svg>概览</button>
+      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="manual" aria-keyshortcuts="Alt+2" title="转存（Alt+2）" onclick="switchTab('manual')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>转存</button>
+      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="history" aria-keyshortcuts="Alt+3" title="历史（Alt+3）" onclick="switchTab('history')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-check-circle"/></svg>历史</button>
+      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="library" aria-keyshortcuts="Alt+4" title="媒体库（Alt+4）" onclick="switchTab('library')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg>媒体库</button>
+      <button class="side-nav-item" role="tab" aria-selected="false" data-tab="settings" aria-keyshortcuts="Alt+5" title="设置（Alt+5）" onclick="switchTab('settings')"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-settings"/></svg>设置</button>
     </nav>
     <div class="side-foot" id="sideFoot"></div>
   </aside>
@@ -811,23 +812,23 @@
 <!-- Bottom Navigation (Mobile) -->
 <nav class="bottom-nav">
   <nav class="bottom-nav-inner" role="tablist">
-    <button class="nav-item active" type="button" role="tab" aria-selected="true" onclick="switchTab('overview')">
+    <button class="nav-item active" type="button" role="tab" data-tab="overview" aria-selected="true" onclick="switchTab('overview')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-dashboard"/></svg>
       <span>概览</span>
     </button>
-    <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('manual')">
+    <button class="nav-item" type="button" role="tab" data-tab="manual" aria-selected="false" onclick="switchTab('manual')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-send"/></svg>
       <span>转存</span>
     </button>
-    <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('library')">
+    <button class="nav-item" type="button" role="tab" data-tab="library" aria-selected="false" onclick="switchTab('library')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><use href="#icon-folder"/></svg>
       <span>媒体库</span>
     </button>
-    <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('history')">
+    <button class="nav-item" type="button" role="tab" data-tab="history" aria-selected="false" onclick="switchTab('history')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
       <span>历史</span>
     </button>
-    <button class="nav-item" type="button" role="tab" aria-selected="false" onclick="switchTab('settings')">
+    <button class="nav-item" type="button" role="tab" data-tab="settings" aria-selected="false" onclick="switchTab('settings')">
       <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
       <span>设置</span>
     </button>

@@ -16,6 +16,8 @@ async function init(){
   initTheme(); initDensity(); initTimeSelects(); updateSoundBtn(); initShortcuts();
   // 搜索框快捷键徽标按平台显示（⌘K / Ctrl+K），见 search.js syncSearchKbd
   try{ syncSearchKbd(); }catch(e){ console.error('search kbd sync error', e); }
+  // 侧边栏选中底板首屏定位（issue #84）：不等动画，直接摆到当前选中项上
+  try{ _sideNavRefresh(); }catch(e){ console.error('sidenav init error', e); }
   // 概览页栅格由「主列实测宽度」驱动（见 overview.js / docs/UI_Roadmap_Next.md 第十节）
   initOverviewViewport();
   try{ C = await apiGet('/api/categories'); }
@@ -34,7 +36,10 @@ async function init(){
 function toggleSidebar(){
   var s = document.querySelector('.sidebar');
   if(!s) return;
-  toggleScrim(s.classList.toggle('open'));
+  var open = s.classList.toggle('open');
+  toggleScrim(open);
+  // 抽屉开合后重算选中底板（issue #84）：关闭时若用测量值定位，下次打开可能偏。
+  if(typeof sideNavDrawerSync === 'function') sideNavDrawerSync(open);
 }
 function toggleLogDrawer(){
   var p = document.getElementById('logPanel');
@@ -173,6 +178,21 @@ function initShortcuts(){
       e.preventDefault();
       openCommandPalette();
       return;
+    }
+    // Alt + 1..5：直接切到第 N 个页签（issue #84）。
+    // 选中动效既然做出来了，就得有一条不必先移动鼠标的入口 —— 侧边栏项的
+    // title / aria-keyshortcuts 上写着 Alt+N，这里必须真的兑现（承诺与实现一致）。
+    // 用 e.code（Digit1..Digit5）而不是 e.key：部分键盘布局下 Alt+数字会产出别的字符。
+    if(e.altKey && !e.ctrlKey && !e.metaKey && /^Digit[1-5]$/.test(e.code || '')){
+      var navOrder = (typeof PAGES !== 'undefined') ? PAGES : null;
+      var want = navOrder && navOrder[parseInt(e.code.slice(5), 10) - 1];
+      var item = want ? document.querySelector('.side-nav-item[data-tab="' + want + '"]') : null;
+      if(item){
+        e.preventDefault();
+        switchTab(want);
+        try{ item.focus(); }catch(err){}
+        return;
+      }
     }
     // Ctrl/⌘ + Enter：开始转存（手动页，且未在编辑设置表单时）
     if((e.ctrlKey || e.metaKey) && e.key === 'Enter'){
