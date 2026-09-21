@@ -134,6 +134,9 @@ function searchSetActive(i){
 // 再去媒体库翻 —— 试错成本高。QAS 的 get_share_detail 本来就把分享根目录的
 // 文件清单拉回来了，只是被丢掉；这里把它展开给用户看。
 var searchDetailSeq = 0;
+// 结果行概览预热到的数据（url -> 归一化响应）。
+// 「文件」面板优先复用这份数据：概览已经取过的东西不该让用户再等一次请求。
+var searchDetailCache = {};
 
 // 集号摘要的后端文案：把「认出的集号 / 缺口」翻译成一句人话。
 // 刻意不下「是否全集」的结论（后端只回可观测量），措辞必须保持中性。
@@ -147,6 +150,25 @@ function epSummaryText(res){
   if(ep.continuous) txt += ' · 未见断档';
   else txt += ' · 缺 ' + (ep.missing||[]).join('、');
   return txt;
+}
+
+// 结果行上的「一行概览」文案：不展开也要看得见有多少集（issue #88 二次反馈）。
+// 用户反馈「还是无法显示里面有多少集」—— 摘要此前只在展开后出现，且只有 11px。
+// 这里把它提到结果行上，用中性措辞直接给结论性数字（共 N 集 / 认到哪几集）。
+function epOverviewText(res){
+  if(!res || !res.ok) return '';
+  var ep = res.episodes || {};
+  var nums = ep.numbers || [];
+  if(!res.video_count && !nums.length) return '';
+  var cnt = nums.length >= 2 ? nums.length : res.video_count;
+  if(nums.length >= 2){
+    var t = '共 ' + cnt + ' 集 · ' + nums[0] + '-' + nums[nums.length-1];
+    if(!ep.continuous && (ep.missing||[]).length) t += ' · 缺 ' + ep.missing.join('、');
+    else t += ' · 连续';
+    return t;
+  }
+  if(nums.length === 1) return '共 ' + res.video_count + ' 个视频文件 · 集号 ' + nums[0];
+  return '共 ' + res.video_count + ' 个视频文件';
 }
 
 // 渲染文件清单面板内容（成功 / 空 / 失败三态）。
@@ -215,6 +237,13 @@ async function toggleShareDetail(btn){
   if(panel.dataset.loaded === '1') return;
   var url = btn.dataset.url;
   if(!url) return;
+  var cached = searchDetailCache[url];
+  if(cached){
+    // 概览预热已经拿到过（可能是失败态）—— 直接渲染，用户点开就是即时反馈
+    panel.dataset.loaded = '1';
+    renderShareDetail(panel, cached);
+    return;
+  }
   var seq = ++searchDetailSeq;
   panel.textContent = '';
   var loading = document.createElement('div');
@@ -225,6 +254,7 @@ async function toggleShareDetail(btn){
     var d = await apiGet('/api/share_detail?url=' + encodeURIComponent(url), 1);
     if(seq !== searchDetailSeq) return;   // 已有新展开请求，丢弃过期回调
     panel.dataset.loaded = '1';
+    searchDetailCache[url] = d;   // 让后续（如概览补取）复用同一份数据
     renderShareDetail(panel, d);
   }catch(e){
     if(seq !== searchDetailSeq) return;
@@ -243,6 +273,7 @@ async function doSearch(){
   searchActiveIndex=-1; searchOptions=[]; input.setAttribute('aria-activedescendant','');
   var el=document.getElementById('searchResults');
   el.textContent='';
+  searchDetailCache = {};   // 新搜索：上一轮预热的数据作废
   var skWrap = document.createElement('div');
   skWrap.style.cssText = 'text-align:center;padding:20px;color:var(--text3)';
   var sk1 = document.createElement('div');
@@ -267,6 +298,7 @@ async function doSearch(){
     el.textContent='';
     var seq = ++searchCheckSeq;
     var checkItems = [];
+    var ovwItems = [];
     d.results.forEach(function(r, i){
       var item = document.createElement('div');
       item.className = 'search-item';
@@ -291,7 +323,17 @@ async function doSearch(){
       badge.textContent = '检测中…';
       infoDiv.appendChild(titleDiv);
       infoDiv.appendChild(sourceDiv);
+      // 「有多少集」概览：先写「读取中…」，链接检测通过后由概览接口回填。
+      // 无链接的结果不给概览（没东西可读）。
+      var ovw = null;
+      if(r.url){
+        ovw = document.createElement('div');
+        ovw.className = 'search-item-ep';
+        ovw.textContent = '集数读取中…';
+        ovw.dataset.url = r.url;
+      }
       infoDiv.appendChild(badge);
+      if(ovw){ infoDiv.appendChild(ovw); }
       var actions = document.createElement('div');
       actions.className = 'search-item-actions';
       // 「文件」按钮：展开该分享的文件清单，用来判断集数全不全（issue #88）。
@@ -322,8 +364,12 @@ async function doSearch(){
       item.appendChild(panel);
       el.appendChild(item);
       searchOptions.push(item);
-      if(r.url){ checkItems.push({url:r.url, badge:badge, btn:btn, seq:seq}); }
+      if(r.url){
+        checkItems.push({url:r.url, badge:badge, btn:btn, seq:seq});
+        ovwItems.push({url:r.url, el:ovw, seq:seq});
+      }
     });
+    checkEpOverviews(ovwItems);
     checkSearchLinks(checkItems);}
   catch(e){
     if(e.name==='AbortError')return;
@@ -354,6 +400,45 @@ async function transferOne(btn){
     if(r.success){showToast('已提交转存: '+title,true); btn.textContent='已转存'; btn.className='btn btn-sm btn-outline'}
     else{showToast(r.message||'失败',false); btn.disabled=false; btn.textContent='转存'}
   }catch(e){showToast('请求失败',false); btn.disabled=false; btn.textContent='转存'}
+}
+
+// 结果展示后并行拉一次分享文件清单，把「有多少集」直接写到结果行上。
+// 刻意**不复用**「文件」按钮的展开面板缓存：面板是用户主动展开才请求，
+// 这里是为了「不展开也看得见」而提前取。两者共用后端 180s 缓存，不会重复打 QAS。
+async function checkEpOverviews(items){
+  if(!items || !items.length) return;
+  var CONC = 3;
+  for(var i=0;i<items.length;i+=CONC){
+    var batch = items.slice(i,i+CONC);
+    await Promise.all(batch.map(function(it){ return fillEpOverview(it); }));
+  }
+}
+async function fillEpOverview(it){
+  if(it.seq !== searchCheckSeq) return;
+  try{
+    var d = await apiGet('/api/share_detail?url=' + encodeURIComponent(it.url), 1);
+    if(it.seq !== searchCheckSeq) return;
+    if(!it.el || !it.el.parentNode) return;
+    if(!d || !d.ok){
+      searchDetailCache[it.url] = d || {ok: false, message: '读取分享文件失败'};
+      // 失败不标红：概览取不到只是「这条没额外信息」，不该像链接失效那样刺眼
+      it.el.textContent = '集数未知';
+      it.el.classList.add('is-weak');
+      return;
+    }
+    searchDetailCache[it.url] = d;   // 「文件」面板点开时直接复用，不再等请求
+    var t = epOverviewText(d);
+    if(!t){
+      it.el.textContent = '未能从文件名认出集号';
+      it.el.classList.add('is-weak');
+      return;
+    }
+    it.el.textContent = t;
+    if((d.episodes && d.episodes.missing && d.episodes.missing.length)) it.el.classList.add('is-gap');
+  }catch(e){
+    if(it.seq !== searchCheckSeq) return;
+    if(it.el && it.el.parentNode){ it.el.textContent = '集数未知'; it.el.classList.add('is-weak'); }
+  }
 }
 
 // 搜索结果展示后，异步逐条检测链接有效性，用标记提示（先显示后检测，不打断搜索）

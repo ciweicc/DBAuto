@@ -177,24 +177,63 @@ def preview_share(url, use_cache=True):
 # 集号优先按「季集标记」认，其次才回落到裸数字：
 #   S01E02 / s1e2 / E02   → 02（**不是** 01：`S01` 里的 1 是季号，不是集号）
 #   第02集 / 第2话 / 02集  → 02
+#   1-22季 / 1~22集       → 1..22（区间命名，展开成整段）
 # 顺序很重要：先认标记、再认裸数字，否则 `S01E02` 会被裸数字规则读成 1 和 2。
 _EP_MARK = re.compile(r"[Ee](\d{1,4})(?![0-9])")
 _EP_CN = re.compile(r"第\s*(\d{1,4})\s*[集话話期]")
 _EP_SUFFIX = re.compile(r"(\d{1,4})\s*[集话話期]")
+_EP_RANGE = re.compile(r"(\d{1,4})\s*[-~－—到]\s*(\d{1,4})\s*(?:季|集|话|話|期)")
 _EP_BARE = re.compile(r"(?:^|[^0-9])(\d{1,4})(?![0-9])")
 
+# 季号标记：`S01` / `第1季` / `1季` / `全2季`。这些位置上的数字是**季**不是**集**，
+# 走裸数字回落时必须先剔除，否则 `恶搞之家 S12` 会被读成「第 12 集」。
+_SEASON_MARK = re.compile(r"(?:[Ss]\s*\d{1,3}|第\s*\d{1,3}\s*季|\d{1,3}\s*季|全\s*\d{1,3}\s*季)")
+# 明显不是集号的数字：年份（19xx/20xx）、分辨率（480/720/1080/2160）、
+# 常见编码/画质数字。盘搜标题里这些数字比集号还显眼，不剔除就会算出
+# 「缺 23~317」这种荒唐的缺口（实测踩到过）。
+_NON_EPISODE = {480, 540, 576, 720, 1080, 1440, 2160, 265, 264, 10}
+_BARE_MAX = 300  # 单文件裸数字上限：超过这个数几乎不可能是集号（年份/体积/分辨率）
 
-def _episode_number(stem):
-    """从单个文件名（已去扩展名）里取集号，取不到返回 None。"""
+
+def _episode_numbers(stem):
+    """从单个文件名（已去扩展名）里取集号列表，取不到返回 []。
+
+    返回**列表**而非单值：整季打包的命名（`恶搞之家1-22季`）一个文件就代表
+    22 集，展开成区间才能正确参与「有没有断档」的统计。过去的实现只取末位
+    数字（得到 22），于是「1-22季 + 第5季」会被算成「缺 6~21」，全是误报。
+    """
+    # 1) 区间命名优先：`1-22季` / `1~22集` / `1-22话`
+    m = _EP_RANGE.search(stem)
+    if m:
+        lo, hi = int(m.group(1)), int(m.group(2))
+        if 1 <= lo < hi <= _BARE_MAX:
+            return list(range(lo, hi + 1))
+    # 2) 季集标记 / 中文集号 / 数字+集号后缀
     for pat in (_EP_MARK, _EP_CN, _EP_SUFFIX):
         m = pat.search(stem)
         if m:
-            return int(m.group(1))
-    # 裸数字回落：取**最后一个**数字段（`Show 2024 05` 里 05 才是集号）
-    nums = [int(x) for x in _EP_BARE.findall(stem)]
+            return [int(m.group(1))]
+    # 3) 裸数字回落：先剔除「季号」与年份/分辨率，再取**最后一个**数字段
+    cleaned = _SEASON_MARK.sub(" ", stem)
+    nums = []
+    for x in _EP_BARE.findall(cleaned):
+        n = int(x)
+        if n in _NON_EPISODE:
+            continue
+        if 1900 <= n <= 2100:  # 年份
+            continue
+        if n > _BARE_MAX:
+            continue
+        nums.append(n)
     if nums:
-        return nums[-1]
-    return None
+        return [nums[-1]]
+    return []
+
+
+def _episode_number(stem):
+    """从单个文件名里取**一个**代表集号，取不到返回 None（兼容旧调用）。"""
+    ns = _episode_numbers(stem)
+    return ns[0] if ns else None
 
 
 def summarize_episodes(files):
@@ -214,9 +253,7 @@ def summarize_episodes(files):
             continue
         name = f.get("name") or ""
         stem = name.rsplit(".", 1)[0] if "." in name else name
-        n = _episode_number(stem)
-        if n is not None:
-            nums.add(n)
+        nums.update(_episode_numbers(stem))
     numbers = sorted(nums)
     if len(numbers) < 2:
         return {"numbers": numbers, "missing": [], "continuous": bool(numbers)}

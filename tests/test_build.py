@@ -4165,10 +4165,35 @@ def test_search_results_expose_share_file_list(dist):
     assert ".search-item-main" in main_css, \
         "主行未拆出独立容器（高亮位移会把展开的清单一起缩进）"
 
-    # 6. 产物带上了这版逻辑
+    # 6. 不展开也要看得见有多少集（issue #88 二次反馈：「还是无法显示里面有多少集」）
+    #    集数此前只在展开后的面板里、且只有 11px；这里钉住「结果行上的一行概览」。
+    assert "epOverviewText" in search_js, "缺少结果行集数概览的渲染"
+    assert "search-item-ep" in search_js, "结果行未挂集数概览容器（不展开就看不到）"
+    assert "checkEpOverviews" in search_js, \
+        "概览没有预热流程（不展开时永远是「读取中…」）"
+    assert "searchDetailCache" in search_js, \
+        "概览与面板未共用缓存（点开还要再等一次请求）"
+    # 概览必须读后端的 episodes（而不是自己在前端瞎猜集号）
+    i_ovw = search_js.index("function epOverviewText")
+    ovw_fn = search_js[i_ovw:search_js.index("\n// 渲染文件清单面板内容", i_ovw)]
+    assert "episodes" in ovw_fn, "概览未读取后端集号字段"
+
+    # 7. 摘要视觉权重：11px 实测在浮层里看不见，必须提到 --fs-sm
+    i_sum = main_css.index(".search-detail-sum{")
+    sum_css = main_css[i_sum:main_css.index("}", i_sum)]
+    assert "font-size:var(--fs-sm)" in sum_css, \
+        "摘要仍是 --fs-xs(11px)，用户反馈「看不出有多少集」"
+    assert ".search-item-ep" in main_css, "结果行概览无样式"
+    i_ep = main_css.index(".search-item-ep{")
+    ep_css = main_css[i_ep:main_css.index("}", i_ep)]
+    assert "font-size:var(--fs-sm)" in ep_css, "结果行概览字号过小"
+
+    # 8. 产物带上了这版逻辑
     assert "toggleShareDetail" in dist and "search-detail-toggle" in dist, \
         "构建产物缺少文件清单入口（改了 src 但没跑 build.sh？）"
     assert "epSummaryText" in dist, "构建产物缺少集号摘要"
+    assert "epOverviewText" in dist and "search-item-ep" in dist, \
+        "构建产物缺少结果行集数概览（改了 src 但没跑 build.sh？）"
 
 
 def test_share_detail_dom_script_present(dist):

@@ -147,6 +147,57 @@ def test_summarize_single_number_is_not_gap():
     s = summarize_episodes([{"name": "01.mp4"}])
     assert s["numbers"] == [1] and s["missing"] == []
 
+
+# ---- 区间命名 / 年份干扰（issue #88 二次反馈实测踩到的两类误判）----
+
+def test_summarize_expands_season_range_name():
+    """`恶搞之家1-22季`：一个文件就代表 1~22 集。
+
+    旧实现只取末位数字 22，于是「1-22季 + 第5季」会被算成「缺 6~21」，
+    把全集误报成残缺 —— 这正是用户看到的「看不出有多少集」的根因之一。
+    """
+    s = summarize_episodes([{"name": "恶搞之家1-22季"}])
+    assert s["numbers"] == list(range(1, 23)), s["numbers"]
+    assert s["missing"] == [] and s["continuous"] is True
+
+
+def test_summarize_range_plus_single_season_is_continuous():
+    s = summarize_episodes([{"name": "恶搞之家1-22季"}, {"name": "第5季"}])
+    assert s["missing"] == [], "区间命名被误算成断档：{}".format(s["missing"])
+    assert s["continuous"] is True
+
+
+def test_summarize_range_with_cn_unit():
+    s = summarize_episodes([{"name": "[高清]某剧 全1-12集 1080P"}])
+    assert s["numbers"] == list(range(1, 13)), s["numbers"]
+
+
+def test_summarize_ignores_years_and_resolutions():
+    """`Show.2023.1080p` 既没有集号也没有季集标记 —— 不能把年份/分辨率当集号。
+
+    旧实现会把 2023 读成集号，和真实的 22 形成 23~317 的荒唐缺口。
+    """
+    s = summarize_episodes([{"name": "Show.2023.1080p"}, {"name": "Show.2024.720p"}])
+    assert s["numbers"] == [], "年份/分辨率被当成集号：{}".format(s["numbers"])
+
+
+def test_summarize_range_not_polluted_by_year():
+    s = summarize_episodes([{"name": "Show 1-22季"}, {"name": "Show.2023.1080p"}])
+    assert s["numbers"] == list(range(1, 23))
+    assert s["missing"] == [], s["missing"]
+
+
+def test_summarize_ignores_season_mark_in_bare_fallback():
+    """`Show.S12` 里的 12 是季号，不是集号 —— 裸数字回落必须先把季标记剔除。"""
+    s = summarize_episodes([{"name": "Show.S12"}, {"name": "Show.S13"}])
+    assert s["numbers"] == [], "季号被当成集号：{}".format(s["numbers"])
+
+
+def test_summarize_keeps_episode_even_with_resolution_in_name():
+    files = [{"name": "剧.S01E01.1080p.mkv"}, {"name": "剧.S01E02.720p.mkv"}]
+    s = summarize_episodes(files)
+    assert s["numbers"] == [1, 2], s["numbers"]
+
 # ------------------------------------------------ preview_share
 
 class _FakeQAS:
