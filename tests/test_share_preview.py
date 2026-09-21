@@ -4,10 +4,12 @@
   1. normalize_share_detail 对 QAS 原始响应的归一化：文件/目录拆分、
      视频计数、体积转换、标题提取；
   2. 失败响应（success=False）必须把真实原因带出来，不能静默变成「空列表」；
-  3. 条目数超过上限时截断并置 truncated（DOM 不能被几百集撑爆）；
-  4. summarize_episodes 只回答可观测量：认出哪些集号、是否连续、缺口在哪 ——
-     不对「是否全集」下结论（误报比不报更贵）。
+  3. 条目数超过上限时截断并置 truncated（DOM 不能被几百个文件撑爆）；
+  4. **不做任何集号/缺集推断**（issue #88 第五轮）：用户原话「在日志里
+     报出候选集数还是太麻烦了，因为有识别不准的情况」。响应里只有原始
+     清单与可数计数，`episodes` / `missing` 这类字段不得回来。
 """
+import json
 import os
 import sys
 
@@ -17,7 +19,7 @@ from unittest.mock import patch
 
 import share_preview
 from share_preview import (
-    normalize_share_detail, summarize_episodes, preview_share, MAX_PREVIEW_FILES,
+    normalize_share_detail, preview_share, MAX_PREVIEW_FILES,
 )
 
 
@@ -87,29 +89,35 @@ def test_normalize_truncates_large_share():
     assert r["video_count"] == MAX_PREVIEW_FILES + 25, "计数不能在截断前丢掉"
 
 
-def test_normalize_embeds_episode_summary():
-    """集号摘要必须随响应一起给（前端「缺 8、9」那句靠它）。"""
+def test_normalize_has_no_episode_inference():
+    """响应里不得再出现集号/缺口字段（issue #88 第五轮）。
+
+    用户原话：「在日志里报出候选集数还是太麻烦了，因为有识别不准的情况」。
+    集号解析对 `1-22季` / 年份 / 分辨率 / 季号一律会误报，而**误报比不报
+    更贵**（用户会去排查一个不存在的缺集）。所以这里钉住「字段不存在」，
+    而不是「算得对不对」—— 只要字段回来，就一定会有人再信它。
+    """
     raw = _raw([_f("剧.S01E{:02d}.mkv".format(i), cat="video")
                 for i in (1, 2, 3, 4, 5, 6, 7, 10, 11, 12)])
     r = normalize_share_detail(raw)
-    assert r["episodes"]["numbers"] == [1, 2, 3, 4, 5, 6, 7, 10, 11, 12]
-    assert r["episodes"]["missing"] == [8, 9], "缺口未算出：{}".format(r["episodes"])
-    assert r["episodes"]["continuous"] is False
+    assert "episodes" not in r, "集号推断字段回来了：{}".format(r.get("episodes"))
+    assert "missing" not in json.dumps(r, ensure_ascii=False), \
+        "响应体里仍有「缺口」类字段"
+    # 可数的东西必须在：条目数 / 目录数 / 视频数（用户据此自己判断）
+    assert r["total"] == 10 and r["video_count"] == 10 and r["dir_count"] == 0
+    assert [f["name"] for f in r["files"]][0].endswith("01.mkv"), "原始文件名必须保留"
 
 
-def test_episode_summary_uses_full_list_not_truncated_view():
-    """集号摘要必须基于**未截断**的完整列表。
+def test_no_episode_inference_on_odd_names():
+    """命名千奇百怪也不猜（旧版正是在这些输入上误报）。
 
-    只看前 MAX_PREVIEW_FILES 条会把后面的集号整段丢掉，算出「缺了大半」
-    的假缺口 —— 这种假警报比不报更糟（用户会去排查一个不存在的缺集）。
+    `恶搞之家1-22季` / `Show.2023.1080p` / `Show.S12` 都曾被解析成集号并
+    算出荒唐缺口；现在这些输入只应原样出现在 files 里。
     """
-    items = [_f("E{:03d}.mp4".format(i), cat="video")
-             for i in range(1, MAX_PREVIEW_FILES + 26)]
-    r = normalize_share_detail(_raw(items))
-    assert len(r["files"]) == MAX_PREVIEW_FILES
-    assert r["episodes"]["missing"] == [], \
-        "截断后的可见列表被当成全集算缺口：{}".format(r["episodes"]["missing"][:10])
-    assert r["episodes"]["numbers"][-1] == MAX_PREVIEW_FILES + 25, "尾部集号丢失"
+    for name in ("恶搞之家1-22季", "Show.2023.1080p", "Show.S12", "[高清]某剧 全1-12集 1080P"):
+        r = normalize_share_detail(_raw([_f(name, cat="video")]))
+        assert "episodes" not in r
+        assert [f["name"] for f in r["files"]] == [name]
 
 
 def test_size_is_normalized_to_int():
@@ -119,84 +127,6 @@ def test_size_is_normalized_to_int():
     r = normalize_share_detail(raw)
     sizes = [f["size"] for f in r["files"]]
     assert sizes == [2048, 0, 0], "体积归一化错（字符串/缺失未兜底）"
-
-# ------------------------------------------------ summarize_episodes
-
-def test_summarize_reports_continuous_range():
-    files = [{"name": "剧.S01E{:02d}.mkv".format(i)} for i in range(1, 13)]
-    s = summarize_episodes(files)
-    assert s["numbers"] == list(range(1, 13))
-    assert s["continuous"] is True and s["missing"] == []
-
-
-def test_summarize_reports_gap():
-    """缺集必须被指出来 —— 这正是用户要判断的「集数全不全」。"""
-    files = [{"name": n} for n in ("01.mp4", "02.mp4", "03.mp4", "06.mp4")]
-    s = summarize_episodes(files)
-    assert s["numbers"] == [1, 2, 3, 6]
-    assert s["missing"] == [4, 5], "缺口未识别：{}".format(s["missing"])
-    assert s["continuous"] is False
-
-
-def test_summarize_ignores_dirs_and_unknown():
-    s = summarize_episodes([{"name": "第二季", "dir": True}, {"name": "说明.txt"}])
-    assert s["numbers"] == [], "不该从目录名/无编号文件里瞎猜集号"
-
-
-def test_summarize_single_number_is_not_gap():
-    s = summarize_episodes([{"name": "01.mp4"}])
-    assert s["numbers"] == [1] and s["missing"] == []
-
-
-# ---- 区间命名 / 年份干扰（issue #88 二次反馈实测踩到的两类误判）----
-
-def test_summarize_expands_season_range_name():
-    """`恶搞之家1-22季`：一个文件就代表 1~22 集。
-
-    旧实现只取末位数字 22，于是「1-22季 + 第5季」会被算成「缺 6~21」，
-    把全集误报成残缺 —— 这正是用户看到的「看不出有多少集」的根因之一。
-    """
-    s = summarize_episodes([{"name": "恶搞之家1-22季"}])
-    assert s["numbers"] == list(range(1, 23)), s["numbers"]
-    assert s["missing"] == [] and s["continuous"] is True
-
-
-def test_summarize_range_plus_single_season_is_continuous():
-    s = summarize_episodes([{"name": "恶搞之家1-22季"}, {"name": "第5季"}])
-    assert s["missing"] == [], "区间命名被误算成断档：{}".format(s["missing"])
-    assert s["continuous"] is True
-
-
-def test_summarize_range_with_cn_unit():
-    s = summarize_episodes([{"name": "[高清]某剧 全1-12集 1080P"}])
-    assert s["numbers"] == list(range(1, 13)), s["numbers"]
-
-
-def test_summarize_ignores_years_and_resolutions():
-    """`Show.2023.1080p` 既没有集号也没有季集标记 —— 不能把年份/分辨率当集号。
-
-    旧实现会把 2023 读成集号，和真实的 22 形成 23~317 的荒唐缺口。
-    """
-    s = summarize_episodes([{"name": "Show.2023.1080p"}, {"name": "Show.2024.720p"}])
-    assert s["numbers"] == [], "年份/分辨率被当成集号：{}".format(s["numbers"])
-
-
-def test_summarize_range_not_polluted_by_year():
-    s = summarize_episodes([{"name": "Show 1-22季"}, {"name": "Show.2023.1080p"}])
-    assert s["numbers"] == list(range(1, 23))
-    assert s["missing"] == [], s["missing"]
-
-
-def test_summarize_ignores_season_mark_in_bare_fallback():
-    """`Show.S12` 里的 12 是季号，不是集号 —— 裸数字回落必须先把季标记剔除。"""
-    s = summarize_episodes([{"name": "Show.S12"}, {"name": "Show.S13"}])
-    assert s["numbers"] == [], "季号被当成集号：{}".format(s["numbers"])
-
-
-def test_summarize_keeps_episode_even_with_resolution_in_name():
-    files = [{"name": "剧.S01E01.1080p.mkv"}, {"name": "剧.S01E02.720p.mkv"}]
-    s = summarize_episodes(files)
-    assert s["numbers"] == [1, 2], s["numbers"]
 
 # ------------------------------------------------ preview_share
 

@@ -4192,6 +4192,56 @@ def test_search_results_expose_share_file_list(dist):
     assert "epOverviewText" not in dist, "构建产物里还留着被否掉的集数概览"
 
 
+def test_search_detail_is_fetched_on_demand(dist):
+    """结果直出不得预热分享清单；点开那一条才发请求（issue #88 第五轮）。
+
+    用户原话：「我是说在搜索的速度上能不能优化……在日志里报出候选集数还是
+    太麻烦了，因为有识别不准的情况」。两件事都必须钉住：
+
+    1. **速度**：清单接口打的是 QAS，每次都要拿 Cookie 向夸克实查，慢且
+       严格限速。过去结果一出就把 N 条分享全拉一遍（前端 CONC=2 串行），
+       队列长达几十秒，而用户往往只点开一两条 —— 那些请求纯属浪费。
+       现在清单一律等用户点开再取，上游请求数 1 + 1 + N → 1 + 1。
+    2. **别猜集数**：同一次搜索的日志里冒出「候选集数」而识别不准，
+       是这一轮被点名的麻烦。集号推断连同 `episodes` 字段一并移除。
+
+    动态证据在 scripts/check_share_detail_dom.py（--slow 模式量「上游卡住时
+    结果先出」），这里做静态防复发。
+    """
+    search_js = _read(os.path.join(_JS_DIR, "search.js"))
+    preview = _read(os.path.join(_ROOT, "app_modules", "share_preview.py"))
+
+    # 1. 预热函数必须消失（回来就一定会有 N 次上游请求）
+    for gone in ("preloadShareDetails", "preloadOne"):
+        assert gone not in search_js, \
+            "{} 回来了：结果一出就预热清单 = N 条结果打 N 次 QAS".format(gone)
+    assert "preloadItems" not in search_js, "仍在收集待预热的清单项"
+    # 2. 结果直出后唯一的并发动作是「一次批量链接检测」
+    i_dosearch = search_js.index("async function doSearch(){")
+    tail = search_js[i_dosearch:]
+    assert "checkSearchLinks(checkItems)" in tail, "结果直出后未做批量链接检测"
+    assert "/api/share_detail" in search_js, \
+        "「文件」按钮仍应能取清单（只是时机改成点开才取）"
+    # 3. 取数只发生在展开动作里，且只取被点开的那一条
+    i_toggle = search_js.index("async function toggleShareDetail")
+    fn = search_js[i_toggle:search_js.index("\nasync function doSearch", i_toggle)]
+    assert "apiGet('/api/share_detail?url='" in fn, "展开时未取该条清单"
+    assert "for(" not in fn and "forEach" not in fn.split("setDetailBtnBusy")[0], \
+        "展开动作里出现了循环 —— 又会变成批量打 QAS"
+    # 4. 等待期间的就地反馈：按钮转圈，而不是锁死整行
+    assert "setDetailBtnBusy" in search_js, "等待期间没有就地面板反馈"
+    assert "btn-spinner" in search_js and ".btn.is-busy" in _read(
+        os.path.join(_SRC, "styles", "main.css")), "缺少按钮转圈样式"
+    # 5. 集号推断不得回来（响应体与前端都不许有）
+    for gone in ("summarize_episodes", "_episode_numbers", "_EP_RANGE", "_SEASON_MARK"):
+        assert gone not in preview, "{} 回到了 share_preview：集号推断又开始猜了".format(gone)
+    assert '"episodes"' not in preview, "响应体里又挂上了集号摘要字段"
+    assert "episodes" not in search_js, "前端仍在读集号摘要"
+    # 6. 产物带上了这版逻辑
+    assert "preloadShareDetails" not in dist, "产物里还留着清单预热（没跑 build.sh？）"
+    assert "setDetailBtnBusy" in dist, "产物缺少点开才取的等待反馈"
+
+
 def test_share_detail_dom_script_present(dist):
     """文件清单展开链路的走查脚本必须落库。
 
@@ -4210,7 +4260,11 @@ def test_share_detail_dom_script_present(dist):
                   "rows", "summary", "dropdownRect"):
         assert scene in body, "脚本未度量 {!r}（该场景会静默漏检）".format(scene)
     # 懒加载（展开前零请求）与缓存（二次展开零请求）是这一轮的要点，必须有
-    assert "懒加载" in body, "脚本未验证懒加载（展开前不得打接口）"
+    assert "结果直出零清单请求" in body, \
+        "脚本未验证「N 条结果不得打 N 次 QAS（展开前零清单请求）」"
+    assert "点开才取数" in body, "脚本未验证「展开才发第一次请求」"
+    assert "--slow" in body and "先到" in body, \
+        "脚本缺少「上游卡住时结果行先出」的验证"
     assert "缓存" in body, "脚本未验证二次展开命中缓存"
     assert "FAIL_STUB" in body, "脚本未构造失败态（失败静默=用户查不出原因）"
 

@@ -430,6 +430,16 @@ input:disabled,select:disabled{opacity:.5;cursor:not-allowed;background:var(--ca
 }
 @keyframes btnSpin{to{transform:rotate(360deg)}}
 
+/* 「文件」按钮的就地转圈（issue #88 第五轮）：点开才取数，等待期间
+   只把这一颗按钮变成转圈，**不**禁用整行 —— 清单接口打 QAS 实查较慢，
+   锁死整行会让人以为整块结果都卡住了。 */
+.btn.is-busy{pointer-events:none;color:transparent !important;position:relative}
+.btn.is-busy .btn-spinner{
+  position:absolute;width:12px;height:12px;border:2px solid var(--accent-wash-strong);
+  border-top-color:var(--accent);border-radius:50%;animation:btnSpin .7s linear infinite;
+}
+.btn.is-busy .btn-spinner span{display:none}
+
 .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 
 /* Toggle */

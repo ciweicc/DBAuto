@@ -137,8 +137,8 @@ function searchSetActive(i){
 // 体积）。不做集号解析、不下「全不全」的结论：文件名命名千奇百怪，自动判定
 // 必然误报，而误报比不报更贵（用户会去排查一个不存在的缺集）。
 var searchDetailSeq = 0;
-// 结果行概览预热到的数据（url -> 归一化响应）。
-// 「文件」面板优先复用这份数据：概览已经取过的东西不该让用户再等一次请求。
+// 已取回的分享清单（url -> 归一化响应）。
+// 同一次搜索里再次展开同一条走这里，零请求。
 var searchDetailCache = {};
 
 // 面板顶部的一句尺寸摘要：只报可数的东西（条目数 / 目录数 / 视频数），
@@ -151,6 +151,28 @@ function detailCountText(res){
   if(res.dir_count) parts.push(res.dir_count + ' 个目录');
   if(res.video_count) parts.push(res.video_count + ' 个视频');
   return parts.join(' · ');
+}
+
+// 「文件」按钮就地转圈（请求中）。
+// 清单接口打的是 QAS，每次都要拿 Cookie 向夸克**实查**，慢且严格限速，
+// 所以点开一条不能锁死整行：只把这一颗按钮变成转圈，其它结果照常可点。
+function setDetailBtnBusy(btn, busy){
+  if(!btn) return;
+  if(busy){
+    btn.disabled = true;
+    btn.dataset.label = btn.textContent;
+    btn.textContent = '';
+    btn.classList.add('is-busy');
+    var sp = document.createElement('span');
+    sp.className = 'btn-spinner';
+    sp.setAttribute('aria-hidden','true');
+    btn.appendChild(sp);
+  } else {
+    btn.disabled = false;
+    btn.classList.remove('is-busy');
+    btn.textContent = btn.dataset.label || '文件';
+    delete btn.dataset.label;
+  }
 }
 
 // 渲染文件清单面板内容（成功 / 空 / 失败三态）。
@@ -201,7 +223,14 @@ function renderShareDetail(panel, res){
   }
 }
 
-// 展开/收起一条搜索结果的文件清单。首次展开才请求（懒加载），二次展开走缓存。
+// 展开/收起一条搜索结果的文件清单。
+//
+// 取数时机：**点开才取**（issue #88 第五轮）。
+//   - 结果直出只带标题 / 来源 / 链接徽标，不等清单接口；
+//   - 只有用户点了「文件」的那一条才去取清单，按钮就地转圈；
+//   - 已取过的复用 searchDetailCache，二次展开零请求。
+// 过去是「结果一出就把 20 条分享全拉一遍」，QAS 逐条实查 + 限速，
+// 队列长达几十秒，而用户往往只点开其中一两条 —— 那些请求纯属浪费。
 async function toggleShareDetail(btn){
   var item = btn.closest('.search-item');
   if(!item) return;
@@ -229,9 +258,10 @@ async function toggleShareDetail(btn){
   var seq = ++searchDetailSeq;
   panel.textContent = '';
   var loading = document.createElement('div');
-  loading.className = 'search-detail-msg';
+  loading.className = 'search-detail-msg search-detail-loading';
   loading.textContent = '正在读取文件清单…';
   panel.appendChild(loading);
+  setDetailBtnBusy(btn, true);
   try{
     var d = await apiGet('/api/share_detail?url=' + encodeURIComponent(url), 1);
     if(seq !== searchDetailSeq) return;   // 已有新展开请求，丢弃过期回调
@@ -240,32 +270,10 @@ async function toggleShareDetail(btn){
     renderShareDetail(panel, d);
   }catch(e){
     if(seq !== searchDetailSeq) return;
+    // 失败**不写缓存**：缓存下来重试也只会拿到同一个失败
     renderShareDetail(panel, {ok:false, message:'读取分享文件失败：' + (e.message||'网络错误')});
-  }
-}
-
-// 结果展示后并行拉一次分享文件清单，把「文件」按钮点开即用。
-// 与展开面板共用前后端缓存（后端 180s / 前端 searchDetailCache），
-// 所以这里的预热**不会**让一次搜索多打上游，只是把等待提前。
-// 注意：并发度不能开大 —— 后端 /api/share_detail 要逐个向夸克实查，
-// 同时打太多会被上游限速，反而更慢（见 issue #88「搜索速度实在有点慢」）。
-async function preloadShareDetails(items){
-  if(!items || !items.length) return;
-  var CONC = 2;
-  for(var i=0;i<items.length;i+=CONC){
-    var batch = items.slice(i,i+CONC);
-    await Promise.all(batch.map(function(it){ return preloadOne(it); }));
-  }
-}
-async function preloadOne(it){
-  if(it.seq !== searchCheckSeq) return;
-  try{
-    var d = await apiGet('/api/share_detail?url=' + encodeURIComponent(it.url), 1);
-    if(it.seq !== searchCheckSeq) return;
-    searchDetailCache[it.url] = d || {ok:false, message:'读取分享文件失败'};
-  }catch(e){
-    if(it.seq !== searchCheckSeq) return;
-    searchDetailCache[it.url] = {ok:false, message:'读取分享文件失败'};
+  }finally{
+    if(seq === searchDetailSeq) setDetailBtnBusy(btn, false);
   }
 }
 
@@ -280,7 +288,7 @@ async function doSearch(){
   searchActiveIndex=-1; searchOptions=[]; input.setAttribute('aria-activedescendant','');
   var el=document.getElementById('searchResults');
   el.textContent='';
-  searchDetailCache = {};   // 新搜索：上一轮预热的数据作废
+  searchDetailCache = {};   // 新搜索：上一轮取回的清单作废
   var skWrap = document.createElement('div');
   skWrap.style.cssText = 'text-align:center;padding:20px;color:var(--text3)';
   var sk1 = document.createElement('div');
@@ -292,8 +300,8 @@ async function doSearch(){
   skWrap.appendChild(sk1);
   skWrap.appendChild(sk2);
   el.appendChild(skWrap);
-  // 阶段提示：整条链路是「搜索 → 检测链接 → 读文件清单」，过去从骨架屏
-  // 直接跳结果，中间几秒完全无反馈，用户体感就是「慢」。这里把当前阶段写出来。
+  // 阶段提示：只有**搜索**这一段需要（用户看不到任何其它反馈）。
+  // 链接检测有逐条徽标、清单有按钮转圈，各自的进度长在自己身上更准。
   var stage = document.createElement('div');
   stage.style.cssText = 'width:100%;text-align:center;font-size:12px;color:var(--text3);padding:2px 0 8px';
   stage.textContent = '正在搜索…';
@@ -301,7 +309,6 @@ async function doSearch(){
   if(searchAbort)searchAbort.abort();
   searchAbort=new AbortController();
   try{var d=await apiGet('/api/search?q='+encodeURIComponent(q),2,searchAbort.signal);
-    if(stage.parentNode) stage.textContent = '检测链接…';
     if(!d.results||!d.results.length){
       el.textContent='';
       var emptyWrap = renderEmptyState({icon:'icon-search', title:'没有找到相关资源', desc:'试试换个关键词，或检查拼写<br>也可以去「手动转存」从榜单中选择'});
@@ -310,11 +317,8 @@ async function doSearch(){
       return;
     }
     el.textContent='';
-    el.appendChild(stage);
-    stage.textContent = '检测链接…';
     var seq = ++searchCheckSeq;
     var checkItems = [];
-    var preloadItems = [];
     d.results.forEach(function(r, i){
       var item = document.createElement('div');
       item.className = 'search-item';
@@ -374,18 +378,13 @@ async function doSearch(){
       searchOptions.push(item);
       if(r.url){
         checkItems.push({url:r.url, badge:badge, btn:btn, seq:seq});
-        preloadItems.push({url:r.url, seq:seq});
       }
     });
-    // 链接检测与文件清单预热并行：两者互不依赖（前者打 PanSou，后者打 QAS），
-    // 串行会把等待叠加，这是「慢」的另一半原因。
-    // 链接检测与文件清单预热并行：两者互不依赖（前者打 PanSou，后者打 QAS），
-    // 串行会把等待叠加，这是「慢」的另一半原因。
-    checkSearchLinks(checkItems);
-    preloadShareDetails(preloadItems).then(function(){
-      // 全部就绪后收掉阶段提示（有链接但取不到时也一样收）
-      if(seq === searchCheckSeq && stage.parentNode){ stage.textContent = ''; }
-    });}
+    // 只发一次批量链接检测（一次请求拿全部结果）。清单一律等用户点开再取
+    // —— 一次搜索的上游请求从「1 + 1 + N」降到「1 + 1」。预热等待的
+    // 「正在检测链接…」阶段提示也随之删掉：链接徽标自己会从「检测中…」
+    // 变成结论，再挂一句全局提示只会让人以为整块还没加载完。
+    checkSearchLinks(checkItems);}
   catch(e){
     if(e.name==='AbortError')return;
     el.textContent='';
