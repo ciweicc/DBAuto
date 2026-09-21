@@ -4125,8 +4125,11 @@ def test_search_kbd_dom_script_present(dist):
 def test_search_results_expose_share_file_list(dist):
     """搜索结果必须能展开看该分享的文件清单（issue #88）。
 
-    用户原话「搜索资源的功能搜出来点进去不能看集数全不全」—— 交付的是
-    「每条结果一个可展开的清单 + 集号摘要」，不是在结果里塞一个数字。
+    交付形态经过一轮收敛：第一版在结果行上算「共 N 集 · 缺 8、9」，
+    用户明确否掉了 —— 「不需要显示集数。显示集数的话，会做得非常复杂。
+    而且故障率很高。只需要显示这条链接里面的具体文件内容层级就可以了，
+    就是当我点击文件按钮的时候，可以显示里面有什么文件」（issue #88 第三轮）。
+    所以这里钉住的是「清单」这条链路，并**反向钉死**集号解析不再回来。
     """
     search_js = _read(os.path.join(_JS_DIR, "search.js"))
     main_css = _read(os.path.join(_SRC, "styles", "main.css"))
@@ -4153,47 +4156,40 @@ def test_search_results_expose_share_file_list(dist):
     assert "读取分享文件失败" in search_js, "失败态没有提示"
     assert "没有文件" in search_js, "空分享没有提示（会渲染成空白）"
 
-    # 4. 集号摘要：只说可观测的（缺哪些集），不替用户下「是否全集」的结论
-    assert "epSummaryText" in search_js, "缺少集号摘要的渲染"
-    assert "缺 " in search_js or "缺' +" in search_js or "' · 缺" in search_js, \
-        "摘要没有指出缺口（这正是用户要判断的事）"
-    assert "episodes" in search_js, "摘要未读取后端集号字段"
+    # 4. 清单内容：文件行（名称 + 体积/目录）+ 目录标记 + 截断提示
+    assert "search-detail-row" in search_js, "未渲染文件行"
+    assert "search-detail-size" in search_js, "文件行没有体积/类型单元格"
+    assert "fmtSize" in search_js, "体积未格式化（用户看不出文件多大）"
+    assert "truncated" in search_js, "条目超上限时没有截断提示"
+    # 摘要只报可数的东西（条目数 / 目录数 / 视频数），不做集数推断
+    assert "detailCountText" in search_js, "清单顶部缺少条目数摘要"
+    assert "dir_count" in search_js and "video_count" in search_js, \
+        "摘要未读取后端的目录/视频计数"
 
-    # 5. 面板样式存在，且不跟随主行的高亮位移（展开≠选中）
+    # 5. 集数解析已被移除（issue #88 第三轮：用户不要集数）
+    for gone in ("epOverviewText", "epSummaryText", "checkEpOverviews"):
+        assert gone not in search_js, \
+            "{} 仍在（用户明确否掉了集数推断：故障率高、不要下结论）".format(gone)
+    assert "search-item-ep" not in search_js, "结果行仍在挂集数概览容器"
+    assert "search-item-ep" not in main_css, "结果行概览样式未清理"
+
+    # 6. 面板样式存在，且不跟随主行的高亮位移（展开≠选中）
     assert ".search-detail{" in main_css, "文件清单面板无样式"
     assert ".search-detail.show" in main_css, "面板没有展开态样式"
     assert ".search-item-main" in main_css, \
         "主行未拆出独立容器（高亮位移会把展开的清单一起缩进）"
 
-    # 6. 不展开也要看得见有多少集（issue #88 二次反馈：「还是无法显示里面有多少集」）
-    #    集数此前只在展开后的面板里、且只有 11px；这里钉住「结果行上的一行概览」。
-    assert "epOverviewText" in search_js, "缺少结果行集数概览的渲染"
-    assert "search-item-ep" in search_js, "结果行未挂集数概览容器（不展开就看不到）"
-    assert "checkEpOverviews" in search_js, \
-        "概览没有预热流程（不展开时永远是「读取中…」）"
-    assert "searchDetailCache" in search_js, \
-        "概览与面板未共用缓存（点开还要再等一次请求）"
-    # 概览必须读后端的 episodes（而不是自己在前端瞎猜集号）
-    i_ovw = search_js.index("function epOverviewText")
-    ovw_fn = search_js[i_ovw:search_js.index("\n// 渲染文件清单面板内容", i_ovw)]
-    assert "episodes" in ovw_fn, "概览未读取后端集号字段"
-
     # 7. 摘要视觉权重：11px 实测在浮层里看不见，必须提到 --fs-sm
     i_sum = main_css.index(".search-detail-sum{")
     sum_css = main_css[i_sum:main_css.index("}", i_sum)]
     assert "font-size:var(--fs-sm)" in sum_css, \
-        "摘要仍是 --fs-xs(11px)，用户反馈「看不出有多少集」"
-    assert ".search-item-ep" in main_css, "结果行概览无样式"
-    i_ep = main_css.index(".search-item-ep{")
-    ep_css = main_css[i_ep:main_css.index("}", i_ep)]
-    assert "font-size:var(--fs-sm)" in ep_css, "结果行概览字号过小"
+        "摘要仍是 --fs-xs(11px)，实测在浮层里看不见"
 
     # 8. 产物带上了这版逻辑
     assert "toggleShareDetail" in dist and "search-detail-toggle" in dist, \
         "构建产物缺少文件清单入口（改了 src 但没跑 build.sh？）"
-    assert "epSummaryText" in dist, "构建产物缺少集号摘要"
-    assert "epOverviewText" in dist and "search-item-ep" in dist, \
-        "构建产物缺少结果行集数概览（改了 src 但没跑 build.sh？）"
+    assert "detailCountText" in dist, "构建产物缺少清单摘要"
+    assert "epOverviewText" not in dist, "构建产物里还留着被否掉的集数概览"
 
 
 def test_share_detail_dom_script_present(dist):

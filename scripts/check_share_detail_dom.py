@@ -1,10 +1,12 @@
 #!/usr/bin/env python3
 """搜索结果的「文件清单」展开走查（issue #88：「搜出来点进去不能看集数全不全」）。
 
-用户诉求原文：一句话 ——「搜索资源的功能搜出来点进去不能看集数全不全」。
+用户诉求原文：一句话 ——「搜索资源的功能搜出来点进去不能看集数全不全」，
+第三轮澄清成「不需要显示集数……只需要显示这条链接里面的具体文件内容层级
+就可以了，点文件按钮显示里面有什么文件，我自己判断多少集」。
 搜索结果那一条过去只有「标题 / 来源 / 链接是否有效」，想确认是不是全集
 只能先转存再去媒体库翻。现在每条结果多了一个「文件」按钮，点开就是
-该分享的文件清单 + 集号摘要。
+该分享的**原始文件清单**（目录 / 文件名 / 体积）。
 
 这条链路能不能用，只能在渲染后量：
   - 静态扫描能证明「代码里有 toggleShareDetail」，但证明不了
@@ -15,15 +17,15 @@
   1. 每条有链接的结果都带「文件」按钮；无链接的条目不给这个入口
   2. 未展开时面板不可见（不是「藏了一半」）
   3. 点击 → 面板展开、按钮变成「收起」、aria-expanded=true
-  4. 不展开也看得见集数：结果行概览由一次预热请求填好（字号 >=12px、缺集标红）；
-     展开本身不再新增请求（懒加载仍成立）
+  4. 结果行不再显示任何集数推断（用户第三轮明确否掉；它也必须不占请求）
   5. 请求 URL 带了 url 参数（不带就是拿不到清单的假请求）
   6. 载入中先给反馈（不能是空白面板）
-  7. 渲染出文件行（名称 + 体积/目录）、集号摘要、截断提示
+  7. 渲染出文件行（名称 + 体积/目录）+ 条目数摘要 + 截断提示
   8. 失败态带真实原因（不能静默空白）
   9. 再次点击收起；按钮文案/aria 回到初始
  10. 二次展开命中缓存：不再发第二个请求
  11. 展开后下拉高度不溢出窗口（面板不能把结果顶出视口）
+ 12. 链接检测走**一次批量请求**（逐条检测＝N 个请求，就是「慢」的来源）
 
 依赖：playwright + chromium（与其它走查脚本同依赖）。
 无依赖 / 无产物时以退出码 0 跳过（与其它走查脚本一致）。
@@ -52,8 +54,21 @@ URL = ""
 SEARCH_STUB = {"success": True, "results": [
     {"title": "某剧 - 全 12 集", "url": "https://pan.quark.cn/s/preview-ok",
      "source": "夸克网盘"},
+    {"title": "某剧 第二季", "url": "https://pan.quark.cn/s/preview-ok-2",
+     "source": "夸克网盘"},
     {"title": "无链接结果", "url": "", "source": "夸克网盘"},
 ]}
+
+# 批量链接检测桩：一次请求回全部链接（issue #88 第三轮「搜索速度实在有点慢」）
+def _batch_stub(urls):
+    link_bad = "https://pan.quark.cn/s/preview-ok-2"
+    out = {}
+    for u in urls:
+        if u == link_bad:
+            out[u] = {"valid": False, "checked": True, "message": "链接失效"}
+        else:
+            out[u] = {"valid": True, "checked": True, "message": "链接正常"}
+    return {"success": True, "results": out}
 
 # 分享详情桩：12 集但缺 8、9 —— 正好覆盖「缺集要指出来」这条核心诉求
 DETAIL_STUB = {
@@ -135,10 +150,12 @@ MEASURE = r"""
     rows: qa('.search-detail-row').length,
     dirRows: qa('.search-detail-row.is-dir').length,
     sizeCells: qa('.search-detail-size').length,
+    names: qa('.search-detail-name').length
+      ? Array.from(qa('.search-detail-name')).map(n => n.textContent.trim()) : [],
     summary: q('.search-detail-sum') ? q('.search-detail-sum').textContent.trim() : '',
-    epOverview: q('.search-item-ep') ? q('.search-item-ep').textContent.trim() : '',
-    epOverviewFs: q('.search-item-ep') ? getComputedStyle(q('.search-item-ep')).fontSize : '',
-    epOverviewColor: q('.search-item-ep') ? getComputedStyle(q('.search-item-ep')).color : '',
+    epNodes: qa('.search-item-ep').length,
+    badges: qa('.search-item-main').length
+      ? Array.from(qa('.search-item-main')).map(m => m.textContent.trim()) : [],
     sumFs: q('.search-detail-sum') ? getComputedStyle(q('.search-detail-sum')).fontSize : '',
     sumColor: q('.search-detail-sum') ? getComputedStyle(q('.search-detail-sum')).color : '',
     msg: q('.search-detail-msg') ? q('.search-detail-msg').textContent.trim() : '',
@@ -162,11 +179,17 @@ def _route_factory(state):
         if path == "/api/search":
             state["search"] += 1
             body = SEARCH_STUB
+        elif path == "/api/check_links":
+            state["check_batch"] += 1
+            urls = urllib.parse.parse_qs(urllib.parse.urlparse(url).query).get("urls", [""])[0]
+            state["check_urls"] += [u for u in urls.split(",") if u]
+            body = _batch_stub([u for u in urls.split(",") if u])
         elif path == "/api/share_detail":
             state["detail"] += 1
             state["detail_urls"].append(route.request.url)
             body = FAIL_STUB if state.get("force_fail") else DETAIL_STUB
         elif path == "/api/check_link":
+            state["check_single"] += 1
             body = {"state": "done", "valid": True, "checked": True, "message": "链接正常"}
         else:
             body = STUBS.get(path, {})
@@ -205,7 +228,8 @@ def main():
         if not cond:
             problems.append("{}：{}".format(name, detail))
 
-    state = {"search": 0, "detail": 0, "detail_urls": [], "force_fail": False}
+    state = {"search": 0, "detail": 0, "detail_urls": [], "force_fail": False,
+             "check_batch": 0, "check_single": 0, "check_urls": []}
     try:
         with sync_playwright() as p:
             browser = p.chromium.launch(args=["--no-sandbox"], **_launch_kwargs())
@@ -234,24 +258,36 @@ def main():
             st = ms(page)
             ok("搜索结果渲染出条目", st["items"] >= 1, "items = {}".format(st["items"]))
             ok("有链接的结果带「文件」按钮（无链接的不给）",
-               st["toggleCount"] == 1,
-               "toggleCount = {}（应恰好 1 个：另一条无链接）".format(st["toggleCount"]))
+               st["toggleCount"] == 2,
+               "toggleCount = {}（应恰好 2 个：第三条无链接）".format(st["toggleCount"]))
             ok("未展开时面板不可见", st["panelDisplay"] == "none",
                "panelDisplay = {!r}".format(st["panelDisplay"]))
-            # 结果行会**预热**一次概览（issue #88 二次反馈：「不展开也要看得见有多少集」），
-            # 所以展开前允许恰好 1 次请求；关键是展开**本身**不再多发一次。
-            ok("展开前只做了一次概览预热（懒加载仍成立）",
-               state["detail"] == 1,
-               "detail calls = {}（应为 1：结果行概览预热）".format(state["detail"]))
-            ok("不展开就能看到集数概览（issue #88 二次反馈）",
-               st["epOverview"] and "集" in st["epOverview"],
-               "epOverview = {!r}".format(st["epOverview"]))
-            ok("概览字号不小于 12px（旧版 11px 实测看不见）",
-               st["epOverviewFs"] == "12px",
-               "epOverviewFs = {!r}".format(st["epOverviewFs"]))
-            ok("概览在有链接的结果上带出缺集信息",
-               "缺" in st["epOverview"] and "8" in st["epOverview"] and "9" in st["epOverview"],
-               "epOverview = {!r}".format(st["epOverview"]))
+            # 结果行**不再**有集数概览（issue #88 第三轮：用户明确不要集数）。
+            ok("结果行不再出现集数推断（用户第三轮明确否掉）",
+               st["epNodes"] == 0, "epNodes = {}".format(st["epNodes"]))
+            # 标题里出现「集」是资源名本身，不算推断；这里钉的是**结果行多出来的
+            # 那句概览文案**（过去是「共 22 集 · 1-22 · 缺 8、9」）已经不存在。
+            ok("结果行不再出现集数断言文案（共 N 集 / 缺 N）",
+               not any("共 " in b and "集" in b for b in st["badges"])
+               and not any("缺 " in b for b in st["badges"]),
+               "badges = {}".format([b[:44] for b in st["badges"]][:3]))
+            # 链接检测必须是**一次**批量请求（逐条＝N 个请求，正是「慢」的来源）
+            ok("链接检测走一次批量请求（不再是逐条）",
+               state["check_batch"] == 1 and state["check_single"] == 0,
+               "batch={} single={}".format(state["check_batch"], state["check_single"]))
+            ok("批量请求带上了全部有链接的结果（不漏检）",
+               sorted(state["check_urls"]) == ["https://pan.quark.cn/s/preview-ok",
+                                               "https://pan.quark.cn/s/preview-ok-2"],
+               "urls = {}".format(state["check_urls"]))
+            ok("批量检测结果被渲染到对应结果行（失效的标红并禁用转存）",
+               any("链接失效" in b for b in st["badges"])
+               and any("链接正常" in b for b in st["badges"]),
+               "badges = {}".format([b[-12:] for b in st["badges"]][:3]))
+            # 文件清单仍会预热（展开即用），但它是【并行】的，不阻塞检测渲染；
+            # 有链接的结果各预热一次，展开本身不再新增请求。
+            ok("展开前已预热两条结果的清单（懒加载仍成立）",
+               state["detail"] == 2,
+               "detail calls = {}（应为 2：两条有链接的结果各预热一次）".format(state["detail"]))
             ok("按钮初始 aria-expanded=false",
                st["btnExpanded"] == "false", "aria-expanded = {!r}".format(st["btnExpanded"]))
             ok("按钮初始文案为「文件」", st["btnText"] == "文件",
@@ -275,8 +311,8 @@ def main():
                "btnText = {!r}".format(st["btnText"]))
             ok("展开后 aria-expanded=true", st["btnExpanded"] == "true",
                "aria-expanded = {!r}".format(st["btnExpanded"]))
-            ok("展开本身不再新增请求（概览已预热）", state["detail"] == 1,
-               "detail calls = {}".format(state["detail"]))
+            ok("展开本身不再新增请求（清单已预热）", state["detail"] == 2,
+               "detail calls = {}（应为预热的 2 次，展开不多打）".format(state["detail"]))
             ok("请求 URL 带上了分享链接（不带＝拿不到清单）",
                state["detail_urls"] and "url=" in state["detail_urls"][0],
                "url = {}".format(state["detail_urls"][:1]))
@@ -287,10 +323,13 @@ def main():
                "dirRows = {}".format(st["dirRows"]))
             ok("每行有体积/类型单元格", st["sizeCells"] == st["rows"],
                "sizeCells={} rows={}".format(st["sizeCells"], st["rows"]))
-            ok("集号摘要指出缺集（8、9）",
-               "缺" in st["summary"] and "8" in st["summary"] and "9" in st["summary"],
-               "summary = {!r}（这一句就是用户要的「集数全不全」）".format(st["summary"]))
-            ok("集号摘要字号已提到 12px（旧版 11px）",
+            ok("文件行保留了完整文件名（用户自己判断集数）",
+               st["names"] and any(n.endswith(".mkv") for n in st["names"]),
+               "names = {}".format(st["names"][:3]))
+            ok("摘要只报条目数/目录数/视频数（不做集数推断）",
+               "条目" in st["summary"] and "集" not in st["summary"],
+               "summary = {!r}".format(st["summary"]))
+            ok("摘要字号已提到 12px（旧版 11px）",
                st["sumFs"] == "12px", "sumFs = {!r}".format(st["sumFs"]))
             ok("截断提示存在（total > 显示数）",
                "共" in st["msg"] and "13" in st["msg"],
@@ -316,18 +355,18 @@ def main():
             st = ms(page)
             ok("二次展开仍有内容（缓存可用）", st["rows"] == 11,
                "rows = {}".format(st["rows"]))
-            ok("二次展开不再发请求（前端缓存）", state["detail"] == 1,
-               "detail calls = {}（应仍为 1）".format(state["detail"]))
+            ok("二次展开不再发请求（前端缓存）", state["detail"] == 2,
+               "detail calls = {}（应仍为 2：只有预热的那两次）".format(state["detail"]))
             page.close()
 
             # ---------------- 失败态 ----------------
-            state_fail = {"search": 0, "detail": 0, "detail_urls": [], "force_fail": True}
+            state_fail = {"search": 0, "detail": 0, "detail_urls": [], "force_fail": True,
+                          "check_batch": 0, "check_single": 0, "check_urls": []}
             page = open_page(state_fail)
             search(page)
             stf = ms(page)
-            ok("失败态下结果行概览有兜底文案（不是空白）",
-               stf["epOverview"] and "未知" in stf["epOverview"],
-               "epOverview = {!r}".format(stf["epOverview"]))
+            ok("失败态下结果行不出现集数推断（依旧不猜）",
+               stf["epNodes"] == 0, "epNodes = {}".format(stf["epNodes"]))
             page.click(".search-detail-toggle")
             page.wait_for_timeout(900)
             st = ms(page)

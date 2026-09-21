@@ -295,6 +295,115 @@ class TestLinkCheckRoute:
         assert h.last["state"] == "unknown"
 
 
+class TestBatchLinkCheck:
+    """批量链接检测（issue #88 第三轮：「有办法提高它的搜索速度吗？当前的
+    搜索速度实在是有点慢」）。
+
+    逐条检测时 N 条搜索结果 = N 个上游请求 + N 轮 status 轮询；PanSou 的
+    check/links 本来就支持一次传多条，这里验证合并后真的只打一次。
+    """
+
+    def _fake_pansou(self, states=None):
+        """返回一个假 PanSou 客户端，记录每次 check_links 收到的 items。"""
+        fake = mock.MagicMock()
+        calls = []
+        states = states or {}
+
+        def _check(urls):
+            calls.append(list(urls))
+            return {"results": [
+                {"url": u, "state": states.get(u, "ok"),
+                 "summary": "链接失效" if states.get(u) == "bad" else "链接正常"}
+                for u in urls]}
+
+        fake.check_links.side_effect = _check
+        fake.calls = calls
+        return fake
+
+    def test_one_request_for_many_urls(self):
+        fake = self._fake_pansou()
+        urls = ["https://pan.quark.cn/s/a", "https://pan.quark.cn/s/b",
+                "https://pan.quark.cn/s/c"]
+        with mock.patch("transfer._get_pansou_client", return_value=fake):
+            res = link_check.check_links_batch(urls)
+        assert len(fake.calls) == 1, "批量检测仍打了 {} 次上游（应为 1）".format(len(fake.calls))
+        assert sorted(fake.calls[0]) == sorted(urls)
+        assert all(res[u]["valid"] and res[u]["checked"] for u in urls)
+
+    def test_bad_link_flagged_invalid(self):
+        fake = self._fake_pansou({"https://pan.quark.cn/s/bad": "bad"})
+        with mock.patch("transfer._get_pansou_client", return_value=fake):
+            res = link_check.check_links_batch(["https://pan.quark.cn/s/ok",
+                                                "https://pan.quark.cn/s/bad"])
+        assert res["https://pan.quark.cn/s/ok"]["valid"] is True
+        assert res["https://pan.quark.cn/s/bad"]["valid"] is False
+        assert "失效" in res["https://pan.quark.cn/s/bad"]["message"]
+
+    def test_locked_is_not_marked_invalid(self):
+        """locked/uncertain 只是「无法确认」，标红会让用户放弃有效资源。"""
+        fake = self._fake_pansou({"https://pan.quark.cn/s/locked": "locked"})
+        with mock.patch("transfer._get_pansou_client", return_value=fake):
+            res = link_check.check_links_batch(["https://pan.quark.cn/s/locked"])
+        assert res["https://pan.quark.cn/s/locked"]["valid"] is True, \
+            "加密/锁定分享被误判为失效"
+
+    def test_upstream_error_marks_unchecked_not_invalid(self):
+        fake = mock.MagicMock()
+        fake.check_links.side_effect = RuntimeError("PanSou 500")
+        with mock.patch("transfer._get_pansou_client", return_value=fake):
+            res = link_check.check_links_batch(["https://pan.quark.cn/s/err"])
+        assert res["https://pan.quark.cn/s/err"]["valid"] is None
+        assert res["https://pan.quark.cn/s/err"]["checked"] is False, \
+            "检测失败必须与「链接失效」区分（否则整批有效链接被标红）"
+
+    def test_chunking_limits_request_size(self):
+        fake = self._fake_pansou()
+        urls = ["https://pan.quark.cn/s/{}".format(i)
+                for i in range(link_check._CHECK_BATCH_CHUNK * 2 + 3)]
+        with mock.patch("transfer._get_pansou_client", return_value=fake):
+            link_check.check_links_batch(urls)
+        assert len(fake.calls) == 3, "分片数错：{}".format(len(fake.calls))
+        assert max(len(c) for c in fake.calls) <= link_check._CHECK_BATCH_CHUNK
+
+    def test_dedup_and_empty_input(self):
+        fake = self._fake_pansou()
+        with mock.patch("transfer._get_pansou_client", return_value=fake):
+            res = link_check.check_links_batch(["https://pan.quark.cn/s/x",
+                                                "https://pan.quark.cn/s/x", ""])
+        assert len(fake.calls) == 1
+        assert fake.calls[0] == ["https://pan.quark.cn/s/x"], "重复/空链接未去干净"
+        assert list(res.keys()) == ["https://pan.quark.cn/s/x"]
+
+    def test_second_batch_hits_result_cache(self):
+        """同一次搜索重复检测（用户改关键词再回来）不该再打上游。"""
+        fake = self._fake_pansou()
+        url = "https://pan.quark.cn/s/cached-batch"
+        with mock.patch("transfer._get_pansou_client", return_value=fake):
+            link_check.check_links_batch([url])
+            res2 = link_check.check_links_batch([url])
+        assert len(fake.calls) == 1, "第二次批量检测未命中结果缓存"
+        assert res2[url]["valid"] is True
+
+    def test_route_contract(self):
+        fake = self._fake_pansou()
+        with mock.patch("transfer._get_pansou_client", return_value=fake):
+            h = TestLinkCheckRoute._make_handler(self)
+            h._params = {"urls": "https://pan.quark.cn/s/a,https://pan.quark.cn/s/b"}
+            h._handle_transfer_get("/api/check_links")
+        assert h.last_code == 200
+        assert h.last["success"] is True
+        assert set(h.last["results"].keys()) == {"https://pan.quark.cn/s/a",
+                                                 "https://pan.quark.cn/s/b"}
+
+    def test_route_rejects_too_many_urls(self):
+        h = TestLinkCheckRoute._make_handler(self)
+        h._params = {"urls": ",".join("https://pan.quark.cn/s/{}".format(i)
+                                      for i in range(50))}
+        h._handle_transfer_get("/api/check_links")
+        assert h.last_code == 400
+        assert h.last["success"] is False
+
+
 class TestLinkCheckHttpIntegration:
     """D：HTTP 集成测试——起真实 ThreadedHTTPServer，经完整 HTTP 栈（含路由分发）打
     /api/check_link 与 /api/check_link/status。auth/rate-limit 在测试中隔离，专注验证链接检测链路本身。"""

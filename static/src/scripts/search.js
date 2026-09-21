@@ -129,46 +129,28 @@ function searchSetActive(i){
 }
 
 // ---------- 分享文件清单预览（issue #88）----------
-// 用户诉求：「搜索资源的功能搜出来点进去不能看集数全不全」。
-// 过去搜索结果只有一行标题 + 链接是否有效，想确认「是不是全集」只能先转存
-// 再去媒体库翻 —— 试错成本高。QAS 的 get_share_detail 本来就把分享根目录的
-// 文件清单拉回来了，只是被丢掉；这里把它展开给用户看。
+// 用户诉求：「搜出来点进去不能看集数全不全」→ 二次澄清：「不需要显示集数，
+// 显示集数会做得非常复杂，而且故障率很高。只需要显示这条链接里面的具体文件
+// 内容层级就可以了 —— 点「文件」按钮能看到里面有什么文件，我自己判断多少集」。
+//
+// 所以这里的**唯一职责**是把分享里的文件清单原样列出来（目录层级 + 文件名 +
+// 体积）。不做集号解析、不下「全不全」的结论：文件名命名千奇百怪，自动判定
+// 必然误报，而误报比不报更贵（用户会去排查一个不存在的缺集）。
 var searchDetailSeq = 0;
 // 结果行概览预热到的数据（url -> 归一化响应）。
 // 「文件」面板优先复用这份数据：概览已经取过的东西不该让用户再等一次请求。
 var searchDetailCache = {};
 
-// 集号摘要的后端文案：把「认出的集号 / 缺口」翻译成一句人话。
-// 刻意不下「是否全集」的结论（后端只回可观测量），措辞必须保持中性。
-function epSummaryText(res){
+// 面板顶部的一句尺寸摘要：只报可数的东西（条目数 / 目录数 / 视频数），
+// 不做集数推断。这是用户要的「我看得出有多少集」的原料，不是结论。
+function detailCountText(res){
   if(!res || !res.ok) return '';
-  if(!res.video_count) return '';
-  var ep = res.episodes || {};
-  var nums = ep.numbers || [];
-  if(nums.length < 2) return '共 ' + res.video_count + ' 个视频文件';
-  var txt = '共 ' + res.video_count + ' 个视频文件 · 检出集号 ' + nums[0] + '-' + nums[nums.length-1];
-  if(ep.continuous) txt += ' · 未见断档';
-  else txt += ' · 缺 ' + (ep.missing||[]).join('、');
-  return txt;
-}
-
-// 结果行上的「一行概览」文案：不展开也要看得见有多少集（issue #88 二次反馈）。
-// 用户反馈「还是无法显示里面有多少集」—— 摘要此前只在展开后出现，且只有 11px。
-// 这里把它提到结果行上，用中性措辞直接给结论性数字（共 N 集 / 认到哪几集）。
-function epOverviewText(res){
-  if(!res || !res.ok) return '';
-  var ep = res.episodes || {};
-  var nums = ep.numbers || [];
-  if(!res.video_count && !nums.length) return '';
-  var cnt = nums.length >= 2 ? nums.length : res.video_count;
-  if(nums.length >= 2){
-    var t = '共 ' + cnt + ' 集 · ' + nums[0] + '-' + nums[nums.length-1];
-    if(!ep.continuous && (ep.missing||[]).length) t += ' · 缺 ' + ep.missing.join('、');
-    else t += ' · 连续';
-    return t;
-  }
-  if(nums.length === 1) return '共 ' + res.video_count + ' 个视频文件 · 集号 ' + nums[0];
-  return '共 ' + res.video_count + ' 个视频文件';
+  var total = res.total || 0;
+  if(!total) return '';
+  var parts = ['共 ' + total + ' 个条目'];
+  if(res.dir_count) parts.push(res.dir_count + ' 个目录');
+  if(res.video_count) parts.push(res.video_count + ' 个视频');
+  return parts.join(' · ');
 }
 
 // 渲染文件清单面板内容（成功 / 空 / 失败三态）。
@@ -191,7 +173,7 @@ function renderShareDetail(panel, res){
   }
   var sum = document.createElement('div');
   sum.className = 'search-detail-sum';
-  sum.textContent = epSummaryText(res) || ('共 ' + res.total + ' 个条目');
+  sum.textContent = detailCountText(res) || ('共 ' + files.length + ' 个条目');
   panel.appendChild(sum);
 
   var list = document.createElement('div');
@@ -239,7 +221,7 @@ async function toggleShareDetail(btn){
   if(!url) return;
   var cached = searchDetailCache[url];
   if(cached){
-    // 概览预热已经拿到过（可能是失败态）—— 直接渲染，用户点开就是即时反馈
+    // 预热已经拿到过 —— 直接渲染，用户点开就是即时反馈
     panel.dataset.loaded = '1';
     renderShareDetail(panel, cached);
     return;
@@ -254,11 +236,36 @@ async function toggleShareDetail(btn){
     var d = await apiGet('/api/share_detail?url=' + encodeURIComponent(url), 1);
     if(seq !== searchDetailSeq) return;   // 已有新展开请求，丢弃过期回调
     panel.dataset.loaded = '1';
-    searchDetailCache[url] = d;   // 让后续（如概览补取）复用同一份数据
+    searchDetailCache[url] = d;   // 让后续复用同一份数据
     renderShareDetail(panel, d);
   }catch(e){
     if(seq !== searchDetailSeq) return;
     renderShareDetail(panel, {ok:false, message:'读取分享文件失败：' + (e.message||'网络错误')});
+  }
+}
+
+// 结果展示后并行拉一次分享文件清单，把「文件」按钮点开即用。
+// 与展开面板共用前后端缓存（后端 180s / 前端 searchDetailCache），
+// 所以这里的预热**不会**让一次搜索多打上游，只是把等待提前。
+// 注意：并发度不能开大 —— 后端 /api/share_detail 要逐个向夸克实查，
+// 同时打太多会被上游限速，反而更慢（见 issue #88「搜索速度实在有点慢」）。
+async function preloadShareDetails(items){
+  if(!items || !items.length) return;
+  var CONC = 2;
+  for(var i=0;i<items.length;i+=CONC){
+    var batch = items.slice(i,i+CONC);
+    await Promise.all(batch.map(function(it){ return preloadOne(it); }));
+  }
+}
+async function preloadOne(it){
+  if(it.seq !== searchCheckSeq) return;
+  try{
+    var d = await apiGet('/api/share_detail?url=' + encodeURIComponent(it.url), 1);
+    if(it.seq !== searchCheckSeq) return;
+    searchDetailCache[it.url] = d || {ok:false, message:'读取分享文件失败'};
+  }catch(e){
+    if(it.seq !== searchCheckSeq) return;
+    searchDetailCache[it.url] = {ok:false, message:'读取分享文件失败'};
   }
 }
 
@@ -285,9 +292,16 @@ async function doSearch(){
   skWrap.appendChild(sk1);
   skWrap.appendChild(sk2);
   el.appendChild(skWrap);
+  // 阶段提示：整条链路是「搜索 → 检测链接 → 读文件清单」，过去从骨架屏
+  // 直接跳结果，中间几秒完全无反馈，用户体感就是「慢」。这里把当前阶段写出来。
+  var stage = document.createElement('div');
+  stage.style.cssText = 'width:100%;text-align:center;font-size:12px;color:var(--text3);padding:2px 0 8px';
+  stage.textContent = '正在搜索…';
+  el.appendChild(stage);
   if(searchAbort)searchAbort.abort();
   searchAbort=new AbortController();
   try{var d=await apiGet('/api/search?q='+encodeURIComponent(q),2,searchAbort.signal);
+    if(stage.parentNode) stage.textContent = '检测链接…';
     if(!d.results||!d.results.length){
       el.textContent='';
       var emptyWrap = renderEmptyState({icon:'icon-search', title:'没有找到相关资源', desc:'试试换个关键词，或检查拼写<br>也可以去「手动转存」从榜单中选择'});
@@ -296,9 +310,11 @@ async function doSearch(){
       return;
     }
     el.textContent='';
+    el.appendChild(stage);
+    stage.textContent = '检测链接…';
     var seq = ++searchCheckSeq;
     var checkItems = [];
-    var ovwItems = [];
+    var preloadItems = [];
     d.results.forEach(function(r, i){
       var item = document.createElement('div');
       item.className = 'search-item';
@@ -323,20 +339,12 @@ async function doSearch(){
       badge.textContent = '检测中…';
       infoDiv.appendChild(titleDiv);
       infoDiv.appendChild(sourceDiv);
-      // 「有多少集」概览：先写「读取中…」，链接检测通过后由概览接口回填。
-      // 无链接的结果不给概览（没东西可读）。
-      var ovw = null;
-      if(r.url){
-        ovw = document.createElement('div');
-        ovw.className = 'search-item-ep';
-        ovw.textContent = '集数读取中…';
-        ovw.dataset.url = r.url;
-      }
       infoDiv.appendChild(badge);
-      if(ovw){ infoDiv.appendChild(ovw); }
       var actions = document.createElement('div');
       actions.className = 'search-item-actions';
-      // 「文件」按钮：展开该分享的文件清单，用来判断集数全不全（issue #88）。
+      // 「文件」按钮：展开该分享的文件清单。
+      // 只列文件（目录 / 文件名 / 体积），不解析集数 —— 用户明确表示
+      // 「不需要显示集数……只显示文件内容层级就可以了」（issue #88 第三轮）。
       // 无链接的结果不给这个入口（没东西可预览）。
       if(r.url){
         var fileBtn = document.createElement('button');
@@ -345,7 +353,7 @@ async function doSearch(){
         fileBtn.textContent = '文件';
         fileBtn.dataset.url = r.url;
         fileBtn.setAttribute('aria-expanded','false');
-        fileBtn.title = '查看分享里的文件清单（判断集数全不全）';
+        fileBtn.title = '展开这个分享里的文件清单';
         fileBtn.addEventListener('click', function(e){ e.stopPropagation(); toggleShareDetail(this); });
         actions.appendChild(fileBtn);
       }
@@ -366,11 +374,18 @@ async function doSearch(){
       searchOptions.push(item);
       if(r.url){
         checkItems.push({url:r.url, badge:badge, btn:btn, seq:seq});
-        ovwItems.push({url:r.url, el:ovw, seq:seq});
+        preloadItems.push({url:r.url, seq:seq});
       }
     });
-    checkEpOverviews(ovwItems);
-    checkSearchLinks(checkItems);}
+    // 链接检测与文件清单预热并行：两者互不依赖（前者打 PanSou，后者打 QAS），
+    // 串行会把等待叠加，这是「慢」的另一半原因。
+    // 链接检测与文件清单预热并行：两者互不依赖（前者打 PanSou，后者打 QAS），
+    // 串行会把等待叠加，这是「慢」的另一半原因。
+    checkSearchLinks(checkItems);
+    preloadShareDetails(preloadItems).then(function(){
+      // 全部就绪后收掉阶段提示（有链接但取不到时也一样收）
+      if(seq === searchCheckSeq && stage.parentNode){ stage.textContent = ''; }
+    });}
   catch(e){
     if(e.name==='AbortError')return;
     el.textContent='';
@@ -402,126 +417,46 @@ async function transferOne(btn){
   }catch(e){showToast('请求失败',false); btn.disabled=false; btn.textContent='转存'}
 }
 
-// 结果展示后并行拉一次分享文件清单，把「有多少集」直接写到结果行上。
-// 刻意**不复用**「文件」按钮的展开面板缓存：面板是用户主动展开才请求，
-// 这里是为了「不展开也看得见」而提前取。两者共用后端 180s 缓存，不会重复打 QAS。
-async function checkEpOverviews(items){
-  if(!items || !items.length) return;
-  var CONC = 3;
-  for(var i=0;i<items.length;i+=CONC){
-    var batch = items.slice(i,i+CONC);
-    await Promise.all(batch.map(function(it){ return fillEpOverview(it); }));
-  }
-}
-async function fillEpOverview(it){
-  if(it.seq !== searchCheckSeq) return;
-  try{
-    var d = await apiGet('/api/share_detail?url=' + encodeURIComponent(it.url), 1);
-    if(it.seq !== searchCheckSeq) return;
-    if(!it.el || !it.el.parentNode) return;
-    if(!d || !d.ok){
-      searchDetailCache[it.url] = d || {ok: false, message: '读取分享文件失败'};
-      // 失败不标红：概览取不到只是「这条没额外信息」，不该像链接失效那样刺眼
-      it.el.textContent = '集数未知';
-      it.el.classList.add('is-weak');
-      return;
-    }
-    searchDetailCache[it.url] = d;   // 「文件」面板点开时直接复用，不再等请求
-    var t = epOverviewText(d);
-    if(!t){
-      it.el.textContent = '未能从文件名认出集号';
-      it.el.classList.add('is-weak');
-      return;
-    }
-    it.el.textContent = t;
-    if((d.episodes && d.episodes.missing && d.episodes.missing.length)) it.el.classList.add('is-gap');
-  }catch(e){
-    if(it.seq !== searchCheckSeq) return;
-    if(it.el && it.el.parentNode){ it.el.textContent = '集数未知'; it.el.classList.add('is-weak'); }
-  }
-}
-
-// 搜索结果展示后，异步逐条检测链接有效性，用标记提示（先显示后检测，不打断搜索）
+// 搜索结果展示后检测链接有效性，用标记提示（先显示后检测，不打断搜索）。
+//
+// 这里从「逐条请求 + 轮询」改成了**一次批量请求**（issue #88 第三轮：
+// 「有办法提高它的搜索速度吗？当前的搜索速度实在是有点慢」）：
+// 过去 N 条结果 = N 个 /api/check_link + N 轮 status 轮询（每条最多 20 次）
+// = 上千次 HTTP 往返；现在一次 /api/check_links 拿全部结果。
+// 后端 PanSou check/links 本来就支持一次传多条，之前只是没有用上。
+//
+// 批量失败时**不标红**：整批拿到不结果就显示「检测失败」，
+// 让用户自己判断，而不是把一批有效链接全标成失效。
 async function checkSearchLinks(items){
   if(!items || !items.length) return;
-  var CONC = 4;
-  for(var i=0;i<items.length;i+=CONC){
-    var batch = items.slice(i,i+CONC);
-    await Promise.all(batch.map(function(it){ return checkOneLink(it); }));
-  }
-}
-async function checkOneLink(it){
-  if(it.seq !== searchCheckSeq) return; // 已有新搜索，丢弃过期回调
-
-  // 轮询辅助：检测任务入队后反复查询 /api/check_link/status 直至终态。
-  // 采用 async/await + 循环（非 setInterval 回调风格），每次轮询前校验 seq 防呆。
-  function delay(ms){ return new Promise(function(res){ setTimeout(res, ms); }); }
-  async function pollStatus(taskId){
-    var MAX_RETRY = 20;
-    var INTERVAL = 1500;
-    var last = null;
-    for(var i = 0; i < MAX_RETRY; i++){
-      if(it.seq !== searchCheckSeq) return null; // 已有新搜索，丢弃过期轮询
-      last = await apiGet('/api/check_link/status?task_id=' + encodeURIComponent(taskId), 1);
-      if(it.seq !== searchCheckSeq) return null;
-      // 终态：done / error / unknown / busy 不再轮询
-      if(last.state === 'done' || last.state === 'error' || last.state === 'unknown' || last.state === 'busy'){
-        return last;
-      }
-      // pending / running：间隔后继续轮询
-      if(i < MAX_RETRY - 1){
-        if(it.seq !== searchCheckSeq) return null;
-        await delay(INTERVAL);
-      }
-    }
-    // 超过最大重试次数仍未完成 → 中性「检测超时」，不标红失效
-    if(last) last.state = 'timeout';
-    return last;
-  }
-
+  var seq = items[0].seq;
+  var byUrl = {};
+  items.forEach(function(it){ byUrl[it.url] = it; });
+  var urls = items.map(function(it){ return it.url; });
+  var results = null;
   try{
-    // 搜索结果均来自盘搜，链接检测必须走 PanSou 校验（source=pansou），
-    // 否则会被错误地用 QAS 验证、把有效盘搜链接误报为「✗ 链接失效」。
-    var d = await apiGet('/api/check_link?url=' + encodeURIComponent(it.url) + '&source=pansou', 1);
-    if(it.seq !== searchCheckSeq) return;
-
-    var state = d.state;
-    if(state === 'pending' || state === 'running'){
-      // 任务入队，需轮询 status 接口直到终态
-      if(!d.task_id){
-        it.badge.textContent = '检测失败';
-        it.badge.style.color = 'var(--text3,#999)';
-        return;
-      }
-      var final = await pollStatus(d.task_id);
-      if(it.seq !== searchCheckSeq) return;
-      if(final === null) return; // 已过期，静默丢弃
-      if(final.state === 'timeout'){
-        it.badge.textContent = '检测超时';
-        it.badge.style.color = 'var(--text3,#999)';
-        return;
-      }
-      // 终态结果覆盖，继续走下方渲染逻辑
-      d = final;
-      state = final.state;
-    }
-
-    if(state === 'busy'){
-      it.badge.textContent = '检测繁忙';
-      it.badge.style.color = 'var(--text3,#999)';
-      return;
-    }
-    if(state === 'error' || state === 'unknown'){
+    var d = await apiGet('/api/check_links?urls=' + encodeURIComponent(urls.join(',')), 1);
+    if(seq !== searchCheckSeq) return;
+    if(d && d.success && d.results) results = d.results;
+  }catch(e){
+    if(seq !== searchCheckSeq) return;
+  }
+  if(!results){
+    items.forEach(function(it){
+      if(it.badge){ it.badge.textContent = '检测失败'; it.badge.style.color = 'var(--text3,#999)'; }
+    });
+    return;
+  }
+  urls.forEach(function(u){
+    var it = byUrl[u];
+    if(!it || !it.badge) return;
+    var r = results[u];
+    if(!r || r.checked === false || r.valid === null || r.valid === undefined){
       it.badge.textContent = '检测失败';
       it.badge.style.color = 'var(--text3,#999)';
       return;
     }
-
-    // state === 'done'（或旧后端无 state 字段）：按现有逻辑渲染 ✓/✗/检测失败
-    if(d.checked === false){
-      it.badge.textContent = '检测失败';
-      it.badge.style.color = 'var(--text3,#999)';
-    } else if(d.valid){
+    if(r.valid){
       it.badge.textContent = '✓ 链接正常';
       it.badge.style.color = 'var(--green)';
     } else {
@@ -531,9 +466,5 @@ async function checkOneLink(it){
       it.btn.textContent = '已失效';
       it.btn.className = 'btn btn-sm btn-outline';
     }
-  }catch(e){
-    if(it.seq !== searchCheckSeq) return;
-    it.badge.textContent = '检测失败';
-    it.badge.style.color = 'var(--text3,#999)';
-  }
+  });
 }

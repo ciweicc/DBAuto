@@ -203,3 +203,138 @@ def get_status(task_id):
                 return {"state": "unknown"}
             return {"state": "done", "result": entry["result"]}
         return {"state": entry["status"]}
+
+
+# ---------------------------------------------------------------------------
+# 批量检测（issue #88 第三轮：「有办法提高它的搜索速度吗？当前的搜索速度
+# 实在是有点慢」）
+#
+# 现状的浪费：搜索结果每一条都单独发一个 PanSou /api/check/links 请求
+# （`{"items": [一条]}`），前端 CONC=4 地打过来，再加上每条结果的
+# `get_share_detail` 概览请求 —— 一次搜索 20 条结果能打出 40+ 个上游请求，
+# 每个请求都带一次 TCP/TLS 建连与上游往返，这才是「慢」的主要来源。
+#
+# PanSou 的 check/links 接口**本来就支持一次传多条**（items 是数组，见
+# api_client.check_links 的签名）。这里把同一次搜索的链接合并成一次请求：
+#   * 批大小限制 _CHECK_BATCH_MAX，避免单请求过大被上游截断；
+#   * 结果按 url 回填，顺序与请求一致时直接按位对应，不一致时用 url 匹配；
+#   * 单条失败只影响那一条（回「未确认」），不会让整批结果丢失。
+# ---------------------------------------------------------------------------
+
+_CHECK_BATCH_MAX = 20          # 单次批量检测的最大条数
+_CHECK_BATCH_CHUNK = 10        # 单请求携带的链接数（再大上游响应会变慢/被截）
+
+
+def check_links_batch(urls, source=_SOURCE_PANSOU):
+    """批量检测链接有效性，返回 `{"<url>": {valid, message, checked}}`。
+
+    与 enqueue/f 单条队列**共用结果缓存**：命中新鲜缓存的链接直接返回，
+    只把未命中的那些合并成尽量少的请求。这样「搜索 → 检测」从 N 个请求
+    降到 ceil(未命中数 / _CHECK_BATCH_CHUNK) 个。
+
+    任何异常都被吞掉并归一化成 `{valid: None, checked: False}` —— 检测只是
+    辅助信息，绝不能把搜索结果本身弄丢。
+    """
+    out = {}
+    pending, seen = [], set()
+    now = time.time()
+    for u in urls or []:
+        u = (u or "").strip()
+        if not u or u in seen:
+            continue
+        seen.add(u)
+        tid = _task_id(u, source)
+        with _lock:
+            entry = _store.get(tid)
+            hit = bool(entry and entry["status"] == "done"
+                       and (now - entry.get("ts", 0)) < _LINK_RESULT_TTL)
+            cached = entry["result"] if hit else None
+        if hit:
+            out[u] = _to_payload(cached)
+        else:
+            pending.append(u)
+
+    if pending:
+        for i in range(0, len(pending), _CHECK_BATCH_CHUNK):
+            _run_batch(pending[i:i + _CHECK_BATCH_CHUNK], source, out)
+
+    for u in (urls or []):
+        u = (u or "").strip()
+        if u and u not in out:
+            out[u] = {"valid": None, "checked": False, "message": "未检测"}
+    return out
+
+
+def _run_batch(batch, source, out):
+    from transfer import _get_pansou_client
+
+    try:
+        raw = _get_pansou_client().check_links(batch)
+    except Exception as e:
+        log("批量链接检测失败: {}".format(e))
+        for u in batch:
+            out[u] = {"valid": None, "checked": False, "message": "检测失败"}
+        return
+
+    results = raw.get("results") if isinstance(raw, dict) else None
+    if not isinstance(results, list) or not results:
+        # 整体错误响应 {code, message}：整批按「检测失败」处理
+        msg = (raw or {}).get("message", "") or "链接检测失败" if isinstance(raw, dict) else "链接检测失败"
+        for u in batch:
+            out[u] = {"valid": None, "checked": False, "message": msg}
+        return
+
+    by_url = {}
+    for item in results:
+        if isinstance(item, dict) and item.get("url"):
+            by_url[str(item["url"])] = item
+    for idx, u in enumerate(batch):
+        item = by_url.get(u)
+        if item is None and idx < len(results) and isinstance(results[idx], dict):
+            # 上游未回传 url 时按顺序对齐（PanSou 保证同序）
+            item = results[idx]
+        out[u] = _pansou_item_payload(item)
+
+    # 写回缓存：命中的链接下次搜索（含「检查失效」链路）不再打上游
+    with _lock:
+        for u in batch:
+            p = out.get(u)
+            if p and p.get("checked") and p.get("valid") is not None:
+                _store[_task_id(u, source)] = {
+                    "url": u, "source": source, "status": "done",
+                    "result": {"success": bool(p["valid"]), "message": p.get("message", "")},
+                    "ts": time.time(),
+                }
+
+
+def _pansou_item_payload(item):
+    """把 PanSou check/links 的单条结果翻译成前端 payload。
+
+    `locked / unsupported / uncertain` 这类「无法确认失效」的状态一律按
+    `valid=True` 处理：盘搜链接经常是加密分享，标红会让用户白白放弃有效资源。
+    """
+    if not isinstance(item, dict):
+        return {"valid": None, "checked": False, "message": "检测失败"}
+    state = item.get("state", "")
+    summary = item.get("summary", "") or ""
+    if state == "ok":
+        return {"valid": True, "checked": True, "message": summary or "链接正常"}
+    if state == "bad":
+        return {"valid": False, "checked": True, "message": summary or "链接失效"}
+    hint = {
+        "locked": "链接已锁定或需要密码",
+        "unsupported": "暂不支持检测该类型链接",
+        "uncertain": "链接状态不确定，请自行确认",
+    }.get(state, "链接状态未知")
+    return {"valid": True, "checked": True, "message": summary or hint}
+
+
+def _to_payload(res):
+    """把队列里存的 QAS/PanSou 归一化结果翻译成前端 payload（单条路径复用）。"""
+    if res is None:
+        return {"valid": None, "checked": False, "message": "检测失败"}
+    if isinstance(res, dict) and ("state" in res or "summary" in res) and "success" not in res:
+        return _pansou_item_payload(res)
+    valid = (res or {}).get("success", False)
+    return {"valid": bool(valid), "checked": True,
+            "message": (res or {}).get("message", "") or ("链接正常" if valid else "链接可能已经失效")}
