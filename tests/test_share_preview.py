@@ -234,3 +234,130 @@ class TestShareDetailRoute:
         assert h.last_code == 200
         assert h.last["ok"] is False
         assert "QAS 不可达" in h.last["message"], "失败原因未透传，用户只能看到「空的」"
+
+
+# ------------------------------------------------ 子目录浏览（issue #88 四次反馈）
+# 用户第四次反馈原文：「还是看不到第二层目录的文件名称。为什么」。
+# 根因：盘搜结果的根目录里常常只有一个文件夹（如 `恶搞之家/`），真正的视频文件
+# 在那个文件夹里；QAS /get_share_detail 只列**当前层**，所以用户只看到一行目录名。
+# 修法：目录行可点击 → 带 dir_fid 请求 → 后端把分享链接拼成 `<url>/<fid>-<名称>`，
+# QAS 的 extract_url 会把它解析成 pdir_fid，从而列出子目录。
+
+class _FakeDirQAS:
+    """按请求 URL 的路径层级返回不同的清单，模拟 QAS 的 pdir_fid 行为。"""
+
+    def __init__(self):
+        self.calls = []
+
+    def get_share_detail(self, url):
+        import re
+        self.calls.append(url)
+        # URL 里带 32 位 fid 段 => 子目录；否则根目录
+        m = re.search(r"/([A-Za-z0-9]{32})(?:-|$)", url)
+        if m:
+            return _raw([_f("第01集.mkv", cat="video"), _f("第02集.mkv", cat="video")],
+                        title="恶搞之家")
+        return _raw([_f("恶搞之家", dir=True)], title="恶搞之家")
+
+
+def test_build_dir_url_appends_fid_segment():
+    fid = "a" * 32
+    u = share_preview.build_dir_url("https://pan.quark.cn/s/abc123def456", fid, "恶搞之家")
+    assert u == "https://pan.quark.cn/s/abc123def456/" + fid + "-恶搞之家", u
+    # QAS extract_url 能从中解析出 pdir_fid
+    import re
+    matches = re.findall(r"/(\w{32})-?([^/]+)?", u)
+    assert matches and matches[-1][0] == fid, "拼出的 URL 不能被 QAS extract_url 识别"
+
+
+def test_build_dir_url_rejects_bad_fid():
+    """非法 fid 不拼链接 —— 拼出坏链接会变成「点了没反应」。"""
+    u = "https://pan.quark.cn/s/abc123def456"
+    assert share_preview.build_dir_url(u, "short", "x") == u
+    assert share_preview.build_dir_url(u, "", "x") == u
+    assert share_preview.build_dir_url(u, "z" * 31, "x") == u
+
+
+def test_build_dir_url_is_idempotent():
+    """同名目录再次进入时不应把 fid 段叠两遍。"""
+    fid = "b" * 32
+    u = share_preview.build_dir_url("https://pan.quark.cn/s/abc123def456", fid, "剧")
+    assert share_preview.build_dir_url(u, fid, "剧") == u
+
+
+def test_preview_share_with_dir_fid_lists_subdir():
+    """带 dir_fid 时必须请求「子目录链接」，并列出那一层的文件。"""
+    share_preview._preview_cache.clear()
+    fake = _FakeDirQAS()
+    fid = "a" * 32
+    with patch("transfer._get_qas_client", lambda: fake):
+        root = preview_share("https://pan.quark.cn/s/abc123def456")
+        sub = preview_share("https://pan.quark.cn/s/abc123def456", dir_fid=fid, dir_name="恶搞之家")
+    assert root["dir_count"] == 1 and root["video_count"] == 0, "根目录清单错了"
+    assert root["files"][0]["fid"], "目录条目必须带上 fid，否则前端无法进入"
+    assert sub["video_count"] == 2, "进入子目录后应列出里面的视频文件"
+    assert [f["name"] for f in sub["files"]] == ["第01集.mkv", "第02集.mkv"]
+    assert any(fid in c for c in fake.calls), "子目录请求未带上 fid"
+
+
+def test_preview_share_dir_fid_builds_breadcrumb():
+    """QAS 没给面包屑时，至少补一层 —— 否则前端无法显示「回上级」。"""
+    share_preview._preview_cache.clear()
+    fake = _FakeDirQAS()
+    fid = "a" * 32
+    with patch("transfer._get_qas_client", lambda: fake):
+        sub = preview_share("https://pan.quark.cn/s/abc123def456", dir_fid=fid, dir_name="恶搞之家")
+    assert sub["path"] == [{"fid": fid, "name": "恶搞之家"}], sub["path"]
+
+
+def test_preview_share_root_and_subdir_cached_separately():
+    """根目录与子目录各用独立缓存键 —— 否则进子目录会拿到根目录的旧清单。"""
+    share_preview._preview_cache.clear()
+    fake = _FakeDirQAS()
+    fid = "a" * 32
+    with patch("transfer._get_qas_client", lambda: fake):
+        preview_share("https://pan.quark.cn/s/abc123def456")
+        preview_share("https://pan.quark.cn/s/abc123def456", dir_fid=fid, dir_name="恶搞之家")
+        n = len(fake.calls)
+        preview_share("https://pan.quark.cn/s/abc123def456")
+        preview_share("https://pan.quark.cn/s/abc123def456", dir_fid=fid, dir_name="恶搞之家")
+    assert len(fake.calls) == n, "二次请求未命中各自的缓存（根/子目录串味）"
+
+
+def test_normalize_exposes_stoken_and_path():
+    """stoken 与 path 必须透出：前端进目录 / 回上级都靠它们。"""
+    raw = {"success": True, "data": {
+        "share": {"title": "x"},
+        "list": [_f("a.mp4", cat="video")],
+        "stoken": "tok-123",
+        "paths": [{"fid": "f" * 32, "name": "恶搞之家"}],
+    }}
+    r = normalize_share_detail(raw)
+    assert r["stoken"] == "tok-123"
+    assert r["path"] == [{"fid": "f" * 32, "name": "恶搞之家"}]
+
+
+def test_route_forwards_dir_params():
+    """/api/share_detail 必须把 dir_fid / dir_name 传给 preview_share。"""
+    share_preview._preview_cache.clear()
+    fake = _FakeDirQAS()
+
+    import routes_transfer
+
+    class H(routes_transfer.TransferRouteMixin):
+        def _get_query_params(self):
+            return self._params
+
+        def _send_json(self, obj, code=200):
+            self.last_code = code
+            self.last = obj
+
+    fid = "a" * 32
+    with patch("transfer._get_qas_client", lambda: fake):
+        h = H()
+        h._params = {"url": "https://pan.quark.cn/s/abc123def456",
+                     "dir_fid": fid, "dir_name": "恶搞之家"}
+        h._handle_transfer_get("/api/share_detail")
+    assert h.last_code == 200
+    assert h.last["video_count"] == 2, "路由未把 dir_fid 转给 preview_share"
+    assert any(fid in c for c in fake.calls)

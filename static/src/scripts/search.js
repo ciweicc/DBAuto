@@ -186,10 +186,45 @@ function renderShareDetail(panel, res){
     return;
   }
   var files = res.files || [];
+
+  // 面包屑：从分享根到当前目录。根目录时 path 为空，不渲染（分享根无处可回）。
+  var path = res.path || [];
+  if(path.length){
+    var crumbs = document.createElement('div');
+    crumbs.className = 'search-detail-crumbs';
+    var root = document.createElement('button');
+    root.type = 'button';
+    root.className = 'search-crumb';
+    root.textContent = '分享根';
+    root.addEventListener('click', function(e){
+      e.stopPropagation(); navigateDir(panel, '');
+    });
+    crumbs.appendChild(root);
+    path.forEach(function(seg, i){
+      var sep = document.createElement('span');
+      sep.className = 'search-crumb-sep';
+      sep.textContent = '/';
+      crumbs.appendChild(sep);
+      var isLast = i === path.length - 1;
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'search-crumb' + (isLast ? ' is-current' : '');
+      b.textContent = seg.name;
+      b.title = seg.name;
+      if(!isLast){
+        b.addEventListener('click', function(e){
+          e.stopPropagation(); navigateDir(panel, seg.fid, seg.name);
+        });
+      }
+      crumbs.appendChild(b);
+    });
+    panel.appendChild(crumbs);
+  }
+
   if(!files.length){
     var empty = document.createElement('div');
     empty.className = 'search-detail-msg';
-    empty.textContent = '这个分享里没有文件（可能是空的目录）';
+    empty.textContent = '这个目录里没有文件';
     panel.appendChild(empty);
     return;
   }
@@ -207,10 +242,23 @@ function renderShareDetail(panel, res){
     name.className = 'search-detail-name';
     name.textContent = f.name;
     name.title = f.name;
+    if(f.dir){
+      // 目录可点：进入该层。用 caret 明示「能进去」，而不是靠颜色暗示。
+      var caret = document.createElement('span');
+      caret.className = 'search-detail-caret';
+      caret.textContent = '›';
+      row.appendChild(caret);
+      name.classList.add('is-link');
+      row.title = '进入「' + f.name + '」';
+      row.addEventListener('click', function(e){
+        e.stopPropagation();
+        navigateDir(panel, f.fid, f.name);
+      });
+    }
     row.appendChild(name);
     var meta = document.createElement('span');
     meta.className = 'search-detail-size';
-    meta.textContent = f.dir ? '目录' : fmtSize(f.size);
+    meta.textContent = f.dir ? '目录 ›' : fmtSize(f.size);
     row.appendChild(meta);
     list.appendChild(row);
   });
@@ -220,6 +268,53 @@ function renderShareDetail(panel, res){
     more.className = 'search-detail-msg';
     more.textContent = '仅显示前 ' + files.length + ' 个，共 ' + res.total + ' 个';
     panel.appendChild(more);
+  }
+}
+
+// 进入 / 回退子目录（issue #88 四次反馈「还是看不到第二层目录的文件名称」）。
+// 面板挂在结果项里，「文件」按钮的 base url 存在 btn.dataset.url 上，
+// 这里从结果项取回来，再带上 dir_fid 请求同一接口。
+// dirFid 为空字符串表示回分享根。
+async function navigateDir(panel, dirFid, dirName){
+  var item = panel.closest('.search-item');
+  if(!item) return;
+  var btn = item.querySelector('.search-detail-toggle');
+  var base = btn && btn.dataset.url;
+  if(!base) return;
+  panel.dataset.dirFid = dirFid || '';
+  var seq = ++searchDetailSeq;
+  panel.textContent = '';
+  var loading = document.createElement('div');
+  loading.className = 'search-detail-msg search-detail-loading';
+  loading.textContent = '正在读取文件清单…';
+  panel.appendChild(loading);
+  var qs = '/api/share_detail?url=' + encodeURIComponent(base);
+  if(dirFid) qs += '&dir_fid=' + encodeURIComponent(dirFid) + '&dir_name=' + encodeURIComponent(dirName || '');
+  try{
+    var d = await apiGet(qs, 1);
+    if(seq !== searchDetailSeq) return;
+    renderShareDetail(panel, d);
+  }catch(e){
+    if(seq !== searchDetailSeq) return;
+    renderShareDetail(panel, {ok:false, message:'读取分享文件失败：' + (e.message||'网络错误')});
+  }
+}
+
+// 收起时把导航状态复位到分享根：下次展开仍从根目录开始，
+// 避免「上次钻到第 3 层、这次点开直接停在那里」的困惑。
+// 根目录清单若已在缓存里就顺手重渲染（不收展开也保持一致），否则清掉 loaded
+// 让下次展开重新取 —— 无论如何都不能把「上次钻进去那层」的旧内容留着。
+function resetDetailNav(item){
+  var panel = item.querySelector('.search-detail');
+  if(!panel) return;
+  panel.dataset.dirFid = '';
+  var btn = item.querySelector('.search-detail-toggle');
+  var cached = btn && searchDetailCache[btn.dataset.url];
+  if(cached){
+    panel.dataset.loaded = '1';
+    renderShareDetail(panel, cached);
+  }else{
+    panel.dataset.loaded = '0';
   }
 }
 
@@ -240,6 +335,7 @@ async function toggleShareDetail(btn){
     panel.classList.remove('show');
     btn.textContent = '文件';
     btn.setAttribute('aria-expanded','false');
+    resetDetailNav(item);
     return;
   }
   panel.classList.add('show');

@@ -4137,8 +4137,12 @@ def test_search_results_expose_share_file_list(dist):
     # 1. 每条结果都带「文件」按钮，且真的接了展开逻辑
     assert "search-detail-toggle" in search_js, "搜索结果没有「文件」入口（等于没修）"
     assert "toggleShareDetail" in search_js, "「文件」按钮没有对应动作"
-    # 无链接的结果不该给这个入口（没东西可预览）
-    i_btn = search_js.index("search-detail-toggle")
+    # 无链接的结果不该给这个入口（没东西可预览）。
+    # 注意：`.search-detail-toggle` 在 search.js 里出现多次（按钮创建处 + 展开/导航
+    # 逻辑里的 querySelector）。这里锚定**创建按钮的那一处** —— 即
+    # `fileBtn.className = '... search-detail-toggle'`；否则取到别处的 occurrence
+    # 会让「往回找 if(r.url)」变成与实现无关的脆弱断言。
+    i_btn = search_js.index("search-detail-toggle';")
     i_if = search_js.rindex("if(r.url)", 0, i_btn)
     assert i_if < i_btn, "「文件」按钮未按 r.url 判空（无链接的结果会点出个空面板）"
 
@@ -4267,6 +4271,64 @@ def test_share_detail_dom_script_present(dist):
         "脚本缺少「上游卡住时结果行先出」的验证"
     assert "缓存" in body, "脚本未验证二次展开命中缓存"
     assert "FAIL_STUB" in body, "脚本未构造失败态（失败静默=用户查不出原因）"
+    # 子目录浏览（issue #88 四次反馈「还是看不到第二层目录的文件名称」）也必须是
+    # 渲染后的度量：静态扫描证明不了「点目录真的进去了、真的看到了里面的文件名」。
+    for scene in ("clickableDirs", "crumbs", "dir_calls"):
+        assert scene in body, "脚本未度量 {!r}（子目录浏览会静默漏检）".format(scene)
+    assert "ROOT_ONLY_DIR_STUB" in body and "SUBDIR_STUB" in body, \
+        "脚本未构造「根目录只有一个文件夹」的场景（正是用户截图里的情况）"
+
+
+def test_search_results_can_enter_subdirectory(dist):
+    """分享根目录只有文件夹时，必须能点进去看第二层的文件名（issue #88 四次反馈）。
+
+    用户第四次反馈（带截图）：「还是看不到第二层目录的文件名称。为什么」。
+    截图里的清单是 `共 1 个条目 · 1 个目录 / 恶搞之家 目录` —— 分享根里只有
+    一个文件夹，真正的视频在里面。QAS /get_share_detail 只列**当前层**，
+    所以不做「进目录」，用户就永远只看到一行目录名。
+
+    这里钉住这条链路的三段：后端会拼子目录链接、路由会透传 dir_fid、
+    前端把目录行做成可点且带面包屑。真实渲染证据由
+    scripts/check_share_detail_dom.py 提供（含反向验证：摘掉目录点击即红）。
+    """
+    share_py = _read(os.path.join(_ROOT, "app_modules", "share_preview.py"))
+    routes = _read(os.path.join(_ROOT, "app_modules", "routes_transfer.py"))
+    search_js = _read(os.path.join(_JS_DIR, "search.js"))
+    main_css = _read(os.path.join(_SRC, "styles", "main.css"))
+
+    # 1. 后端：能把分享链接拼成「指向子目录」的链接（QAS extract_url 按 /<32位fid> 解析）
+    assert "def build_dir_url" in share_py, "缺少 build_dir_url（无法把分享链接指向子目录）"
+    assert "dir_fid" in share_py, "preview_share 未支持 dir_fid（进不去子目录）"
+    # 子目录响应必须带 stoken / path，前端的面包屑与「回上级」靠它们
+    assert '"stoken"' in share_py, "未透出 stoken（翻目录需要它）"
+    assert '"path"' in share_py, "未透出 path 面包屑（前端无法显示层级）"
+    # 根目录与子目录必须各自缓存（否则进子目录会拿到根目录的旧清单）
+    assert "缓存键用**实际请求的 URL**" in share_py, \
+        "根/子目录未分缓存键（进子目录会拿到根目录的旧清单）"
+
+    # 2. 路由：/api/share_detail 必须透传 dir_fid / dir_name
+    assert 'params.get("dir_fid"' in routes, "路由未解析 dir_fid"
+    assert "dir_fid=dir_fid" in routes and "dir_name=dir_name" in routes, \
+        "路由未把 dir_fid / dir_name 转给 preview_share"
+
+    # 3. 前端：目录行可点击 + 面包屑 + 请求带上 dir_fid
+    assert "navigateDir" in search_js, "目录行没有对应的进入动作"
+    assert "dir_fid=" in search_js, "进目录的请求未带上 dir_fid（等于没进去）"
+    assert "search-crumb" in search_js, "未渲染面包屑（进去了回不来）"
+    assert "search-detail-caret" in search_js, "目录行没有 caret（看不出能点进去）"
+    # 收起后导航必须复位到分享根，否则下次展开会「还在上次钻的那一层」
+    assert "resetDetailNav" in search_js, "收起后未复位目录导航状态"
+
+    # 4. 样式：可点目录 + caret + 面包屑都要有
+    assert ".search-detail-row.is-dir{cursor:pointer}" in main_css, \
+        "目录行没有可点光标（用户不知道能进去）"
+    assert ".search-detail-caret" in main_css, "caret 无样式"
+    assert ".search-crumb" in main_css, "面包屑无样式"
+
+    # 5. 产物带上了这版逻辑
+    assert "navigateDir" in dist and "dir_fid=" in dist, \
+        "构建产物缺少子目录浏览（改了 src 但没跑 build.sh？）"
+    assert "search-crumb" in dist, "构建产物缺少面包屑"
 
 
 # ------------------------------------------------ TMDB 无封面占位图（issue #82）

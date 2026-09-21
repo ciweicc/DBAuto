@@ -75,14 +75,32 @@ class TransferRouteMixin:
             # 分享文件清单预览（issue #88）：用户要判断一条盘搜结果「集数全不全」，
             # 只能先转存再看，试错成本高。这里把 QAS get_share_detail 里本来就有的
             # 文件列表归一化暴露出来，供搜索下拉展开查看。
+            #
+            # dir_fid / dir_name（issue #88 四次反馈「还是看不到第二层目录的文件名称」）：
+            # 盘搜结果的根目录常只有一个文件夹，真正的视频在里面。带上这两个参数
+            # 表示「进入该子目录」，后端会把分享链接拼成 `<url>/<fid>-<name>` 让 QAS
+            # 列出那一层 —— 否则前端只能看到一行目录名。
             params = self._get_query_params()
             url = params.get("url", "").strip()
             ok, msg = validate_string(url, min_len=1, max_len=500, allow_empty=False)
             if not ok:
                 self._send_json({"ok": False, "message": "url: {}".format(msg)}, 400)
                 return True
+            dir_fid = params.get("dir_fid", "").strip()
+            dir_name = params.get("dir_name", "").strip()
+            if dir_fid:
+                ok, msg = validate_string(dir_fid, min_len=1, max_len=64)
+                if not ok:
+                    self._send_json({"ok": False, "message": "dir_fid: {}".format(msg)}, 400)
+                    return True
+            if dir_name:
+                ok, msg = validate_string(dir_name, min_len=1, max_len=200)
+                if not ok:
+                    self._send_json({"ok": False, "message": "dir_name: {}".format(msg)}, 400)
+                    return True
             try:
-                self._send_json(share_preview.preview_share(url))
+                self._send_json(share_preview.preview_share(
+                    url, dir_fid=dir_fid, dir_name=dir_name))
             except Exception as e:
                 log("分享预览异常: {}".format(e))
                 self._send_json({"ok": False, "message": str(e)}, 500)
