@@ -94,12 +94,21 @@ var TMDB_NEAR_BOTTOM_PX = 900;       // 接近底部的触发距离（越大越�
 var TMDB_APPEND_COOLDOWN_MS = 1500;  // 一次成功追加加载完成后的最小冷却时间
 var TMDB_BACK_TOP_THRESHOLD = 600;   // “回到顶部”按钮出现的滚动阈值（.content scrollTop，单位 px）
 
-// 无封面占位卡片的 HTML：深色渐变背景 + 半透明大图标 + 居中的标题文字。
-// 既保留“有信息可看”的观感，又契合现代流媒体（如 Netflix）的占位瓦片风格。
+// 无封面占位卡片的 HTML：渐变底 + 半透明大图标 + 居中标题。
+//
+// issue #82「占位图错乱」：占位层此前复用 .tmdb-poster，而那条规则是为
+// <img> 写的（width:100% + aspect-ratio:2/3 + object-fit:cover + display:block）。
+// 它给占位 div 留下的只有「尺寸」，布局语义全错位：object-fit 对 flex 子项无效，
+// display 又被 .tmdb-no-poster 覆盖成 flex —— 两者叠加时，谁负责居中、谁负责
+// 尺寸就变成隐式约定。一旦引擎对 svg 的 width/height 属性理解不同（旧 WebKit、
+// 宿主浏览器的 UA 样式），图标就会被压成非等比小块并锚在左上角，
+// 而标题仍按 flex 居中 —— 屏幕上的表现就是「图标跑左边去了、占位图错乱」。
+// 现在职责拆干净：占位层自己负责居中（.tmdb-no-poster），尺寸/裁剪交给
+// 外层 .tmdb-poster-wrap 撑出的 2:3 方块，图标尺寸由 CSS 钉死。
 function tmdbNoPosterHtml(title){
   var safeTitle = esc(title || '');
-  return '<div class="tmdb-poster tmdb-no-poster">'
-    + '<svg class="tmdb-no-poster-icon" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-movie"/></svg>'
+  return '<div class="tmdb-no-poster">'
+    + '<svg class="tmdb-no-poster-icon" width="64" height="64" viewBox="0 0 24 24" preserveAspectRatio="xMidYMid meet" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#icon-movie"/></svg>'
     + '<span class="tmdb-no-poster-title">' + safeTitle + '</span>'
     + '</div>';
 }
