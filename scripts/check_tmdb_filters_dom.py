@@ -76,8 +76,14 @@ _ITEMS = [
 ]
 STUBS = {
     "/api/tmdb/options": {
-        "regions": [{"code": "US", "name": "美国"}, {"code": "CN", "name": "中国大陆"}],
-        "languages": [{"code": "zh-CN", "name": "中文"}, {"code": "en-US", "name": "英语"}],
+        # 与后端 COUNTRY_OPTIONS / LANGUAGE_OPTIONS 契约一致：首项必须是
+        # code=""（「全部」）。少了它，「重置筛选」会把地区/语言停在首个真实
+        # 取值上（非空），从而触发「地区/语言非空 → 切 discover」的逻辑，
+        # 表现为「点了重置、榜单类型没回到 trending」——这曾在本脚本里误报。
+        "regions": [{"code": "", "name": "全部"}, {"code": "US", "name": "美国"},
+                    {"code": "CN", "name": "中国大陆"}],
+        "languages": [{"code": "", "name": "全部"}, {"code": "zh-CN", "name": "中文"},
+                      {"code": "en-US", "name": "英语"}],
         "movie_list_types": [{"code": "trending", "name": "热门趋势"},
                              {"code": "top_rated", "name": "高分"},
                              {"code": "discover", "name": "自定义筛选"}],
@@ -225,10 +231,35 @@ RESET_READ = r"""
 # 期望的「重置后」状态：分类=电影、榜单=首个、地区/语言=首个、
 # 排序=首个、评分=0、年份=空、平台=全部、类型=全部。
 RESET_EXPECT = {
-    "mediaType": "movie", "listType": "trending", "region": "US", "language": "zh-CN",
+    "mediaType": "movie", "listType": "trending", "region": "", "language": "",
     "sort": "popularity.desc", "minRating": "0", "year": "",
     "providerLabel": "全部平台", "hasSelected": False,
 }
+
+
+# 记录发往 /api/tmdb/list 的请求 URL（issue #99：地区/语言必须真的生效）
+LIST_REQUESTS = []
+
+
+def _requests_probe():
+    """返回所有已发出的 /api/tmdb/list 请求的查询串。"""
+    return list(LIST_REQUESTS)
+
+
+# issue #99：在非 discover 榜单上选「地区/语言」，必须自动改走 discover
+# （且请求里真的带上过滤参数），否则就是「选了筛选、列表纹丝不动」。
+PICK_REGION_LANG = r"""
+() => {
+  const rg = document.getElementById('tmdbRegion');
+  const lg = document.getElementById('tmdbLanguage');
+  // 选「中国大陆」/「华语」（stub 里的取值），并逐个触发 change
+  rg.value = 'CN';
+  rg.dispatchEvent(new Event('change'));
+  lg.value = 'zh-CN';
+  lg.dispatchEvent(new Event('change'));
+  return {region: rg.value, language: lg.value};
+}
+"""
 
 
 def _start_server():
@@ -277,6 +308,8 @@ def main():
     def handler(route):
         url = route.request.url
         if "/api/" in url:
+            if "/api/tmdb/list" in url:
+                LIST_REQUESTS.append(url.split(str(PORT), 1)[-1])
             path = url.split(str(PORT), 1)[-1].split("?")[0]
             if path.rstrip("/").endswith("/api/sse"):
                 route.fulfill(status=200, content_type="text/event-stream", body=b"")
@@ -414,6 +447,44 @@ def main():
                         fail("「重置筛选」未还原类型选中态：chips.on = {}".format(after["onChips"]))
                     if after["hasProviderSel"]:
                         fail("「重置筛选」未清除流媒体平台的 .has-sel 高亮（只改了值没改样式）")
+
+                # ---- D. 地区/语言必须真的生效（issue #99） ----
+                # 「在特定筛选条件时无法正确响应特定筛选」：非 discover 榜单会
+                # 静默丢掉 country / with_original_language，选了跟没选一样。
+                # 判据（只在 1440×900 跑一次）：
+                #   D1. 选完地区/语言后，发往 /api/tmdb/list 的请求里 list_type 必须是 discover；
+                #   D2. 该请求必须带上 country=CN 与 language=zh-CN（真的传下去了）。
+                # 只看 DOM 里的下拉框值无法证伪这条 —— 必须看**实际请求**。
+                if width == 1440 and m["selectCount"]:
+                    # 先把榜单切回一个非 discover 的类型，复现截图里的场景
+                    page.evaluate("()=>{const s=document.getElementById('tmdbListType');"
+                                  "s.value='trending';s.dispatchEvent(new Event('change'));}")
+                    page.wait_for_timeout(900)
+                    del LIST_REQUESTS[:]
+                    seeded = page.evaluate(PICK_REGION_LANG)
+                    page.wait_for_timeout(1200)
+                    got_lt = page.evaluate(
+                        "()=>document.getElementById('tmdbListType').value")
+                    reqs = _requests_probe()
+                    if seeded["region"] != "CN" or seeded["language"] != "zh-CN":
+                        fail("前置条件不成立：地区/语言未能选上（{}）".format(seeded))
+                    elif not reqs:
+                        fail("选了地区/语言后没有发出 /api/tmdb/list 请求"
+                             "—— 筛选条件变了却不去取新数据（issue #99）")
+                    else:
+                        last_q = reqs[-1]
+                        if "list_type=discover" not in last_q:
+                            fail("非 discover 榜单上选了地区/语言，请求仍是「{}」"
+                                 "—— TMDB 只让 discover 过滤原始地区/语言，其余榜单会"
+                                 "静默丢弃，表现为「选了筛选、列表纹丝不动」（issue #99）"
+                                 .format(last_q))
+                        if "country=CN" not in last_q:
+                            fail("请求未带上地区参数（{}）".format(last_q))
+                        if "language=zh-CN" not in last_q:
+                            fail("请求未带上语言参数（{}）".format(last_q))
+                        if got_lt != "discover":
+                            fail("榜单下拉框仍是「{}」，与后端实际请求的 discover 不一致"
+                                 "—— 用户会以为筛选没生效".format(got_lt))
                 page.close()
             browser.close()
     finally:

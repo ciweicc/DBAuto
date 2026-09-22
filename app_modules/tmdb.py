@@ -215,7 +215,11 @@ def get_tmdb_list(media_type="movie", list_type="trending", page=1,
         country: 地区/国家代码（ISO 3166-1，如 CN/US/JP）；
                  discover 下映射 with_origin_country，now_playing/upcoming/on_the_air/airing_today 下映射 region
         sort_by: 排序方式
-        language: 原始语言代码（默认 zh-CN；discover 下映射 with_original_language）
+        language: 原始语言代码（ISO 639-1，如 zh/en/ja）。
+                  **只要给了 country 或 language（非「全部」），就按 /discover 请求** ——
+                  只有 discover 支持 with_origin_country / with_original_language 过滤；
+                  其余榜单（trending/popular/top_rated/now_playing/upcoming/on_the_air/airing_today）
+                  会把这两个参数静默丢掉，表现为「选了筛选但列表没变」。
         watch_providers: 流媒体平台 ID（逗号分隔，用于 discover，配合 watch_region 映射 with_watch_providers）
     """
     api_key = _get_api_key()
@@ -223,9 +227,11 @@ def get_tmdb_list(media_type="movie", list_type="trending", page=1,
         log("TMDB: 未配置 api_key")
         return {"items": [], "total_pages": 0, "total_results": 0, "page": 1, "error": "未配置 TMDB API Key"}
 
-    lang = language or _LANG
+    # 展示语言固定走 _LANG（zh-CN）；language 语义是「原始语言过滤」，
+    # 只作为 discover 的 with_original_language 使用，不再当成 TMDB 展示语言。
+    lang = _LANG
     cache_key = "{}:{}:{}:{}:{}:{}:{}:{}:{}:{}".format(
-        media_type, list_type, page, genre_id, year, min_rating, country, sort_by, lang, watch_providers)
+        media_type, list_type, page, genre_id, year, min_rating, country, sort_by, language, watch_providers)
     now = time.time()
     with _tmdb_lock:
         if cache_key in _tmdb_cache:
@@ -236,8 +242,19 @@ def get_tmdb_list(media_type="movie", list_type="trending", page=1,
     # 构建请求参数
     params = {"api_key": api_key, "language": lang, "page": page}
 
+    # 地区/语言是「快捷筛选 · 全榜单通用」里的两项，但 TMDB 只有 /discover 支持
+    # with_origin_country / with_original_language —— 其余榜单（含 trending/popular/
+    # top_rated，以及只能用 region 的 now_playing/upcoming/on_the_air/airing_today）
+    # 会把它们静默丢掉，用户看到的就是「选了地区/语言，列表纹丝不动」。
+    # 因此只要这两项非「全部」，就改走 discover（与前端「选了类型/评分/年份也切
+    # discover」保持一致），让筛选真正生效。这里的 language 是「原始语言」语义，
+    # 不再当成 TMDB 的展示语言（那是 lang/_LANG 的职责）。
+    effective_list_type = list_type
+    if list_type != "discover" and (country or language):
+        effective_list_type = "discover"
+
     # 决定 endpoint
-    if list_type == "discover":
+    if effective_list_type == "discover":
         endpoint = "/discover/{}".format(media_type)
         if genre_id:
             params["with_genres"] = genre_id
@@ -262,9 +279,8 @@ def get_tmdb_list(media_type="movie", list_type="trending", page=1,
             log("TMDB: 未知列表类型 {}".format(list_type))
             return {"items": [], "total_pages": 0, "total_results": 0, "page": 1}
         endpoint = endpoints[list_type]
-        # region（国家码）仅对支持该参数的榜单生效（正在上映/即将上映/正在播出/今日播出）
-        if country and list_type in ("now_playing", "upcoming", "on_the_air", "airing_today"):
-            params["region"] = country
+        # 走到这里说明 country / language 都是「全部」（否则上面已改走 discover），
+        # 无需再补 region / with_original_language。
 
     try:
         data = _tmdb_request_with_failover(endpoint, params)
