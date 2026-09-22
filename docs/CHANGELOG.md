@@ -1,3 +1,54 @@
+## [当前] 任务日志面板重做：去掉圆圈进度条，进度只留一种表达（issue #96）
+
+> 用户原话：「当前的UI设计稍微是有点丑。圆圈的进度条可以不要」
+
+原日志面板把「进度」画成了一个 46×46 的圆环（`.ring-progress`：`ring-bg` /
+`ring-fill` / `ring-text` 三层 + 一段 `#ringGradient` 渐变 `<defs>`），
+旁边再配一条横向细条 —— **同一件事有两套表达**，而且圆环塞在卡片标题右侧，
+和「执行日志」四个字抢同一行，观感是「小仪表盘硬贴在标题上」。
+
+### 根因：进度信息被拆成三个互不相关的碎片
+
+1. 圆环（百分比）+ 细条（`#progressFill` 宽度）+ 文字（`#ringSubtitle` /
+   `#progressCount` / `#progressEta`）各说各的，用户要在三处对齐才能读出「还剩多少」；
+2. 圆环占掉了标题行，导致头部只能挤成 `执行日志` + 圆环 + 三个图标按钮；
+3. 统计数字（已搜/成功/跳过/失败/共）平铺成同色文字，扫读时分不出哪条是成功、
+   哪条是失败；
+4. 底部 `TERMINAL` 伪元素角标是纯装饰，制造噪点。
+
+### 改法
+
+- **删除圆环与其渐变**：`#ringProgress` DOM、`.ring-*` 样式、`#ringGradient`
+  `<defs>`、`log.js` 里 `#ringFill`/`#ringText` 的更新逻辑全部移除；
+- **进度只留一种表达**：`.log-progress` 横向细条（6px）+ 右侧百分比 `#progressPct`
+  + 下一行 `61 / 61 · 成功30 失败6 跳过25`；`updateProgress` 只写一处百分比；
+- **头部收成一行**：`.log-head` = `执行日志`（`.log-title`）+ 副标题
+  `.log-subtitle#ringSubtitle`，右侧 `.log-actions` 放 `#soundBtn`/`#stopBtn`/`#pauseBtn`；
+- **统计语义分色**：`.progress-stat.is-ok > span`→`--green`、`.is-er`→`--red`、
+  `.is-sk`→`--orange`，一眼看出成功/失败/跳过；
+- **位置提示并入顶栏**：`.log-bar-hint#logHint`（`最新 40 条 · 已定位到末尾`）
+  与日志区同排，不再单独占行；同排新增 `.log-clear`「清空」入口（新 `clearLog()`）；
+- **删掉 `TERMINAL` 伪元素角标**；
+- 折叠态选择器同步改为 `.log-head` / `.progress-stats` / `.log-progress` / `.log-bar`。
+
+### 验证
+
+- `pytest tests/ -q` → **573 passed**；`pytest tests/test_build.py -q` → **172 passed**
+  （新增 7 项：圆环节点/渐变 defs 已消失、进度只有一处百分比表达、
+  头部有可读标题与操作按钮、提示行与日志区同排（间距 ≤12px）、
+  统计条语义分色、存在清空入口、`TERMINAL` 角标已移除）；
+- `python3 scripts/check_log_panel_dom.py --serve` → **10 组视口 0 处问题**
+  （2560/1920/1600/1440/1366/1280/1200/1100/1024/390 宽；
+  新增断言：`.ring-*` 残留计数 = 0、`#ringGradient` = 0、标题字号、
+  副标题文案、百分比文案、清空按钮存在、统计条颜色、提示行位置）；
+- `ruff check .` → All checks passed；`check_contrast.py` → **18 组 0 未达标**；
+- **反向验证**（把 `.ring-progress` DOM 加回去重建）：
+  DOM 走查红 **11 项**（10 组视口「圆圈进度残留 4 个 `.ring-*` 节点」+
+  移动端高度偏小），单测红 **1 项** —— 断言确实钉住了「圆环不许回来」；
+- Playwright 实渲染核对：dark / light 两主题 × desktop(1440×900) / mobile(390×844)
+  面板高度 471 / 587，头部单行、统计分色正确（绿/红/橙）、
+  进度块 `100%` + `61 / 61 · 成功30 失败6 跳过25`、日志区顶部提示行 + 清空按钮就位。
+
 ## [当前] 分享文件清单能进第二层目录：不再只看到一行文件夹名（issue #88 四次反馈）
 
 > 用户原话（带截图）：「还是看不到第二层目录的文件名称。为什么」

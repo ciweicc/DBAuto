@@ -179,11 +179,11 @@ body{
 /* 日志栏内部一律走「纵向换行」，杜绝超宽元素把 320px 撑出横向滚动条
    （曾导致整块日志看起来被裁掉一半） */
 .log-panel .log-card{min-width:0}
-.log-panel .log-card .card-title{flex-wrap:wrap;gap:8px 10px;min-width:0}
-.log-panel .log-card .card-title > div{min-width:0}
+.log-panel .log-head{flex-wrap:wrap}
+
 .log-panel .filter-tabs{flex-wrap:wrap}
 .log-panel .log-search-row{padding:0 0 10px}
-.log-panel .transfer-progress-current{overflow-wrap:anywhere}
+.log-panel .log-progress-current{overflow-wrap:anywhere}
 .log-panel-head{
   display:flex;align-items:center;justify-content:space-between;gap:8px;
   font-size:var(--fs-base);font-weight:600;color:var(--text2);font-family:var(--font-display);
@@ -572,20 +572,54 @@ input[type="radio"]:focus-visible{outline:2px solid var(--accent);outline-offset
 .filter-tab:hover{color:var(--text2)}
 .filter-tab.active{background:var(--accent);color:#fff;border-color:var(--accent)}
 
-/* Ring Progress */
-.ring-progress{width:46px;height:46px;position:relative;flex-shrink:0}
-.ring-progress svg{width:100%;height:100%;transform:rotate(-90deg)}
-.ring-bg{fill:none;stroke:rgba(255,255,255,.08);stroke-width:4}
-.ring-fill{fill:none;stroke:url(#ringGradient);stroke-width:4;stroke-linecap:round;
-  stroke-dasharray:113;stroke-dashoffset:113;transition:stroke-dashoffset .5s var(--ease-standard)}
-.ring-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
-  font-size:var(--fs-xs);font-weight:700;font-family:var(--font-display);font-variant-numeric:tabular-nums}
-[data-theme="light"] .ring-bg{stroke:rgba(0,0,0,.08)}
+/* ===== 面板头 / 统计 / 进度 / 日志栏（issue #96） =====
+   原实现：标题左边一个 46px 圆圈进度（外面还套着一圈 1px 描边，浅色主题下
+   被看成"输入框"）、下方又一个进度条，两处表达同一件事；日志位置提示独占一行
+   把日志框挤低；进度块永远是三行（进度条 + 计数/ETA + 当前条目）。
+   重构后：头部一行（标题 + 副标题 + 主操作）、进度一行（细条 + 百分比 + 计数），
+   位置提示并入日志框顶栏 —— 面板整体少约 3 行，且不再有第二套进度表达。 */
+.log-head{display:flex;align-items:flex-start;justify-content:space-between;
+  gap:10px;min-width:0;margin-bottom:10px}
+.log-head-main{min-width:0}
+.log-title{font-size:var(--fs-lg);font-weight:700;font-family:var(--font-display);
+  color:var(--text);letter-spacing:-.1px}
+.log-subtitle{font-size:var(--fs-sm);color:var(--text3);margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.log-actions{display:flex;gap:6px;flex-shrink:0}
+.log-act{flex-shrink:0}
 
-/* Progress */
-.progress-stats{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:12px}
+/* 进度（一行：细条 + 百分比；第二行是计数/ETA/当前条目） */
+.log-progress{margin:0 0 10px;display:grid;grid-template-columns:minmax(0,1fr) auto;
+  align-items:center;gap:4px 8px}
+.log-progress-track{height:6px;border-radius:3px;background:var(--track);overflow:hidden;min-width:0}
+.log-progress-fill{height:100%;width:0;border-radius:3px;background:var(--gradient-brand);
+  transition:width .3s var(--ease-standard)}
+.log-progress-pct{font-size:var(--fs-sm);font-weight:700;font-variant-numeric:tabular-nums;
+  color:var(--text);font-family:var(--font-display);min-width:34px;text-align:right}
+.log-progress-meta{grid-column:1 / -1;display:flex;justify-content:space-between;gap:8px;
+  font-size:var(--fs-xs);color:var(--text3);min-width:0}
+.log-progress-meta > span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.log-progress-current{grid-column:1 / -1;font-size:var(--fs-xs);color:var(--text2);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 统计条：语义色分组（成功=绿 / 失败=红 / 跳过=橙），替代只有两处着色的版本 */
+.progress-stats{display:flex;gap:10px 14px;flex-wrap:wrap;margin-bottom:10px}
 .progress-stat{font-size:var(--fs-sm);color:var(--text3);font-family:var(--font-display);font-weight:500}
 .progress-stat span{font-weight:600;color:var(--text);font-variant-numeric:tabular-nums}
+.progress-stat.is-ok > span,.progress-stat.is-ok > span span{color:var(--green)}
+.progress-stat.is-er > span,.progress-stat.is-er > span span{color:var(--red)}
+.progress-stat.is-sk > span,.progress-stat.is-sk > span span{color:var(--orange)}
+
+/* 日志框顶栏：位置提示 + 清空，替代原来独占一行的 .log-hint */
+.log-bar{display:flex;align-items:center;justify-content:space-between;gap:8px;
+  min-width:0;margin:0 0 6px}
+.log-bar-hint{font-size:var(--fs-xs);color:var(--text3);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.log-bar-actions{display:flex;gap:6px;flex-shrink:0}
+.log-clear{background:transparent;border:1px solid var(--border2);border-radius:var(--radius-xs);
+  color:var(--text3);font-size:var(--fs-xs);line-height:1;padding:4px 8px;cursor:pointer;
+  font-family:var(--font-display);transition:color var(--transition-fast),border-color var(--transition-fast)}
+.log-clear:hover{color:var(--accent);border-color:var(--accent)}
 
 /* Log */
 /* 高度：旧版写死 max-height:340px，900px 高的屏幕上日志区只用了约 1/3 屏，
@@ -600,8 +634,8 @@ input[type="radio"]:focus-visible{outline:2px solid var(--accent);outline-offset
   white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;color:var(--text2);position:relative;
   scroll-behavior:auto;overscroll-behavior:contain;
 }
-.log-box::before{content:'TERMINAL';position:absolute;top:8px;right:12px;
-  font-size:9px;font-weight:700;letter-spacing:1.5px;color:var(--text3);font-family:var(--font-display)}
+/* 原实现右上角有 'TERMINAL' 角标（绝对定位压在第 1 行日志上，与日志文字重叠）。
+   issue #96 删除：它不提供任何信息，只制造"有按钮/有内容"的错觉。 */
 /* 折行续行缩进：超长行（时间戳 + 标题 + 链接）折行后与首行正文对齐，
    避免续行顶到行首造成"内容错位/被截断"的观感。 */
 .log-line{padding:1px 0;opacity:0;animation:logLineIn .25s ease forwards}
@@ -908,8 +942,8 @@ input[type="radio"]:focus-visible{outline:2px solid var(--accent);outline-offset
   .log-panel .log-card{display:flex;flex-direction:column;min-height:0}
   .log-panel .log-search-row,
   .log-panel .filter-tabs,
-  .log-panel .transfer-progress-wrap{flex:0 0 auto}
-  .log-panel .log-hint{flex:0 0 auto}
+  .log-panel .log-progress{flex:0 0 auto}
+  .log-panel .log-bar{flex:0 0 auto}
   .card.grid-3{grid-template-columns:1fr}
   /* Touch target optimization */
   .chip{padding:10px 16px;min-height:42px;display:inline-flex;align-items:center}
@@ -1236,14 +1270,10 @@ html[data-density="compact"] .log-box,html[data-density="compact"] .hist-item{pa
   background:var(--card-2);color:var(--text);font-size:var(--fs-base);transition:border-color var(--transition-fast)}
 .log-search:focus{outline:none;border-color:var(--accent);box-shadow:var(--focus-ring)}
 .log-search::placeholder{color:var(--text3)}
-/* 日志状态提示行：与「暂停/恢复」按钮同行，常驻可读（不随滚动消失） */
-.log-hint{
-  display:flex;align-items:center;justify-content:space-between;gap:8px;
-  margin:0 0 6px;font-size:var(--fs-xs);color:var(--text3);
-  font-family:var(--font-display);font-variant-numeric:tabular-nums;
-}
-.log-hint-tip{opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-@media(max-width:1350px){ .log-hint-tip{display:none} }
+/* 日志状态提示：issue #96 已并入日志框顶栏（.log-bar / .log-bar-hint），
+   原来它独占一行（.log-hint + .log-hint-tip），把日志框整体挤低一行，
+   而右侧那句「滚轮可翻阅 · 暂停可锁定当前视图」在窄栏里恒被省略号吃掉。 */
+.log-bar-hint{font-variant-numeric:tabular-nums;font-family:var(--font-display)}
 
 /* ===== 设置页：分区索引（chips） ===== */
 .set-jump{display:flex;flex-wrap:wrap;gap:8px;margin:0 0 14px}
@@ -1846,9 +1876,10 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 .log-panel.collapsed #log,
 .log-panel.collapsed .log-panel-head,
 .log-panel.collapsed .log-actions,
-.log-panel.collapsed .ring-progress > div,
-.log-panel.collapsed .ring-subtitle{display:none !important}
-.log-panel.collapsed .ring-progress{margin:0 auto}
+.log-panel.collapsed .log-head,
+.log-panel.collapsed .progress-stats,
+.log-panel.collapsed .log-progress,
+.log-panel.collapsed .log-bar{display:none !important}
 .log-panel.collapsed .log-card{
   display:flex !important;align-items:center;justify-content:center;
   background:transparent;border:none;box-shadow:none;padding:0;
@@ -1877,22 +1908,6 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
 }
 .log-panel-collapse-btn:hover{color:var(--text);border-color:var(--border3);background:var(--hover-wash)}
 
-/* 转存进度条增强 */
-.transfer-progress-bar{
-  width:100%;height:6px;border-radius:3px;background:var(--track);
-  overflow:hidden;margin:8px 0;
-}
-.transfer-progress-fill{
-  height:100%;border-radius:3px;background:var(--gradient-brand);
-  transition:width .3s var(--ease-standard);
-}
-.transfer-progress-info{
-  display:flex;justify-content:space-between;font-size:var(--fs-xs);color:var(--text3);
-}
-.transfer-progress-current{
-  font-size:var(--fs-sm);color:var(--text2);margin-top:4px;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-}
 
 
 /* 日志面板折叠时调整主布局 grid（列宽与上方主栅格阶梯保持一致） */

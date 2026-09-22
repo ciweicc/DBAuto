@@ -1051,6 +1051,115 @@ def test_log_panel_dom_audit_entrypoint_present():
         assert token in src, "走查脚本缺少断言 {}".format(token)
 
 
+# ------------------------------------------------ 日志面板视觉重构（issue #96）
+def test_log_panel_ring_progress_removed(dist):
+    """issue #96：圆圈进度必须彻底删除。
+
+    用户原话（带截图）：「圆圈里的进度条可以不要」。圆环与它下方的进度条
+    表达同一件事，且圆环外面还套着一圈 1px 描边，浅色主题下被读成「输入框」
+    ——「红框里这个东西是什么」问的就是它。
+
+    这里钉死：DOM / CSS / JS / 产物四处都不得再有圆环残留，
+    否则删除会以「只删 DOM 留 CSS + JS 死代码」的形式半途而废。
+    """
+    html = dist
+    css, js = _extract(dist)
+    for sel in ("ring-progress", "ringProgress", "ring-bg", "ring-fill", "ring-text"):
+        assert sel not in html, "产物 DOM 仍残留 {}".format(sel)
+        assert sel not in css, "产物 CSS 仍残留 {}".format(sel)
+    assert "ringGradient" not in html, "产物仍带 #ringGradient 渐变定义"
+    assert "ringFill" not in js and "ringText" not in js, "log.js 仍操作圆环节点"
+
+    log_js = _read(os.path.join(_JS_DIR, "log.js"))
+    assert "ringFill" not in log_js, "log.js 仍读写 #ringFill（圆环没删干净）"
+    body = _read(os.path.join(_SRC, "body.html"))
+    assert "ring-progress" not in body, "body.html 仍有圆环标记"
+
+
+def test_log_panel_progress_has_single_expression(dist):
+    """issue #96：进度只剩一条表达 —— 细进度条 + 右侧百分比。
+
+    原来「圆环 + 进度条 + 两行文字」三处都在说进度。删除圆环后必须有
+    一个可读的百分比文本（否则进度只剩一根没有刻度的条）。
+    """
+    assert 'id="progressPct"' in dist, "缺少百分比文本节点 #progressPct"
+    assert 'class="log-progress-fill"' in dist, "缺少新的进度填充条"
+    # 旧的「胶囊进度条 + 两行信息」样式与节点必须一起下线
+    assert "transfer-progress-bar" not in dist, "旧进度条标记仍在产物里"
+    main_css = _read(MAIN_CSS)
+    assert ".transfer-progress-bar" not in main_css, "旧进度条样式仍在 main.css"
+    assert ".log-progress-track" in main_css and ".log-progress-pct" in main_css, \
+        "缺少新进度条 / 百分比样式"
+    log_js = _read(os.path.join(_JS_DIR, "log.js"))
+    assert "progressPct" in log_js, "log.js 未更新百分比文本（进度会停在 0%）"
+
+
+def test_log_panel_head_has_readable_title_and_actions(dist):
+    """issue #96：面板头是「标题 + 副标题 + 主操作」，不是「图标 + 三行文字」。"""
+    assert 'class="log-title"' in dist, "缺少面板标题样式"
+    assert 'class="log-head"' in dist, "缺少面板头容器"
+    assert 'class="log-actions"' in dist, "缺少主操作容器"
+    for gid in ("soundBtn", "pauseBtn", "stopBtn"):
+        assert 'id="{}"'.format(gid) in dist, "面板头缺少操作按钮 {}".format(gid)
+    main_css = _read(MAIN_CSS)
+    assert ".log-title{" in main_css.replace(" ", "").replace("\n", ""), "缺少 .log-title 规则"
+    assert "font-size:var(--fs-lg)" in main_css[main_css.index(".log-title{"):][:120], \
+        "标题未使用正文级以上字号（面板标题读起来像注释）"
+
+
+def test_log_panel_hint_shares_row_with_log_box(dist):
+    """issue #96：位置提示并入日志框顶栏，不再独占一行。
+
+    原来 `.log-hint`（提示 + 「滚轮可翻阅 · 暂停可锁定当前视图」）独占一行，
+    窄栏里右侧提示恒被省略号吃掉 —— 白占一行高度，且一个字都读不到。
+    """
+    main_css = _read(MAIN_CSS)
+    assert ".log-bar{" in main_css, "缺少日志框顶栏样式"
+    assert ".log-bar-hint" in main_css, "缺少顶栏提示样式"
+    assert ".log-hint{" not in main_css, "旧的独占一行提示样式仍在"
+    assert 'class="log-bar-hint" id="logHint"' in dist, "提示未落进顶栏"
+    assert "滚轮可翻阅" not in dist, "已删除的窄栏提示文案仍在产物里"
+
+
+def test_log_panel_stats_are_color_grouped(dist):
+    """issue #96：统计条按语义分色（成功/失败/跳过），替代只有两处着色的版本。"""
+    for cls in ("is-ok", "is-er", "is-sk"):
+        assert 'class="progress-stat {}"'.format(cls) in dist, "统计项缺少 {}".format(cls)
+    main_css = _read(MAIN_CSS)
+    for cls, token in (("is-ok", "--green"), ("is-er", "--red"), ("is-sk", "--orange")):
+        i = main_css.index(".progress-stat.{}".format(cls))
+        rule = main_css[i:main_css.index("}", i)]
+        assert token in rule, "{} 未使用语义色 {}".format(cls, token)
+
+
+def test_log_panel_has_clear_entry(dist):
+    """issue #96：日志框顶栏要有清空入口（长跑后旧日志不再只能滚动翻阅）。"""
+    assert 'class="log-clear"' in dist, "产物缺少清空按钮"
+    assert "clearLog()" in dist, "清空按钮未绑定 clearLog"
+    log_js = _read(os.path.join(_JS_DIR, "log.js"))
+    assert "function clearLog" in log_js, "缺少 clearLog 实现"
+    body = log_js[log_js.index("function clearLog"):]
+    body = body[:body.index("\n}")]
+    assert "logBefore=[]" in body.replace(" ", ""), "clearLog 未清空行模型"
+    assert "updateLogHint(0)" in body, "clearLog 未复位位置提示"
+    main_css = _read(MAIN_CSS)
+    assert ".log-clear" in main_css, "缺少清空按钮样式"
+
+
+def test_log_panel_terminal_badge_removed(dist):
+    """issue #96：日志框右上角的 'TERMINAL' 角标必须删除。
+
+    它是绝对定位的装饰文字，直接压在第 1 行日志上（重叠），既不提供信息，
+    又制造「这里有个按钮」的错觉。
+    """
+    css, _ = _extract(dist)
+    assert "content:'TERMINAL'" not in css and 'content:"TERMINAL"' not in css, \
+        "产物 CSS 仍有 TERMINAL 角标"
+    assert "TERMINAL" not in css, "产物 CSS 仍有 TERMINAL 残留"
+    assert "::before{content:'TERMINAL'" not in _read(MAIN_CSS).replace(" ", ""), \
+        "main.css 仍有 TERMINAL 角标规则"
+
+
 # ------------------------------------------------ TMDB 并入概览页（issue #14 第三轮）
 def test_tmdb_merged_into_overview_single_page(dist):
     """回归：TMDB 必须只有一块界面，且这块界面就在概览页里。
@@ -3928,7 +4037,10 @@ def test_tmdb_icon_is_vector_not_text(dist):
     """
     body = _read(os.path.join(_SRC, "body.html"))
 
-    sprite = body[body.index("<defs>"):body.index("</svg>", body.index("<defs>"))]
+    # issue #96：sprite 里唯一的 <defs>（圆环渐变）已随圆圈进度删除，
+    # 这里改为按 <svg> … </svg> 取图标 sprite 本体，不再依赖 <defs> 的存在。
+    start = body.index("<svg style=\"display:none\">")
+    sprite = body[start:body.index("</svg>", start)]
     assert "icon-tmdb" in sprite, "sprite 里找不到 icon-tmdb"
 
     # 1. 所有 sprite 符号都不得出现 <text>（字体依赖 + 缩放即糊）
