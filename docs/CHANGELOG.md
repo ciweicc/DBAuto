@@ -1,3 +1,66 @@
+## [当前] TMDB 筛选：地区/语言在非 discover 榜单上被静默丢弃（issue #99）
+
+> 用户标题原文：「在特定筛选条件时无法正确响应特定筛选」
+
+截图里的条件是 **电视剧 + 热门趋势 + 地区=中国大陆 + 语言=华语**。
+两项都在「快捷筛选 · 全榜单通用」分组里，但把列表拉出来一看 ——
+内容跟没选一样，地区/语言**完全没生效**。
+
+### 根因：TMDB 只有 `/discover` 认这两个过滤参数
+
+`app_modules/tmdb.py::get_tmdb_list` 此前按 `list_type` 分两条路：
+
+- `discover` → 走 `/discover/{movie|tv}`，`country` 映射 `with_origin_country`、
+  `language` 映射 `with_original_language`，两个过滤都真的生效；
+- 其余榜单 → `country` **直接被丢掉**；`language` 还被当成 TMDB 的**展示语言**
+  （`language=zh` 既不是合法展示语言，也从未映射到 `with_original_language`）。
+
+而 TMDB 的原生榜单里：
+
+| 榜单 | 认 `with_origin_country` | 认 `with_original_language` |
+| --- | --- | --- |
+| `trending` / `popular` / `top_rated` | ❌ | ❌ |
+| `now_playing` / `upcoming` / `on_the_air` / `airing_today` | 只认 `region` | ❌ |
+
+所以「快捷筛选 · 全榜单通用」这个标签与后端的真实能力**对不上**：
+用户看到控件是活的、能选，选完却没有任何反馈 —— 这就是「无法正确响应特定筛选」。
+（顺带一个更隐蔽的错：`language` 被当作展示语言传出去，会让标题/简介的返回语言
+跟着变，而过滤该过滤的原始语言反而没过滤。）
+
+### 改法
+
+**后端（权威语义）**：只要 `country` 或 `language` 非「全部」，就把请求改走
+`/discover` —— 那是唯一能同时按原始地区 + 原始语言过滤的端点。
+展示语言固定为 `_LANG`（zh-CN），`language` 只用作 `with_original_language`。
+
+**前端（UI 与结果一致）**：新增 `effectiveTmdbListType()` 作为「实际会请求哪个榜单」
+的**唯一事实来源**，`buildTmdbListParams` 与 `loadTmdbList` 共用：
+
+- 地区/语言非空 → 实际榜单推导为 `discover`，并在选项存在时同步回「榜单类型」下拉框
+  （用户不会看到「下拉写热门趋势、列表却是 discover」这种状态错位）；
+- 推导函数放在 `loadTmdbList` 里**同步执行，不再递归调用 `onTmdbFilterChange`** ——
+  旧写法（设 `select.value` + 递归）在 `discover` 选项缺失时会静默设值失败并
+  **无限递归**，表现是海报墙一直停在骨架屏、一张卡都渲染不出来；本轮回归里真踩到了，
+  因此 `syncTmdbListTypeSelect()` 先经 `tmdbListTypeExists()` 探测存在性再赋值；
+- 「用户主动把榜单切回非 discover」才清空 discover 专属条件：用 `pickedLt`（下拉框
+  显式值）判断，而不是被推导出的实际榜单，否则刚选上的地区/语言会被当场清掉。
+
+### 验证
+
+- `pytest tests/ -q` → **603 passed**（新增 30 项 `tests/test_tmdb_filters_contract.py`）；
+- 新测试覆盖：10 种榜单 × 地区/语言 → 必须走 `/discover` 且带上两个过滤参数、
+  只选语言/只选地区同样改走 discover、都不选时原生榜单**不得**被改写（边界）、
+  discover 路径的地区/语言/排序/评分/年份/类型/平台全部保留、展示语言不被污染；
+  以及 4 项前端结构断言（实际榜单推导、禁止递归、选项存在性探测）。
+  **反向验证**：在改前的 `tmdb.py` 上跑会红 17 项；
+- `python3 scripts/check_tmdb_filters_dom.py --serve` → **9 组视口 0 处问题**；
+  新增 **D 段**在真实浏览器里抓 `/api/tmdb/list` 的**实际请求 URL**，
+  非 discover 榜单上选地区/语言后必须出现 `list_type=discover&country=CN&language=zh-CN`，
+  且榜单下拉框同步为 discover。**反向验证**：去掉前端推导逻辑会红 2 项；
+- `python3 scripts/check_tmdb_placeholder_dom.py --serve` → **8 组视口 0 处问题**
+  （该脚本的 stub 只提供 `trending` 一个榜单类型，正是它抓出了上面的无限递归）；
+- `ruff check .` → **All checks passed**。
+
 ## [当前] 任务日志面板重做：去掉圆圈进度条，进度只留一种表达（issue #96）
 
 > 用户原话：「当前的UI设计稍微是有点丑。圆圈的进度条可以不要」

@@ -507,10 +507,12 @@ function onTmdbFilterChange(){
     var listTypes = mt === 'movie' ? dscState.options.movie_list_types : dscState.options.tv_list_types;
     updateTmdbListTypeOptions(listTypes);
   }
-  // 更新列表选项后重新获取 lt，确保使用最新的下拉框值
-  var lt = getId('tmdbListType').value;
-  // 如果用户手动从 discover 切换到其他榜单类型，清除 discover 专属筛选条件
-  if(lt !== 'discover' && dscState.list_type === 'discover'){
+  // 下拉框里的「用户显式选择」（用于判断是不是用户主动离开了 discover）
+  var pickedLt = getId('tmdbListType').value;
+  // 如果用户手动从 discover 切换到其他榜单类型，清除 discover 专属筛选条件。
+  // 注意用的必须是**用户显式选择**：地区/语言会把「实际榜单」推导成 discover，
+  // 若这里读实际榜单就会把刚选上的地区/语言当场清掉（自相矛盾）。
+  if(pickedLt !== 'discover' && dscState.list_type === 'discover' && !hasTmdbDiscoverForcingFilters()){
     dscState.genre_id = 0;
     var chips = queryAll('#tmdbGenreChips .chip');
     chips.forEach(function(c){c.classList.remove('on')});
@@ -519,7 +521,9 @@ function onTmdbFilterChange(){
     getId('tmdbMinRating').value = 0;
     getId('tmdbYear').value = '';
   }
-  dscState.list_type = lt;
+  // 同步「实际榜单」到下拉框与 state（地区/语言/评分/年份等会推导为 discover）。
+  // 这样后续的控件可用态、平台加载、乃至榜单下拉框显示都与真实请求一致。
+  var lt = syncTmdbListTypeSelect();
   syncTmdbDiscoverControls();
   var isDiscover = lt === 'discover';
   if(isDiscover){
@@ -545,11 +549,64 @@ function onTmdbFilterChange(){
   }
 }
 
+// 是否存在「会强制走 discover」的筛选条件（地区/语言/类型/评分/年份）。
+// 用来区分两件事：用户主动把榜单切回非 discover（应清掉 discover 专属条件），
+// vs. 这些条件本身把榜单推导成了 discover（此时条件必须保留）。
+function hasTmdbDiscoverForcingFilters(){
+  var region = getId('tmdbRegion') ? getId('tmdbRegion').value : '';
+  var language = getId('tmdbLanguage') ? getId('tmdbLanguage').value : '';
+  var minRating = getId('tmdbMinRating') ? (parseFloat(getId('tmdbMinRating').value) || 0) : 0;
+  var year = getId('tmdbYear') ? (parseInt(getId('tmdbYear').value) || 0) : 0;
+  return !!(region || language || minRating > 0 || year > 0 || (dscState.genre_id || 0) > 0);
+}
+
+// 榜单类型下拉里是否存在某个取值。
+// 为什么需要它：把 select.value 设成一个不存在的 option 是**静默无效**的
+// （值不变），若据此再触发一次加载就会无限递归（issue #99 的 stub 就是这么炸的）。
+function tmdbListTypeExists(code){
+  var sel = getId('tmdbListType');
+  if(!sel) return false;
+  return [].some.call(sel.options, function(o){ return o.value === code; });
+}
+
+// 「实际会请求哪个榜单」——唯一事实来源，loadTmdbList 与 buildTmdbListParams 共用。
+//
+// 为什么需要「实际榜单」这个概念：
+//   1. 地区/语言是「快捷筛选·全榜单通用」，但 TMDB 只有 /discover 支持
+//      with_origin_country / with_original_language，其余榜单会静默丢弃，
+//      表现为「选了地区/语言、列表纹丝不动」（issue #99）；
+//   2. 类型/评分/年份同理，只有 discover 认这三个参数。
+//   所以只要这些条件非「全部」，就按 discover 请求；下拉框在下一步同步
+//   （且只在选项真的存在时才改，避免静默无效 + 递归）。
+function effectiveTmdbListType(){
+  var lt = getId('tmdbListType') ? getId('tmdbListType').value : 'trending';
+  lt = lt || 'trending';
+  if(lt === 'discover') return 'discover';
+  var region = getId('tmdbRegion') ? getId('tmdbRegion').value : '';
+  var language = getId('tmdbLanguage') ? getId('tmdbLanguage').value : '';
+  var minRating = getId('tmdbMinRating') ? (parseFloat(getId('tmdbMinRating').value) || 0) : 0;
+  var year = getId('tmdbYear') ? (parseInt(getId('tmdbYear').value) || 0) : 0;
+  var genreId = dscState.genre_id || 0;
+  if(genreId > 0 || minRating > 0 || year > 0 || region || language) return 'discover';
+  return lt;
+}
+
+// 把「实际榜单」同步回下拉框（仅当选项存在）。不触发任何加载，避免递归。
+function syncTmdbListTypeSelect(){
+  var eff = effectiveTmdbListType();
+  var ltEl = getId('tmdbListType');
+  if(ltEl && ltEl.value !== eff && tmdbListTypeExists(eff)){
+    ltEl.value = eff;
+  }
+  dscState.list_type = eff;
+  return eff;
+}
+
 // 读取当前筛选条件并拼装 /api/tmdb/list 请求参数
 function buildTmdbListParams(){
   var mt = getId('tmdbMediaType').value;
-  var lt = getId('tmdbListType').value;
-  var region = getId('tmdbRegion').value;
+  var lt = effectiveTmdbListType();
+  var region = getId('tmdbRegion') ? getId('tmdbRegion').value : '';
   var language = getId('tmdbLanguage') ? getId('tmdbLanguage').value : '';
   var sort = getId('tmdbSort').value;
   var minRating = parseFloat(getId('tmdbMinRating').value) || 0;
@@ -624,22 +681,11 @@ async function loadTmdbList(append){
   dscState.loadingMore = false;
   dscState.lastAppendAt = 0; // 清空追加冷却，允许新列表立即响应滚动加载
 
-  var mt = getId('tmdbMediaType').value;
-  var lt = getId('tmdbListType').value;
-  var minRating = parseFloat(getId('tmdbMinRating').value) || 0;
-  var year = parseInt(getId('tmdbYear').value) || 0;
-  var genreId = dscState.genre_id || 0;
-
-  // 如果不是 discover，但用户选了类型/评分/年份，自动切换到 discover
-  if(lt !== 'discover' && (genreId > 0 || minRating > 0 || year > 0)){
-    getId('tmdbListType').value = 'discover';
-    lt = 'discover';
-    dscState.list_type = 'discover';
-    // OPT-45：早返回前先清空旧网格，避免残留上一次列表内容
-    grid.innerHTML = '<div class="tmdb-skeleton" style="grid-column:1/-1"></div>';
-    onTmdbFilterChange();
-    return;
-  }
+  // 先把「实际榜单」（可能因地区/语言/评分/年份等条件被推导为 discover）
+  // 同步回下拉框，再据此渲染。**不再递归调用 onTmdbFilterChange** ——
+  // 旧写法在 discover 选项缺失时（stub/降级数据）会静默设值失败并无限递归，
+  // 表现为海报墙一直停在骨架屏、一张卡都渲染不出来（issue #99 回归中发现）。
+  syncTmdbListTypeSelect();
 
   var sk=''; for(var si=0;si<12;si++){ sk += '<div class="tmdb-skeleton"></div>'; }
   grid.innerHTML = sk;
