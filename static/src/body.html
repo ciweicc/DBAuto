@@ -475,6 +475,12 @@
             <label class="lib-selectall" id="libSelAllWrap" style="display:none" title="选择本目录全部条目">
               <input type="checkbox" id="libSelAll" onchange="toggleLibSelectAll(this.checked)"><span>全选</span>
             </label>
+            <!-- 网盘容量（issue #101「媒体库显示网盘容量」）：一眼看到这块盘还剩多少，
+                 不必再去夸克 App 里翻。数据来自 OpenList 的存储驱动上报，与当前
+                 浏览目录无关；驱动不报容量时安静显示「容量未知」，不占主视线。
+                 放在面包屑右侧（与「全选 / 快捷键提示」同一行），它是页面的
+                 **状态信息**而不是操作入口 —— 放进标题行的按钮堆里会被当成按钮。 -->
+            <span class="lib-cap" id="libStorage" style="display:none"></span>
             <!-- 键盘选择提示（issue #53）：快捷键不写出来就没人知道。
                  窄屏隐藏（触屏没有这些键），见 main.css 的 .lib-keyhint。 -->
             <span class="lib-keyhint" id="libKeyHint" title="Ctrl 在 macOS 上为 ⌘">

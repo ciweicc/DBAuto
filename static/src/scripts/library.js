@@ -62,6 +62,11 @@ function libAtRoot(path){
 }
 var libPath = libRoot();
 var libEntries = [];
+// 网盘容量（issue #101：「媒体库显示网盘容量」）。
+//   null            = 尚未查询（不渲染任何东西，避免"0 / 0"这种假数字）
+//   {known:false}   = 查过了、驱动不报容量 → 安静显示「容量未知」
+//   {known:true,..} = 总量/已用/剩余 + percent，渲染成一行进度条
+var libStorage = null;
 var libSelected = {};
 // 键盘选择的两个状态（issue #53）：
 //   libFocusKey    —— 当前行（虚线框），Shift+Range 的焦点端；
@@ -535,6 +540,8 @@ function loadLibraryPage(){
   // （libPath 在脚本加载期就已初始化为当时的 libRoot，此处覆盖为最新配置）
   loadLibrary(libPath);
   loadQasTasks();
+  // 容量与目录/任务**并行**发起，互不阻塞（见 loadLibStorage 的取舍 1）。
+  loadLibStorage(false);
   _syncLibRootFromSettings();
 }
 
@@ -1995,9 +2002,85 @@ function invalidateLibCache(path){
 }
 
 // 刷新按钮：强制绕过缓存
+// ---------- 网盘容量（issue #101） ----------
+//
+// 用户诉求：媒体库只列文件，看不到「这块盘还剩多少」—— 想判断还能不能继续
+// 转存，只能去夸克 App 里翻。容量挂在存储驱动上（与具体目录无关），所以
+// 走 /api/openlist/storage，与当前浏览路径无关。
+//
+// 三条设计取舍：
+//   1. **不与目录请求串行**：容量慢/失败都不该拖住目录渲染（用户来媒体库是
+//      看文件的）。因此 loadLibraryPage 里两条请求各自独立发起、各自渲染。
+//   2. **失败不弹错**：驱动不报容量是正常分支（很多挂载方式拿不到），
+//      弹一个红 toast 会让用户以为网盘坏了。安静降级成「容量未知」。
+//   3. **不编造数字**：total 解析不出来就一律不显示百分比 —— 分母是猜的，
+//      进度条画出来就是错的。
+async function loadLibStorage(force){
+  var el = document.getElementById('libStorage');
+  if(!el) return;
+  // 已查过且不是显式刷新 → 不重复打网络（容量变化很慢，翻目录没必要重查）。
+  if(libStorage && !force){ _renderLibStorage(); return; }
+  if(!libStorage){
+    el.style.display = 'none';   // 首查前不占位：骨架比"容量读取中"更有用
+  }
+  var r = await libFetch('/api/openlist/storage');
+  var res = (r && r.ok && r.data) ? r.data : null;
+  if(!res){
+    // 连请求都没成功（超时/网络）：记成未知，绝不显示上一轮的数字
+    // —— 那会是一条关于旧状态的断言，而页面已经无法确认它。
+    libStorage = {known: false, total: 0, used: 0, free: 0, percent: 0, message: ''};
+    _renderLibStorage();
+    return;
+  }
+  libStorage = res;
+  _renderLibStorage();
+}
+
+function _fmtCapBytes(n){
+  return fmtSize(n);   // 复用同一套体量格式化，避免两处单位口径不一致
+}
+
+function _renderLibStorage(){
+  var el = document.getElementById('libStorage');
+  if(!el) return;
+  var s = libStorage;
+  if(!s){ el.style.display = 'none'; el.innerHTML = ''; return; }
+  if(!s.known){
+    // 「容量未知」也要显示，且要给出**为什么**（title）：
+    // 一个彻底不存在的元素会让用户以为这个功能没做。
+    el.className = 'lib-cap lib-cap-unknown';
+    el.innerHTML = '<span class="lib-cap-txt" title="'
+      + esc(s.message || 'OpenList 返回的数据里没有容量信息（该存储驱动未上报配额）')
+      + '">容量未知</span>';
+    el.style.display = '';
+    return;
+  }
+  var pct = Number(s.percent || 0);
+  if(!isFinite(pct)) pct = 0;
+  pct = Math.max(0, Math.min(100, pct));
+  // 三档配色：≥90% 危险、≥75% 警示、其余正常。阈值写在这里而不是 CSS，
+  // 是因为切档依据是**数值**；CSS 只按档位类名上色。
+  var tone = pct >= 90 ? 'danger' : (pct >= 75 ? 'warn' : 'ok');
+  var tip = '网盘容量：已用 ' + _fmtCapBytes(s.used)
+          + ' / 共 ' + _fmtCapBytes(s.total)
+          + '，剩余 ' + _fmtCapBytes(s.free)
+          + '（' + pct.toFixed(1) + '%）';
+  el.className = 'lib-cap lib-cap-' + tone;
+  el.innerHTML =
+    '<span class="lib-cap-bar" role="progressbar" aria-valuemin="0" aria-valuemax="100"'
+    + ' aria-valuenow="' + pct.toFixed(1) + '" aria-label="' + esc(tip) + '">'
+    + '<span class="lib-cap-fill" style="width:' + pct.toFixed(1) + '%"></span></span>'
+    + '<span class="lib-cap-txt" title="' + esc(tip) + '">'
+    + '已用 ' + _fmtCapBytes(s.used) + ' / ' + _fmtCapBytes(s.total)
+    + ' · ' + pct.toFixed(1) + '%</span>';
+  el.style.display = '';
+}
+
 function refreshLibrary(){
   invalidateLibCache(libPath);
   loadLibrary(libPath, {force:true});
+  // 「刷新」是用户显式要求"给我最新的"：容量也一并重查（见 loadLibStorage 的 force）。
+  loadLibStorage(true);
 }
 
 function renderBreadcrumb(path){

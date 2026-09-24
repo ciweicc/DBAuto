@@ -766,6 +766,20 @@ def list_library_entries(path=None, refresh=False):
             "message": res.get("message") or "OpenList 读取失败"}
 
 
+def library_storage(path=None, refresh=False):
+    """网盘容量（issue #101：媒体库显示网盘容量）。
+
+    与目录浏览同一套「谁回答」口径：**只有 OpenList**。这里不参与
+    目录的缓存/退避（容量是驱动属性，不随目录内容变），但同样不抛异常 ——
+    容量拿不到时前端显示「容量未知」，绝不影响目录与任务两块主功能。
+
+    refresh 参数目前只用于未来绕过缓存（本函数暂不缓存）；保留形参是为了
+    与 list_library_entries 的调用口径一致，前端不必记两套签名。
+    """
+    target = path or get_library_root()
+    return openlist.storage_info(target)
+
+
 def delete_entries_by_source(entries, sync_history=True, source=None,
                             sync_tasks=False, sync_tasks_path_filter=""):
     """删除网盘条目（OpenList 侧用条目名 + 目录删）。
