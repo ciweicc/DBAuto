@@ -2261,6 +2261,29 @@ body:has(#tmdbPanel.sel-active) .log-fab{bottom:calc(72px + env(safe-area-inset-
   background-color:var(--green-wash)}
 .lib-src-badge.lib-src-qas{color:var(--orange);border-color:var(--orange-border);
   background-color:var(--orange-wash)}
+/* 网盘容量（issue #101）：一行「进度条 + 数字」，贴在面包屑右侧。
+   为什么是细条而不是环形仪表：容量是**次要状态**，一屏里已经有两个大卡片，
+   再来一个仪表盘会把主视线（目录内容）挤走；细条只占 5px 高，扫一眼就知道
+   剩多少。数字用等宽数字（tabular-nums）避免百分比跳动时宽度抖动。 */
+.lib-cap{display:inline-flex;align-items:center;gap:7px;flex:0 0 auto;
+  font-size:12px;color:var(--text2);font-variant-numeric:tabular-nums;
+  white-space:nowrap}
+.lib-cap-bar{position:relative;display:inline-block;width:64px;height:5px;
+  border-radius:999px;background-color:var(--field-bg);
+  border:1px solid var(--border);overflow:hidden}
+.lib-cap-fill{display:block;height:100%;border-radius:999px;
+  background-color:var(--green);transition:width var(--transition-fast)}
+/* 三档配色：只改填充色与文字色，尺寸/位置一律不动 ——
+   容量变化只该让颜色变，不该让整行跟着跳。 */
+.lib-cap-warn .lib-cap-fill{background-color:var(--orange)}
+.lib-cap-warn .lib-cap-txt{color:var(--orange)}
+.lib-cap-danger .lib-cap-fill{background-color:var(--red)}
+.lib-cap-danger .lib-cap-txt{color:var(--red)}
+.lib-cap-unknown .lib-cap-txt{color:var(--text3)}
+.lib-cap-txt{overflow:hidden;text-overflow:ellipsis}
+/* 窄屏：容量让位给面包屑（路径比容量更需要看全）。
+   ≤900px 与 .lib-keyhint 同一断点，两处一起消失，目录栏不会只剩零碎。 */
+@media(max-width:900px){.lib-cap{display:none}}
 /* 任务对账（issue #27 追问）：只读巡检结果。两组之间用分隔线 + 标题层级区分，
    「失效」用警示色，「未核对/孤立」保持中性 —— 三类结论的危险程度不同，
    配色相同会让人以为它们一样需要处理。 */

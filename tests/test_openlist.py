@@ -1497,3 +1497,187 @@ def test_backoff_carries_window_for_countdown():
     assert 0 < left <= int(openlist.OPENLIST_FAIL_BACKOFF), "剩余秒数必须落在窗口内"
     assert media_library._backoff_left({}) == 0, \
         "拿不到信息时返回 0（前端退化为「稍后」，不编造倒计时）"
+
+
+# ------------------------------------------------- 网盘容量（issue #101）
+#
+# 用户标题原文：「媒体库显示网盘容量」。诉求是打开媒体库就能看到
+# 「这块盘还剩多少」，而不是去夸克 App 里翻。
+#
+# 这块功能最大的风险不是「读不到」，而是**读到一个错的数字**：
+# 容量字段在 OpenList 的不同版本/驱动下藏在不同位置、用不同名字，
+# 一旦解析逻辑写歪，算出来的百分比就是坏的 —— 而它看起来和真的没区别。
+# 因此下面按「契约（怎么解析）→ 边界（坏数据怎么办）→ 降级（读不到怎么办）」
+# 三层钉住。
+
+def _get_entry(total=None, used=None, free=None, provider_style="dict"):
+    """按指定形态构造一条 /api/fs/get 的响应（模拟不同 OpenList 版本）。"""
+    fields = {}
+    if total is not None:
+        fields["total"] = total
+    if used is not None:
+        fields["used"] = used
+    if free is not None:
+        fields["free"] = free
+    if provider_style == "dict":
+        return {"provider": fields, "name": "/", "is_dir": True}
+    if provider_style == "json":
+        import json as _json
+        return {"provider": _json.dumps(fields), "name": "/", "is_dir": True}
+    if provider_style == "nested":
+        import json as _json
+        return {"provider": {"json": _json.dumps(fields)}, "name": "/", "is_dir": True}
+    raise AssertionError("unknown style: {}".format(provider_style))
+
+
+def test_storage_parses_total_and_used():
+    """最常见的形态：驱动直接给总量与已用。剩余由两者相减得到。"""
+    info = openlist.parse_storage_info(_get_entry(total=1000, used=250))
+    assert info["known"] is True
+    assert info["total"] == 1000 and info["used"] == 250 and info["free"] == 750
+
+
+def test_storage_parses_total_and_free():
+    """只给剩余也要能用：used = total - free，不用等驱动把 used 也补上。"""
+    info = openlist.parse_storage_info(_get_entry(total=1000, free=400))
+    assert info["used"] == 600 and info["free"] == 400
+
+
+def test_storage_parses_provider_as_json_string():
+    """provider 是 JSON 字符串（AList 历史形态）时必须能解析 —— 这是最容易漏的一路。"""
+    info = openlist.parse_storage_info(_get_entry(total=2048, used=1024, provider_style="json"))
+    assert info["known"] is True and info["total"] == 2048 and info["used"] == 1024
+
+
+def test_storage_parses_nested_provider_json():
+    """provider.json 又套一层字符串（部分实现的形态），同样要能挖到底。"""
+    info = openlist.parse_storage_info(_get_entry(total=500, used=100, provider_style="nested"))
+    assert info["known"] is True and info["total"] == 500
+
+
+def test_storage_accepts_space_suffixed_field_names():
+    """total_space / free_space / used_space 这套命名必须同样认。"""
+    info = openlist.parse_storage_info({
+        "provider": {"total_space": 800, "used_space": 200, "free_space": 600}})
+    assert info["known"] is True
+    assert (info["total"], info["used"], info["free"]) == (800, 200, 600)
+
+
+def test_storage_accepts_string_numbers():
+    """驱动可能把容量以字符串下发（大整数超出 JS 精度时的常见做法）。"""
+    info = openlist.parse_storage_info({"provider": {"total": "1000", "used": "250"}})
+    assert info["known"] is True and info["total"] == 1000 and info["used"] == 250
+
+
+def test_storage_without_total_is_unknown_not_guessed():
+    """**没有总量 = 未知**，绝不拿 used/free 硬凑一个分母。
+
+    这是本功能最危险的一种"看起来能用"：拿 used 当 total 会算出 100%，
+    用户以为盘满了。宁可显示「容量未知」。
+    """
+    info = openlist.parse_storage_info({"provider": {"used": 500, "free": 500}})
+    assert info["known"] is False
+    assert info["total"] == 0 and info["used"] == 0 and info["free"] == 0
+
+
+def test_storage_rejects_bool_and_nonpositive():
+    """"幽灵容量"必须挡掉：bool 在 Python 里是 int 子类（True == 1 字节），
+    0/负数同样不代表"有这么多字节"（0 通常意味着驱动没给）。"""
+    assert openlist.parse_storage_info({"provider": {"total": True}}).get("known") is not True
+    assert openlist.parse_storage_info({"provider": {"total": 0}}).get("known") is not True
+    assert openlist.parse_storage_info({"provider": {"total": -5}}).get("known") is not True
+    assert openlist.parse_storage_info({"provider": {"total": "abc"}}).get("known") is not True
+
+
+def test_storage_clamps_used_above_total():
+    """used > total（配额变更后的陈旧缓存）必须夹住。
+
+    原样透出会让前端画出 >100% 的进度条 —— 那是明显的坏数据，
+    夹到 100% 至少不会渲染出越界的视觉。
+    """
+    info = openlist.parse_storage_info(_get_entry(total=100, used=180))
+    assert info["used"] == 100 and info["free"] == 0
+
+
+def test_storage_root_level_fields_are_read():
+    """有些实现把容量直接挂在响应根上（没有 provider 包裹），也要认。"""
+    info = openlist.parse_storage_info({"total": 400, "used": 100})
+    assert info["known"] is True and info["total"] == 400
+
+
+def test_storage_info_success_carries_percent():
+    """端到端：_api 返回容量 → storage_info 给出 percent（前端进度条直接用）。"""
+    def fake_api(path, data=None, method=None, timeout=None, **k):
+        assert path == "/api/fs/get", "容量必须走 fs/get（fs/list 只回目录内容）"
+        return _get_entry(total=1000, used=250)
+
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "tok")), \
+         patch.object(openlist, "_root_prefix", return_value=""), \
+         patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "_api", side_effect=fake_api):
+        res = openlist.storage_info("/")
+    assert res["success"] is True
+    assert res["percent"] == 25.0
+    assert res["source"] == "openlist"
+
+
+def test_storage_info_driver_without_quota_is_quiet():
+    """驱动不报容量 = 正常分支：success=False 但**不给 message/kind**。
+
+    给了 message 前端就会弹提示，用户会以为网盘坏了 —— 其实只是这个驱动
+    不上报配额。安静降级成「容量未知」才是对的。
+    """
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "tok")), \
+         patch.object(openlist, "_root_prefix", return_value=""), \
+         patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "_api", return_value={"name": "/", "is_dir": True}):
+        res = openlist.storage_info("/")
+    assert res["success"] is False
+    assert res["known"] is False
+    assert res["message"] == "" and res["kind"] == "", \
+        "驱动不报容量不是错误，不该带错误文案（否则前端会弹红提示）"
+
+
+def test_storage_info_failure_never_raises():
+    """容量查询失败必须**吞掉异常**：它不该把整个媒体库页带崩。
+
+    容量是锦上添花的信息，目录与任务才是主功能 —— 用一个次要功能
+    赌掉主要功能是最不划算的交易。
+    """
+    def boom(path, data=None, method=None, timeout=None, **k):
+        raise openlist.OpenListError("OpenList 请求失败: timed out",
+                                     kind=openlist.KIND_TIMEOUT)
+
+    with patch.object(openlist, "_cfg", return_value=("http://o:5244", "tok")), \
+         patch.object(openlist, "_root_prefix", return_value=""), \
+         patch.object(openlist, "is_configured", return_value=True), \
+         patch.object(openlist, "_api", side_effect=boom):
+        res = openlist.storage_info("/")
+    assert res["success"] is False
+    assert res["kind"] == openlist.KIND_TIMEOUT
+    assert "timed out" in res["message"]
+    assert res["total"] == 0 and res["percent"] == 0.0
+
+
+def test_storage_info_unconfigured_is_explicit():
+    """没配 OpenList：如实说明，不要拿一个 0/0 冒充容量。"""
+    with patch.object(openlist, "_cfg", return_value=("", "")), \
+         patch.object(openlist, "is_configured", return_value=False):
+        res = openlist.storage_info("/")
+    assert res["success"] is False and res["known"] is False
+    assert res["kind"] == openlist.KIND_UNCONFIGURED
+    assert "未配置" in res["message"]
+
+
+def test_library_storage_delegates_to_openlist():
+    """media_library 的入口必须把路径口径与目录浏览对齐（缺省落到媒体库根目录）。"""
+    seen = {}
+
+    def fake_storage(path="/", timeout=None):
+        seen["path"] = path
+        return {"success": True, "known": True}
+
+    with patch.object(media_library.openlist, "storage_info", side_effect=fake_storage), \
+         patch.object(media_library, "get_library_root", return_value="/影视"):
+        media_library.library_storage()
+    assert seen["path"] == "/影视", "未指定路径时应落到「媒体库根目录」（与浏览同口径）"

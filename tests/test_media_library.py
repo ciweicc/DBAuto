@@ -1017,3 +1017,55 @@ def test_openlist_success_still_reports_openlist_source():
         res = media_library.list_library_entries(path="/媒体库", refresh=True)
     assert res["source"] == "openlist" and res["fallback"] is False
     assert res["entries"] == [{"name": "电影", "dir": True}]
+
+
+# ---------- 网盘容量路由（issue #101「媒体库显示网盘容量」） ----------
+
+def test_route_openlist_storage_returns_200_and_payload():
+    """容量接口：成功时 200 带回容量数据。"""
+    h = _make_handler(params={})
+    with patch.object(media_library, "library_storage",
+                      return_value={"success": True, "known": True, "total": 100,
+                                    "used": 25, "percent": 25.0, "source": "openlist"}), \
+         patch.object(media_library, "get_library_root", return_value="/"):
+        assert h._handle_library_get("/api/openlist/storage") is True
+    assert h.status == 200
+    assert h.sent["known"] is True and h.sent["percent"] == 25.0
+
+
+def test_route_openlist_storage_returns_200_even_when_unknown():
+    """驱动不报容量时**也是 200**：这是正常分支，不是服务端错误。
+
+    用 502 表达「拿不到容量」会误导前端弹「服务端出错」——
+    而用户实际遇到的问题只是"这个盘不上报配额"。
+    """
+    h = _make_handler(params={})
+    with patch.object(media_library, "library_storage",
+                      return_value={"success": False, "known": False,
+                                    "total": 0, "used": 0, "free": 0,
+                                    "message": "", "kind": ""}), \
+         patch.object(media_library, "get_library_root", return_value="/"):
+        assert h._handle_library_get("/api/openlist/storage") is True
+    assert h.status == 200, "容量未知不该被当成 5xx（会误导前端弹错误提示）"
+    assert h.sent["known"] is False
+
+
+def test_route_openlist_storage_rejects_path_traversal():
+    h = _make_handler(params={"path": "/媒体库/../../etc"})
+    assert h._handle_library_get("/api/openlist/storage") is True
+    assert h.status == 400 and ".." in h.sent["error"]
+
+
+def test_route_openlist_storage_defaults_to_library_root():
+    """不带 path 时落到「媒体库根目录」——与目录浏览同一套路径口径。"""
+    seen = {}
+
+    def fake_storage(path=None, refresh=False):
+        seen["path"] = path
+        return {"success": True, "known": False}
+
+    h = _make_handler(params={})
+    with patch.object(media_library, "library_storage", side_effect=fake_storage), \
+         patch.object(media_library, "get_library_root", return_value="/影视"):
+        h._handle_library_get("/api/openlist/storage")
+    assert seen["path"] == "/影视"

@@ -13,6 +13,7 @@
 # OpenList 数据源（issue #27 追问）：目录浏览可改由 OpenList 回答，
 #   GET  /api/library/source       —— 当前数据源 / 各源可用性自检
 #   GET  /api/openlist/tasks/audit —— QAS 任务 ↔ 网盘内容 对账（只读）
+#   GET  /api/openlist/storage     —— 网盘容量（issue #101，只读，失败不影响浏览）
 #
 # 注意：浏览与删除是**同源**的一组接口 —— 浏览器看到的条目由谁列出来，
 # 删除就发给谁（OpenList 用条目名、QAS 用 fid）。跨源拼路径会误删，见 media_library。
@@ -116,6 +117,26 @@ class LibraryRouteMixin:
                     # 让前端文案与徽标一致 —— 都是「OpenList 不可用」。
                     info["source"] = media_library.LIBRARY_SOURCE_OPENLIST
             self._send_json({"success": True, **info})
+            return True
+
+        if route == "/api/openlist/storage":
+            # 网盘容量（issue #101）：媒体库标题行展示「已用 / 总量」。
+            # 与目录浏览同一套路径口径（不带 path 时落到「媒体库根目录」），
+            # 因为容量挂在驱动上、与具体目录无关，用同一路径只是为了让
+            # 请求参数在所有接口里长一个样。
+            params = self._get_query_params()
+            raw_path = params.get("path")
+            if raw_path is None or not str(raw_path).strip():
+                raw_path = media_library.get_library_root()
+            path = str(raw_path).strip() or "/"
+            if ".." in path:
+                self._send_json({"error": "path 不允许包含 .."}, 400)
+                return True
+            res = media_library.library_storage(path=path)
+            # 容量拿不到**不算 5xx**：这是「驱动不报容量」这类正常分支，
+            # 前端按「容量未知」安静显示。用 200 带回 success=False 与原因，
+            # 与「服务端出错」区分开（后者才该是 502）。
+            self._send_json(res, 200)
             return True
 
         if route == "/api/openlist/tasks/audit":

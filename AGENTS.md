@@ -23,6 +23,7 @@ python scripts/check_overview_dom.py --serve # 概览页 DOM 度量走查（改�
 python scripts/check_log_panel_dom.py --serve # 日志栏 DOM 度量走查（改日志栏后必跑）
 python scripts/check_settings_dom.py --serve  # 设置页空白度量走查（改设置页后必跑）
 python scripts/check_library_dom.py --serve  # 媒体库顺序/加载反馈/缓存度量走查（改媒体库后必跑）
+python scripts/check_library_capacity_dom.py --serve # 媒体库网盘容量走查（改进度条/容量解析后必跑）
 python scripts/check_library_keys_dom.py --serve    # 媒体库键盘选择走查（改键盘逻辑后必跑）
 python scripts/check_library_selection_dom.py --serve # 媒体库选中/取消选中走查（改勾选逻辑后必跑）
 python scripts/check_qas_keys_dom.py --serve # QAS 任务表键盘选择走查（改任务表后必跑）

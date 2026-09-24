@@ -786,6 +786,198 @@ def _to_epoch(value):
             return 0
 
 
+# 容量字段候选名（issue #101：媒体库显示网盘容量）。
+#
+# 为什么用「一串候选名」而不是盯住一个字段：OpenList 对容量的暴露位置
+# 随驱动与版本而变 —— 同一个语义可能出现在响应根、`provider` 子对象，
+# 或 `provider` 这个 JSON 字符串里，字段名也有 total/free/used 与
+# total_space/free_space/used_space 两套写法。写死一个名字，换一个驱动
+# 或升一次版本就静默失效（前端只会永远显示「—」，无从排查）。
+#
+# 顺序 = 优先级：带 `_space` 后缀的更明确，排在 `total`/`free` 这种短名前面，
+# 避免在有多个候选时选到语义更模糊的那个。
+_TOTAL_KEYS = ("total_space", "totalSpace", "total", "capacity", "size_limit")
+_FREE_KEYS = ("free_space", "freeSpace", "free", "remaining", "remain")
+_USED_KEYS = ("used_space", "usedSpace", "used")
+
+
+def _positive_int(value):
+    """把候选容量值归一化成正整数（字节）。
+
+    只接受能真的表示「有这么多字节」的值：
+      - bool 直接排除（Python 里 True 是 int 的子类，会被当成 1 字节容量，
+        这类「幽灵容量」比没有更糟）；
+      - 负数 / 0 视为无效（0 通常代表「驱动没给」而不是「盘满了」）；
+      - 字符串数字（部分驱动会以字符串下发）做一次宽松转换。
+    解析不出来返回 None，由调用方继续找下一个候选 —— 绝不猜。
+    """
+    if isinstance(value, bool) or value is None:
+        return None
+    if isinstance(value, (int, float)):
+        n = int(value)
+        return n if n > 0 else None
+    if isinstance(value, str):
+        s = value.strip()
+        if not s:
+            return None
+        try:
+            n = int(float(s))
+        except (TypeError, ValueError):
+            return None
+        return n if n > 0 else None
+    return None
+
+
+def _pick_first(source, keys):
+    """在 dict 里按 keys 顺序取第一个能被解析成正整数的值，取不到返回 None。"""
+    if not isinstance(source, dict):
+        return None
+    for k in keys:
+        n = _positive_int(source.get(k))
+        if n is not None:
+            return n
+    return None
+
+
+def _provider_objects(entry):
+    """把 OpenList 响应里可能藏着容量信息的 dict 全部摊平成一个列表。
+
+    依次考虑（去重、保序）：
+      1. `provider` 本身是 dict（部分版本直接内联）；
+      2. `provider` 是 JSON 字符串（AList 历史上的形态）—— 解析成功才用；
+      3. `provider` 的 `json` / `data` 子字段（又一层嵌套）；
+      4. 响应根对象（有些实现把容量直接挂在根上）。
+    """
+    roots = []
+    provider = entry.get("provider") if isinstance(entry, dict) else None
+    if isinstance(provider, dict):
+        roots.append(provider)
+    elif isinstance(provider, str) and provider.strip():
+        try:
+            parsed = json.loads(provider)
+        except (TypeError, ValueError):
+            parsed = None
+        if isinstance(parsed, dict):
+            roots.append(parsed)
+    # 嵌套一层：provider={"json": "{...}"} / {"data": {...}}
+    for r in list(roots):
+        for sub_key in ("json", "data", "detail", "props"):
+            sub = r.get(sub_key)
+            if isinstance(sub, str) and sub.strip():
+                try:
+                    sub = json.loads(sub)
+                except (TypeError, ValueError):
+                    continue
+            if isinstance(sub, dict):
+                roots.append(sub)
+    if isinstance(entry, dict):
+        roots.append(entry)
+    return roots
+
+
+def parse_storage_info(payload):
+    """从 /api/fs/get 的响应里解析网盘容量（issue #101）。
+
+    返回 {"total", "used", "free"}（字节；解析不到的项为 0）与
+    "known" 标记 —— 只要 total 被解析出来就算 known，前端据此决定显示进度条
+    还是「容量未知」。
+
+    三条**推导**规则（按可信度排序，不做无依据的编造）：
+      1. total + used → free = total - used；
+      2. total + free → used = total - free；
+      3. 只有 total → free/used 保持 0（只显示总量，不画进度条）。
+
+    为什么 used 与 free 都能反推：两者之和恒等于 total，而驱动下发的字段
+    集合因版本而异（有的给 used，有的给 free）。只知道其一就够，硬要两个
+    都等驱动给，会让「明明能看到已用 823G」变成「容量未知」。
+
+    所有结果都夹在 [0, total]：驱动偶尔会给出 used > total（配额变更后的
+    陈旧缓存），前端拿去算百分比会画出 >100% 的进度条 —— 那是明显的坏数据，
+    夹住比原样透出更好定位。
+    """
+    out = {"total": 0, "used": 0, "free": 0, "known": False}
+    if not isinstance(payload, dict):
+        return out
+    total = used = free = None
+    for obj in _provider_objects(payload):
+        if total is None:
+            total = _pick_first(obj, _TOTAL_KEYS)
+        if used is None:
+            used = _pick_first(obj, _USED_KEYS)
+        if free is None:
+            free = _pick_first(obj, _FREE_KEYS)
+    if total is None:
+        # 没有总量 = 这条驱动不报容量。不拿 used/free 硬凑一个 total 出来：
+        # 分母是猜的，进度条画出来就是错的。
+        return out
+    if used is None and free is not None:
+        used = total - free
+    if free is None and used is not None:
+        free = total - used
+    used = max(0, min(int(used or 0), total))
+    free = max(0, min(int(free if free is not None else total - used), total))
+    out.update({"total": int(total), "used": used, "free": free, "known": True})
+    return out
+
+
+def storage_info(path="/", timeout=None):
+    """查询网盘容量（对应 POST /api/fs/get）。
+
+    返回 {
+      "success": bool, "path": 网盘路径,
+      "total"/"used"/"free": 字节（0 = 未知）,
+      "known": 是否真的拿到了总量,
+      "percent": 已用百分比（1 位小数；known 为 False 时为 0）,
+      "source": "openlist",
+      "message": 失败原因（成功时为空）,
+      "kind": 失败归类（见 KIND_*）,
+    }
+
+    为什么用 /api/fs/get 而不是 /api/fs/list：容量是**存储驱动**的属性，
+    fs/get 会带回驱动的 GetDetails/props（`provider` 字段），fs/list 只回目录
+    内容。对根目录做一次 fs/get 就能拿到「这块盘还剩多少」，不用遍历任何目录。
+
+    失败**不抛异常**且不影响目录浏览：容量是锦上添花的信息，拿不到就显示
+    「容量未知」—— 让它把整个媒体库页带崩，等于用一个次要功能赌掉主要功能。
+    """
+    out = {"success": False, "path": str(path or "/"), "total": 0, "used": 0,
+           "free": 0, "known": False, "percent": 0.0,
+           "source": "openlist", "message": "", "kind": ""}
+    try:
+        p = _norm_path(path)
+    except OpenListError as e:
+        out["message"] = str(e)
+        out["kind"] = e.kind
+        return out
+    out["path"] = p
+    if not is_configured():
+        out["message"] = "未配置 OpenList 地址"
+        out["kind"] = KIND_UNCONFIGURED
+        return out
+    api_path = to_openlist_path(p)
+    try:
+        # 容量走**交互预算**（默认 8s）：它与目录浏览同属「打开媒体库就该看到」
+        # 的信息，不能让用户为了一个数字多等一轮诊断级预算（30s）。
+        data = _api("/api/fs/get", {"path": api_path},
+                    timeout=timeout or OPENLIST_READ_TIMEOUT)
+    except OpenListError as e:
+        out["message"] = str(e)
+        out["kind"] = e.kind
+        return out
+    info = parse_storage_info(data if isinstance(data, dict) else {})
+    out.update(info)
+    if not info["known"]:
+        # 拿到响应但解析不出总量：这是**驱动不支持**，不是「出错了」。
+        # 刻意不填 message/kind —— 前端按「容量未知」安静显示，
+        # 而不是弹一个红色错误（用户会以为网盘/OpenList 坏了）。
+        out["success"] = False
+        return out
+    total = info["total"]
+    out["percent"] = round(info["used"] * 100.0 / total, 1) if total > 0 else 0.0
+    out["success"] = True
+    return out
+
+
 def remove(names, dir_path="/"):
     """删除目录下的若干条目（对应 POST /api/fs/remove）。
 
